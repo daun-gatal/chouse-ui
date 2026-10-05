@@ -79,7 +79,7 @@ function parseGeneralPurpose(value: unknown): GeneralPurposeConfig {
   };
 }
 
-export function harnessFromRow(r: Row): HarnessDef {
+function harnessFromRow(r: Row): HarnessDef {
   return {
     id: str(r.id),
     slug: str(r.slug),
@@ -99,7 +99,7 @@ export function harnessFromRow(r: Row): HarnessDef {
   };
 }
 
-export function agentFromRow(r: Row): AgentDef {
+function agentFromRow(r: Row): AgentDef {
   const kind: AgentKind = str(r.kind) === "router" ? "router" : "agent";
   return {
     id: str(r.id),
@@ -127,7 +127,7 @@ export function agentFromRow(r: Row): AgentDef {
   };
 }
 
-export function skillFromRow(r: Row): SkillDef {
+function skillFromRow(r: Row): SkillDef {
   return {
     id: str(r.id),
     name: str(r.name),

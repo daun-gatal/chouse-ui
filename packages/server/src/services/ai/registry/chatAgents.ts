@@ -17,7 +17,7 @@ export function userMayUseAgent(agent: AgentDef, ctx: Pick<AgentRunContext, "isA
   return agent.requiredPermissions.some((p) => held.has(p));
 }
 
-export function isChatAgent(agent: AgentDef): boolean {
+function isChatAgent(agent: AgentDef): boolean {
   return agent.enabled && agent.taskTemplate === null;
 }
 

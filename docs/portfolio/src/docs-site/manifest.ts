@@ -192,6 +192,7 @@ export const DOC_SECTIONS: DocSection[] = [
         label: "Agents",
         pages: [
           { slug: "agents", title: "Agents & governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
+          { slug: "ai-agents", title: "AI agents", description: "Every AI feature and the chat run on an agent you can edit in Agents › Assistant — prompt, tools, skills, subagents and harness — and test before saving." },
         ],
       },
       {

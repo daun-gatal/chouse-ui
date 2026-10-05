@@ -32,7 +32,7 @@ import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 /** Maximum agent-tree depth: root → agent → subagent. */
 export const MAX_AGENT_DEPTH = 3;
 
-export const SKILLS_MOUNT = "/skills/";
+const SKILLS_MOUNT = "/skills/";
 
 const FILESYSTEM_PERMISSIONS: FilesystemPermission[] = [
   { operations: ["read"], paths: ["/skills/**"], mode: "allow" },

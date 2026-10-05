@@ -97,7 +97,7 @@ function finalTextFromState(state: unknown): string {
   return "";
 }
 
-export function structuredInstructions<T>(
+function structuredInstructions<T>(
   instructions: string,
   schema: ZodType<T, ZodTypeDef, unknown>,
 ): string {

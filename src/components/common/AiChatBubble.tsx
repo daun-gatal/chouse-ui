@@ -34,8 +34,10 @@ import {
     updateThreadTitle,
     invokeChatMessage,
     getAiModels,
+    getChatAgents,
     type AiModelSimple,
     type ChatThread,
+    type ChatAgentOption,
     type ChatMessage,
     type ChartSpec,
 } from '@/api/ai-chat';
@@ -120,6 +122,8 @@ interface ToolCallStep {
     category?: string;
     description?: string;
     summary?: string | null;
+    /** Subagent path that made the call, e.g. "chouse-admin › access-auditor". */
+    agent?: string;
 }
 
 interface UIMessage {
@@ -138,6 +142,8 @@ interface UIMessage {
     toolCalls?: ToolCallStep[];
     /** chart specs produced by the render_chart tool, if any */
     chartSpecs?: ChartSpec[];
+    /** The agent that answered this turn. */
+    agentName?: string;
 }
 
 function isActiveChatConnection(connectionId: string | null): boolean {
@@ -512,6 +518,9 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
                             <span className="truncate text-[12px] font-medium text-paper">{presentation.label}</span>
                             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{presentation.category}</span>
                         </div>
+                        {step.agent && (
+                            <p className="truncate font-mono text-[10px] text-brand/80" title="Subagent that made this call">via {step.agent}</p>
+                        )}
                         {presentation.description && (
                             <p className="truncate text-[11px] text-paper-muted">{presentation.description}</p>
                         )}
@@ -791,11 +800,14 @@ function useAiChatInvoke({
     setMessages,
     loadThreads,
     selectedModelId,
+    selectedAgentId,
     activeConnectionId,
 }: {
     setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
     loadThreads: () => void;
     selectedModelId: string;
+    /** Chat agent for this thread; null = the default agent. */
+    selectedAgentId: string | null;
     activeConnectionId: string | null;
 }) {
     const [isInvoking, setIsInvoking] = useState(false);
@@ -852,6 +864,7 @@ function useAiChatInvoke({
                 messageHistory,
                 selectedModelId || undefined,
                 controller.signal,
+                selectedAgentId,
             );
 
             if (
@@ -873,8 +886,10 @@ function useAiChatInvoke({
                             tool: call.name,
                             args: call.args,
                             status: 'done',
+                            agent: call.agent,
                         })),
                         chartSpecs: result.chartSpecs,
+                        agentName: result.agent?.name,
                     };
                 }
                 return updated;
@@ -923,7 +938,7 @@ function useAiChatInvoke({
                 if (isActiveChatConnection(invocationConnectionId)) loadThreads();
             }
         }
-    }, [activeConnectionId, loadThreads, selectedModelId, setMessages]);
+    }, [activeConnectionId, loadThreads, selectedModelId, selectedAgentId, setMessages]);
 
     const handleStop = useCallback(() => {
         abortRef.current?.abort();
@@ -999,6 +1014,9 @@ export default function AiChatBubble() {
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
     const [selectedModelId, setSelectedModelId] = useState<string>('');
+    const [chatAgents, setChatAgents] = useState<ChatAgentOption[]>([]);
+    /** Agent for the active thread; null = the default (bound) chat agent. */
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [isOpen, setIsOpen] = useState(false);
     const dismissForOnboarding = useCallback(() => setIsOpen(false), []);
     useOnboardingSurfaceDismissAction(dismissForOnboarding);
@@ -1210,6 +1228,24 @@ export default function AiChatBubble() {
         return () => window.removeEventListener('ai-config-updated', fetchModels);
     }, [fetchModels]);
 
+    // Chat agents the user may pick (Agents › Assistant edits fire 'ai-agents-updated').
+    const fetchAgents = useCallback(() => {
+        if (!hasPermission || !aiEnabled) return;
+        getChatAgents()
+            .then((agents) => {
+                setChatAgents(agents);
+                setSelectedAgentId((current) => (current && !agents.some((a) => a.id === current) ? null : current));
+            })
+            .catch((e) => log.error('[AiChat] Failed to fetch chat agents', e));
+    }, [hasPermission, aiEnabled]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        fetchAgents();
+        window.addEventListener('ai-agents-updated', fetchAgents);
+        return () => window.removeEventListener('ai-agents-updated', fetchAgents);
+    }, [fetchAgents, isOpen]);
+
 
     // Auto-scroll to bottom without bubbling up scroll events to parent
     useEffect(() => {
@@ -1250,6 +1286,7 @@ export default function AiChatBubble() {
         setMessages,
         loadThreads,
         selectedModelId,
+        selectedAgentId,
         activeConnectionId,
     });
 
@@ -1331,6 +1368,7 @@ export default function AiChatBubble() {
             const data = await getThread(threadId);
             if (!isActiveChatConnection(loadConnectionId)) return;
             setActiveThreadId(threadId);
+            setSelectedAgentId(data.agentId ?? null);
             setMessages(
                 data.messages.map((m: ChatMessage) => ({
                     id: m.id,
@@ -1342,6 +1380,7 @@ export default function AiChatBubble() {
                         args: tc.args ?? {},
                         status: 'done' as const,
                         summary: tc.result ? null : undefined,
+                        agent: tc.agent,
                     })) || undefined,
                     chartSpecs: m.chartSpecs || undefined,
                     createdAt: m.createdAt,
@@ -1355,7 +1394,7 @@ export default function AiChatBubble() {
     const handleNewThread = useCallback(async () => {
         const createConnectionId = activeConnectionId;
         try {
-            const thread = await createThread(undefined, createConnectionId ?? undefined);
+            const thread = await createThread(undefined, createConnectionId ?? undefined, selectedAgentId);
             if (!isActiveChatConnection(createConnectionId)) return;
             setThreads((prev) => [thread, ...prev]);
             setActiveThreadId(thread.id);
@@ -1363,7 +1402,7 @@ export default function AiChatBubble() {
         } catch (err) {
             log.error('[AiChat] Failed to create thread:', err);
         }
-    }, [activeConnectionId]);
+    }, [activeConnectionId, selectedAgentId]);
 
     const handleDeleteThread = useCallback(async (threadId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -1491,7 +1530,7 @@ export default function AiChatBubble() {
         if (!threadId) {
             const createConnectionId = activeConnectionId;
             try {
-                const thread = await createThread(undefined, createConnectionId ?? undefined);
+                const thread = await createThread(undefined, createConnectionId ?? undefined, selectedAgentId);
                 if (!isActiveChatConnection(createConnectionId)) return;
                 setThreads((prev) => [thread, ...prev]);
                 setActiveThreadId(thread.id);
@@ -1521,7 +1560,7 @@ export default function AiChatBubble() {
         setInput('');
 
         await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
-    }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId]);
+    }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId, selectedAgentId]);
 
     if (!hasPermission) return null;
     if (aiEnabled !== true) {
@@ -1662,6 +1701,47 @@ export default function AiChatBubble() {
                                 </div>
 
                                 <div className="flex items-center gap-0.5">
+                                    {chatAgents.length > 1 && (
+                                        <div className="mr-1 hidden sm:block">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button type="button" aria-label="Chat agent" className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors max-w-[180px]">
+                                                        <span className="truncate">{chatAgents.find((a) => a.id === selectedAgentId)?.name ?? chatAgents.find((a) => a.isDefault)?.name ?? 'Default agent'}</span>
+                                                        <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-[280px] rounded-md border-ink-500 bg-ink-100 p-0">
+                                                    <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                                                        Chat agent
+                                                    </div>
+                                                    <div className="flex max-h-[320px] flex-col gap-0.5 overflow-y-auto p-1">
+                                                        {chatAgents.map((a) => {
+                                                            const isCurrent = selectedAgentId === a.id || (selectedAgentId === null && a.isDefault);
+                                                            return (
+                                                                <DropdownMenuItem
+                                                                    key={a.id}
+                                                                    onClick={() => setSelectedAgentId(a.isDefault ? null : a.id)}
+                                                                    className={`flex items-start gap-2.5 rounded-xs px-3 py-2 cursor-pointer transition-colors hover:bg-ink-200 ${isCurrent ? "bg-ink-200" : ""}`}
+                                                                >
+                                                                    <div className="mt-0.5 flex-shrink-0">
+                                                                        <div className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${isCurrent ? "border-brand" : "border-ink-700"}`}>
+                                                                            {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex min-w-0 flex-col gap-0.5">
+                                                                        <span className={`truncate text-[13px] font-medium ${isCurrent ? "text-paper" : "text-paper-muted"}`}>
+                                                                            {a.kind === 'router' ? `Auto · ${a.name}` : a.name}{a.isDefault ? ' (default)' : ''}
+                                                                        </span>
+                                                                        <span className="line-clamp-2 text-[11px] text-paper-faint">{a.description}</span>
+                                                                    </div>
+                                                                </DropdownMenuItem>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                    )}
                                     {aiModels.length > 0 && (
                                         <div className="mr-2 hidden sm:block">
                                             <DropdownMenu>
@@ -1959,6 +2039,9 @@ export default function AiChatBubble() {
                                                             >
                                                                 {msg.role === 'assistant' ? (
                                                                     <>
+                                                                        {msg.agentName && chatAgents.length > 1 && (
+                                                                            <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{msg.agentName}</p>
+                                                                        )}
                                                                         {msg.toolCalls && msg.toolCalls.length > 0 && (
                                                                             <ActivityPanel
                                                                                 toolCalls={msg.toolCalls}

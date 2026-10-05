@@ -23,8 +23,8 @@ export interface RegistryProblem {
 }
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
-export const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const SKILL_PATH_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
+const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_PATH_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 const SKILL_FILE_RE = /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
 const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 const MAX_PROMPT_CHARS = 100_000;

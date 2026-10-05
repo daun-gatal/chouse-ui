@@ -1,9 +1,9 @@
 # 0019 — DeepAgents Managed in the UI: One Agent Registry for Every AI Feature, Multi-Agent Chat, and a Read-Only CHouse Management Agent
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-05
 - **Builds on:** [0004](0004-dataops-ai-operator-assistance.md) (evidence-grounded DataOps AI), [0010](0010-pod-local-state-and-multi-replica-correctness.md) (no pod-local authority), [0013](0013-chouse-mcp.md) / [0017](0017-mcp-managed-in-the-ui.md) (tools as API projections, typed tool catalog, per-user tool filtering), [0016](0016-data-observability-platform.md) §10 (Agents page, `agents:view` / `agents:manage`)
-- **Scope:** **every** DeepAgents run in CHouse. That covers the chat bubble and all 21 capabilities in `services/ai/capabilities/index.ts`: SQL-editor optimize/debug/check, Doctor fleet scan, optimize-log, the three diagnoses, the ten DataOps capabilities, the Observe incident explainer, the watcher compiler, and chat. After this ADR, no DeepAgents agent is defined in code.
+- **Scope:** **every** DeepAgents run in CHouse. That covers the chat bubble and all 22 capabilities in `services/ai/capabilities/index.ts`: SQL-editor optimize/debug/check, Doctor fleet scan, optimize-log, the three diagnoses, the ten DataOps capabilities, the Observe incident explainer, the watcher compiler, and chat. After this ADR, no DeepAgents agent is defined in code.
 
 ## Context
 
@@ -102,8 +102,13 @@ validation and the seed sync (§8) keep built-in features valid.
 
 ### 2. Registry data model (metadata DB, SQLite and PostgreSQL)
 
-All tables are created in `migrations.ts` with `VERSION_CHECKS` entries and
-upgrade-path coverage (CLAUDE.md, mandatory):
+Migration **1.56.0** creates all tables, with `VERSION_CHECKS` entries,
+upgrade-path coverage and a dedicated upgrade/idempotency test (CLAUDE.md,
+mandatory). An agent's tools, skill links and subagents are **JSON columns on
+the agent row**, not join tables: a save is one atomic row write, which matters
+because neither migrations nor store writes are wrapped in a transaction across
+tables. The version counter is its own one-row table, so incrementing it is a
+plain `UPDATE … SET version = version + 1` on both dialects.
 
 ```
 ai_harnesses
@@ -124,18 +129,24 @@ ai_agents
   harness_id            text       -- → ai_harnesses
   tuning                json   -- { stepBudget, recursionLimit?, timeoutMs?, maxOutputTokens? }
   required_permissions  json   -- for chat visibility (§9)
+  tools                 json   -- ordered grants from the code catalog
+  skills                json   -- [{ skillId, mode 'progressive' | 'pinned', pinnedFile }]
+  subagents             json   -- ordered child agent ids; a child can be reused
   enabled, is_system, seed_hash, customized, version, created_by, timestamps
 
-ai_agent_edges     (parent_id, child_id, position)             -- subagents; a child can be reused
-ai_agent_tools     (agent_id, tool_name)                        -- grants from the code catalog
-ai_skills          id, name (kebab), description (≤ 1024), body (SKILL.md), files json,
+ai_skills          id, name (kebab), dir_path ('<group>/<dir>'), description (≤ 1024),
+                   skill_md (full SKILL.md), files json,
                    enabled, is_system, seed_hash, customized, version, timestamps
-ai_agent_skills    (agent_id, skill_id, mode 'progressive' | 'pinned', position)
 ai_feature_bindings (feature_id pk, agent_id, updated_by, updated_at)
-ai_registry_revisions (id, entity, entity_id, version, snapshot json, actor, created_at)  -- history and rollback
+ai_registry_revisions (id, entity, entity_id, version, action, snapshot json, actor, created_at)  -- history and rollback
+ai_registry_state  (id = 1, version)                            -- bumped on every registry write
 rbac_ai_chat_threads  + agent_id text null                     -- per-thread chat agent
-obs_settings['ai_registry_version']                            -- bumped on every registry write
 ```
+
+A skill's directory (`dir_path`) is stored separately from its name because the
+built-in optimizer skills live in `ai-optimizer/optimizer` but are named
+`query-optimizer`. Keeping the directory keeps the skill paths the model sees
+unchanged.
 
 ### 3. Harness: per-agent and UI-managed, with no global profiles
 
@@ -164,24 +175,35 @@ obs_settings['ai_registry_version']                            -- bumped on ever
   - **Router.** Only `task` and `read_file`.
 - The UI explains each built-in tool and warns when a harness excludes `task` on
   an agent that has subagents. Saving that combination is rejected.
+- Two consequences of going per agent, both accepted:
+  - The prompt suffix now follows the agent's prompt, not DeepAgents' own base
+    prompt. The instruction is the same; only its position moves.
+  - Bedrock models never matched DeepAgents' profile lookup, so they used to
+    run with `task`, the filesystem tools and the general-purpose subagent. They
+    now get the same exclusions as every other provider. Bedrock model ids
+    without a `:` can still get DeepAgents' implicit general-purpose subagent,
+    because the merge-only baseline can't reach them.
 
 ### 4. One tool catalog, with a declared run context
 
-`services/ai/tools/catalog.ts` holds the only tool list (the MCP tool definitions
-are refactored onto the same shape). Each entry is
+`services/ai/registry/catalog.ts` holds the only list of AI tools. MCP keeps its
+own registrations; the chat's CHouse tools are read-only projections of the same
+routes, called the same way. Moving MCP onto this catalog is a follow-up. Each
+entry is
 `{ name, title, domain, category, access, permissions[], requires, description, build(ctx) }`.
 `requires` is the run context the tool needs:
 
 | `requires` | Provided by | Tools |
 |---|---|---|
-| `session` | SQL-editor features, chat with a live connection | the 17 core tools, `render_chart`, `generate_query` |
+| `session` | SQL-editor features, three DataOps features, chat | the 16 core tools, `render_chart`, `run_bounded_aggregate`, and `optimize_query`, which runs the `optimize-query` feature through **its** binding |
 | `fleet` | Doctor / diagnose / optimize-log (resolved nodes) | `query_node` (bound to the feature's nodes) |
-| `user-api` | Interactive runs carrying the user's access token | `chouse` read projections (§9) |
-| `feature` | any context the called feature needs | feature-call tools (e.g. `optimize_query` runs the `optimize-query` feature through **its** binding) |
-| `none` | everyone | — |
+| `userApi` | Chat only, carrying the user's access token | CHouse read projections (§9) |
+| none | everyone | `generate_query` |
 
 Each feature declares the contexts it provides. Background features
-(`fleet-scan`, `compile-watcher`) provide neither `session` nor `user-api`. Save
+(`fleet-scan`, run by the scheduler and the alerter) provide neither `session`
+nor `userApi`, and at run time the engine strips any context a feature doesn't
+declare. Save
 and bind validation rejects any agent whose tools, or whose subagents' tools,
 need a context the bound feature doesn't provide. So a background Doctor scan
 can't be given a tool that would need a user token. For this ADR, only
@@ -198,7 +220,7 @@ the editor shows them. Unknown variables fail validation at save time. Examples:
 
 - Fleet scan exposes `ctx.needsPlaybook` (boolean), `ctx.hours`, `ctx.nodeCount`
   and `ctx.overview` (JSON). The seeded prompt is
-  `…SYSTEM_PROMPT…{{#ctx.needsPlaybook}}{{skill:clickhouse-playbook}}{{/ctx.needsPlaybook}}`.
+  `…SYSTEM_PROMPT…{{#ctx.needsPlaybook}}\n\n{{skill:clickhouse-playbook/reference.md}}{{/ctx.needsPlaybook}}`.
   This reproduces today's conditional playbook exactly.
 - Diagnose-error exposes `ctx.node.id`, `ctx.node.name`, `ctx.error.code`,
   `ctx.error.name` and `ctx.error.message`. Its task template is today's literal
@@ -216,13 +238,23 @@ UI parses.
 - Skills are `ai_skills` rows, attached to an agent per link in one of two modes:
   - **progressive:** the normal DeepAgents skill, listed in the prompt and read
     on demand.
-  - **pinned:** the body is inlined into the system prompt, either at the end or
-    where `{{skill:name}}` appears. Pinned mode preserves today's always-inline
-    `CLICKHOUSE_PLAYBOOK` in diagnose and optimize-log.
-- Runtime serving: `CompositeBackend(new StateBackend(), { "/skills/": new RegistrySkillsBackend() })`.
-  The backend is a read-only `BackendProtocolV2` that projects rows as
-  `/skills/<agentSlug>/<name>/SKILL.md` (+ `files`). Writes are denied by the
-  backend and by `permissions` on every agent and subagent.
+  - **pinned:** a chosen file of the skill is appended to the system prompt.
+    This preserves today's always-inline `CLICKHOUSE_PLAYBOOK` in diagnose and
+    optimize-log. Any template can also inline a skill where
+    `{{skill:name}}` or `{{skill:name/file.md}}` appears, which is how the
+    `system.*` table reference stays inside the diagnosis prompts.
+- Runtime serving: every agent gets its own
+  `CompositeBackend(new StateBackend(), { "/skills/": new RegistrySkillsBackend(files) })`
+  holding **only its own** skills, so subagents compile into their own deep
+  agents. The backend is a read-only `BackendProtocolV2` that serves rows as
+  `/skills/<group>/<dir>/SKILL.md` (+ `files`), the same paths as before. Writes
+  are denied by the backend and by `permissions` on every agent.
+- **Fix found while building this.** The pre-registry engine mounted its skills
+  at `/skills` without the trailing slash. `CompositeBackend` then built
+  `//group/...` paths, `FilesystemBackend` rejected them as outside its root,
+  and **no skill ever loaded**. The registry mounts at `/skills/`, so the 14
+  skills now load as the prompts always assumed. A regression test pins this.
+  It is the one intended behaviour change of the cut-over.
 - **`FilesystemBackend` and `src/skills/` are no longer read at runtime.** The
   directory moves to `services/ai/seeds/skills/`, the seed source.
 - Parity note: today every agent sees all 14 skills. Seeds attach the same 14 to
@@ -235,13 +267,13 @@ UI parses.
    from the thread or picker (§9). Read through a per-process cache keyed on
    `ai_registry_version`, which every request reads with a single-row lookup, so
    no replica serves a stale graph (ADR 0010).
-2. **Validate and prune.** Check context compatibility (§4). For interactive runs,
-   drop tools and chat agents the user lacks permission for. An agent left with
-   no tools and no children is dropped. If the root agent is dropped, the run
-   fails closed.
-3. **Build bottom-up.** A leaf becomes a `SubAgent`. An agent with children
-   becomes `createDeepAgent({ name, model, tools, systemPrompt, subagents, backend, skills: ["/skills/<slug>/"], permissions, middleware: [harness…, trace…] })`.
-   An agent under a router becomes a `CompiledSubAgent`.
+2. **Validate and prune.** Tools whose context the run doesn't provide are left
+   out, as are CHouse tools and chat subagents the user lacks permission for. A
+   missing or disabled bound agent, a cycle, or excessive depth fails the run closed.
+3. **Build bottom-up.** Every agent becomes `createDeepAgent({ name, model, tools, systemPrompt,
+   subagents, backend, skills, permissions, middleware })`. Each child is compiled the same way
+   and attached as a `CompiledSubAgent` with its own recursion limit, so it carries its own
+   backend, skills and harness.
 4. **Run** with the feature's delivery mode, as the engine does today: structured
    parse, formatter fallback, `finalize`. Recursion limit and timeout come from
    **agent tuning**. Per-model `params.recursionLimit` / `runTimeoutMs` still
@@ -253,8 +285,8 @@ UI parses.
 
 ### 8. Seeds, exact-parity migration, and upgrades: no fallback, no drift
 
-- **Seed source** lives in `services/ai/seeds/`: one agent per feature (21), the
-  chat topology (§9), three harnesses, 14 skills and 21 bindings. Every prompt,
+- **Seed source** lives in `services/ai/seeds/`: one agent per feature (22), the
+  chat topology (§9), three harnesses, 14 skills and 22 bindings. Every prompt,
   task framing, tool subset, skill set, harness and tuning is copied
   **verbatim** from today's code. For example, `check-optimize` → agent
   "Query Evaluator" with `analyze_query`, `get_table_ddl`, `get_table_schema`, the
@@ -273,7 +305,7 @@ UI parses.
   - It updates system rows with `customized = false` when their `seed_hash`
     changed, so shipped improvements reach installs that never edited them.
   - It **never** overwrites customized rows. The UI flags them as "built-in
-    update available" and shows a diff.
+    update available".
   - It restores a deleted binding for a built-in feature to its seeded agent.
     System agents can't be deleted, only rebound or reset.
 - Seed rows aren't written by `migrations.ts`, so migrations never depend on
@@ -287,8 +319,6 @@ tables keep their 7-day retention and stay the transcript and UI source of truth
 ```
 CHouse Assistant            router   (Router harness; tools: none)       ← "Auto"
 ├── ClickHouse Data         agent    today's chat prompt/tools/skills (Focused harness) ← default chat binding
-│   ├── performance-investigator     slow queries, explain, parts, troubleshooting
-│   └── schema-diagnostician         DDL, types/codecs, ORDER BY
 └── CHouse Admin            agent    (Delegating harness) whoami + light lookups
     ├── access-auditor               users, roles, permissions, data-access policies, PAT metadata, SSO (redacted), CH users/roles
     ├── operations-analyst           scheduled jobs/runs, data health, incidents, alerts, doctor reports, fleet
@@ -296,14 +326,14 @@ CHouse Assistant            router   (Router harness; tools: none)       ← "Au
 ```
 
 - **The default chat binding is ClickHouse Data**, so today's chat behaves as it
-  does now.
+  does now. It keeps the Focused harness (no delegation) for parity, so it ships
+  without subagents. An administrator can give it some by switching it to the
+  Delegating harness.
 - The composer gets an agent picker: **Auto** (router), ClickHouse Data, CHouse
   Admin, plus any custom top-level agent the user is allowed to use. The choice
   is stored on the thread.
 - Auto delegates a single-domain question to exactly one agent and passes its
   answer through. It only combines answers for cross-domain questions.
-- When there's no live ClickHouse session, ClickHouse Data is pruned instead of
-  failing the whole run.
 
 **Read-only is enforced by the tool layer:**
 
@@ -327,9 +357,9 @@ product feature. The guardrails:
   features keeps its existing permissions (`ai:optimize`, `ai:chat`,
   `doctor:run`, …).
 - **Audit actions:** `ai_agent.*`, `ai_harness.*`, `ai_skill.*`,
-  `ai_binding.update`, `ai_registry.reset`.
+  `ai_binding.update`, `ai_registry.reset`, `ai_registry.rollback`.
 - **Revisions:** every save writes a snapshot to `ai_registry_revisions`. The UI
-  can diff any two revisions and roll back with one click. Edits use optimistic
+  shows each revision's snapshot and restores any of them with one click. Edits use optimistic
   concurrency on `version`.
 - **Test console:** run any feature against the **draft** (unsaved) graph, with a
   sample input or a recent real invocation, as the current admin. It shows the
@@ -369,7 +399,7 @@ on the `observe/db` dialect helpers and conformance-test them against
 The Agents page today covers *external* agents (Sessions, Policies, MCP). A new
 **Assistant** tab (`/agents/assistant/:view?/:id?`) manages every built-in agent:
 
-- **Features:** all 21 AI features grouped by surface (SQL editor, Doctor,
+- **Features:** all 22 AI features grouped by surface (SQL editor, Doctor,
   Schema/Parts, DataOps, Observe, Chat). Each row shows its bound agent, status
   (built-in / customized / update available), last test, and **Rebind**.
 - **Agents:** a tree view with an editor for prompt and task templates (Monaco,
@@ -385,27 +415,34 @@ The Agents page today covers *external* agents (Sessions, Policies, MCP). A new
   permissions, and which agents use each tool.
 - **Test console** and **History** (§10).
 
-### 13. Delivery plan (follow-up PRs, each with tests and a changelog fragment)
+### 13. Delivery
 
-1. **Registry foundation.** Add the schema and migrations (two-dialect tests), the
-   tool catalog with `requires`, `RegistrySkillsBackend`, the per-agent harness
-   middleware, the template engine, the builder, and seeds plus seed sync. The
-   **golden parity snapshot** of all 21 capabilities is captured here, still
-   against the code path.
-2. **Cut-over.** Every feature (including background callers and MCP
-   `ai_optimize` / `doctor_scan`) runs through bindings. Delete the global harness
-   profile, the prompt constants, the inline tool picks and `FilesystemBackend`.
-   Move `src/skills` to seeds. *Gate: the parity test is identical for all 21
-   features, and the existing capability, route and Doctor tests pass unchanged.*
-3. **Agents › Assistant UI.** Registry CRUD API, permissions, audit, revisions,
-   test console.
-4. **Multi-agent chat and CHouse Admin.** Add the `chouse` read projections
-   (shared with MCP), the user-token in-process client, the seeded router and
-   admin agents, the thread agent picker, and agent-path trails.
-5. **(Optional) Progress streaming** over `streamEvents` with subgraph events.
-   It matters more once runs delegate to subagents.
-6. **Future ADR:** write tools with `interruptOn`, `ChouseCheckpointSaver` and
-   approval UI. Optional `ChouseStore` memories.
+At the owner's direction this shipped as **one PR** (ADR, registry, cut-over,
+UI and multi-agent chat), in this order, each step gated by its tests:
+
+1. **Golden parity snapshot.** Captured from the pre-registry code for all 22
+   capabilities (`registry/parity.fixture.json`), before anything changed.
+2. **Registry foundation.** Migration 1.56.0 (two-dialect tests), the tool
+   catalog, `RegistrySkillsBackend`, the per-agent harness, the template engine,
+   the builder, seeds and seed sync.
+3. **Cut-over.** Every feature, including the background callers and MCP
+   `ai_optimize` / `doctor_scan`, runs through its binding. The global harness
+   profile, the prompt constants, the inline tool picks, `FilesystemBackend`,
+   `src/references` and `src/skills` are gone (skills moved to
+   `services/ai/seeds/skills`). *Gate: `parity.test.ts` is identical for all 22
+   features (verified to fail when a seed prompt changes by one character).*
+4. **Management API, validation and multi-agent chat.** Includes
+   `/api/ai-agents`, the CHouse read projections, the user-token in-process
+   client, the router and CHouse Admin agents, and the thread agent picker.
+5. **Agents › Assistant UI and docs.**
+
+Follow-ups:
+
+- Progress streaming over `streamEvents` with subgraph events. This matters
+  more once runs delegate to subagents.
+- Moving the MCP tool registrations onto the catalog.
+- A future ADR for write tools with `interruptOn`, `ChouseCheckpointSaver` and
+  approval UI, plus the optional `ChouseStore` memories.
 
 The Helm chart is unaffected: there are no new env vars, ports or secrets.
 
@@ -415,7 +452,7 @@ The Helm chart is unaffected: there are no new env vars, ports or secrets.
 - Every agent in the product (prompt, model, tools, skills, subagents, harness,
   tuning) can be inspected, tuned, tested and rolled back from the UI. Changes
   apply to all replicas on the next request.
-- One engine path and one tool catalog serve every surface (UI, chat, MCP,
+- One engine path serves every AI surface (UI, chat, MCP-triggered features,
   background jobs), with no special cases and no fallbacks.
 - Harness behaviour is finally per agent. Delegation becomes possible without
   breaking the focused, no-delegation features.
@@ -425,15 +462,16 @@ The Helm chart is unaffected: there are no new env vars, ports or secrets.
 - **Production features are now editable.** Guardrails: `ai_agents:manage`,
   audit, revisions and rollback, the test console, locked output contracts,
   reset, and save validation (§10).
-- **Larger cut-over.** All 21 features switch at once (owner direction: no dual
-  path). The golden parity test is the safety net. PR 2 is gated on it.
+- **Larger cut-over.** All 22 features switch at once (owner direction: no dual
+  path). The golden parity test is the safety net, and the cut-over is gated on
+  it.
 - **Per-request reads:** a registry-version read and a build per run. This is
   negligible next to the LLM call, and the graph is cached per version.
-- **Seed drift:** customized built-ins stop getting upgrades. The UI shows
-  "update available" with a diff.
+- **Seed drift:** customized built-ins stop getting upgrades. The UI marks them
+  "update available", and Reset to built-in applies the new version.
 - **Latency and tokens in Auto chat:** a router hop plus delegation. Mitigated by
   explicit agent picks, ClickHouse Data as the default binding, a cheap router
-  model, pass-through answers, and streaming (PR 5).
+  model, and pass-through answers (streaming is a follow-up).
 
 ## Alternatives considered
 
@@ -461,17 +499,14 @@ The Helm chart is unaffected: there are no new env vars, ports or secrets.
 9. **`@langchain/langgraph-supervisor` / swarm for chat.** Rejected because it
    duplicates DeepAgents' `task` tool and `CompiledSubAgent`.
 
-## Open questions
+## Resolved questions
 
-- **Precedence:** should agent tuning override the per-model
-  `params.recursionLimit` / `runTimeoutMs`? Today model params win, and the
-  proposal keeps that for parity. The alternative is to move these knobs onto
-  agents and drop them from the model form.
-- **Parity skill set:** keep all 14 skills on every seeded agent (exact parity,
-  the proposal) or ship trimmed sets as a deliberate, changelogged behaviour
-  change?
-- Tab name: "Assistant" or "AI agents"?
-- Should non-admins see **CHouse Admin** in the chat picker? The proposal says
-  yes, permission-pruned.
-- Should registry agents also be exposed to PAT holders as MCP prompts? Out of
-  scope here.
+- **Precedence.** Per-model `params.recursionLimit` / `runTimeoutMs` still win
+  over agent tuning, as before (parity). A model the user picks in the chat or
+  the SQL editor wins over the agent's model.
+- **Skill set.** Every seeded agent keeps all 14 skills on demand (exact parity).
+  Trimming them per agent is an admin action.
+- **Tab name.** "Assistant" (Agents › Assistant).
+- **CHouse Admin visibility.** Every user with `ai:chat` sees it. Its CHouse
+  tools are offered per user permission, and the routes decide.
+- **MCP prompts for registry agents.** Out of scope.

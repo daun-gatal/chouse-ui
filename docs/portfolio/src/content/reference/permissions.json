@@ -359,6 +359,16 @@
     "category": "AI Models Management",
     "anchor": "ai-models-management"
   },
+  "ai_agents:view": {
+    "name": "View AI Agents",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
+  "ai_agents:manage": {
+    "name": "Manage AI Agents, Harnesses and Skills",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
   "sso:view": {
     "name": "View SSO Configuration",
     "category": "SSO Management",

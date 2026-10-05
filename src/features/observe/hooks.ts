@@ -333,8 +333,8 @@ export function useUpgradeMutations() {
 
 // --- agents -----------------------------------------------------------------------
 
-export function useAgentSummary(): UseQueryResult<agents.AgentSummary> {
-  return useQuery({ queryKey: agentKeys.summary(), queryFn: agents.getAgentSummary, refetchInterval: REFRESH_MS });
+export function useAgentSummary(enabled = true): UseQueryResult<agents.AgentSummary> {
+  return useQuery({ queryKey: agentKeys.summary(), queryFn: agents.getAgentSummary, refetchInterval: REFRESH_MS, enabled });
 }
 
 export function useAgentSessions(days: number): UseQueryResult<agents.AgentSession[]> {
@@ -345,8 +345,8 @@ export function useAgentSession(id: string | null): UseQueryResult<Awaited<Retur
   return useQuery({ queryKey: agentKeys.session(id ?? ""), queryFn: () => agents.getAgentSession(id ?? ""), enabled: Boolean(id) });
 }
 
-export function useAgentPolicies(): UseQueryResult<agents.AgentPolicy[]> {
-  return useQuery({ queryKey: agentKeys.policies(), queryFn: agents.listAgentPolicies });
+export function useAgentPolicies(enabled = true): UseQueryResult<agents.AgentPolicy[]> {
+  return useQuery({ queryKey: agentKeys.policies(), queryFn: agents.listAgentPolicies, enabled });
 }
 
 export function useAgentMutations() {

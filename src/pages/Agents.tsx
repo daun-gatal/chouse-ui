@@ -2,13 +2,14 @@
  * Agents (ADR 0016 §10, ADR 0017): every agent connected over MCP or a
  * personal access token — what it read, what it cost, whether the data was
  * healthy — plus budget policies, the pause switch, and the MCP endpoint
- * with its tool switches.
+ * with its tool switches. The Assistant tab (ADR 0019) manages CHouse's own
+ * AI agents: the chat and every AI feature.
  */
 
 import { useState, type ReactElement } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Bot, ListChecks, Pause, Play, Plug, Plus, Shield, Trash2 } from "lucide-react";
+import { Bot, ListChecks, Pause, Play, Plug, Plus, Shield, Sparkles, Trash2 } from "lucide-react";
 
 import type { AgentPolicy, AgentSession } from "@/api/agents";
 import { NavPill, PageHeader } from "@/components/common/PageShell";
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
 import { McpPanel } from "@/features/agents/McpPanel";
 import { budgetShare, formToPolicy, policyToForm, type PolicyForm } from "@/features/agents/policyForm";
 import { DH_PRIMARY } from "@/features/data-health/lib";
@@ -26,11 +28,13 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp";
-const TABS: Array<{ key: Tab; label: string; icon: typeof Bot }> = [
-  { key: "sessions", label: "Sessions", icon: ListChecks },
-  { key: "policies", label: "Policies", icon: Shield },
-  { key: "mcp", label: "MCP", icon: Plug },
+type Tab = "sessions" | "policies" | "mcp" | "assistant";
+/** External agents (MCP / tokens) need agents:view; the built-in AI agents need ai_agents:view. */
+const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permission: string }> = [
+  { key: "sessions", label: "Sessions", icon: ListChecks, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
+  { key: "policies", label: "Policies", icon: Shield, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
+  { key: "mcp", label: "MCP", icon: Plug, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
+  { key: "assistant", label: "Assistant", icon: Sparkles, permission: RBAC_PERMISSIONS.AI_AGENTS_VIEW },
 ];
 
 /** Earlier builds linked to /agents/tools. */
@@ -248,10 +252,14 @@ function PoliciesView(): ReactElement {
 export default function Agents(): ReactElement {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
-  const active: Tab = TABS.find((t) => t.key === tab)?.key ?? (tab ? TAB_ALIASES[tab] : undefined) ?? "sessions";
+  const hasPermission = useRbacStore((s) => s.hasPermission);
+  const tabs = TABS.filter((t) => hasPermission(t.permission));
+  const requested = TABS.find((t) => t.key === tab)?.key ?? (tab ? TAB_ALIASES[tab] : undefined);
+  const active: Tab = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key ?? "sessions";
   const canManage = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AGENTS_MANAGE));
-  const summary = useAgentSummary();
-  const policies = useAgentPolicies();
+  const canSeeExternal = hasPermission(RBAC_PERMISSIONS.AGENTS_VIEW);
+  const summary = useAgentSummary(canSeeExternal);
+  const policies = useAgentPolicies(canSeeExternal);
   const { pause } = useAgentMutations();
   const [confirmPause, setConfirmPause] = useState(false);
   const defaultBudget = policies.data?.find((p) => p.scopeKind === "default")?.dailyBytes ?? null;
@@ -274,10 +282,10 @@ export default function Agents(): ReactElement {
         title="Agents"
         navLabel="Agent sections"
         layout="start"
-        nav={TABS.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/agents/${t.key}`)} noShrink />)}
+        nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/agents/${t.key}`)} noShrink />)}
         actions={
           <>
-            {canManage && summary.data && (summary.data.paused ? (
+            {canManage && active !== "assistant" && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (
               <Button variant="outline" className="h-9 rounded-xs border-brand/40 text-brand hover:bg-brand/10 hover:text-brand" onClick={() => setConfirmPause(true)}><Pause className="mr-1.5 h-3.5 w-3.5" /> Pause all agent access</Button>
@@ -287,8 +295,8 @@ export default function Agents(): ReactElement {
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="space-y-4">
-          {summary.data?.paused && <div role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
-          {summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.data && (
+          {active !== "assistant" && summary.data?.paused && <div role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
+          {active !== "assistant" && canSeeExternal && (summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.data && (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               <Kpi label="Active agents · 24h" value={summary.data.activeAgents} meta={`${summary.data.sessions} sessions`} />
               <Kpi label="Queries · 24h" value={formatCount(summary.data.queries)} meta={`${formatBytes(summary.data.readBytes)} read`} />
@@ -296,10 +304,11 @@ export default function Agents(): ReactElement {
               <Kpi label="Blocked by policy" value={summary.data.blocked} meta="Estimated before running" tone={summary.data.blocked > 0 ? "bad" : undefined} />
               <Kpi label="Default daily budget" value={defaultBudget === null ? "None" : formatBytes(defaultBudget)} meta="Per agent" />
             </div>
-          )}
+          ))}
           {active === "sessions" && <SessionsView dailyBudget={defaultBudget} />}
           {active === "policies" && <PoliciesView />}
           {active === "mcp" && <McpPanel />}
+          {active === "assistant" && <AssistantPanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

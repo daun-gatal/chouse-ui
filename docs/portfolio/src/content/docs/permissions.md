@@ -9,8 +9,8 @@ Every permission in CHouse UI, grouped the way **Admin › Roles** groups them, 
 
 | Role | ID | For | Permissions |
 | --- | --- | --- | --- |
-| Super Administrator | `super_admin` | Full system access with all permissions | 104 |
-| Administrator | `admin` | User management and full ClickHouse access | 90 |
+| Super Administrator | `super_admin` | Full system access with all permissions | 106 |
+| Administrator | `admin` | User management and full ClickHouse access | 92 |
 | Developer | `developer` | DDL and DML access for development | 38 |
 | Analyst | `analyst` | Read/write access for data analysis | 24 |
 | Viewer | `viewer` | Read-only access to data | 14 |
@@ -174,6 +174,13 @@ Built-in roles can't be deleted, and only a super admin can change their permiss
 | `ai_models:create` | Create AI Models | ✓ | ✓ |   |   |   |   |
 | `ai_models:update` | Update AI Models | ✓ | ✓ |   |   |   |   |
 | `ai_models:delete` | Delete AI Models | ✓ | ✓ |   |   |   |   |
+
+## AI Agents
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ai_agents:view` | View AI Agents | ✓ | ✓ |   |   |   |   |
+| `ai_agents:manage` | Manage AI Agents, Harnesses and Skills | ✓ | ✓ |   |   |   |   |
 
 ## SSO Management
 

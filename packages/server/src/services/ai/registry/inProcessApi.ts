@@ -10,7 +10,7 @@
 
 import type { Hono } from "hono";
 
-export const ASSISTANT_USER_AGENT = "chouse-assistant/1";
+const ASSISTANT_USER_AGENT = "chouse-assistant/1";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 let app: Hono | null = null;
@@ -20,11 +20,7 @@ export function registerInProcessApi(root: Hono): void {
   app = root;
 }
 
-export function inProcessApiAvailable(): boolean {
-  return app !== null;
-}
-
-export class InProcessApiError extends Error {
+class InProcessApiError extends Error {
   readonly status: number;
 
   constructor(message: string, status: number) {
