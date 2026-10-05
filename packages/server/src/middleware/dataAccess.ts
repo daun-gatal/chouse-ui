@@ -150,6 +150,12 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
       c.set('rbacRoles', identity.roles);
       c.set('rbacPermissions', identity.permissions);
       c.set('isRbacAdmin', identity.roles.includes('super_admin') || identity.roles.includes('admin'));
+      // Agent governance and log_comment attribution key off these; without them token
+      // requests (MCP, CLI) skipped budgets, the pause switch and session counting.
+      c.set('authMethod', identity.authMethod);
+      if (identity.patId) {
+        c.set('patId', identity.patId);
+      }
     } catch {
       // Token invalid, continue without RBAC context
     }

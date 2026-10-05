@@ -1,6 +1,6 @@
 ---
-app: Agents › Assistant › Test console
-route: /agents/assistant
+app: AI Governance › Assistant › Test console
+route: /ai/assistant
 permissions: ai_agents:manage
 screenshot: ai-agents-test-console
 ---
@@ -10,7 +10,7 @@ The **Test console** runs an AI feature for real — as you, on your active conn
 
 It is in two places:
 
-- **Agents › Assistant › Test console** runs saved agents: a feature with its bound agent, or with any other agent that fits it.
+- **AI Governance › Assistant › Test console** runs saved agents: a feature with its bound agent, or with any other agent that fits it.
 - The **Test** tab of the [agent editor](/docs/ai-agent-editor/) runs the editor's **unsaved draft**, so you can try a change before anyone else gets it.
 
 Testing needs `ai_agents:manage` **and** the feature's own permission (for example `ai:optimize` or `doctor:run`), and an AI model must be configured. A test spends model tokens like any other run.
@@ -49,7 +49,7 @@ For the **Chat**: *Answered by \<agent\> in \<time\>*, the answer, and the tool 
 | Error | What to do |
 | --- | --- |
 | *The AI agent hit its step limit before finishing* | The agent needed more steps. Raise its **step budget** or **recursion limit**, or the model's *Recursion limit* parameter in [AI models](/docs/ai-models/); or make the prompt more direct |
-| *AI feature '…' has no valid agent — bind one in Agents › Assistant* | The feature's agent was deleted or never bound. Rebind it in **Features** |
+| *AI feature '…' has no valid agent — bind one in AI Governance › Assistant* | The feature's agent was deleted or never bound. Rebind it in **Features** |
 | *… is bound to the disabled agent '…'* | Enable the agent or rebind the feature |
 | *Unknown template variable ctx.…* | The prompt uses a variable this feature doesn't provide — see [Prompt templates](/docs/ai-prompt-templates/#variables) |
 | *'…' is a feature agent; test it through its feature* | A feature agent was picked for the Chat. Pick a feature it serves |

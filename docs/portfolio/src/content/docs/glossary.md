@@ -4,7 +4,7 @@ Terms used across CHouse UI and these docs.
 
 | Term | Meaning |
 | --- | --- |
-| **Agent** | An AI client (Claude Code, Cursor, …) that uses CHouse UI over [MCP](/docs/mcp/) or the API with a personal access token. Governed on the [Agents](/docs/agents/) page |
+| **Agent** | An AI client (Claude Code, Cursor, …) that uses CHouse UI over [MCP](/docs/mcp/) or the API with a personal access token. Governed on the [AI Governance](/docs/agents/) page |
 | **Approval class** | Whether a [fix](/docs/data-incidents/#fixes-with-approval) is low-impact (one approver, `remediation:approve`) or high-impact (two approvers, `remediation:approve_high`) |
 | **Baseline** | What CHouse UI learned is normal for a table — write cadence and hourly volume — or for a query shape's latency |
 | **Blast radius** | Everything downstream of an incident's root cause: tables, promises, jobs, saved queries and agents |

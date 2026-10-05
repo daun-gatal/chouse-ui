@@ -5,7 +5,7 @@
  * real client, and captures the subrequests each tool projects against a
  * stub Hono proxy. The gate matrix is the safety contract: reads on by
  * default, writes, destructive and LLM-spending tools only when an
- * administrator turns them on (Agents › MCP), tools a token cannot use are
+ * administrator turns them on (AI Governance › MCP), tools a token cannot use are
  * never listed, and the privilege fence never appears as a tool.
  */
 

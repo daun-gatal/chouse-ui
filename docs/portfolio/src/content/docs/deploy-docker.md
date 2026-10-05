@@ -47,7 +47,7 @@ services:
 
 | Port | Purpose |
 | --- | --- |
-| `5521` | UI, API and the [MCP](/docs/mcp/) endpoint (`/mcp`, off until turned on in Agents › MCP) |
+| `5521` | UI, API and the [MCP](/docs/mcp/) endpoint (`/mcp`, off until turned on in AI Governance › MCP) |
 
 ## Upgrading
 

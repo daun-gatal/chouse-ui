@@ -512,7 +512,7 @@ export const RBAC_PERMISSIONS = {
   AI_MODELS_UPDATE: 'ai_models:update',
   AI_MODELS_DELETE: 'ai_models:delete',
 
-  // AI agent registry (Agents › Assistant, ADR 0019)
+  // AI agent registry (AI Governance › Assistant, ADR 0019)
   AI_AGENTS_VIEW: 'ai_agents:view',
   AI_AGENTS_MANAGE: 'ai_agents:manage',
 

@@ -36,7 +36,7 @@ config.get("/", async (c) => {
         version: process.env.VERSION || "dev",
       },
       // Feature flags — aiOptimizer is enabled whenever an active AI model is configured.
-      // mcpEnabled is the Agents › MCP switch (ADR 0017); this route serves
+      // mcpEnabled is the AI Governance › MCP switch (ADR 0017); this route serves
       // before RBAC finishes initializing, so a read error degrades to false.
       features: {
         aiOptimizer: await isAIEnabled().catch(() => false),

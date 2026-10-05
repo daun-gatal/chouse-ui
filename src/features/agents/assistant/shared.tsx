@@ -1,5 +1,5 @@
 /**
- * Small building blocks shared by the Agents › Assistant views.
+ * Small building blocks shared by the AI Governance › Assistant views.
  */
 
 import type { ReactElement, ReactNode } from "react";

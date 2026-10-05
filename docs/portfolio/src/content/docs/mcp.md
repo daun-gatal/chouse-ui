@@ -1,6 +1,6 @@
 ---
-app: Agents › MCP
-route: /agents/mcp
+app: AI Governance › MCP
+route: /ai/mcp
 permissions: agents:view
 screenshot: agents-mcp
 ---
@@ -14,7 +14,7 @@ Safe by default: the endpoint is **off** until an administrator turns it on, onl
 
 There is nothing to set in the environment, Compose or Helm. Until it is turned on, the endpoint answers `404 MCP_DISABLED`.
 
-1. Sign in with `agents:manage` (Admin and Super Admin by default) and open **Agents › MCP**.
+1. Sign in with `agents:manage` (Admin and Super Admin by default) and open **AI Governance › MCP**.
 2. Switch **MCP server** on. The page shows the endpoint agents use, taken from (in order):
    - the **Public address** you set on the page — when agents reach CHouse UI on another address than you do (a port-forward, an internal IP, another Ingress host);
    - the server's `PUBLIC_BASE_URL`;
@@ -36,7 +36,7 @@ Changes reach every replica within a few seconds, without a restart, and are aud
 
 ## Connect a client
 
-**Agents › MCP** has copy-ready setup for each client with your endpoint filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
+**AI Governance › MCP** has copy-ready setup for each client with your endpoint filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
 
 :::tabs
 @tab Claude Code
@@ -129,7 +129,7 @@ Requests without an `Origin` header (curl, the CLI, desktop agents) always pass 
 
 ## Tools
 
-Every tool's description, access level, required permissions and parameters are on the [MCP tool catalog](/docs/mcp-tools/), generated from the server, and in **Agents › MCP**. There you switch each tool, or a whole category, on or off:
+Every tool's description, access level, required permissions and parameters are on the [MCP tool catalog](/docs/mcp-tools/), generated from the server, and in **AI Governance › MCP**. There you switch each tool, or a whole category, on or off:
 
 - **Read** tools are on by default.
 - **Write** and **destructive** tools, and tools that **spend LLM budget**, stay off until an administrator turns them on; turning on one that changes or deletes things asks for confirmation.

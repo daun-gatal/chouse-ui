@@ -1,6 +1,6 @@
 /**
  * MCP settings (ADR 0017): stored in obs_settings, safe defaults, per-tool
- * switches, and the Agents › MCP API that reads and writes them. Runs
+ * switches, and the AI Governance › MCP API that reads and writes them. Runs
  * against a real in-memory RBAC database.
  */
 

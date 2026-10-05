@@ -118,7 +118,7 @@ func firstSSEData(raw []byte) []byte {
 }
 
 // MCPTools lists the tools this token gets: the ones an administrator
-// enabled in Agents › MCP that the token's permissions allow.
+// enabled in AI Governance › MCP that the token's permissions allow.
 func (c *Client) MCPTools(ctx context.Context) ([]MCPTool, error) {
 	result, err := c.MCPCall(ctx, "tools/list", nil)
 	if err != nil {

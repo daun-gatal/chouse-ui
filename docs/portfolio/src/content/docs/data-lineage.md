@@ -23,7 +23,7 @@ Edges declared in DDL are kept as long as the objects exist. Edges *observed* in
 1. **Focus table** — pick a table (or click **Focus here** on any node).
 2. **Direction** — **Upstream (sources)**, **Downstream (blast radius)**, or **Up and downstream**.
 3. **Depth** — how many hops to follow.
-4. Click a node for **Node details**: its type, status and, for tables, the columns involved. **Clear focus** returns to the whole graph.
+4. Click a node for **Node details**: its type, status and, for tables, the columns involved. **Clear focus** returns to the whole graph. For a table, **Dataset** opens its page in [Datasets](/docs/data-health/); it is disabled for `system` and `information_schema` tables, which CHouse doesn't track as datasets.
 
 Broken nodes are coloured by status, and edges leaving a broken node are animated, so a failure's reach is visible at a glance.
 

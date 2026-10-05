@@ -28,8 +28,8 @@ Not everything an administrator configures is under Admin:
 
 | Setting | Where |
 | --- | --- |
-| MCP endpoint, allowed origins, tool switches | [Agents › MCP](/docs/mcp/) (`agents:manage`) |
-| Agent budgets and the pause switch | [Agents › Policies](/docs/agents/) (`agents:manage`) |
+| MCP endpoint, allowed origins, tool switches | [AI Governance › MCP](/docs/mcp/) (`agents:manage`) |
+| Agent budgets and the pause switch | [AI Governance › Policies](/docs/agents/) (`agents:manage`) |
 | Remediation credential and privilege check | **Admin › Connections › Edit** ([fixes](/docs/data-incidents/#set-up-fixes-for-a-connection)) |
 | Cost rates | [Monitoring › Capacity](/docs/monitoring-capacity/#cost-rates) (`settings:update`) |
 | Server settings (database, secrets, SSO from config) | [Environment variables](/docs/configuration-env/) or [YAML](/docs/configuration-yaml/) |

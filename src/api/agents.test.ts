@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { deleteAgentPolicy, getAgentSession, getAgentSummary, getMcpOverview, listAgentPolicies, listAgentSessions, saveAgentPolicy, setAgentsPaused, updateMcpSettings } from "./agents";
+import { assignAgentPolicy, deleteAgentPolicy, getAgentSession, getAgentSummary, getMcpOverview, listAgentPolicies, listAgentSessions, listPolicyScopes, saveAgentPolicy, setAgentsPaused, updateMcpSettings } from "./agents";
 
 describe("agents API", () => {
   it("reads sessions and manages policies", async () => {
@@ -31,6 +31,22 @@ describe("agents API", () => {
       "POST /api/agents/pause",
     ]);
     expect(seen[1].params).toEqual({ days: "7" });
+  });
+
+  it("assigns one policy to many targets and lists the targets by name", async () => {
+    const seen: Array<{ method: string; path: string; body: unknown }> = [];
+    server.use(
+      http.put("/api/agents/policies/assign", async ({ request }) => {
+        seen.push({ method: request.method, path: new URL(request.url).pathname, body: await request.json() });
+        return HttpResponse.json({ success: true, data: { policies: [{ id: "p1" }, { id: "p2" }] } });
+      }),
+      http.get("/api/agents/policy-scopes", () => HttpResponse.json({ success: true, data: { roles: [{ id: "analyst", label: "Analyst", detail: null }], tokens: [] } })),
+    );
+    const settings = { maxBytesPerQuery: null, dailyBytes: 1024, partitionFilterBytes: null, incidentMode: "warn" as const, alertMultiplier: null };
+    const targets = [{ scopeKind: "role" as const, scopeId: "analyst" }, { scopeKind: "pat" as const, scopeId: "t1" }];
+    expect(await assignAgentPolicy({ settings, targets, removeIds: ["old"] })).toEqual([{ id: "p1" }, { id: "p2" }]);
+    expect(seen).toEqual([{ method: "PUT", path: "/api/agents/policies/assign", body: { settings, targets, removeIds: ["old"] } }]);
+    expect((await listPolicyScopes()).roles).toEqual([{ id: "analyst", label: "Analyst", detail: null }]);
   });
 
   it("reads and updates the MCP settings", async () => {

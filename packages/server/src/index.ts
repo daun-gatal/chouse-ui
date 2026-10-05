@@ -262,7 +262,7 @@ app.route("/api", api);
 
 // MCP endpoint for AI agents (ADR 0013, ADR 0017). Served on the web port so it
 // shares the UI's Service, Ingress and TLS; it answers 404 until an
-// administrator turns it on in Agents › MCP. Tools subrequest this app
+// administrator turns it on in AI Governance › MCP. Tools subrequest this app
 // in-process with the caller's PAT, so they inherit the same authn/authz as
 // the UI and CLI.
 app.route(MCP_PATH, createMcpApp(buildMcpDeps(app)).app);
@@ -273,7 +273,7 @@ const ignoredMcpEnv = legacyMcpEnvKeys();
 if (ignoredMcpEnv.length > 0) {
   logger.warn(
     { phase: "env_validation", module: "Mcp", keys: ignoredMcpEnv },
-    `${ignoredMcpEnv.join(", ")} ${ignoredMcpEnv.length === 1 ? "is" : "are"} ignored: MCP is served at ${MCP_PATH} on the web port and configured in Agents › MCP`
+    `${ignoredMcpEnv.join(", ")} ${ignoredMcpEnv.length === 1 ? "is" : "are"} ignored: MCP is served at ${MCP_PATH} on the web port and configured in AI Governance › MCP`
   );
 }
 

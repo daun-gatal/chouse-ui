@@ -141,7 +141,7 @@ func hintFor(err *api.Error) string {
 	case err.StatusCode == 403:
 		return "your token lacks the permission above: check chouse auth whoami"
 	case err.Code == "MCP_DISABLED":
-		return "an administrator can turn MCP on in the UI under Agents › MCP"
+		return "an administrator can turn MCP on in the UI under AI Governance › MCP"
 	case err.Code == "NETWORK_ERROR":
 		return "check the server address (chouse auth status) and your network; --debug shows each request"
 	}

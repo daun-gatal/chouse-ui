@@ -137,7 +137,7 @@ describe("check-optimize soft fail", () => {
 });
 
 describe("feature contracts (ADR 0019)", () => {
-  it("every feature describes itself for Agents › Assistant", () => {
+  it("every feature describes itself for AI Governance › Assistant", () => {
     for (const cap of Object.values(CAPABILITIES)) {
       expect(cap.title.length).toBeGreaterThan(0);
       expect(cap.description.length).toBeGreaterThan(0);

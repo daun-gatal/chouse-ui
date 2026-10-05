@@ -44,7 +44,7 @@ Reading and diagnosing are automatic; changing things is not.
 
 ## 6. Agents are governed like people, with budgets
 
-AI agents connect over [MCP](/docs/mcp/) or the API with a personal access token, so they get exactly their owner's permissions and data access. On top of that, [Agents](/docs/agents/) adds budgets checked before each query, health notices in results, a record of every session and a switch that pauses all agent access. MCP tools that write, delete or spend LLM budget are off until an administrator turns them on.
+AI agents connect over [MCP](/docs/mcp/) or the API with a personal access token, so they get exactly their owner's permissions and data access. On top of that, [AI Governance](/docs/agents/) adds budgets checked before each query, health notices in results, a record of every session and a switch that pauses all agent access. MCP tools that write, delete or spend LLM budget are off until an administrator turns them on.
 
 ## Where to go next
 

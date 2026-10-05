@@ -1,6 +1,6 @@
 ---
-app: Agents › Assistant › Harnesses
-route: /agents/assistant
+app: AI Governance › Assistant › Harnesses
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 screenshot: ai-agents-harnesses
 ---
@@ -22,7 +22,7 @@ The [AI tool catalog](/docs/ai-tools/#built-in-deepagents-tools) shows every bui
 
 ## Editing a harness
 
-Open a harness from **Agents › Assistant › Harnesses**. A change applies to every agent that uses the harness, subagents included — check the agent list before you change a shared one, or create a new harness for one agent.
+Open a harness from **AI Governance › Assistant › Harnesses**. A change applies to every agent that uses the harness, subagents included — check the agent list before you change a shared one, or create a new harness for one agent.
 
 - **Name**, **Slug** and **Description** — the slug follows the same rules as agent slugs.
 - **Built-in tools** — switch a tool off to hide it from the model. An agent with subagents needs `task`; the server rejects a harness change that would take `task` away from such an agent.

@@ -1,8 +1,8 @@
 /**
  * MCP server status indicator for the dock (ADR 0013, ADR 0017).
  *
- * Shows whether the endpoint is on and, for people who can see Agents, opens
- * Agents › MCP where an administrator turns it on and picks the tools. The
+ * Shows whether the endpoint is on and, for people who can see AI Governance, opens
+ * AI Governance › MCP where an administrator turns it on and picks the tools. The
  * item stays hidden until the backend reports the flag so older servers and
  * failed config fetches never render a misleading "disabled".
  */
@@ -42,7 +42,7 @@ export const McpStatusDockItem = memo(function McpStatusDockItem({
   const dotClass = mcpEnabled ? "bg-emerald-400" : "bg-paper-faint";
   const statusLabel = mcpEnabled
     ? "Enabled · PAT-only tool access"
-    : "Disabled · turn on in Agents › MCP";
+    : "Disabled · turn on in AI Governance › MCP";
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -51,7 +51,7 @@ export const McpStatusDockItem = memo(function McpStatusDockItem({
           <button
             type="button"
             aria-label={`MCP server: ${mcpEnabled ? "enabled" : "disabled"}`}
-            onClick={canOpen ? () => navigate("/agents/mcp") : undefined}
+            onClick={canOpen ? () => navigate("/ai/mcp") : undefined}
             className={cn(
               "relative grid h-8 w-8 place-items-center rounded-xs border border-ink-500 bg-ink-200 transition-colors hover:border-ink-700",
               !canOpen && "cursor-default"

@@ -1,5 +1,5 @@
 /**
- * Agents › MCP (ADR 0017): turn the MCP endpoint on, set its allowed origins
+ * AI Governance › MCP (ADR 0017): turn the MCP endpoint on, set its allowed origins
  * and timeout, connect clients, and switch each tool on or off. Viewing
  * needs agents:view; changing anything needs agents:manage.
  */

@@ -40,7 +40,7 @@ Each layer stands alone: a role change applies on the next request, a revoked to
 ## Tokens, CLI and agents
 
 - [Personal access tokens](/docs/personal-access-tokens/) act as their owner, can be narrowed with scopes and given an expiry, and are re-checked on every call.
-- [MCP](/docs/mcp/) is off by default; only read tools are on until an administrator turns on more, destructive tools are approved in the client, and token, user, policy, SSO and secret management are never exposed as tools. [Agents](/docs/agents/) adds budgets and a pause switch.
+- [MCP](/docs/mcp/) is off by default; only read tools are on until an administrator turns on more, destructive tools are approved in the client, and token, user, policy, SSO and secret management are never exposed as tools. [AI Governance](/docs/agents/) adds budgets and a pause switch.
 - The [CLI](/docs/cli/) asks before any change (`--yes` without a terminal) and never prints tokens, even with `--debug`.
 
 ## Reporting vulnerabilities

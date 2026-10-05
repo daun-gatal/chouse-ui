@@ -1,5 +1,5 @@
 /**
- * Data hooks for Agents › Assistant. Every write refreshes the registry and the
+ * Data hooks for AI Governance › Assistant. Every write refreshes the registry and the
  * chat's agent picker, since one change can affect bindings, usages and
  * validation problems across the whole registry.
  */

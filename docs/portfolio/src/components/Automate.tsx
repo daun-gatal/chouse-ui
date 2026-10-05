@@ -86,7 +86,7 @@ const STEPS: Step[] = [
     description: (
       <>
         A Model Context Protocol endpoint at <code>/mcp</code> on your own
-        address, turned on tool by tool in Agents › MCP — reads on, everything
+        address, turned on tool by tool in AI Governance › MCP — reads on, everything
         else off — with budgets, health notices and a pause switch for every
         agent. Try it on the hosted lab below, or your own deployment.
       </>

@@ -8,6 +8,7 @@
 import { all, json, num, numOrNull, one, run, sql, str } from "./db";
 import { blastRadius, computeRca, type ChainStep, type GraphEdge, type RcaLayer, type RcaSignal } from "./rca";
 import type { IncidentSource } from "./incidents";
+import { principalNodeLabels, relabelPrincipalNodes } from "./principals";
 
 const LOOKBACK_MS = 6 * 3600 * 1000;
 
@@ -140,7 +141,8 @@ export async function computeAndStoreRca(source: IncidentSource, id: string): Pr
   const edgeRows = await all(sql`SELECT source_id, target_id, kind FROM obs_lineage_edges WHERE connection_id = ${subject.connectionId}`);
   const nodeRows = await all(sql`SELECT node_id, label, kind FROM obs_lineage_nodes WHERE connection_id = ${subject.connectionId}`);
   const edges: GraphEdge[] = edgeRows.map((r) => ({ source: str(r.source_id), target: str(r.target_id), kind: str(r.kind) }));
-  const labels = new Map(nodeRows.map((r) => [str(r.node_id), str(r.label)]));
+  const principals = await principalNodeLabels(nodeRows.map((r) => str(r.node_id)));
+  const labels = new Map(nodeRows.map((r) => [str(r.node_id), principals.get(str(r.node_id)) ?? str(r.label)]));
   const kinds = new Map(nodeRows.map((r) => [str(r.node_id), str(r.kind)]));
   const from = subject.onsetAt - LOOKBACK_MS;
 
@@ -188,21 +190,45 @@ export interface StoredRca {
   signature: string | null;
   chain: ChainStep[];
   rootCause: ChainStep | null;
-  related: Array<{ source: string; id: string; reason: string }>;
+  related: Array<{ source: string; id: string; reason: string; relation: string; title: string }>;
   blastRadius: BlastRadiusEntry[];
+}
+
+/** Current titles of related incidents; the stored RCA keeps only their ids. */
+async function relatedTitles(related: Array<{ source: string; id: string }>): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = (source: string): string[] => related.filter((r) => r.source === source).map((r) => r.id);
+  const health = ids("data_health");
+  const observe = ids("observe");
+  if (health.length > 0) {
+    const rows = await all(sql`
+      SELECT i.id, i.summary, p.name FROM data_health_incidents i JOIN data_health_promises p ON p.id = i.promise_id
+      WHERE i.id IN (${sql.join(health.map((id) => sql`${id}`), sql`, `)})`);
+    for (const r of rows) out.set(`data_health:${str(r.id)}`, `${str(r.name)}: ${str(r.summary)}`);
+  }
+  if (observe.length > 0) {
+    const rows = await all(sql`SELECT id, summary FROM obs_incidents WHERE id IN (${sql.join(observe.map((id) => sql`${id}`), sql`, `)})`);
+    for (const r of rows) out.set(`observe:${str(r.id)}`, str(r.summary));
+  }
+  return out;
 }
 
 export async function getStoredRca(source: IncidentSource, id: string): Promise<StoredRca | null> {
   const row = await one(sql`SELECT * FROM incident_rca WHERE incident_source = ${source} AND incident_id = ${id}`);
   if (!row) return null;
   const blast = await one(sql`SELECT items FROM incident_blast_radius WHERE incident_source = ${source} AND incident_id = ${id}`);
+  const related = json<Array<{ source: string; id: string; reason: string }>>(row.related, []);
+  const titles = await relatedTitles(related);
+  // Labels were frozen when the RCA ran; principals are re-resolved so renames and ids never show.
+  const chain = await relabelPrincipalNodes(json<ChainStep[]>(row.chain, []), (s) => s.nodeId);
+  const rootCause = json<ChainStep | null>(row.root_cause, null);
   return {
     computedAt: num(row.computed_at),
     signature: str(row.signature) || null,
-    chain: json<ChainStep[]>(row.chain, []),
-    rootCause: json<ChainStep | null>(row.root_cause, null),
-    related: json(row.related, []),
-    blastRadius: blast ? json<BlastRadiusEntry[]>(blast.items, []) : [],
+    chain,
+    rootCause: rootCause ? (await relabelPrincipalNodes([rootCause], (s) => s.nodeId))[0] : null,
+    related: related.map((r) => ({ ...r, relation: r.reason, title: titles.get(`${r.source}:${r.id}`) ?? "Incident no longer available" })),
+    blastRadius: await relabelPrincipalNodes(blast ? json<BlastRadiusEntry[]>(blast.items, []) : [], (b) => b.nodeId),
   };
 }
 

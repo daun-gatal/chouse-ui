@@ -110,7 +110,7 @@ CHouse UI provides security and access control features for teams that need:
 - **Fixes with approval** — a closed catalog (kill query, restart engine tables, reload dictionaries, refresh views, TTL/codec changes, …) run with a separate remediation credential after approval — two approvers for high-impact actions, never the proposer — then verified and, where possible, rolled back. Approve in the UI, Slack or `chouse remediation`.
 - **Context** — table descriptions, owners and canonical metrics (also importable from dbt), and plain-language watchers.
 - **Monitoring › Performance / Capacity / Upgrades** — regressions against each query shape's baseline next to the changes around them, disk forecasts and measured codec savings, upgrade readiness against your workload with canary replay.
-- **Agents** (`/agents`) — MCP and token sessions with what they read and whether the data was healthy, budget policies, and a pause switch.
+- **AI Governance** (`/ai`) — MCP and token sessions with what they read and whether the data was healthy, budget policies, and a pause switch.
 - **Schema preflight** — DDL that breaks dependents is stopped with the impact; `schema:override` holders can confirm (audited).
 
 ### 🛰️ Fleet & Chouse AI
@@ -214,7 +214,7 @@ the topology guide, SSO/config examples, and ingress notes.
 AI agents can operate CHouse UI without the browser through an MCP endpoint at
 `/mcp` on the same address as the UI (no extra port, Service or Ingress),
 authenticated with a personal access token. It is off until an administrator
-turns it on in **Agents › MCP**, where each tool is switched on or off:
+turns it on in **AI Governance › MCP**, where each tool is switched on or off:
 read-only tools are on by default, anything that changes or deletes things
 stays off until turned on, and destructive tools require in-host human
 approval. See the [MCP docs](https://chouse-ui.com/docs/mcp/),

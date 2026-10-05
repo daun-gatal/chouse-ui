@@ -2,7 +2,7 @@
  * MCP server assembly (ADR 0013, ADR 0017): every chouse tool is defined once
  * in the catalog with its category, access level and required permissions.
  * Each request builds an McpServer holding only the tools an administrator
- * enabled (Agents › MCP) that the caller's token can use, plus resources and
+ * enabled (AI Governance › MCP) that the caller's token can use, plus resources and
  * prompts. Tools are a thin projection of the existing API — every call runs
  * through the in-process proxy with the caller's own PAT, so there is exactly
  * one authn/authz implementation.
@@ -66,7 +66,7 @@ const CATALOG_DEPS: McpDeps = {
   },
 };
 
-/** Every tool definition, for the catalog (Agents › MCP) and validation. */
+/** Every tool definition, for the catalog (AI Governance › MCP) and validation. */
 export function listToolDefinitions(): ChouseToolRegistration[] {
   return collectTools(CATALOG_DEPS);
 }
@@ -124,7 +124,7 @@ export function toolParameters(tool: Pick<ChouseToolRegistration, "inputSchema">
   });
 }
 
-/** The catalog shown in Agents › MCP: every tool with its state. */
+/** The catalog shown in AI Governance › MCP: every tool with its state. */
 export function toolCatalog(tools: ChouseToolRegistration[], settings: Pick<McpSettings, "toolOverrides">): McpToolCatalogEntry[] {
   return tools.map((tool) => ({
     name: tool.name,

@@ -14,6 +14,7 @@ import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
 import { enforceSchemaPreflight } from "../middleware/schemaPreflight";
+import { AGENT_CLIENT_HEADER, describeAgentClient } from "../services/agents/clients";
 import { AGENT_RECORDED_HEADER, governAgentQuery, recordAgentQuery, type AgentContext, type GovernanceResult } from "../services/agents/governance";
 
 export type Variables = ConnectionContextVariables;
@@ -187,7 +188,8 @@ function agentContext(c: Context<{ Variables: Variables }>, connectionId: string
     userId: c.get("rbacUserId") ?? "",
     roles: c.get("rbacRoles") ?? [],
     source: c.req.header("X-Chouse-Agent-Source") === "mcp" ? "mcp" : "pat",
-    clientName: c.req.header("User-Agent") ?? null,
+    // MCP subrequests forward the real client; direct PAT callers (CLI, scripts) are named by their User-Agent.
+    clientName: describeAgentClient(c.req.header(AGENT_CLIENT_HEADER)) ?? describeAgentClient(c.req.header("User-Agent")),
     tool: c.req.header("X-Chouse-Agent-Tool") ?? "query",
     connectionId,
   };

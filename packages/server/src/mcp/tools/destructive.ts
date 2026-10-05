@@ -2,7 +2,7 @@
  * Destructive tools: KILL, raw SQL, and deletes (ADR 0014).
  *
  * Server-side authorization: off until an administrator turns each one on in
- * Agents › MCP (ADR 0017), and every call executes under the caller's PAT
+ * AI Governance › MCP (ADR 0017), and every call executes under the caller's PAT
  * scopes via the projected API routes. Human approval is client-side: the host's permission prompt (ask
  * rules) or an explicit user confirmation — agents ask the user first, as
  * their tool descriptions and the server instructions direct.

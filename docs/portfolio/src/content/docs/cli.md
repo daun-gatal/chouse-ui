@@ -89,7 +89,7 @@ chouse mcp status                     # on/off, endpoint (<server>/mcp), tools y
 chouse mcp tools                      # the tools an agent with your token sees
 chouse mcp config claude-code | sh    # register this server with Claude Code
 chouse mcp config cursor > .cursor/mcp.json   # also: codex, vscode, opencode
-chouse mcp settings -o yaml           # Agents › MCP settings and every tool's state (agents:view)
+chouse mcp settings -o yaml           # AI Governance › MCP settings and every tool's state (agents:view)
 chouse agents summary && chouse agents sessions --days 7
 chouse agents session <sessionId>     # replay one session's tool calls
 chouse agents policies

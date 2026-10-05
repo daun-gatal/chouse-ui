@@ -1,23 +1,23 @@
 ---
-app: Agents › Assistant
-route: /agents/assistant
+app: AI Governance › Assistant
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 screenshot: ai-agents-features
 ---
 # AI agents
 
-Every AI feature in CHouse UI runs on an **agent** you can see and change in **Agents › Assistant**: the chat, the SQL editor's Optimize and Debug, the Doctor scan, the diagnoses in Monitoring, and the DataOps and observability assistants. Nothing about an agent is hard-coded. CHouse ships built-in agents; you can edit them, add your own, rewire which agent a feature uses, and test a change before you save it.
+Every AI feature in CHouse UI runs on an **agent** you can see and change in **AI Governance › Assistant**: the chat, the SQL editor's Optimize and Debug, the Doctor scan, the diagnoses in Monitoring, and the DataOps and observability assistants. Nothing about an agent is hard-coded. CHouse ships built-in agents; you can edit them, add your own, rewire which agent a feature uses, and test a change before you save it.
 
 ## How it fits together
 
 | Part | What it is | Where it lives |
 | --- | --- | --- |
 | **Feature** | A place in the product that calls the AI, such as *Optimize query* or *Fleet Doctor scan*. It decides who may call it, gathers the evidence, and checks the shape of the answer | Code — listed in the [AI feature catalog](/docs/ai-features/) |
-| **Binding** | Which agent a feature runs on. One agent per feature | Agents › Assistant › Features |
-| **Agent** | A system prompt, a task template, a model, tools, skills, subagents, a harness and tuning | Agents › Assistant › Agents — see [Editing agents](/docs/ai-agent-editor/) |
+| **Binding** | Which agent a feature runs on. One agent per feature | AI Governance › Assistant › Features |
+| **Agent** | A system prompt, a task template, a model, tools, skills, subagents, a harness and tuning | AI Governance › Assistant › Agents — see [Editing agents](/docs/ai-agent-editor/) |
 | **Subagent** | Another agent that a parent can hand a sub-task to | The parent's **Subagents** list |
-| **Harness** | How DeepAgents runs an agent: which built-in tools it sees, a prompt suffix, an optional general-purpose subagent | Agents › Assistant › Harnesses — see [Harnesses](/docs/ai-harnesses/) |
-| **Skill** | A `SKILL.md` with reference files that an agent reads when it needs it, or that is pinned into its prompt | Agents › Assistant › Skills — see [Skills](/docs/ai-skills/) |
+| **Harness** | How DeepAgents runs an agent: which built-in tools it sees, a prompt suffix, an optional general-purpose subagent | AI Governance › Assistant › Harnesses — see [Harnesses](/docs/ai-harnesses/) |
+| **Skill** | A `SKILL.md` with reference files that an agent reads when it needs it, or that is pinned into its prompt | AI Governance › Assistant › Skills — see [Skills](/docs/ai-skills/) |
 | **Tool** | A read-only action an agent can call: query ClickHouse, read a node's `system.*` tables, read CHouse's own API as the user | Code — listed in the [AI tool catalog](/docs/ai-tools/) |
 
 The split is deliberate. What the product depends on — permissions, evidence, the output contract, what a tool does and as whom — stays in code, where it is reviewed and tested. What you tune — the wording, the model, which tools and skills an agent gets, how work is delegated — is data you manage in the UI.
@@ -37,7 +37,7 @@ Every tool call is recorded with the agent that made it, so the chat's activity 
 
 | Permission | Allows | Default roles |
 | --- | --- | --- |
-| `ai_agents:view` | Open Agents › Assistant and read every agent, harness, skill, binding and its history | Super Admin, Admin |
+| `ai_agents:view` | Open AI Governance › Assistant and read every agent, harness, skill, binding and its history | Super Admin, Admin |
 | `ai_agents:manage` | Create, edit, delete, rebind, reset, restore — and run the test console | Super Admin, Admin |
 
 Using an AI feature keeps its own permission (`ai:chat`, `ai:optimize`, `doctor:run`, …); see the [permission catalog](/docs/permissions/#ai-assistant). Agents can never do more than the person they run for: ClickHouse tools run on the user's connection with their [data access rules](/docs/data-access-rules/), and CHouse tools call the API as that user.

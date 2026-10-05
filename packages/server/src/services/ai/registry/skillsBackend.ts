@@ -24,7 +24,7 @@ import type {
 
 import type { SkillDef } from "./types";
 
-const READ_ONLY_ERROR = "Skills are read-only. Edit them in Agents › Assistant.";
+const READ_ONLY_ERROR = "Skills are read-only. Edit them in AI Governance › Assistant.";
 const EMPTY_CONTENT_WARNING = "System reminder: File exists but has empty contents";
 
 /** The virtual files for a set of skills, keyed by mount-relative path. */

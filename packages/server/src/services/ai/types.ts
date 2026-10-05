@@ -5,7 +5,7 @@
  * contract — permission, input schema, evidence gathering, output schema and
  * finalization — bound to an agent in the registry. The agent (prompt, task
  * framing, model, tools, skills, subagents, harness, tuning) is data, managed
- * in Agents › Assistant; the engine (engine.ts) joins the two for each run.
+ * in AI Governance › Assistant; the engine (engine.ts) joins the two for each run.
  */
 
 import type { z } from "zod";
@@ -58,7 +58,7 @@ export type AgentMessage = {
 
 export type DeliveryMode = "structured" | "invoke";
 
-/** Where a feature shows up in the product (groups the Agents › Assistant feature list). */
+/** Where a feature shows up in the product (groups the AI Governance › Assistant feature list). */
 export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat";
 
 export interface FeatureInfo {

@@ -1,5 +1,5 @@
 /**
- * HTTP-level MCP app tests (ADR 0013, ADR 0017): the Agents › MCP switch,
+ * HTTP-level MCP app tests (ADR 0013, ADR 0017): the AI Governance › MCP switch,
  * origin guard, PAT-only auth, and the end-to-end initialize → tools/call
  * path through the stateless Streamable HTTP transport, mounted at /mcp the
  * way the web server mounts it, with a stubbed verifier, settings and proxy.
@@ -192,7 +192,7 @@ describe("createMcpApp (HTTP)", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("MCP_DISABLED");
-    expect(body.error.message).toContain("Agents › MCP");
+    expect(body.error.message).toContain("AI Governance › MCP");
   });
 
   it("accepts an Origin from the allowlist", async () => {

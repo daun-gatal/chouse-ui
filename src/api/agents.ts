@@ -20,6 +20,14 @@ export interface AgentSession {
   patId: string | null;
   userId: string | null;
   clientName: string | null;
+  /** Token name, resolved by the server. */
+  patName?: string | null;
+  /** Display name of the user the session ran as. */
+  userName?: string | null;
+  /** The user's roles: name and display name. */
+  roles?: Array<{ name: string; label: string }>;
+  /** The policy that governs the session, by what it targets. */
+  policy?: { source: "pat" | "role" | "default" | "none"; label: string; dailyBytes: number | null };
   source: "mcp" | "pat";
   startedAt: number;
   lastSeenAt: number;
@@ -50,8 +58,16 @@ export interface AgentPolicyInput {
   alertMultiplier: number | null;
 }
 
+/** A policy's limits, without what it applies to. */
+export type AgentPolicySettings = Omit<AgentPolicyInput, "scopeKind" | "scopeId">;
+
+/** One thing a policy applies to: every agent (`default` / `*`), a role name, or a token id. */
+export type AgentPolicyTarget = Pick<AgentPolicyInput, "scopeKind" | "scopeId">;
+
 export interface AgentPolicy extends AgentPolicyInput {
   id: string;
+  /** Display name of the role or token the policy applies to. */
+  scopeLabel?: string;
   updatedBy: string | null;
   updatedAt: number;
 }
@@ -71,6 +87,28 @@ export function getAgentSession(id: string): Promise<{ session: AgentSession; ca
 
 export async function listAgentPolicies(): Promise<AgentPolicy[]> {
   const res = await api.get<{ policies: AgentPolicy[] }>("/agents/policies");
+  return res.policies;
+}
+
+export interface PolicyScopeOption {
+  /** Role name or token id: the value a policy stores. */
+  id: string;
+  label: string;
+  detail: string | null;
+}
+
+export interface PolicyScopes {
+  roles: PolicyScopeOption[];
+  tokens: PolicyScopeOption[];
+}
+
+export function listPolicyScopes(): Promise<PolicyScopes> {
+  return api.get<PolicyScopes>("/agents/policy-scopes");
+}
+
+/** Write the same limits to every target; `removeIds` are rows of the edited policy no longer assigned. */
+export async function assignAgentPolicy(input: { settings: AgentPolicySettings; targets: AgentPolicyTarget[]; removeIds: string[] }): Promise<AgentPolicy[]> {
+  const res = await api.put<{ policies: AgentPolicy[] }>("/agents/policies/assign", input);
   return res.policies;
 }
 
@@ -135,7 +173,7 @@ export interface McpOverview {
   settings: McpSettings;
   /**
    * `url` is set when the server knows the address agents use: the public
-   * address set in Agents › MCP (`source: "settings"`) or PUBLIC_BASE_URL
+   * address set in AI Governance › MCP (`source: "settings"`) or PUBLIC_BASE_URL
    * (`source: "env"`). Otherwise the UI uses its own origin.
    */
   endpoint: { path: string; url: string | null; source: "settings" | "env" | null };

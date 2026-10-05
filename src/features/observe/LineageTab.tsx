@@ -10,9 +10,9 @@ import { useNavigate, useSearchParams } from "react-router";
 import ReactFlow, { Background, Controls, Handle, MarkerType, Position, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeProps } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "dagre";
-import { Bot, Database, ExternalLink, FileCode2, Globe, Layers, Search, User, Workflow, X } from "lucide-react";
+import { Bot, Database, ExternalLink, FileCode2, Globe, Layers, Lock, Search, User, Workflow, X } from "lucide-react";
 
-import { parseTableNode, type LineageEdge, type LineageGraph, type LineageNode, type PipelineStatus, type TrustState } from "@/api/observe";
+import { isSystemDatabase, parseTableNode, type LineageEdge, type LineageGraph, type LineageNode, type PipelineStatus, type TrustState } from "@/api/observe";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -170,7 +170,14 @@ function NodePanel({ graph, nodeId, onClose, onFocus }: { graph: LineageGraph; n
       </dl>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => onFocus(node.id)}>Focus here</Button>
-        {table && <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.dataset(table.database, table.table))}><ExternalLink className="mr-1 h-3 w-3" /> Dataset</Button>}
+        {table && (isSystemDatabase(table.database) ? (
+          // System tables are never in the catalog, so a dataset page would be empty.
+          <span title="System tables are not tracked as datasets" className="inline-flex">
+            <Button variant="outline" className="h-8 rounded-xs text-[11px]" disabled aria-label="Dataset (not available for system tables)"><Lock className="mr-1 h-3 w-3" /> Dataset</Button>
+          </span>
+        ) : (
+          <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.dataset(table.database, table.table))}><ExternalLink className="mr-1 h-3 w-3" /> Dataset</Button>
+        ))}
       </div>
     </aside>
   );

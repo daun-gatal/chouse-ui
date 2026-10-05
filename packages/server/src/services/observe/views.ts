@@ -4,10 +4,11 @@
  */
 
 import { all, json, num, numOrNull, one, sql, str, strOrNull, type Row } from "./db";
-import { downstreamOf, upstreamOf, type GraphEdge } from "./rca";
+import { downstreamOf, upstreamOf, type ChainStep, type GraphEdge } from "./rca";
 import { getStoredRca } from "./rcaService";
 import { getObserveIncident, listObserveIncidents, type IncidentSource } from "./incidents";
 import { checkVolume, type VolumeBand } from "./baselines";
+import { principalLabels, principalNodeLabels } from "./principals";
 
 export type Allowed = (database: string | null | undefined, table: string | null | undefined) => boolean;
 
@@ -193,9 +194,11 @@ async function loadGraph(connectionId: string): Promise<{ nodes: Map<string, Gra
     const target = str(p.target_node);
     if (target && !["healthy", "unsupported_on_version"].includes(str(p.status))) state.set(target, { status: str(p.status), reason: strOrNull(p.status_reason) });
   }
+  const principals = await principalNodeLabels(nodeRows.map((n) => str(n.node_id)));
   const nodes = new Map<string, GraphNode>(nodeRows.map((n) => {
-    const s = state.get(str(n.node_id));
-    return [str(n.node_id), { id: str(n.node_id), kind: str(n.kind), label: str(n.label), database: strOrNull(n.database_name), table: strOrNull(n.table_name), status: s?.status ?? null, statusReason: s?.reason ?? null }];
+    const id = str(n.node_id);
+    const s = state.get(id);
+    return [id, { id, kind: str(n.kind), label: principals.get(id) ?? str(n.label), database: strOrNull(n.database_name), table: strOrNull(n.table_name), status: s?.status ?? null, statusReason: s?.reason ?? null }];
   }));
   const edges = (await all(sql`SELECT * FROM obs_lineage_edges WHERE connection_id = ${connectionId}`)).map((e) => ({
     id: str(e.edge_id), source: str(e.source_id), target: str(e.target_id), kind: str(e.kind), origin: str(e.origin), columns: json<string[]>(e.columns, []), observations: num(e.observations),
@@ -237,6 +240,7 @@ export async function lineageGraph(connectionId: string, allowed: Allowed, focus
 
 export async function listPipelines(connectionId: string, allowed: Allowed, filter: { kind?: string; status?: string } = {}): Promise<Array<Record<string, unknown>>> {
   const rows = await all(sql`SELECT * FROM obs_pipelines WHERE connection_id = ${connectionId} ORDER BY name`);
+  const sources = await principalNodeLabels(rows.map((r) => strOrNull(r.source_node)));
   const since = Date.now() - 24 * 3600 * 1000;
   const samples = await all(sql`SELECT pipeline_id, sampled_at, units_in, errors, lag_seconds, backlog, last_success_at FROM obs_pipeline_samples WHERE connection_id = ${connectionId} AND sampled_at >= ${since} ORDER BY sampled_at`);
   const series = new Map<string, Array<{ at: number; units: number | null; errors: number | null; lag: number | null; backlog: number | null; lastSuccessAt: number | null }>>();
@@ -257,7 +261,7 @@ export async function listPipelines(connectionId: string, allowed: Allowed, filt
         kind: str(r.kind),
         engine: str(r.engine),
         name: str(r.name),
-        sourceLabel: strOrNull(r.source_label),
+        sourceLabel: strOrNull(r.source_label) ?? sources.get(str(r.source_node)) ?? null,
         sourceNode: strOrNull(r.source_node),
         targetNode: strOrNull(r.target_node),
         status: str(r.status),
@@ -297,6 +301,21 @@ export interface UnifiedIncident {
   lastEventAt: number;
   subject: string | null;
   rootCause: { layer: string; summary: string } | null;
+  /** Display name of the connection, so a fleet-wide list never shows its id. */
+  connectionName: string | null;
+}
+
+async function connectionNames(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = await all(sql`SELECT id, name FROM rbac_clickhouse_connections WHERE id IN (${sql.join(unique.map((id) => sql`${id}`), sql`, `)})`);
+  return new Map(rows.map((r) => [str(r.id), str(r.name)]));
+}
+
+async function userName(id: string | null | undefined): Promise<string | null> {
+  if (!id) return null;
+  const row = await one(sql`SELECT display_name, username FROM rbac_users WHERE id = ${id}`);
+  return row ? strOrNull(row.display_name) || str(row.username) : "Deleted user";
 }
 
 export interface IncidentScope {
@@ -319,6 +338,7 @@ export async function listIncidents(connectionIds: string[], allowed: Map<string
     ORDER BY i.last_event_at DESC LIMIT 500`);
   const ob = opts.includeObserve === false ? [] : await listObserveIncidents({ connectionIds, status, limit: 500 });
   const rcas = new Map((await all(sql`SELECT incident_source, incident_id, root_cause FROM incident_rca`)).map((r) => [`${str(r.incident_source)}:${str(r.incident_id)}`, json<{ layer: string; summary: string } | null>(r.root_cause, null)]));
+  const names = await connectionNames(connectionIds);
   const out: UnifiedIncident[] = [];
   for (const i of dh) {
     const pred = allowed.get(str(i.connection_id));
@@ -327,6 +347,7 @@ export async function listIncidents(connectionIds: string[], allowed: Map<string
       source: "data_health", id: str(i.id), connectionId: str(i.connection_id), kind: str(i.kind) === "execution" ? "execution" : "data",
       title: `${str(i.promise_name)}: ${str(i.summary)}`, status: str(i.status), severity: str(i.severity), openedAt: num(i.opened_at), lastEventAt: num(i.last_event_at),
       subject: i.database_name ? `table:${str(i.database_name)}.${str(i.table_name)}` : null, rootCause: rcas.get(`data_health:${str(i.id)}`) ?? null,
+      connectionName: names.get(str(i.connection_id)) ?? null,
     });
   }
   for (const i of ob) {
@@ -336,6 +357,7 @@ export async function listIncidents(connectionIds: string[], allowed: Map<string
     out.push({
       source: "observe", id: i.id, connectionId: i.connectionId, kind: i.kind, title: i.summary, status: i.status, severity: i.severity,
       openedAt: i.openedAt, lastEventAt: i.lastEventAt, subject, rootCause: rcas.get(`observe:${i.id}`) ?? null,
+      connectionName: names.get(i.connectionId) ?? null,
     });
   }
   return out.sort((a, b) => (a.severity === b.severity ? b.lastEventAt - a.lastEventAt : a.severity === "critical" ? -1 : 1));
@@ -355,9 +377,18 @@ export async function incidentDetail(source: IncidentSource, id: string): Promis
   } else {
     const i = await getObserveIncident(id);
     if (!i) return null;
-    base = { source, ...i, title: i.summary };
+    base = { source, ...i, title: i.summary, acknowledgedByName: await userName(i.acknowledgedBy) };
   }
-  return { ...base, rca: await getStoredRca(source, id) };
+  const connectionId = str(base.connectionId);
+  const connectionName = (await connectionNames([connectionId])).get(connectionId) ?? null;
+  const rca = await getStoredRca(source, id);
+  // Engine-wide steps have no lineage node; name the connection instead of a generic "connection".
+  const named = (step: ChainStep): ChainStep => (step.nodeId === null && connectionName ? { ...step, label: connectionName } : step);
+  return {
+    ...base,
+    connectionName,
+    rca: rca ? { ...rca, chain: rca.chain.map(named), rootCause: rca.rootCause ? named(rca.rootCause) : null } : null,
+  };
 }
 
 export async function incidentConnection(source: IncidentSource, id: string): Promise<{ connectionId: string; database: string | null; table: string | null } | null> {
@@ -484,12 +515,13 @@ export async function capacity(connectionId: string, allowed: Allowed, includeCo
       SELECT principal_kind, principal_id, SUM(read_bytes) AS bytes FROM obs_usage_rollups
       WHERE connection_id = ${connectionId} AND principal_kind <> '_filters' AND day >= ${Date.now() - 30 * 86_400_000}
       GROUP BY principal_kind, principal_id ORDER BY bytes DESC LIMIT 20`)).map((r) => ({ kind: str(r.principal_kind), id: str(r.principal_id), readBytes: num(r.bytes) }));
+    const consumerLabels = await principalLabels(byConsumer);
     const perTib = rates ? num(rates.per_tib_read) : 0;
     cost = {
       currency: rates ? str(rates.currency) : "USD",
       perTibRead: perTib,
       perCpuHour: rates ? num(rates.per_cpu_hour) : 0,
-      byConsumer: byConsumer.map((c) => ({ ...c, cost: (c.readBytes / 1024 ** 4) * perTib })),
+      byConsumer: byConsumer.map((c) => ({ ...c, label: consumerLabels.get(`${c.kind}:${c.id}`) ?? c.id, cost: (c.readBytes / 1024 ** 4) * perTib })),
     };
   }
   return { forecasts, history, growth, cold, trials, cost };

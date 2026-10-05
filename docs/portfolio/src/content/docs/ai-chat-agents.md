@@ -4,7 +4,7 @@ permissions: ai:chat
 ---
 # Chat agents
 
-The chat bubble can talk to more than one agent. Out of the box it offers three: one for your ClickHouse data, one for CHouse itself, and a router that picks between them. Administrators can add their own in [Agents › Assistant](/docs/ai-agents/).
+The chat bubble can talk to more than one agent. Out of the box it offers three: one for your ClickHouse data, one for CHouse itself, and a router that picks between them. Administrators can add their own in [AI Governance › Assistant](/docs/ai-agents/).
 
 ## The agent picker
 
@@ -53,7 +53,7 @@ Required permissions also prune a tree: a subagent the user may not use is left 
 
 ## Adding your own
 
-Any chat agent you create in **Agents › Assistant** shows up in the picker by the rules above. Typical uses:
+Any chat agent you create in **AI Governance › Assistant** shows up in the picker by the rules above. Typical uses:
 
 - a **team assistant** — ClickHouse Data's tools with a prompt and a skill about your schemas and naming
 - a **restricted helper** — a narrower tool set, visible only to roles with a given permission

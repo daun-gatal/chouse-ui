@@ -88,7 +88,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "Can AI agents or scripts query my cluster?",
-    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in Agents › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at lab.chouse-ui.com/mcp lets you try the MCP endpoint without deploying anything.",
+    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in AI Governance › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at lab.chouse-ui.com/mcp lets you try the MCP endpoint without deploying anything.",
     docs: [
       { label: "CLI", href: "/docs/cli/" },
       { label: "MCP server", href: "/docs/mcp/" },

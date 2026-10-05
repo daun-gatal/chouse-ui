@@ -1228,7 +1228,7 @@ export default function AiChatBubble() {
         return () => window.removeEventListener('ai-config-updated', fetchModels);
     }, [fetchModels]);
 
-    // Chat agents the user may pick (Agents › Assistant edits fire 'ai-agents-updated').
+    // Chat agents the user may pick (AI Governance › Assistant edits fire 'ai-agents-updated').
     const fetchAgents = useCallback(() => {
         if (!hasPermission || !aiEnabled) return;
         getChatAgents()

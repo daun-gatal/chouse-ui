@@ -29,7 +29,7 @@ Work through this before exposing CHouse UI beyond localhost.
 - [ ] Run **Check privileges** on each connection (**Admin › Connections › Edit**) so the [collector](/docs/data-observability/#grant-the-collector-what-it-needs) can read the system tables it needs
 - [ ] To use [fixes](/docs/data-incidents/#set-up-fixes-for-a-connection), give each connection a remediation credential with only the grants the fixes need
 - [ ] Set `PUBLIC_BASE_URL` to the address people use
-- [ ] Leave MCP off (Agents › MCP) unless agents need access; turn on only the tools they need, and set [agent budgets](/docs/agents/)
+- [ ] Leave MCP off (AI Governance › MCP) unless agents need access; turn on only the tools they need, and set [agent budgets](/docs/agents/)
 - [ ] Verify migrations ran on boot: `docker logs chouse-ui | grep RBAC`
 
 ## AI (optional)

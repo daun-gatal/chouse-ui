@@ -283,7 +283,7 @@ describe("FloatingDock mobile layout", () => {
       </MemoryRouter>,
     );
     const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(expect.arrayContaining(["/data", "/agents"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/data", "/ai"]));
     expect(hrefs).not.toContain("/dataops");
   });
 });

@@ -11,8 +11,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Hono } from "hono";
 import { McpToolContext } from "./types";
+import { AGENT_CLIENT_HEADER, INTERNAL_MCP_USER_AGENT } from "../services/agents/clients";
 
-export const MCP_USER_AGENT = "chouse-mcp/1";
+export const MCP_USER_AGENT = INTERNAL_MCP_USER_AGENT;
 
 /** Mirrors AGENT_RECORDED_HEADER in services/agents/governance.ts. */
 const AGENT_RECORDED_HEADER = "x-chouse-agent-recorded";
@@ -120,6 +121,9 @@ export class McpApiClient {
     }
     if (this.ctx.clientIp) {
       headers["X-Forwarded-For"] = this.ctx.clientIp;
+    }
+    if (this.ctx.clientName) {
+      headers[AGENT_CLIENT_HEADER] = this.ctx.clientName;
     }
 
     const init: RequestInit = { method, headers };

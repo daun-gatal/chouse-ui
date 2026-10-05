@@ -1,5 +1,5 @@
 /**
- * MCP settings, managed in the UI (Agents › MCP) instead of `MCP_*` env.
+ * MCP settings, managed in the UI (AI Governance › MCP) instead of `MCP_*` env.
  *
  * Stored as one JSON document in `obs_settings`, so every replica reads the
  * same state and a change applies without a restart. Reads are cached for a

@@ -184,6 +184,7 @@ export interface UnifiedIncident {
   lastEventAt: number;
   subject: string | null;
   rootCause: { layer: RcaLayer; summary: string } | null;
+  connectionName?: string | null;
 }
 
 export interface ChainStep {
@@ -217,6 +218,7 @@ export interface IncidentDetail {
   source: IncidentSource;
   id: string;
   connectionId: string;
+  connectionName?: string | null;
   kind: string;
   title: string;
   status: string;
@@ -228,6 +230,7 @@ export interface IncidentDetail {
   table?: string | null;
   subjectRef?: string;
   acknowledgedBy?: string | null;
+  acknowledgedByName?: string | null;
   acknowledgedAt?: number | null;
   events?: Array<{ type: string; at: number; payload: Record<string, unknown> }>;
   rca: StoredRca | null;
@@ -344,7 +347,7 @@ export interface Capacity {
     currency: string;
     perTibRead: number;
     perCpuHour: number;
-    byConsumer: Array<{ kind: string; id: string; readBytes: number; cost: number }>;
+    byConsumer: Array<{ kind: string; id: string; label?: string; readBytes: number; cost: number }>;
   } | null;
 }
 
@@ -511,6 +514,13 @@ export function tableNode(database: string, table: string): string {
 }
 
 /** Splits a `table:db.name` node id; null for non-table nodes. */
+/** ClickHouse's own databases: never in the catalog, so they have no dataset page. */
+const SYSTEM_DATABASES = new Set(["system", "information_schema"]);
+
+export function isSystemDatabase(database: string | null | undefined): boolean {
+  return Boolean(database) && SYSTEM_DATABASES.has(String(database).toLowerCase());
+}
+
 export function parseTableNode(nodeId: string | null | undefined): { database: string; table: string } | null {
   if (!nodeId || !nodeId.startsWith("table:")) return null;
   const fq = nodeId.slice("table:".length);

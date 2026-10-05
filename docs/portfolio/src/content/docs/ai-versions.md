@@ -1,6 +1,6 @@
 ---
-app: Agents › Assistant › History
-route: /agents/assistant
+app: AI Governance › Assistant › History
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 ---
 # Versions, upgrades & audit
@@ -15,7 +15,7 @@ Each save creates a new version and a revision that records the whole entity as 
 | --- | --- |
 | **Installed** | CHouse added the built-in on first start (or after an upgrade that introduced it) |
 | **Upgraded with CHouse** | A CHouse upgrade replaced an unchanged built-in with its newer definition |
-| **Created** / **Edited** / **Deleted** | A person changed it in Agents › Assistant |
+| **Created** / **Edited** / **Deleted** | A person changed it in AI Governance › Assistant |
 | **Reset to built-in** | Someone restored the shipped definition |
 | **Rolled back** | Someone restored an older version |
 
@@ -47,7 +47,7 @@ Two people editing the same agent can't overwrite each other: the second save is
 
 ## Audit trail
 
-Every change made in Agents › Assistant is written to the [audit log](/docs/audit-log/) with the user, the entity and its id:
+Every change made in AI Governance › Assistant is written to the [audit log](/docs/audit-log/) with the user, the entity and its id:
 
 | Action | When |
 | --- | --- |
