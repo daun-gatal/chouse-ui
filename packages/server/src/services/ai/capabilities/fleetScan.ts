@@ -1,31 +1,39 @@
 /**
- * Capability: fleet-scan — ChouseD, the agentic fleet SRE.
+ * Feature: fleet-scan — the agentic fleet doctor.
  *
- * The heaviest capability: it pre-collects a per-node overview (vitals + top
- * memory queries + recent heavy query shapes + errors), conditionally attaches
- * the optimization playbook, runs the read-only investigator across all nodes,
- * then (in finalize) proves each flagged heavy query with a before→after
- * EXPLAIN ESTIMATE and attaches captured vitals + the tool-call evidence trail.
+ * The heaviest feature: it pre-collects a per-node overview (vitals + top
+ * memory queries + recent heavy query shapes + errors), tells the bound agent
+ * whether the optimization playbook is needed, lets it investigate read-only
+ * across all nodes, then (in finalize) proves each flagged heavy query with a
+ * before→after EXPLAIN ESTIMATE and attaches captured vitals + the tool-call
+ * evidence trail.
  */
 
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import type { AgentMessage } from "../types";
-import type { AgentToolSet } from "../langchainTools";
-import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
-import { CLICKHOUSE_PLAYBOOK, needsPlaybook } from "../../clickhousePlaybook";
 import { runFleetMetric } from "../../fleetMetrics";
 import {
-  SYSTEM_TABLE_REFERENCE,
   type FleetNode,
-  queryNodeTool,
   resolveNodes,
   clampHours,
   explainEstimate,
   recentHeavyQueries,
 } from "./fleetShared";
 import type { StructuredCapability } from "../types";
+
+/**
+ * Only worth inlining the playbook when the scan actually surfaced a heavy
+ * query to optimize — otherwise the prompt stays lean.
+ */
+export function needsPlaybook(overview: Record<string, unknown>[]): boolean {
+  return overview.some((o) => {
+    const heavy = Array.isArray(o.recentHeavyQueries) ? o.recentHeavyQueries : [];
+    const top = Array.isArray(o.topMemoryQueries) ? o.topMemoryQueries : [];
+    return heavy.length > 0 || top.length > 0;
+  });
+}
 
 const StatusEnum = z.enum(["healthy", "warning", "critical"]);
 
@@ -178,40 +186,6 @@ async function buildOverview(connections: FleetNode[], hours: number): Promise<R
   );
 }
 
-const SYSTEM_PROMPT = `You are Chouse AI, acting as ClickHouse's fleet doctor — an expert Site Reliability Engineer reviewing a fleet of ClickHouse servers ("nodes").
-
-You are given a JSON overview with one object per node: server memory %, CPU %, active/long-running query counts, blocked merges/mutations, replica lag + sick replicas, uptime, version, the top memory-consuming queries running NOW, the longest-running query, recent exceptions, and \`recentHeavyQueries\` — the heaviest query SHAPES by memory over the selected investigation window (peak_gb, avg_gb, runs, user, sample, last_seen) from system.query_log, so you catch memory-hungry queries even if they already finished. The window length is stated in the user message.
-
-1. Read the overview and spot anything unhealthy — memory pressure, a single runaway query running now, a query shape that repeatedly peaks high memory over the window (from recentHeavyQueries — call out the worst offenders, their peak_gb, user, and how often they run), replication lag, stuck merges/mutations, repeated exceptions, version skew.
-2. When you need detail, use the \`query_node\` tool to run a READ-ONLY SELECT against that node's \`system.*\` tables (system.processes, system.replicas, system.merges, system.mutations, system.query_log, system.parts, system.asynchronous_metrics, …). It is read-only — writes/DDL/KILL are rejected — so investigate freely, but you can only observe.
-${SYSTEM_TABLE_REFERENCE}
-
-HIGH-MEMORY QUERY DEEP-DIVE — do this whenever a query eats memory beyond the norm (several GB, a large share of server memory, or a top entry in topMemoryQueries / recentHeavyQueries). Don't hand-wave "it's heavy" — gather REAL data, but stay FAST and tight:
- - SPEED RULES (important — busy clusters make query_log scans slow): the heavy queries + their peak memory are ALREADY in the overview (recentHeavyQueries: peak_gb/user/sample/runs; topMemoryQueries: memory_usage). REUSE them — do NOT re-query system.query_log for memory or query text. Inspect only the CHEAP metadata tables (system.tables / system.columns / system.parts — they read almost nothing). Deep-dive only the TOP 1–2 heaviest query shapes, ≤2 tables each. Avoid extra system.query_log queries entirely unless absolutely necessary (and then bound them with an event_time range + LIMIT).
- a. Find the tables it reads by parsing the query text already in the overview (recentHeavyQueries.sample / topMemoryQueries.query_preview).
- b. For each table pull the facts (cheap metadata, instant): system.tables (engine, total_rows, total_bytes, partition_key, sorting_key) → how big + how it's keyed; system.columns (type + data_compressed_bytes) → heaviest / mistyped columns; system.parts grouped by partition → is it scanning every partition? too many parts?
- c. Pin the CAUSE on that data.
- d. Record it in \`heavyQueries\`: the query, its real peak memory, the user, the cause, per-table findings, concrete optimization suggestions grounded in the data, AND \`optimizedQuery\` — the OPTIMIZED version with those fixes applied as concrete, runnable ClickHouse SQL using the REAL table + column names.
-    HARD REQUIREMENTS — the optimized query MUST: return the EXACT SAME result as the original; keep the business logic 100% UNCHANGED; aim to run in UNDER 1 MINUTE and peak UNDER 1 GB. Write it COMPLETE and VALID (no "…" / "-- omitted" placeholders). FORMAT it prettily + runnable: multi-line, 2-space indent, one major clause per line; keywords UPPERCASE but PRESERVE the exact case of identifiers/columns/function names (ClickHouse is case-sensitive — e.g. argMax, toStartOfInterval); no markdown fences.
-
-3. Then output ONLY a JSON object (no prose, no markdown, no code fences) matching EXACTLY this schema:
-{
-  "verdict": { "status": "healthy" | "warning" | "critical", "summary": "one concise line on overall fleet health" },
-  "nodes": [ { "name": "<node name>", "status": "healthy" | "warning" | "critical", "details": ["short metric/finding line", "..."] } ],
-  "recommendations": ["concrete, actionable recommendation", "..."],
-  "heavyQueries": [ { "node": "<node>", "query": "<the original query>", "peakMemory": "<e.g. 12.4 GB>", "user": "<user>", "cause": "<why>", "tables": [ { "name": "db.table", "engine": "<engine>", "rows": "<e.g. 2.3B>", "note": "<the issue>" } ], "suggestions": ["...", "..."], "optimizedQuery": "<the optimized version>" } ]
-}
-
-Rules:
-- status = severity: "healthy" (fine), "warning" (needs attention soon), "critical" (acting up now).
-- details = the key numbers/observations for that node as short lines — cite real values.
-- recommendations = prioritised + actionable. For anything destructive (killing a query, changing settings) note a human must run it.
-- Base everything on real data from the overview or your tool calls — do NOT invent numbers.
-- Redash attribution: when a query object carries \`redash_user\` and/or \`redash_query_id\`, name the specific Redash saved query explicitly rather than the generic "r_redash".
-- Be efficient on a healthy fleet. When a query breaches the memory standard, spend the calls needed for the deep-dive. Always leave room to output the JSON.
-- heavyQueries: add an entry for EVERY query you flag, grounded in the table data. Put the runnable original in \`query\` and the optimized version in \`optimizedQuery\`. Do NOT fill \`estimate\` — the system computes it. Omit/empty heavyQueries when no query is problematic.
-- Output the JSON object and nothing else.`;
-
 export interface FleetScanInput {
   connectionIds?: string[];
   hours?: number;
@@ -221,7 +195,6 @@ interface Prepared {
   nodes: FleetNode[];
   hours: number;
   overview: Record<string, unknown>[];
-  instructions: string;
   startedAt: number;
 }
 
@@ -252,46 +225,47 @@ export const fleetScanCapability: StructuredCapability<
   DoctorReport
 > = {
   id: "fleet-scan",
+  title: "Fleet Doctor scan",
+  description: "Doctor › Scan (manual, scheduled or alert-triggered): reviews every node and deep-dives heavy queries into a health report.",
+  surface: "doctor",
   delivery: "structured",
   permission: PERMISSIONS.DOCTOR_RUN,
+  contexts: ["fleet"],
+  background: true,
+  variables: {
+    hours: { type: "number", description: "Investigation window in hours." },
+    nodeCount: { type: "number", description: "Number of nodes scanned." },
+    overview: { type: "json", description: "Per-node overview (pretty-printed JSON)." },
+    needsPlaybook: { type: "boolean", description: "True when the scan found a heavy or top-memory query worth optimizing." },
+  },
   inputSchema: z.object({
     connectionIds: z.array(z.string()).optional(),
     hours: z.number().optional(),
   }),
   outputSchema: DoctorReportSchema,
-  tuning: { stopAtSteps: 12, temperature: 0.1, maxOutputTokens: 16000 },
 
   async prepare(input) {
     const startedAt = Date.now();
     const hours = clampHours(input.hours);
     const nodes = await resolveNodes(input.connectionIds);
     const overview = await buildOverview(nodes, hours);
-    const instructions = needsPlaybook(overview)
-      ? `${SYSTEM_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`
-      : SYSTEM_PROMPT;
-    return { nodes, hours, overview, instructions, startedAt };
+    return { nodes, hours, overview, startedAt };
   },
 
-  tools(prepared): AgentToolSet {
-    return queryNodeTool(prepared.nodes) as AgentToolSet;
+  fleetNodes: (prepared) => prepared.nodes,
+
+  templateVariables(prepared) {
+    return {
+      hours: prepared.hours,
+      nodeCount: prepared.nodes.length,
+      overview: JSON.stringify(prepared.overview, null, 2),
+      needsPlaybook: needsPlaybook(prepared.overview),
+    };
   },
 
-  instructions(prepared) {
-    return prepared.instructions;
-  },
-
-  messages(prepared): AgentMessage[] {
+  fallbackMessages(prepared, _ctx, raw, prompts): AgentMessage[] {
     return [
-      {
-        role: "user",
-        content: `Current ClickHouse fleet overview (one object per node). Investigation window: last ${prepared.hours} hours (the \`recentHeavyQueries\` field covers this window; scope your system.query_log tool queries to it too). Investigate and produce the structured health report.\n\n\`\`\`json\n${JSON.stringify(prepared.overview, null, 2)}\n\`\`\``,
-      },
-    ];
-  },
-
-  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
-    return [
-      { role: "system", content: prepared.instructions },
+      { role: "system", content: prompts.system },
       {
         role: "user",
         content: `Fleet overview:\n\`\`\`json\n${JSON.stringify(prepared.overview)}\n\`\`\`\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured health report now.`,

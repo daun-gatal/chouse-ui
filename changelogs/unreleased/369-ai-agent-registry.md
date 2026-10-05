@@ -1,0 +1,9 @@
+type: minor
+
+### Added
+- **AI agents managed in the UI (Agents › Assistant)** — every AI feature (the chat, SQL editor Optimize/Debug, the Doctor scan, Monitoring diagnoses, DataOps and observability assistants) now runs on an agent stored in the metadata database: prompt and task templates, model, tools, skills, subagents, harness and tuning are edited, versioned, rolled back and reset to built-in from the UI, with a test console that runs unsaved drafts. Built-in agents reproduce the previous behaviour exactly and keep receiving CHouse updates until you customize them. New permissions `ai_agents:view` and `ai_agents:manage` (granted to Admin and Super Admin) and audit events `ai_agent.*`, `ai_harness.*`, `ai_skill.*`, `ai_binding.update`, `ai_registry.reset`, `ai_registry.rollback` (ADR 0019).
+- **CHouse Admin chat agent and agent picker** — the chat can now answer read-only questions about CHouse itself (users, roles, permissions, data access, connections, scheduled jobs, data health, alerts, incidents, Doctor reports, AI models, external agents, audit log) through tools that call the API as the chatting user. Pick *ClickHouse Data* (the default), *CHouse Admin* or *Auto*, which routes each question and combines answers that span both; the choice is saved per thread and the activity panel shows which subagent made each call.
+
+### Fixed
+- **AI skills now load** — the built-in skills (optimizer, debugger, evaluator, chat skills and the ClickHouse reference skills) were never actually offered to the model because of a mount-path bug; every agent now sees the skills its prompt refers to.
+- **Bedrock models follow the same AI harness** — Bedrock deployments no longer get the planning, filesystem and general-purpose subagent tools the other providers have always had hidden.

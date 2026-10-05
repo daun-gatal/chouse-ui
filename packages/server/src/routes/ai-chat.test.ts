@@ -15,6 +15,12 @@ describe("AI Chat route", () => {
             expect(result.success).toBe(true);
         });
 
+        it("accepts a chat agent choice, including null for the default agent", () => {
+            expect(InvokeRequestSchema.safeParse({ threadId: "t", message: "Hi", agentId: "agent-1" }).success).toBe(true);
+            expect(InvokeRequestSchema.safeParse({ threadId: "t", message: "Hi", agentId: null }).success).toBe(true);
+            expect(InvokeRequestSchema.safeParse({ threadId: "t", message: "Hi", agentId: "" }).success).toBe(false);
+        });
+
         it("accepts valid payload with messages array", () => {
             const result = InvokeRequestSchema.safeParse({
                 threadId: "thread-1",

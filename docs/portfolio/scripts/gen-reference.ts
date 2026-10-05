@@ -173,6 +173,11 @@ const AUDIT_AREAS: Record<string, string> = {
   notebook: "Notebooks",
   upgrade: "Upgrades",
   agent: "Agents",
+  ai_agent: "AI agents",
+  ai_harness: "AI harnesses",
+  ai_skill: "AI skills",
+  ai_binding: "AI feature bindings",
+  ai_registry: "AI agent registry",
 };
 
 function auditEventsPage(): string {

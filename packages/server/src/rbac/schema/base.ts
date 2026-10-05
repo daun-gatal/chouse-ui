@@ -141,6 +141,11 @@ export const PERMISSIONS = {
   AI_MODELS_UPDATE: 'ai_models:update',
   AI_MODELS_DELETE: 'ai_models:delete',
 
+  // AI agent registry (ADR 0019): every DeepAgents agent, harness, skill and
+  // feature binding is managed in Agents › Assistant.
+  AI_AGENTS_VIEW: 'ai_agents:view',
+  AI_AGENTS_MANAGE: 'ai_agents:manage',
+
   // SSO Management
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
@@ -279,6 +284,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_MODELS_CREATE,
     PERMISSIONS.AI_MODELS_UPDATE,
     PERMISSIONS.AI_MODELS_DELETE,
+    PERMISSIONS.AI_AGENTS_VIEW,
+    PERMISSIONS.AI_AGENTS_MANAGE,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
@@ -587,6 +594,20 @@ export const AUDIT_ACTIONS = {
   AGENT_POLICY_UPDATE: 'agent.policy_update',
   AGENT_ACCESS_PAUSE: 'agent.access_pause',
   AGENT_MCP_UPDATE: 'agent.mcp_update',
+
+  // AI agent registry (ADR 0019)
+  AI_AGENT_CREATE: 'ai_agent.create',
+  AI_AGENT_UPDATE: 'ai_agent.update',
+  AI_AGENT_DELETE: 'ai_agent.delete',
+  AI_HARNESS_CREATE: 'ai_harness.create',
+  AI_HARNESS_UPDATE: 'ai_harness.update',
+  AI_HARNESS_DELETE: 'ai_harness.delete',
+  AI_SKILL_CREATE: 'ai_skill.create',
+  AI_SKILL_UPDATE: 'ai_skill.update',
+  AI_SKILL_DELETE: 'ai_skill.delete',
+  AI_BINDING_UPDATE: 'ai_binding.update',
+  AI_REGISTRY_RESET: 'ai_registry.reset',
+  AI_REGISTRY_ROLLBACK: 'ai_registry.rollback',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

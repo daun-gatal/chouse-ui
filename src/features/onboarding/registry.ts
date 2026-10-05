@@ -62,7 +62,7 @@ export const REQUIRED_ONBOARDING_SURFACES = [
   "dataops.health.detail", "dataops.health.evidence", "dataops.health.incidents",
   "data.overview", "data.incidents", "data.lineage", "data.pipelines", "data.datasets",
   "data.coverage", "data.context",
-  "agents.sessions", "agents.policies", "agents.mcp",
+  "agents.sessions", "agents.policies", "agents.mcp", "agents.assistant",
   "admin.users", "admin.user-create", "admin.user-edit", "admin.roles", "admin.data-access",
   "admin.connections", "admin.clickhouse-users", "admin.clickhouse-roles", "admin.ai-models",
   "admin.sso", "admin.audit", "admin.alerting",
@@ -226,6 +226,7 @@ export const ONBOARDING_CHAPTERS: OnboardingChapter[] = [
       step("agents.sessions", "Agent sessions", "Every MCP and token session with its queries, bytes read, budget use and health notices; open one to replay its tool calls.", "/agents/sessions", { target: "agents-tab-sessions", requiredAny: [p.AGENTS_VIEW] }),
       step("agents.policies", "Budgets and incident policy", "Cap reads per query and per day, require partition filters on large tables, and warn or block on tables with incidents.", "/agents/policies", { target: "agents-tab-policies", requiredAny: [p.AGENTS_VIEW] }),
       step("agents.mcp", "MCP endpoint and tools", "Turn the MCP endpoint on, copy a client setup, and choose which tools agents get — reads are on by default, anything that changes or deletes things stays off until you turn it on.", "/agents/mcp", { target: "agents-tab-mcp", requiredAny: [p.AGENTS_VIEW] }),
+      step("agents.assistant", "CHouse's own AI agents", "Every AI feature and the chat run on an agent you can edit here: prompt, model, tools, skills, subagents and harness. Test a change before you save it, and reset any built-in agent to how it shipped.", "/agents/assistant", { target: "agents-tab-assistant", requiredAny: [p.AI_AGENTS_VIEW] }),
     ],
   },
   {

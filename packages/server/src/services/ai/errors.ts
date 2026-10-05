@@ -19,7 +19,7 @@ export function handleAiError(error: unknown, context: string): never {
       : undefined;
   if (lcErrorCode === "GRAPH_RECURSION_LIMIT" || msg.includes("Recursion limit")) {
     throw AppError.badRequest(
-      "The AI agent hit its step limit before finishing. An administrator can raise the 'Recursion limit' runtime parameter on this Provider Model (Admin → AI Models → Provider models), or simplify the request.",
+      "The AI agent hit its step limit before finishing. An administrator can raise the agent's step budget or recursion limit (Agents › Assistant), or the 'Recursion limit' runtime parameter on this Provider Model (Admin → AI Models → Provider models), or simplify the request.",
     );
   }
 

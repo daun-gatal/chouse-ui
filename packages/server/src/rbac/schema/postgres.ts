@@ -498,6 +498,8 @@ export const aiChatThreads = pgTable('rbac_ai_chat_threads', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title'),
   connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  // Chat agent chosen for the thread (ADR 0019); null = the chat feature's bound agent.
+  agentId: text('agent_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

@@ -13,6 +13,7 @@ import { requestId } from "./middleware/requestId";
 import { logger, requestLogger } from "./utils/logger";
 import { createMcpApp } from "./mcp";
 import { buildMcpDeps, MCP_PATH } from "./mcp/server";
+import { registerInProcessApi } from "./services/ai/registry/inProcessApi";
 import { legacyMcpEnvKeys } from "./mcp/settings";
 
 // Configuration
@@ -265,6 +266,9 @@ app.route("/api", api);
 // in-process with the caller's PAT, so they inherit the same authn/authz as
 // the UI and CLI.
 app.route(MCP_PATH, createMcpApp(buildMcpDeps(app)).app);
+// The assistant's CHouse management tools call the API in-process as the
+// chatting user (ADR 0019), the same way MCP tools do with a PAT.
+registerInProcessApi(app);
 const ignoredMcpEnv = legacyMcpEnvKeys();
 if (ignoredMcpEnv.length > 0) {
   logger.warn(
@@ -327,6 +331,10 @@ logger.info(
 // which includes fleet collection, and the remediation worker.
 initializeRbac().then(async () => {
   logger.info({ phase: "startup" }, "RBAC system ready");
+  // Built-in AI agents, harnesses, skills and feature bindings (ADR 0019). Every
+  // AI run reads the registry, so it is seeded before anything can run one.
+  const { syncRegistrySeeds } = await import("./services/ai/registry/seedSync");
+  await syncRegistrySeeds();
   const { startObservability } = await import("./services/observe");
   await startObservability();
   // Chouse AI scheduled scans (daily/weekly/monthly) — dormant until a schedule

@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '@/test/mocks/server';
 import {
+    getChatAgents,
     getChatStatus,
     listThreads,
     createThread,
@@ -110,6 +113,41 @@ describe('AI Chat API', () => {
                 { name: 'list_databases', args: {}, result: ['default'] },
             ]);
             expect(result.chartSpecs).toEqual([]);
+        });
+
+        it('should send the chosen chat agent', async () => {
+            const bodies: unknown[] = [];
+            server.use(
+                http.post('/api/ai-chat/invoke', async ({ request }) => {
+                    bodies.push(await request.json());
+                    return HttpResponse.json({ success: true, data: { content: 'ok', toolCalls: [], chartSpecs: [], agent: { id: 'a1', slug: 'chouse-admin', name: 'CHouse Admin' } } });
+                }),
+            );
+            const result = await invokeChatMessage('thread-1', 'Who has admin?', undefined, undefined, undefined, 'a1');
+            expect(result.agent?.slug).toBe('chouse-admin');
+            await invokeChatMessage('thread-1', 'Hi', undefined, undefined, undefined, null);
+            expect(bodies).toEqual([
+                { threadId: 'thread-1', message: 'Who has admin?', agentId: 'a1' },
+                { threadId: 'thread-1', message: 'Hi', agentId: null },
+            ]);
+        });
+    });
+
+    describe('chat agents', () => {
+        it('lists the agents a user may pick and creates threads with one', async () => {
+            const created: unknown[] = [];
+            server.use(
+                http.get('/api/ai-chat/agents', () => HttpResponse.json({ success: true, data: [{ id: 'r', slug: 'chouse-assistant', name: 'CHouse Assistant', description: 'd', kind: 'router', isDefault: false }] })),
+                http.post('/api/ai-chat/threads', async ({ request }) => {
+                    created.push(await request.json());
+                    return HttpResponse.json({ success: true, data: { id: 't', agentId: 'r' } });
+                }),
+            );
+            const agents = await getChatAgents();
+            expect(agents.map((a) => a.slug)).toEqual(['chouse-assistant']);
+            const thread = await createThread(undefined, 'conn-1', 'r');
+            expect(thread.agentId).toBe('r');
+            expect(created).toEqual([{ connectionId: 'conn-1', agentId: 'r' }]);
         });
     });
 });

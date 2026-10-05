@@ -1,14 +1,11 @@
 /**
- * Shared bits for the SQL-editor optimizer capabilities (optimize-query,
- * debug-query, check-optimize). These use the session/service-based core tools
- * + DeepAgents native skills from src/skills/ai-optimizer/* at run time.
+ * Shared output contracts for the SQL-editor optimizer features (optimize-query,
+ * debug-query, check-optimize) and optimize-log. Their prompts, tools and
+ * skills belong to the bound agents in the registry (ADR 0019).
  */
 
 import { z } from "zod";
 import type { EstimateFigures } from "./fleetShared";
-
-/** Skill directory for the optimizer/debugger/evaluator SKILL.md files. */
-export const OPTIMIZER_SKILL_DIR = "../skills/ai-optimizer";
 
 /**
  * Remove any trailing FORMAT clause the AI may have appended — the app passes
@@ -97,96 +94,3 @@ export const EvaluatorOutputSchema = z.object({
   canOptimize: z.boolean().describe("Whether significant optimization is possible"),
   reason: z.string().describe("Brief reason for the decision"),
 });
-
-export function buildOptimizationPrompt(query: string, additionalPrompt?: string): string {
-  let prompt = `Optimize this ClickHouse SQL query:
-
-\`\`\`sql
-${query.trim()}
-\`\`\`
-
-Use your tools to:
-1. Follow the native \`query-optimizer\` skill instructions.
-2. Use the \`clickhouse-playbook\` and \`types-codecs-compression\` reference skills when relevant.
-3. Fetch the DDL for all tables referenced in the query using \`get_table_ddl\`.
-4. Run \`explain_query\` to understand the current execution plan.
-5. Produce the optimized query as a JSON response matching the exact schema specified in the optimizer skill.`;
-  if (additionalPrompt?.trim()) {
-    prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
-  }
-  return prompt;
-}
-
-export function buildDebugPrompt(query: string, error: string, additionalPrompt?: string): string {
-  let prompt = `Debug this failed ClickHouse SQL query:
-
-\`\`\`sql
-${query.trim()}
-\`\`\`
-
-Error:
-\`\`\`
-${error.trim()}
-\`\`\`
-
-Use your tools to:
-1. Follow the native \`query-debugger\` skill instructions.
-2. Use the \`clickhouse-playbook\` reference skill when the fix is performance-related.
-3. Fetch the DDL for tables referenced in the query using \`get_table_ddl\`.
-4. Validate the corrected query with \`validate_sql\`.
-5. Produce the fixed query as a JSON response matching the exact schema specified in the debugger skill.`;
-  if (additionalPrompt?.trim()) {
-    prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
-  }
-  return prompt;
-}
-
-/**
- * Shared formatting rule — the AI is the ONLY formatter. The client no longer
- * reformats AI output (sql-formatter's keywordCase:"upper" uppercased
- * case-sensitive ClickHouse function/identifier names and broke queries), so the
- * model must return SQL that is both pretty AND runnable.
- */
-export const SQL_PRETTY_RULE = `FORMAT the SQL prettily and return it runnable: multi-line with 2-space indentation, one major clause per line (SELECT / FROM / JOIN / WHERE / GROUP BY / ORDER BY / LIMIT). SQL keywords UPPERCASE, but PRESERVE the EXACT original case of every identifier, database, table, column, alias and function name — ClickHouse is case-sensitive (e.g. \`toStartOfInterval\`, \`argMax\`, \`LowCardinality\`, \`uniqExact\`). Output the raw SQL string only — no markdown code fences, no trailing FORMAT clause.`;
-
-export const OPTIMIZER_INSTRUCTIONS = `You are an expert ClickHouse Query Optimizer agent.
-Your job is to analyze and optimize SQL queries using the available tools.
-
-WORKFLOW (follow this order strictly):
-1. Follow the native \`query-optimizer\` skill instructions.
-2. Use \`get_table_ddl\` (and \`get_table_size\`) for every table referenced in the query to ground per-table findings.
-3. Use \`explain_query\` to understand the current execution plan.
-4. Use the reference skills when a recommendation needs ClickHouse-specific grounding.
-5. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
-   {
-     "optimizedQuery": "<full optimized SQL>",
-     "summary": "<one-line headline of the main improvement>",
-     "explanation": "<detailed markdown explanation of why the original is slow and how the rewrite fixes it>",
-     "cause": "<the grounded root cause of the inefficiency>",
-     "tables": [{ "name": "db.table", "engine": "<engine>", "rows": "<e.g. 2.3B>", "note": "<the issue for this table>" }],
-     "suggestions": ["<concrete, data-grounded optimization step>", "..."]
-   }
-
-${SQL_PRETTY_RULE}`;
-
-export const DEBUGGER_INSTRUCTIONS = `You are an expert ClickHouse Query Debugger agent.
-Your job is to diagnose and fix failed SQL queries using the available tools.
-
-WORKFLOW (follow this order strictly):
-1. Follow the native \`query-debugger\` skill instructions.
-2. Use \`get_table_ddl\` or \`get_table_schema\` for tables referenced in the query.
-3. Use \`validate_sql\` to verify the corrected query is syntactically valid.
-4. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
-   {
-     "fixedQuery": "<fully corrected SQL>",
-     "errorAnalysis": "<concise cause of error>",
-     "explanation": "<detailed markdown explanation of the fix>",
-     "summary": "<one-line summary of the fix>"
-   }
-
-${SQL_PRETTY_RULE}`;
-
-export const EVALUATOR_INSTRUCTIONS = `You are a ClickHouse query evaluator performing a rapid pre-screening check.
-Follow the native "query-evaluator" skill instructions, then evaluate the query.
-Produce ONLY a JSON object (no markdown, no extra text):
-{ "canOptimize": true|false, "reason": "<one sentence>" }`;

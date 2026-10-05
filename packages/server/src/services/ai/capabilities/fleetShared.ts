@@ -16,7 +16,6 @@ import { logger } from "../../../utils/logger";
 import { buildFleetConfig } from "../../fleetMetrics";
 import { ClientManager } from "../../clientManager";
 import { listConnections } from "../../../rbac/services/connections";
-import { readReferenceSync } from "../../referenceFiles";
 
 const zodSchema = <T>(schema: T): T => schema;
 
@@ -24,16 +23,6 @@ export interface FleetNode {
   id: string;
   name: string;
 }
-
-/**
- * Single source of truth for the system.* schema, shared by every fleet prompt
- * so the agent never guesses a column name (e.g. system.errors has
- * last_error_time, NOT event_time).
- *
- * Canonical text lives in `packages/server/src/references/system-table-reference.md`.
- * A copy is also exposed as a DeepAgents reference skill.
- */
-export const SYSTEM_TABLE_REFERENCE = readReferenceSync("system-table-reference.md");
 
 /** Resolve one active connection into a node {id,name}. Throws if not found. */
 export async function resolveNode(connectionId: string): Promise<FleetNode> {

@@ -18,6 +18,7 @@ import { closeDatabase, getDatabaseType } from "./index";
 import { runMigrations, MIGRATIONS, APP_VERSION } from "./migrations";
 import * as h from "./migrationTestHarness";
 import { OBSERVE_TABLE_NAMES } from "./observeSchema";
+import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -339,6 +340,21 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("admin", "remediation:propose")).toBe(true);
   },
   "1.55.0": async () => expect(await h.tableExists("fleet_poller_lease")).toBe(false),
+  "1.56.0": async () => {
+    // ADR 0019 agent registry, the registry version row, per-thread chat agent and the new permissions.
+    for (const t of AI_REGISTRY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of ["ai_harnesses_slug_idx", "ai_skills_name_idx", "ai_agents_slug_idx", "ai_registry_revisions_entity_idx"]) {
+      expect(await h.indexExists(i)).toBe(true);
+    }
+    const state = await h.rawAll(sql`SELECT version FROM ai_registry_state WHERE id = 1`);
+    expect(state.length).toBe(1);
+    expect(await h.columnExists("rbac_ai_chat_threads", "agent_id")).toBe(true);
+    expect(await h.permissionExists("ai_agents:view")).toBe(true);
+    expect(await h.permissionExists("ai_agents:manage")).toBe(true);
+    expect(await h.roleHasPermission("super_admin", "ai_agents:manage")).toBe(true);
+    expect(await h.roleHasPermission("admin", "ai_agents:manage")).toBe(true);
+    expect(await h.roleHasPermission("developer", "ai_agents:manage")).toBe(false);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -868,6 +884,49 @@ for (const dialect of DIALECTS) {
       await runMigrations({ skipSeed: true });
       expect(await h.tableExists("fleet_poller_lease")).toBe(false);
       expect(await h.tableExists("obs_leases")).toBe(true);
+    });
+  });
+
+  describe(`migrations · ADR 0019 agent registry upgrade [${dialect}]`, () => {
+    let threadId = "";
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.55.0" });
+      // An existing chat thread from before the registry existed.
+      const userId = await insertUser(`chat-${randomUUID().slice(0, 8)}`);
+      threadId = randomUUID();
+      await h.rawRun(sql`INSERT INTO rbac_ai_chat_threads (id, user_id, title, created_at, updated_at)
+        VALUES (${threadId}, ${userId}, 'old thread', ${now()}, ${now()})`);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("keeps existing chat threads, bound to the default agent (agent_id NULL)", async () => {
+      const rows = await h.rawAll(sql`SELECT title, agent_id FROM rbac_ai_chat_threads WHERE id = ${threadId}`);
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].title)).toBe("old thread");
+      expect(rows[0].agent_id).toBeNull();
+    });
+
+    it("creates the registry empty — built-ins come from the startup seed sync", async () => {
+      expect(await h.rowCount("ai_agents")).toBe(0);
+      expect(await h.rowCount("ai_feature_bindings")).toBe(0);
+      const state = await h.rawAll(sql`SELECT version FROM ai_registry_state WHERE id = 1`);
+      expect(Number(state[0].version)).toBe(0);
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.56.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("ai_registry_state")).toBe(1);
+      expect(await h.columnExists("rbac_ai_chat_threads", "agent_id")).toBe(true);
+      const grants = await h.rawAll(sql`
+        SELECT COUNT(*) AS c FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON p.id = rp.permission_id
+        JOIN rbac_roles r ON r.id = rp.role_id
+        WHERE r.name = 'admin' AND p.name = 'ai_agents:manage'`);
+      expect(Number(grants[0].c)).toBe(1);
     });
   });
 }

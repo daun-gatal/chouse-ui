@@ -16,8 +16,29 @@ export interface ChatThread {
     userId: string;
     title: string | null;
     connectionId: string | null;
+    /** Chat agent chosen for the thread; null = the default (bound) chat agent. */
+    agentId?: string | null;
     createdAt: string;
     updatedAt: string;
+}
+
+/** One tool call of a chat answer; `agent` is the subagent path when a subagent made it. */
+export interface ChatToolCall {
+    name: string;
+    args: Record<string, unknown>;
+    result?: unknown;
+    agent?: string;
+}
+
+/** A chat agent the user may pick (ADR 0019). */
+export interface ChatAgentOption {
+    id: string;
+    slug: string;
+    name: string;
+    description: string;
+    kind: 'router' | 'agent';
+    /** The agent bound to the chat feature — used when a thread picks none. */
+    isDefault: boolean;
 }
 
 export interface ChatMessage {
@@ -25,7 +46,7 @@ export interface ChatMessage {
     threadId: string;
     role: 'user' | 'assistant';
     content: string;
-    toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> | null;
+    toolCalls?: ChatToolCall[] | null;
     chartSpecs?: ChartSpec[] | null;
     createdAt: string;
 }
@@ -95,8 +116,8 @@ export async function listThreads(connectionId?: string | null): Promise<ChatThr
 /**
  * Create a new chat thread
  */
-export async function createThread(title?: string, connectionId?: string): Promise<ChatThread> {
-    return api.post<ChatThread>('/ai-chat/threads', { title, connectionId });
+export async function createThread(title?: string, connectionId?: string, agentId?: string | null): Promise<ChatThread> {
+    return api.post<ChatThread>('/ai-chat/threads', { title, connectionId, agentId });
 }
 
 /**
@@ -126,8 +147,17 @@ export async function deleteThread(threadId: string): Promise<void> {
 
 export interface ChatInvokeResult {
     content: string;
-    toolCalls: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>;
+    toolCalls: ChatToolCall[];
     chartSpecs: ChartSpec[];
+    /** The agent that answered. */
+    agent?: { id: string; slug: string; name: string };
+}
+
+/**
+ * Chat agents the user may pick, routers first.
+ */
+export async function getChatAgents(): Promise<ChatAgentOption[]> {
+    return api.get<ChatAgentOption[]>('/ai-chat/agents');
 }
 
 /**
@@ -139,11 +169,12 @@ export async function invokeChatMessage(
     message: string,
     messages?: Array<{ role: string; content: string }>,
     modelId?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    agentId?: string | null
 ): Promise<ChatInvokeResult> {
     return api.post<ChatInvokeResult>(
         '/ai-chat/invoke',
-        { threadId, message, messages, modelId },
+        { threadId, message, messages, modelId, agentId },
         { signal },
     );
 }

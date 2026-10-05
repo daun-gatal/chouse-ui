@@ -28,6 +28,7 @@ vi.mock("@/api/ai-chat", () => ({
   createThread: mocks.createThread,
   deleteThread: vi.fn(),
   getAiModels: vi.fn().mockResolvedValue([]),
+  getChatAgents: vi.fn().mockResolvedValue([]),
   getChatStatus: vi.fn().mockResolvedValue({ enabled: true }),
   getThread: vi.fn(),
   invokeChatMessage: mocks.invokeChatMessage,
@@ -109,7 +110,7 @@ describe("AiChatBubble", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
 
     await waitFor(() => {
-      expect(mocks.createThread).toHaveBeenCalledWith(undefined, "connection-b");
+      expect(mocks.createThread).toHaveBeenCalledWith(undefined, "connection-b", null);
     });
   });
 

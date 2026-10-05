@@ -409,6 +409,8 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     }
     expect(replay?.status).toBe("done");
     expect(Number(replay?.total)).toBeGreaterThan(0);
-    expect(Number(replay?.same) + Number(replay?.differs) + Number(replay?.slower) + Number(replay?.errors)).toBe(Number(replay?.total));
+    // Total counts every replayed shape: objects missing only on the canary are a
+    // schema gap of their own; shapes the baseline itself can no longer run are skipped.
+    expect(Number(replay?.same) + Number(replay?.differs) + Number(replay?.slower) + Number(replay?.errors) + Number(replay?.missing)).toBe(Number(replay?.total));
   }, 120_000);
 });
