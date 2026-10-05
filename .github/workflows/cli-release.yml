@@ -101,7 +101,9 @@ jobs:
       - name: Check for CLI changes since last release
         id: changes
         run: |
-          LAST_TAG=$(git tag --list 'cli-v[0-9]*' | sort -V | tail -1 || echo "")
+          # -pre tags are test builds, not releases: comparing against one
+          # would skip a real release whose code already shipped as a -pre.
+          LAST_TAG=$(git tag --list 'cli-v[0-9]*' | grep -v -- '-pre$' | sort -V | tail -1 || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "No previous cli-v tag found — treating as first CLI release."
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
@@ -175,6 +177,15 @@ jobs:
         id: assemble
         run: |
           bun run scripts/release-cli.ts ${{ inputs.version }}
+          # A -pre is a test build: keep its notes but leave cli/VERSION and
+          # the fragments untouched, so the real release still has them to
+          # consume. No commit means release_sha stays empty, which skips
+          # sync-main and cleanup-on-failure.
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            git checkout -- cli/VERSION changelogs/cli/unreleased/
+            echo "Prerelease: notes generated, no version commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add cli/VERSION changelogs/cli/unreleased/
@@ -201,7 +212,10 @@ jobs:
             # pre-release first so its bytes don't linger (same pattern as
             # the -pre image/chart cleanup).
             gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            # Pin the tag to the built commit; without --target, gh tags
+            # the default branch, which may not contain this code.
             gh release create "$TAG" --prerelease \
+              --target "$(git rev-parse HEAD)" \
               --title "chouse CLI $TAG" \
               --notes-file CLI_RELEASE_NOTES.md \
               cli/dist/* scripts/install-cli.sh
