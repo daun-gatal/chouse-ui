@@ -27,6 +27,15 @@ Where it goes:
 | Automation | MCP and the CLI |
 | Reference & help | Architecture, troubleshooting, FAQ |
 
+## Release announcement
+
+`src/content/release.ts` drives the "New · X.Y" banner on the landing page and
+the docs home, and the title of `whats-new.md`. Both describe the next feature
+release: update them with every `minor`/`major` changelog fragment, following
+[`.rules/RELEASE_NOTES.md`](../../../../.rules/RELEASE_NOTES.md).
+`gen-reference.ts --check` fails when the unreleased fragments would release a
+newer version than `release.ts` announces.
+
 ## Generated reference pages
 
 These pages are generated from the code by `scripts/gen-reference.ts`. Never edit

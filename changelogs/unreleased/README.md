@@ -20,6 +20,14 @@ type: minor
 - Use one or more of: `### Added`, `### Changed`, `### Fixed`, `### Removed`
 - Follow the existing CHANGELOG style: bold name, en-dash, description
 
+## `minor` and `major` fragments
+
+Also update the release announcement in the same PR: the "New · X.Y" banner
+(`docs/portfolio/src/content/release.ts`) and **What's new in X.Y**
+(`docs/portfolio/src/content/docs/whats-new.md`). CI fails when the fragments
+would release a newer version than the banner announces. See
+[`.rules/RELEASE_NOTES.md`](../../.rules/RELEASE_NOTES.md).
+
 ## Example filename
 
 ```

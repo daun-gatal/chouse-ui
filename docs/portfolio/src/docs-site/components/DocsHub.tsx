@@ -1,4 +1,5 @@
 import { ArrowRight, Search } from "lucide-react";
+import ReleaseBanner from "../../components/ReleaseBanner";
 import { DocsLayout } from "./DocsLayout";
 import { DOC_SECTIONS, docPath, sectionPages, sectionPath } from "../manifest";
 import { withBase } from "../lib";
@@ -62,6 +63,7 @@ export function DocsHome() {
         </p>
       </div>
       <SearchHero />
+      <ReleaseBanner className="mt-8" />
 
       <div className="mt-10 flex flex-wrap gap-2">
         {START_LINKS.map((link) => (

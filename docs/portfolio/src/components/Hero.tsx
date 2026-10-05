@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, Github, Terminal, FlaskConical } from "lucide-react";
 import { motion } from "framer-motion";
 import { Container, PrimaryAction, SecondaryAction } from "./Section";
+import ReleaseBanner from "./ReleaseBanner";
 
 /**
  * Editorial hero — Linear/Vercel-influenced.
@@ -77,6 +78,15 @@ export default function Hero() {
               <span className="text-paper-faint group-hover:text-paper-muted">changelog</span>
             </a>
           )}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.04, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-14"
+        >
+          <ReleaseBanner />
         </motion.div>
 
         {/* Asymmetric grid: headline (7) + terminal (5) */}
