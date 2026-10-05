@@ -62,6 +62,7 @@ function cases(): Case[] {
     { method: "GET", path: `/context/tables?${C()}`, permissions: ["observe:view"] },
     { method: "PUT", path: `/context/tables/shop/b?${C()}`, permissions: ["context:edit"], body: { description: "x" } },
     { method: "POST", path: `/context/dbt-import?${C()}`, permissions: ["context:edit"], body: { nodes: {} } },
+    { method: "POST", path: `/context/tables/shop/b/draft?${C()}`, permissions: ["context:edit", "ai:optimize"], body: {} },
     { method: "POST", path: `/context/watchers/compile?${C()}`, permissions: ["data_health:edit", "ai:optimize"], body: { text: "tell me when it breaks" } },
     { method: "GET", path: `/upgrades/assessments?${C()}`, permissions: ["upgrades:view"] },
     { method: "POST", path: `/upgrades/assessments?${C()}`, permissions: ["upgrades:run"], body: { targetVersion: "25.3" } },
@@ -134,6 +135,15 @@ describe("ADR 0016 RBAC gates", () => {
 
   it("enforces per-table data access on dataset detail for non-admins", async () => {
     const res = await app.request(`/observe/datasets/secret/table?${C()}`, { headers: { Authorization: `Bearer ${await token(["observe:view"])}` } });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses a Chouse AI context draft on a table the caller cannot read", async () => {
+    const res = await app.request(`/context/tables/secret/table/draft?${C()}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await token(["context:edit", "ai:optimize"])}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
     expect(res.status).toBe(403);
   });
 

@@ -12,7 +12,7 @@
 
 **Schema change preflight** — DDL that would break a view, dictionary, job, promise or saved query is stopped with the impact, unless someone with `schema:override` confirms. → [Schema preflight](/docs/data-incidents/#schema-change-preflight)
 
-**Context for people and agents** — Table descriptions, owners, grain and canonical metrics, dbt import, and plain-language watchers that become promises. → [Context](/docs/data-context/)
+**Context for people and agents** — Table descriptions, owners, grain and canonical metrics, dbt import, Chouse AI drafts of the empty fields (built from metadata and summary numbers, never raw rows), and plain-language watchers that become promises. → [Context](/docs/data-context/)
 
 **Monitoring: Performance, Capacity, Upgrades** — Regressions against each query's own baseline next to the changes around them; disk forecasts, codec trials and cost; upgrade readiness against your workload with canary replay. → [Performance](/docs/monitoring-performance/), [Capacity](/docs/monitoring-capacity/), [Upgrades](/docs/monitoring-upgrades/)
 

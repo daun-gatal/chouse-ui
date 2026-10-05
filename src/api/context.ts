@@ -1,6 +1,6 @@
 /**
- * Context engine API (ADR 0016 §11): curated table context, canonical
- * metrics, dbt import and plain-language watchers.
+ * Context engine API (ADR 0016 §11): curated table context, Chouse AI
+ * drafts of it, canonical metrics, dbt import and plain-language watchers.
  */
 
 import { api } from "./client";
@@ -60,6 +60,17 @@ export interface CompiledWatcher {
   model: string;
 }
 
+/** A Chouse AI draft of a table's curated context; never saved until a person saves the form. */
+export interface TableContextDraft {
+  draft: { description: string | null; grain: string | null; owner: string | null; insteadOf: string | null; deprecated: boolean; tags: string[] };
+  metrics: Array<{ name: string; expression: string; description: string | null }>;
+  dropped: number;
+  basedOn: string[];
+  notes: string[];
+  model: string;
+  generatedAt: number;
+}
+
 function seg(value: string): string {
   return encodeURIComponent(value);
 }
@@ -79,6 +90,10 @@ export function saveTableContext(database: string, table: string, curated: Curat
 
 export function verifyTableContext(database: string, table: string, connectionId?: string): Promise<TableContext> {
   return api.post<TableContext>(`/context/tables/${seg(database)}/${seg(table)}/verify`, undefined, { params: { connectionId } });
+}
+
+export function draftTableContext(database: string, table: string, modelId?: string, connectionId?: string): Promise<TableContextDraft> {
+  return api.post<TableContextDraft>(`/context/tables/${seg(database)}/${seg(table)}/draft`, { modelId }, { params: { connectionId } });
 }
 
 export async function listMetrics(connectionId?: string): Promise<Metric[]> {

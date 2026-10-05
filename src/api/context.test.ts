@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { compileWatcher, deleteMetric, getTableContext, importDbtManifest, listContextTables, listMetrics, saveMetric, saveTableContext, verifyTableContext } from "./context";
+import { compileWatcher, deleteMetric, draftTableContext, getTableContext, importDbtManifest, listContextTables, listMetrics, saveMetric, saveTableContext, verifyTableContext } from "./context";
 
 describe("context API", () => {
   it("projects every context endpoint", async () => {
@@ -23,6 +23,7 @@ describe("context API", () => {
     await deleteMetric("m1");
     await importDbtManifest({ nodes: {} });
     await compileWatcher("tell me when orders stop arriving");
+    await draftTableContext("shop", "order lines", "m1");
     expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
       "GET /api/context/tables",
       "GET /api/context/metrics",
@@ -33,6 +34,7 @@ describe("context API", () => {
       "DELETE /api/context/metrics/m1",
       "POST /api/context/dbt-import",
       "POST /api/context/watchers/compile",
+      "POST /api/context/tables/shop/order%20lines/draft",
     ]);
     expect(seen[0].params).toEqual({ connectionId: "c1", q: "ord" });
   });

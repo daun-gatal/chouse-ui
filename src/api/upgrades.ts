@@ -42,10 +42,15 @@ export interface ReplaySummary {
   startedAt: number;
 }
 
+/** `missing`: the table/column exists only on the baseline. `skipped`: the baseline itself can no longer run the shape. */
+export type ReplayOutcome = "same" | "differs" | "slower" | "missing" | "error" | "skipped";
+
 export interface Replay extends ReplaySummary {
   connectionId: string;
   finishedAt: number | null;
-  results: Array<{ fingerprint: string; outcome: string; baselineMs: number | null; canaryMs: number | null; error: string | null; sampleQuery: string | null }>;
+  missing: number;
+  skipped: number;
+  results: Array<{ fingerprint: string; outcome: ReplayOutcome; baselineMs: number | null; canaryMs: number | null; error: string | null; sampleQuery: string | null }>;
 }
 
 export interface RolloutNode {

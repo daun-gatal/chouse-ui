@@ -1,16 +1,17 @@
 /**
  * Data › Context: what a table means, for people and agents (ADR 0016 §11).
  * Derived facts come from the collectors; curated fields, canonical metrics
- * and dbt imports are owned by people. Watchers turn a sentence into a Data
+ * and dbt imports are owned by people. Chouse AI can draft empty curated
+ * fields, but a person reviews and saves them. Watchers turn a sentence into a Data
  * Health promise draft that opens in the usual wizard.
  */
 
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { BadgeCheck, BookOpen, Eye, FileUp, Loader2, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { BadgeCheck, BookOpen, Eye, FileUp, Loader2, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 
-import type { CompiledWatcher, CuratedContext, TableContext } from "@/api/context";
+import type { CompiledWatcher, CuratedContext, TableContext, TableContextDraft } from "@/api/context";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ import { DH_PRIMARY } from "@/features/data-health/lib";
 import { useDataOpsModelId } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { applyContextDraft, type DraftField } from "./contextDraft";
 import { useContextMutations, useContextTables, useMetrics, useTableContext } from "./hooks";
 import { formatAgo, formatBytes, formatCount, formatDuration, formatPercent, TRUST_TONE, trustTone } from "./lib";
 import { DataTable, EmptyState, ErrorState, Mono, OBS_LABEL, Panel, StatusPill } from "./ui";
@@ -34,32 +36,104 @@ function emptyCurated(context: TableContext | undefined): CuratedContext {
   return { description: c?.description ?? "", grain: c?.grain ?? "", owner: c?.owner ?? "", insteadOf: c?.insteadOf ?? "", deprecated: c?.deprecated ?? false, tags: c?.tags ?? [] };
 }
 
+function AiMark({ show }: { show: boolean }): ReactElement | null {
+  if (!show) return null;
+  return <span className="ml-1.5 inline-flex items-center gap-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-brand" title="Filled by Chouse AI — review before saving"><Sparkles className="h-2.5 w-2.5" aria-hidden />AI</span>;
+}
+
+function DraftSummary({ context, result, onDismiss }: { context: TableContext; result: TableContextDraft; onDismiss: () => void }): ReactElement {
+  const { saveMetric } = useContextMutations();
+  const [added, setAdded] = useState<string[]>([]);
+  const addMetric = async (metric: TableContextDraft["metrics"][number]): Promise<void> => {
+    try {
+      await saveMetric.mutateAsync({ database: context.database, table: context.table, metric });
+      setAdded((prev) => [...prev, metric.name]);
+      toast.success(`Metric ${metric.name} added`);
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not add metric"));
+    }
+  };
+  return (
+    <div role="status" className="mt-3 rounded-xs border border-brand/30 bg-brand/[0.04] p-3 text-[11px]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-paper">
+          <Sparkles className="mr-1 inline h-3 w-3 text-brand" aria-hidden />
+          Drafted by Chouse AI ({result.model}) from {result.basedOn.join(" · ")}. Fields marked AI are suggestions; nothing is saved until you click Save.
+        </p>
+        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="Dismiss draft summary" onClick={onDismiss}><X className="h-3 w-3" /></Button>
+      </div>
+      {result.notes.length > 0 && <ul className="mt-1.5 space-y-0.5 text-paper-muted">{result.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
+      {result.dropped > 0 && <p className="mt-1.5 text-paper-faint">{result.dropped} suggestion{result.dropped === 1 ? "" : "s"} failed validation and {result.dropped === 1 ? "was" : "were"} left out.</p>}
+      {result.metrics.length > 0 && (
+        <>
+          <p className={`${OBS_LABEL} mt-3`}>Suggested metrics</p>
+          <ul className="mt-1 space-y-1.5">
+            {result.metrics.map((m) => (
+              <li key={m.name} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[11px] text-paper">{m.name} = <span className="text-paper-muted">{m.expression}</span></p>
+                  {m.description && <p className="text-[10px] text-paper-muted">{m.description}</p>}
+                </div>
+                <Button variant="outline" className="h-7 shrink-0 rounded-xs text-[10px]" disabled={added.includes(m.name) || saveMetric.isPending} onClick={() => void addMetric(m)}>
+                  {added.includes(m.name) ? "Added" : <><Plus className="mr-1 h-3 w-3" /> Add</>}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CuratedEditor({ context }: { context: TableContext }): ReactElement {
-  const canEdit = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.CONTEXT_EDIT));
-  const { save, verify } = useContextMutations();
+  const { hasPermission } = useRbacStore();
+  const canEdit = hasPermission(RBAC_PERMISSIONS.CONTEXT_EDIT);
+  const canDraft = canEdit && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const { save, verify, draft } = useContextMutations();
+  const modelId = useDataOpsModelId();
   const [form, setForm] = useState<CuratedContext>(() => emptyCurated(context));
   const [tags, setTags] = useState((context.curated?.tags ?? []).join(", "));
-  useEffect(() => {
-    setForm(emptyCurated(context));
-    setTags((context.curated?.tags ?? []).join(", "));
-  }, [context]);
+  const [filled, setFilled] = useState<DraftField[]>([]);
+  const [draftResult, setDraftResult] = useState<TableContextDraft>();
 
   const submit = async (): Promise<void> => {
     try {
       await save.mutateAsync({ database: context.database, table: context.table, curated: { ...form, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) } });
+      setFilled([]);
       toast.success("Context saved");
     } catch (e) {
       toast.error(errorMessage(e, "Could not save context"));
     }
   };
 
+  const runDraft = async (): Promise<void> => {
+    try {
+      const result = await draft.mutateAsync({ database: context.database, table: context.table, modelId });
+      const merged = applyContextDraft(form, tags, result.draft);
+      setForm(merged.form);
+      setTags(merged.tags);
+      setFilled((prev) => [...new Set([...prev, ...merged.filled])]);
+      setDraftResult(result);
+      if (merged.filled.length === 0) toast.info("Every field already has a value, so Chouse AI left them as they are");
+    } catch (e) {
+      toast.error(errorMessage(e, "Chouse AI could not draft this context"));
+    }
+  };
+
+  // Editing a field makes it the person's own, so its AI mark goes away.
+  const edit = (key: DraftField, patch: Partial<CuratedContext>): void => {
+    setForm((prev) => ({ ...prev, ...patch }));
+    setFilled((prev) => prev.filter((f) => f !== key));
+  };
+
   const field = (key: "description" | "grain" | "owner" | "insteadOf", label: string, placeholder: string, multiline = false): ReactElement => (
     <div>
-      <Label htmlFor={`ctx-${key}`}>{label}</Label>
+      <Label htmlFor={`ctx-${key}`}>{label}<AiMark show={filled.includes(key)} /></Label>
       {multiline ? (
-        <Textarea id={`ctx-${key}`} value={form[key] ?? ""} readOnly={!canEdit} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder={placeholder} className="mt-1 rounded-xs" />
+        <Textarea id={`ctx-${key}`} value={form[key] ?? ""} readOnly={!canEdit} onChange={(e) => edit(key, { [key]: e.target.value })} placeholder={placeholder} className={cn("mt-1 rounded-xs", filled.includes(key) && "border-brand/40")} />
       ) : (
-        <Input id={`ctx-${key}`} value={form[key] ?? ""} readOnly={!canEdit} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder={placeholder} className="mt-1 rounded-xs" />
+        <Input id={`ctx-${key}`} value={form[key] ?? ""} readOnly={!canEdit} onChange={(e) => edit(key, { [key]: e.target.value })} placeholder={placeholder} className={cn("mt-1 rounded-xs", filled.includes(key) && "border-brand/40")} />
       )}
     </div>
   );
@@ -70,6 +144,11 @@ function CuratedEditor({ context }: { context: TableContext }): ReactElement {
       meta={context.curated?.verifiedAt ? `Verified ${formatAgo(context.curated.verifiedAt)}` : context.curated ? `Source: ${context.curated.source}` : "Nothing curated yet"}
       actions={canEdit ? (
         <>
+          {canDraft && (
+            <Button variant="outline" className="h-8 rounded-xs border-brand/40 text-[11px] text-brand hover:bg-brand/10 hover:text-brand" disabled={draft.isPending} onClick={() => void runDraft()}>
+              {draft.isPending ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1.5 h-3 w-3" />}Draft with Chouse AI
+            </Button>
+          )}
           <Button variant="ghost" className="h-8 rounded-xs text-[11px]" disabled={!context.curated || verify.isPending} onClick={() => void verify.mutateAsync({ database: context.database, table: context.table }).then(() => toast.success("Marked as verified"), (e: unknown) => toast.error(errorMessage(e, "Could not verify")))}>
             <BadgeCheck className="mr-1.5 h-3 w-3" /> Mark verified
           </Button>
@@ -83,13 +162,24 @@ function CuratedEditor({ context }: { context: TableContext }): ReactElement {
         {field("owner", "Owner", "finance-data")}
         {field("insteadOf", "Use instead of", "analytics.orders_v1")}
         <div>
-          <Label htmlFor="ctx-tags">Tags</Label>
-          <Input id="ctx-tags" value={tags} readOnly={!canEdit} onChange={(e) => setTags(e.target.value)} placeholder="finance, pii" className="mt-1 rounded-xs" />
+          <Label htmlFor="ctx-tags">Tags<AiMark show={filled.includes("tags")} /></Label>
+          <Input
+            id="ctx-tags"
+            value={tags}
+            readOnly={!canEdit}
+            onChange={(e) => {
+              setTags(e.target.value);
+              setFilled((prev) => prev.filter((f) => f !== "tags"));
+            }}
+            placeholder="finance, pii"
+            className={cn("mt-1 rounded-xs", filled.includes("tags") && "border-brand/40")}
+          />
         </div>
         <label className="flex items-center gap-2 text-[12px] text-paper-muted">
-          <Checkbox checked={form.deprecated} disabled={!canEdit} onCheckedChange={(checked) => setForm({ ...form, deprecated: checked === true })} /> Deprecated — agents are told to avoid it
+          <Checkbox checked={form.deprecated} disabled={!canEdit} onCheckedChange={(checked) => edit("deprecated", { deprecated: checked === true })} /> Deprecated — agents are told to avoid it<AiMark show={filled.includes("deprecated")} />
         </label>
       </div>
+      {draftResult && <DraftSummary context={context} result={draftResult} onDismiss={() => setDraftResult(undefined)} />}
     </Panel>
   );
 }
@@ -311,7 +401,8 @@ export function ContextTab(): ReactElement {
               {context.data.health.state && <StatusPill tone={trustTone(context.data.health.state)}>{context.data.health.state}</StatusPill>}
               {context.data.curated?.deprecated && <StatusPill tone="warn" dot={false}>Deprecated</StatusPill>}
             </div>
-            <CuratedEditor context={context.data} />
+            {/* Remount on another table or a saved change only, so a background refetch never wipes an unsaved draft. */}
+            <CuratedEditor key={`${selected}:${context.data.curated?.updatedAt ?? 0}`} context={context.data} />
             <div className="grid gap-4 xl:grid-cols-2">
               <MetricsEditor context={context.data} />
               <DerivedFacts context={context.data} />
