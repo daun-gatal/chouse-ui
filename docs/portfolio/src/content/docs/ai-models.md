@@ -38,6 +38,12 @@ Credentials are stored encrypted and never returned to the browser; to rotate th
 
 **Deployments › Add configuration**: a friendly **deployment name** people will see, and the provider model it uses. Mark it **Active**, and **Set as default** for the deployment used when nobody picks one.
 
+## Models and agents
+
+Every AI feature runs on an [AI agent](/docs/ai-agents/). An agent can name one of these deployments as its model; one that doesn't uses the default deployment, and a model the user picks in the chat or SQL editor wins over both.
+
+The **Reliability & agent** runtime parameters of a provider model — **Recursion limit** and **Run timeout (ms)** — override the step and time limits of every agent run on that model. Leave them empty to use each agent's own [tuning](/docs/ai-agent-editor/#settings).
+
 ## Keep prompts in your network
 
 To keep prompts and schema context inside your network, use Ollama or any OpenAI-compatible server you host.

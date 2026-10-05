@@ -32,3 +32,4 @@ Job and promise definitions, run history, statuses and error text, evaluations a
 
 - [Incidents, root cause & fixes](/docs/data-incidents/) — the cross-layer investigation with Chouse AI's explanation
 - [Doctor](/docs/doctor/) — the AI health check for whole servers
+- [AI agents](/docs/ai-agents/) — the agents behind these briefs, which administrators can edit and test

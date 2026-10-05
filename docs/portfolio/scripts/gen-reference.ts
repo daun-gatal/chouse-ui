@@ -12,6 +12,8 @@
  *   cli-reference.md       src/content/reference/cli.json (snapshot kept current by cli TestCommandReference)
  *   helm-values.md         charts/chouse-ui/README.md values table (helm-docs output)
  *   audit-events.md        packages/server rbac/schema/base.ts AUDIT_ACTIONS
+ *   ai-features.md         packages/server services/ai capabilities + seeds (built-in agents and bindings)
+ *   ai-tools.md            packages/server services/ai registry/catalog.ts, registry/harness.ts + seeds (harnesses, skills)
  *
  * plus src/content/reference/permissions.json, which build-docs uses to
  * validate and link the `permissions:` frontmatter on every page.
@@ -34,6 +36,12 @@ import { AUDIT_ACTIONS, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES } fr
 import { PERMISSION_CATEGORIES, PERMISSION_DISPLAY_NAMES, ROLE_DEFINITIONS } from "../../../packages/server/src/rbac/services/seed";
 import { listToolDefinitions, toolCatalog } from "../../../packages/server/src/mcp/server";
 import { MCP_CATEGORY_LABELS, MCP_CATEGORY_ORDER } from "../../../src/features/agents/mcp";
+import { CAPABILITIES } from "../../../packages/server/src/services/ai/capabilities";
+import { describeCatalog } from "../../../packages/server/src/services/ai/registry/catalog";
+import { BUILTIN_TOOLS } from "../../../packages/server/src/services/ai/registry/harness";
+import { SEED_AGENTS, SEED_BINDINGS, SEED_HARNESSES, SEED_SKILLS, type SeedAgent } from "../../../packages/server/src/services/ai/seeds";
+import type { AnyCapability } from "../../../packages/server/src/services/ai/types";
+import { CONTEXT_HINTS, CONTEXT_LABELS, SURFACE_LABELS, SURFACE_ORDER } from "../../../src/features/agents/assistant/lib";
 import { CONFIG_KEYS, CONFIG_SECTIONS, IGNORED_ENV } from "../src/content/reference/config-keys";
 import { slugify } from "../src/docs-site/lib";
 
@@ -478,6 +486,217 @@ ${sections.join("\n\n")}
 }
 
 // ---------------------------------------------------------------------------
+// AI features and the built-in agents
+
+const AI_FEATURES = Object.values(CAPABILITIES as Record<string, AnyCapability>);
+
+function seedAgent(slug: string): SeedAgent {
+  const agent = SEED_AGENTS.find((a) => a.slug === slug);
+  if (!agent) throw new Error(`Seed agent ${slug} not found`);
+  return agent;
+}
+
+function boundSeedAgent(featureId: string): SeedAgent {
+  const slug = SEED_BINDINGS[featureId];
+  if (!slug) throw new Error(`AI feature ${featureId} has no seed binding`);
+  return seedAgent(slug);
+}
+
+function harnessName(slug: string): string {
+  return SEED_HARNESSES.find((h) => h.slug === slug)?.name ?? slug;
+}
+
+function contextList(contexts: readonly string[]): string {
+  return contexts.length ? contexts.map((c) => CONTEXT_LABELS[c as keyof typeof CONTEXT_LABELS]).join(", ") : "Evidence only";
+}
+
+function tuningText(agent: SeedAgent): string {
+  const t = agent.tuning;
+  return [
+    `${t.stepBudget} steps`,
+    t.maxOutputTokens ? `${t.maxOutputTokens.toLocaleString("en-US")} output tokens` : "",
+    t.timeoutMs ? `${t.timeoutMs / 1000} s timeout` : "",
+    t.recursionLimit ? `recursion limit ${t.recursionLimit}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function skillsText(agent: SeedAgent): string {
+  if (!agent.skills.length) return "none";
+  const onDemand = agent.skills.filter((s) => s.mode === "progressive").length;
+  const pinned = agent.skills.filter((s) => s.mode === "pinned").map((s) => `${code(s.skill)}${s.pinnedFile ? ` (${s.pinnedFile})` : ""}`);
+  return [
+    onDemand === SEED_SKILLS.length ? "all built-in skills on demand" : onDemand ? `${onDemand} on demand` : "",
+    pinned.length ? `pinned ${pinned.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function aiFeaturesPage(): string {
+  const featureLink = (f: AnyCapability): string => `[${f.title}](#${slugify(f.title)})`;
+  const summary = table(
+    ["Feature", "Where", "Needs", "Tools may use", "Built-in agent"],
+    SURFACE_ORDER.flatMap((surface) =>
+      AI_FEATURES.filter((f) => f.surface === surface).map((f) => [
+        featureLink(f),
+        SURFACE_LABELS[surface],
+        code(f.permission),
+        contextList(f.contexts),
+        `[${boundSeedAgent(f.id).name}](#${slugify(boundSeedAgent(f.id).name)})`,
+      ])
+    )
+  );
+
+  const details = SURFACE_ORDER.map((surface) => {
+    const features = AI_FEATURES.filter((f) => f.surface === surface);
+    if (!features.length) return "";
+    const blocks = features.map((f) => {
+      const agent = boundSeedAgent(f.id);
+      const facts = [
+        `ID ${code(f.id)}`,
+        `needs ${code(f.permission)}`,
+        f.delivery === "structured" ? "structured answer (JSON contract)" : "free-form chat answer",
+        f.background ? "also runs in the background" : "",
+      ].filter(Boolean);
+      const variables = Object.entries(f.variables);
+      const variableTable = variables.length
+        ? table(
+            ["Variable", "Type", "Value"],
+            variables.map(([name, spec]) => [code(`ctx.${name}`), spec.type, cell(spec.description)])
+          )
+        : "No template variables — chat agents render without any.";
+      return [
+        `### ${f.title}`,
+        "",
+        `${facts.join(" · ")}`,
+        "",
+        f.description.trim(),
+        "",
+        `**Tools may use:** ${contextList(f.contexts)}. **Built-in agent:** [${agent.name}](#${slugify(agent.name)}).`,
+        "",
+        variableTable,
+      ].join("\n");
+    });
+    return `## ${SURFACE_LABELS[surface]} features\n\n${blocks.join("\n\n")}`;
+  });
+
+  const boundTo = (slug: string): string[] =>
+    Object.entries(SEED_BINDINGS)
+      .filter(([, agentSlug]) => agentSlug === slug)
+      .map(([featureId]) => AI_FEATURES.find((f) => f.id === featureId))
+      .filter((f): f is AnyCapability => Boolean(f))
+      .map(featureLink);
+  const usedBy = (slug: string): string[] => SEED_AGENTS.filter((a) => a.subagents.includes(slug)).map((a) => `subagent of ${a.name}`);
+  const agentBlocks = SEED_AGENTS.map((agent) => {
+    const rows: string[][] = [
+      ["Slug", code(agent.slug)],
+      ["Kind", agent.kind === "router" ? "Router" : agent.taskTemplate === null ? "Chat agent" : "Feature agent"],
+      ["Used by", [...boundTo(agent.slug), ...usedBy(agent.slug)].join(", ") || "—"],
+      ["Harness", harnessName(agent.harness)],
+      ["Tuning", tuningText(agent)],
+      ["Tools", agent.tools.length ? agent.tools.map(code).join(", ") : "none"],
+      ["Skills", skillsText(agent)],
+    ];
+    if (agent.subagents.length) rows.push(["Subagents", agent.subagents.map((s) => `[${seedAgent(s).name}](#${slugify(seedAgent(s).name)})`).join(", ")]);
+    return `### ${agent.name}\n\n${cell(agent.description)}\n\n${table(["Setting", "Value"], rows)}`;
+  });
+
+  return page(
+    "packages/server/src/services/ai (feature contracts and seeds)",
+    `
+Every AI feature in CHouse UI, where it appears, what it needs, the template variables it hands its agent, and the agent it runs on after a fresh install. Rebind a feature or edit its agent in **Agents › Assistant** — see [AI agents](/docs/ai-agents/).
+
+**Needs** is the permission a user must hold to use the feature; the route checks it before any agent runs. **Tools may use** is the run context the feature gives its agent's tools — an agent bound to a feature can only use tools whose context the feature provides:
+
+${table(
+  ["Context", "What the tools can do"],
+  (Object.keys(CONTEXT_LABELS) as Array<keyof typeof CONTEXT_LABELS>).map((k) => [CONTEXT_LABELS[k], cell(CONTEXT_HINTS[k])])
+)}
+
+Features marked *Evidence only* gather their evidence in code and hand it over as \`ctx.evidence\`; their agents work from that and call no tools.
+
+## All features
+
+${summary}
+
+${details.filter(Boolean).join("\n\n")}
+
+## Built-in agents
+
+The ${SEED_AGENTS.length} agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+
+${agentBlocks.join("\n\n")}
+`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI tools, harnesses and skills
+
+const AI_TOOL_DOMAINS = [
+  { id: "clickhouse", label: "ClickHouse tools" },
+  { id: "chouse", label: "CHouse tools" },
+] as const;
+
+function aiToolsPage(): string {
+  const catalog = describeCatalog();
+  const users = (name: string): string[] => SEED_AGENTS.filter((a) => a.tools.includes(name)).map((a) => a.name);
+  const sections = AI_TOOL_DOMAINS.map(({ id, label }) => {
+    const tools = catalog.filter((t) => t.domain === id);
+    const rows = tools.map((t) => [
+      code(t.name),
+      cell(t.title),
+      t.requires ? CONTEXT_LABELS[t.requires] : "—",
+      t.permissions.length ? t.permissions.map(code).join(", ") : "—",
+      cell(t.description.replace(/\s*Read-only; results respect your CHouse permissions\.$/, "").replace(/```(\w+)/g, "`$1`")),
+      String(users(t.name).length),
+    ]);
+    return `## ${label}\n\n${table(["Tool", "Title", "Context", "Needs any of", "What it does", "Built-in agents"], rows)}`;
+  });
+  const harnessTable = table(
+    ["Built-in tool", "What it does", ...SEED_HARNESSES.map((h) => h.name)],
+    BUILTIN_TOOLS.map((t) => [
+      code(t.name),
+      cell(t.description),
+      ...SEED_HARNESSES.map((h) => (h.excludedTools.includes(t.name) ? "hidden" : "✓")),
+    ])
+  );
+  const skillsTable = table(
+    ["Skill", "Path", "Files", "Use it for"],
+    SEED_SKILLS.map((s) => [
+      code(s.name),
+      code(`/skills/${s.path}/`),
+      ["SKILL.md", ...Object.keys(s.files)].map(code).join(", "),
+      cell(s.description),
+    ])
+  );
+  return page(
+    "packages/server/src/services/ai/registry (catalog, harness) and seeds",
+    `
+Everything an agent in **Agents › Assistant** is built from that is defined in code: the ${catalog.length} catalog tools, the built-in DeepAgents tools a harness can hide, and the ${SEED_SKILLS.length} skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+
+Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
+
+${sections.join("\n\n")}
+
+## Built-in DeepAgents tools
+
+DeepAgents gives every agent these tools on top of its catalog tools. A harness hides the ones its agents should not see — here is what each built-in harness keeps:
+
+${harnessTable}
+
+Agents run with an in-memory scratch filesystem that is discarded after the run; skills are mounted read-only under \`/skills/\`. Nothing an agent writes reaches disk.
+
+## Built-in skills
+
+${skillsTable}
+`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Screen coverage
 
 /** Keys of a `const NAME … = {` object literal or an array of `{ key: "…" }`. */
@@ -543,6 +762,8 @@ function main(): void {
     [join(DOCS, "cli-reference.md")]: cliPage(),
     [join(DOCS, "helm-values.md")]: helmPage(),
     [join(DOCS, "audit-events.md")]: auditEventsPage(),
+    [join(DOCS, "ai-features.md")]: aiFeaturesPage(),
+    [join(DOCS, "ai-tools.md")]: aiToolsPage(),
     [join(REFERENCE, "permissions.json")]: `${JSON.stringify(permissionIndex(), null, 2)}\n`,
   };
 
