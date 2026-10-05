@@ -186,14 +186,39 @@ async function collectStructuredRun(
  * only when parsing fails. Avoiding a response-format tool on every agent step
  * keeps provider behavior consistent and prevents schema-retry loops.
  */
+export interface RunOptions {
+  /** Run against this registry state instead of the stored one (the test console's draft). */
+  snapshot?: RegistrySnapshot;
+  /** Run this agent instead of the feature's bound agent (test console). */
+  agentId?: string;
+  /** Receives what the agent was given and did (test console). */
+  onTrace?: (trace: RunTrace) => void;
+}
+
+export interface RunTrace {
+  agent: { id: string; slug: string; name: string };
+  system: string;
+  task: string | null;
+  raw: string;
+  calls: InvokedToolCall[];
+}
+
+function chosenAgent(snapshot: RegistrySnapshot, featureId: string, agentId: string | undefined): AgentDef {
+  if (!agentId) return boundAgent(snapshot, featureId);
+  const agent = snapshot.agents.get(agentId);
+  if (!agent) throw AppError.notFound("Agent not found");
+  return agent;
+}
+
 export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutput>(
   cap: StructuredCapability<TInput, TPrepared, TParsed, TOutput>,
   input: TInput,
   ctx: AgentRunContext,
+  options: RunOptions = {},
 ): Promise<TOutput> {
   try {
-    const snapshot = await getRegistrySnapshot();
-    const agent = boundAgent(snapshot, cap.id);
+    const snapshot = options.snapshot ?? await getRegistrySnapshot();
+    const agent = chosenAgent(snapshot, cap.id, options.agentId);
     const prepared = await cap.prepare(input, ctx);
     const scope = `${agent.id}@${agent.version}`;
     const cached = await cap.cachedResult?.(prepared, ctx, scope);
@@ -222,6 +247,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
       signal,
     );
+    options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
     const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
     const meta = { raw, steps, modelLabel: label };
 
@@ -283,13 +309,23 @@ export interface ChatRunResult {
 export async function invokeChat(
   ctx: AgentRunContext,
   messages: AgentMessage[],
-  options: { agentId?: string | null; signal?: AbortSignal } = {},
+  options: {
+    agentId?: string | null;
+    signal?: AbortSignal;
+    /** Test console: run against a draft registry, and any chat agent (manager-only route). */
+    snapshot?: RegistrySnapshot;
+  } = {},
 ): Promise<ChatRunResult> {
   const cap = getCapability("chat");
   if (!cap) throw AppError.internal("The chat feature is not registered");
-  const snapshot = await getRegistrySnapshot();
+  const snapshot = options.snapshot ?? await getRegistrySnapshot();
   let agent: AgentDef;
-  if (options.agentId) {
+  if (options.snapshot && options.agentId) {
+    const draft = snapshot.agents.get(options.agentId);
+    if (!draft) throw AppError.notFound("Agent not found");
+    if (draft.taskTemplate !== null) throw AppError.badRequest(`'${draft.name}' is a feature agent; test it through its feature`);
+    agent = draft;
+  } else if (options.agentId) {
     const chosen = chatAgentCandidates(snapshot, ctx).find((candidate) => candidate.id === options.agentId);
     if (!chosen) throw AppError.badRequest("That chat agent is not available to you. Pick another agent.");
     agent = chosen;

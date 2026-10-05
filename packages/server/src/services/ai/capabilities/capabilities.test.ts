@@ -14,9 +14,9 @@ import { checkOptimizeCapability } from "./checkOptimize";
 import { diagnoseErrorCapability, diagnosePartsCapability } from "./diagnose";
 import { fleetScanCapability } from "./fleetScan";
 import { draftScheduledQueryCapability, recommendHealthPromiseCapability, summarizeScheduledQueryCapability } from "./dataOps";
+import { diagnoseSchemaCapability } from "./diagnose";
+import { needsPlaybook } from "./fleetScan";
 import {
-  buildOptimizationPrompt,
-  buildDebugPrompt,
   stripFormatClause,
   QueryOptimizationOutputSchema,
 } from "./optimizerShared";
@@ -136,18 +136,55 @@ describe("check-optimize soft fail", () => {
   });
 });
 
-describe("optimizer prompt builders", () => {
-  it("optimization prompt includes the query and optional instructions", () => {
-    const base = buildOptimizationPrompt("SELECT 1");
-    expect(base).toContain("SELECT 1");
-    expect(base).not.toContain("Additional instructions");
-    expect(buildOptimizationPrompt("SELECT 1", "go fast")).toContain("Additional instructions");
+describe("feature contracts (ADR 0019)", () => {
+  it("every feature describes itself for Agents › Assistant", () => {
+    for (const cap of Object.values(CAPABILITIES)) {
+      expect(cap.title.length).toBeGreaterThan(0);
+      expect(cap.description.length).toBeGreaterThan(0);
+      expect(["sql-editor", "doctor", "diagnostics", "dataops", "observe", "chat"]).toContain(cap.surface);
+      for (const context of cap.contexts) expect(["session", "fleet", "userApi"]).toContain(context);
+    }
   });
 
-  it("debug prompt includes query + error", () => {
-    const p = buildDebugPrompt("SELECT 1", "Syntax error");
-    expect(p).toContain("SELECT 1");
-    expect(p).toContain("Syntax error");
+  it("only the chat provides the user-API context", () => {
+    for (const cap of Object.values(CAPABILITIES)) {
+      expect(cap.contexts.includes("userApi")).toBe(cap.id === "chat");
+    }
+  });
+
+  it("optimize-query variables trim the query and default extra instructions to empty", () => {
+    expect(optimizeQueryCapability.templateVariables({ query: "  SELECT 1 ", warnings: [] }, {})).toEqual({ query: "SELECT 1", additionalPrompt: "" });
+    expect(optimizeQueryCapability.templateVariables({ query: "SELECT 1", additionalPrompt: " go fast " }, {})).toEqual({ query: "SELECT 1", additionalPrompt: "go fast" });
+  });
+
+  it("debug-query variables trim query and error", () => {
+    expect(debugQueryCapability.templateVariables({ query: " SELEC 1 ", error: " boom " }, {})).toEqual({ query: "SELEC 1", error: "boom", additionalPrompt: "" });
+  });
+
+  it("diagnose-error variables fill the pre-registry defaults", () => {
+    const vars = diagnoseErrorCapability.templateVariables({ node: { id: "c1", name: "n1" }, input: { name: "X" } }, {});
+    expect(vars).toEqual({ "node.id": "c1", "node.name": "n1", "error.code": "?", "error.name": "X", "error.message": "(none)" });
+  });
+
+  it("diagnose-schema size line is empty without metrics", () => {
+    const vars = diagnoseSchemaCapability.templateVariables(
+      { node: { id: "c1", name: "n1" }, input: { database: "db", table: "t", column: "c", columnType: "Int64", category: "oversized" } },
+      {},
+    );
+    expect(vars.sizeLine).toBe("");
+  });
+
+  it("fleet-scan asks for the playbook only when a heavy or top-memory query was seen", () => {
+    expect(needsPlaybook([{ topMemoryQueries: [], recentHeavyQueries: [] }])).toBe(false);
+    expect(needsPlaybook([{ topMemoryQueries: [{}], recentHeavyQueries: [] }])).toBe(true);
+    expect(needsPlaybook([{ recentHeavyQueries: [{}] }])).toBe(true);
+  });
+
+  it("fleet features bind query_node to the resolved nodes", () => {
+    const node = { id: "c1", name: "n1" };
+    expect(optimizeLogCapability.fleetNodes!({ node, connectionId: "c1", cleaned: "SELECT 1" })).toEqual([node]);
+    expect(diagnosePartsCapability.fleetNodes!({ node, input: { database: "db", table: "t" } })).toEqual([node]);
+    expect(fleetScanCapability.fleetNodes!({ nodes: [node], hours: 6, overview: [], startedAt: 0 })).toEqual([node]);
   });
 
   it("stripFormatClause removes trailing FORMAT + semicolon", () => {
@@ -266,7 +303,6 @@ describe("fleet-scan parse failure", () => {
       nodes: [{ id: "1", name: "n" }],
       hours: 6,
       overview: [{ id: "1", name: "n", summary: null }],
-      instructions: "x",
       startedAt: Date.now(),
     };
     const report = fleetScanCapability.onParseFailure!(prepared, {}, META);

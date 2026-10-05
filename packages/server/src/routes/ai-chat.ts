@@ -329,7 +329,11 @@ aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema
         // CHouse management tools call the API in-process as this user.
         bearerToken: extractTokenFromHeader(c.req.header("Authorization")) ?? undefined,
     };
-    const requestedAgentId = agentId === undefined ? thread.agentId : agentId;
+    // A thread keeps its agent; one whose agent was deleted since answers with the bound agent.
+    let requestedAgentId = agentId === undefined ? thread.agentId : agentId;
+    if (agentId === undefined && requestedAgentId && !(await getRegistrySnapshot()).agents.has(requestedAgentId)) {
+        requestedAgentId = null;
+    }
 
     try {
         const result = await invokeChat(runContext, coreMessages, {
