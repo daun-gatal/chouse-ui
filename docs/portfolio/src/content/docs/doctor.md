@@ -48,3 +48,5 @@ An [alert rule](/docs/alerting/) can turn on **AI auto-RCA on breach**: when it 
 | Advice is checkable | Every recommendation cites the evidence it is based on |
 | Fixes need people | Proposed fixes come from the remediation catalog and run only after approval; an AI-drafted fix can't be approved by whoever submitted it |
 | Spend is controlled | Only `doctor:run` can start scans; every scan and schedule change is [audited](/docs/audit-log/) |
+
+The scan, the diagnoses and the heavy-query optimizer each run on an [AI agent](/docs/ai-agents/) that administrators can tune — prompt, model, step budget — in **Agents › Assistant**. The *Fleet Doctor* agent's only tool is `query_node`; see the [AI feature catalog](/docs/ai-features/#fleet-doctor-scan).

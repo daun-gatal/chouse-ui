@@ -27,7 +27,15 @@ const OUT = "/out";
 const log = (...args) => console.error("[shots]", ...args);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** [file name, app route] — file names are referenced by docs frontmatter. */
+/** Click a tab inside the page (e.g. Agents › Assistant's sub-tabs) before the capture. */
+const openTab = (name) => async (page) => {
+  await page.getByRole("tab", { name, exact: true }).click();
+};
+
+/**
+ * [file name, app route, optional action run before the capture] — file names
+ * are referenced by docs frontmatter.
+ */
 const SHOTS = [
   ["home", "/overview"],
   ["explorer", "/explorer"],
@@ -54,6 +62,17 @@ const SHOTS = [
   ["agents-sessions", "/agents/sessions"],
   ["agents-policies", "/agents/policies"],
   ["agents-mcp", "/agents/mcp"],
+  ["ai-agents-features", "/agents/assistant"],
+  ["ai-agents-tree", "/agents/assistant", openTab("Agents")],
+  ["ai-agents-editor", "/agents/assistant", async (page) => {
+    await openTab("Agents")(page);
+    await page.getByRole("button", { name: "SQL Optimizer", exact: true }).click();
+    await page.getByRole("dialog").waitFor();
+  }],
+  ["ai-agents-harnesses", "/agents/assistant", openTab("Harnesses")],
+  ["ai-agents-skills", "/agents/assistant", openTab("Skills")],
+  ["ai-agents-tools", "/agents/assistant", openTab("Tools")],
+  ["ai-agents-test-console", "/agents/assistant", openTab("Test console")],
   ["admin-users", "/admin/users"],
   ["admin-roles", "/admin/roles"],
   ["admin-data-access", "/admin/data-access"],
@@ -225,13 +244,20 @@ async function capture() {
     throw error;
   }
 
-  for (const [name, route] of SHOTS) {
+  for (const [name, route, action] of SHOTS) {
     try {
       await page.goto(`${APP}${route}`, { waitUntil: "networkidle", timeout: 45000 });
     } catch {
       log(`${route}: network never went idle; capturing anyway`);
     }
     await page.keyboard.press("Escape").catch(() => undefined); // dismiss any coachmark
+    if (action) {
+      try {
+        await action(page);
+      } catch (error) {
+        log(`${name}: ${String(error)}; capturing anyway`);
+      }
+    }
     await sleep(2500); // charts animate in
     await page.screenshot({ path: `${OUT}/${name}.jpg`, type: "jpeg", quality: 82 });
     log(`✓ ${name} ← ${route}`);

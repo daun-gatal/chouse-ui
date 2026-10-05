@@ -41,6 +41,8 @@ link.
 | `cli-reference.md` | `src/content/reference/cli.json`, a snapshot of the CLI command tree |
 | `helm-values.md` | `charts/chouse-ui/README.md` (helm-docs output of `values.yaml`) |
 | `audit-events.md` | `AUDIT_ACTIONS` in `packages/server/src/rbac/schema/base.ts` |
+| `ai-features.md` | the AI feature contracts (`packages/server/src/services/ai/capabilities`) and the built-in agents and bindings (`services/ai/seeds`) |
+| `ai-tools.md` | the AI tool catalog and DeepAgents built-in tools (`services/ai/registry/catalog.ts`, `harness.ts`) and the built-in harnesses and skills (`services/ai/seeds`) |
 
 ```bash
 # docs/portfolio — needs `bun install` in packages/server too
