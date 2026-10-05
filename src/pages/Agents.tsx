@@ -280,14 +280,14 @@ export default function Agents(): ReactElement {
             {canManage && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (
-              <Button variant="destructive" className="h-9 rounded-xs" onClick={() => setConfirmPause(true)}><Pause className="mr-1.5 h-3.5 w-3.5" /> Pause all agent access</Button>
+              <Button variant="outline" className="h-9 rounded-xs border-brand/40 text-brand hover:bg-brand/10 hover:text-brand" onClick={() => setConfirmPause(true)}><Pause className="mr-1.5 h-3.5 w-3.5" /> Pause all agent access</Button>
             ))}
           </>
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="space-y-4">
-          {summary.data?.paused && <div role="status" className="rounded-xs border border-red-500/40 bg-red-500/5 p-3 text-[12px] text-red-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
+          {summary.data?.paused && <div role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
           {summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.data && (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               <Kpi label="Active agents · 24h" value={summary.data.activeAgents} meta={`${summary.data.sessions} sessions`} />

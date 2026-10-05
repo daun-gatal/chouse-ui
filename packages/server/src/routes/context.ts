@@ -5,6 +5,7 @@
  *   read table context, metrics      observe:view (+ connection and table access)
  *   edit / verify context, metrics   context:edit
  *   dbt manifest import              context:edit
+ *   Chouse AI context draft          context:edit + ai:optimize (+ table access)
  *   plain-language watcher compile   data_health:edit + ai:optimize
  */
 
@@ -16,6 +17,7 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/midd
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import * as context from "../services/context/store";
+import { draftTableContext } from "../services/context/draft";
 import { compileWatcher } from "../services/context/watchers";
 import { listDatasets } from "../services/observe/views";
 import { AppError, requireParam } from "../types";
@@ -102,6 +104,20 @@ contextRoute.post("/dbt-import", requirePermission(PERMISSIONS.CONTEXT_EDIT), as
   await createAuditLogWithContext(c, AUDIT_ACTIONS.CONTEXT_DBT_IMPORT, getRbacUser(c).sub, { details: { connectionId, imported: result.imported, skipped: result.skipped } });
   return ok(c, result);
 });
+
+contextRoute.post(
+  "/tables/:database/:table/draft",
+  requirePermission(PERMISSIONS.CONTEXT_EDIT),
+  requirePermission(PERMISSIONS.AI_OPTIMIZE),
+  zValidator("json", z.object({ modelId: z.string().optional() })),
+  async (c) => {
+    const { connectionId, database, table } = await scopedTable(c);
+    const user = getRbacUser(c);
+    const draft = await draftTableContext({ connectionId, database, table, modelId: c.req.valid("json").modelId, userId: user.sub, roles: user.roles, permissions: user.permissions });
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.CONTEXT_AI_DRAFT, user.sub, { resourceType: "table", resourceId: `${database}.${table}`, details: { connectionId, model: draft.model, dropped: draft.dropped } });
+    return ok(c, draft);
+  },
+);
 
 contextRoute.post(
   "/watchers/compile",

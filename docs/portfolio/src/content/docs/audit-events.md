@@ -1,7 +1,7 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 111 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 112 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
@@ -27,7 +27,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 111 in al
 | Scheduled queries | `scheduled_query.create`, `scheduled_query.update`, `scheduled_query.delete`, `scheduled_query.run` |
 | Data health | `data_health.promise_create`, `data_health.promise_update`, `data_health.promise_delete`, `data_health.promise_run`, `data_health.incident_acknowledge`, `data_health.incident_snooze`, `data_health.incident_note` |
 | Data observability | `observe.suggestion_accept`, `observe.suggestion_dismiss`, `observe.criticality_pin`, `observe.incident_acknowledge`, `observe.cost_rates_update`, `observe.codec_trial` |
-| Context | `context.update`, `context.metric_upsert`, `context.metric_delete`, `context.dbt_import` |
+| Context | `context.update`, `context.metric_upsert`, `context.metric_delete`, `context.dbt_import`, `context.ai_draft` |
 | Fixes | `remediation.propose`, `remediation.approve`, `remediation.reject`, `remediation.execute`, `remediation.rollback`, `remediation.credential_update` |
 | Schema preflight | `schema.override` |
 | Notebooks | `notebook.cell_add` |
