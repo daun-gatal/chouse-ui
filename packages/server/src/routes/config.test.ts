@@ -9,7 +9,7 @@ mock.module("../services/aiConfig", () => ({
   isAIEnabled: async () => _mockAiEnabled,
 }));
 
-// The Agents › MCP switch (ADR 0017): null makes the settings read fail.
+// The AI Governance › MCP switch (ADR 0017): null makes the settings read fail.
 let _mockMcpEnabled: boolean | null = false;
 
 mock.module("../mcp/settings", () => ({
@@ -73,7 +73,7 @@ describe("Config Route", () => {
         expect(body.data.features.aiOptimizer).toBe(true);
     });
 
-    it("reports mcpEnabled from the Agents › MCP setting", async () => {
+    it("reports mcpEnabled from the AI Governance › MCP setting", async () => {
         _mockMcpEnabled = true;
 
         const res = await app.request("/config");

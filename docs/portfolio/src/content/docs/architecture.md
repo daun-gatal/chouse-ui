@@ -15,7 +15,7 @@ Every request passes the same checks, whichever client sent it:
 5. **Preflight DDL** — [schema preflight](/docs/data-incidents/#schema-change-preflight) stops changes that would break dependents.
 6. **Forward** — `@clickhouse/client` on the server, with the connection's credentials, which never reach the browser.
 
-The MCP endpoint (`/mcp`) translates tool calls into these same API requests, so an agent can never do more than its token's owner. [Agents](/docs/agents/) adds budgets checked with `EXPLAIN ESTIMATE` before agent queries run.
+The MCP endpoint (`/mcp`) translates tool calls into these same API requests, so an agent can never do more than its token's owner. [AI Governance](/docs/agents/) adds budgets checked with `EXPLAIN ESTIMATE` before agent queries run.
 
 ## Background work
 

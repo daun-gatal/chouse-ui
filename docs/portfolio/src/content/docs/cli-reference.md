@@ -1503,7 +1503,7 @@ The MCP endpoint for AI agents: status, tools, client setup.
 
 The server's MCP endpoint (ADR 0013, ADR 0017) is served at /mcp on the
 same address as the UI. An administrator turns it on and picks the tools in
-the UI (Agents › MCP); these commands show what your token gets there and
+the UI (AI Governance › MCP); these commands show what your token gets there and
 print setup for agent hosts. They never change the server's MCP settings.
 
 ```bash
@@ -1539,7 +1539,7 @@ chouse mcp config vscode > .vscode/mcp.json
 
 The server's MCP settings and every tool's state (agents:view).
 
-Show what an administrator configured in Agents › MCP: whether the
+Show what an administrator configured in AI Governance › MCP: whether the
 endpoint is on, allowed origins, the tool call timeout, and every tool with
 its access level, required permissions and whether it is on (-o yaml for
 everything). Changing them stays in the UI.
@@ -1574,7 +1574,7 @@ chouse mcp status -o json
 The MCP tools your token gets.
 
 List the tools an agent using your token sees: the ones an
-administrator turned on in Agents › MCP that your permissions allow.
+administrator turned on in AI Governance › MCP that your permissions allow.
 
 ```bash
 chouse mcp tools

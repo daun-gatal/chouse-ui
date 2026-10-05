@@ -1,6 +1,6 @@
 /**
  * AI agent registry API (ADR 0019): every DeepAgents agent, harness, skill and
- * feature binding behind Agents › Assistant.
+ * feature binding behind AI Governance › Assistant.
  */
 
 import { api } from "./client";

@@ -193,14 +193,14 @@ export const DOC_SECTIONS: DocSection[] = [
         id: "agents",
         label: "Agents",
         pages: [
-          { slug: "agents", title: "Agents & governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
+          { slug: "agents", title: "AI Governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
         ],
       },
       {
         id: "ai-assistant",
         label: "AI agents",
         pages: [
-          { slug: "ai-agents", title: "AI agents", description: "Every AI feature and the chat run on an agent you can edit in Agents › Assistant: how features, agents, harnesses, skills and tools fit together." },
+          { slug: "ai-agents", title: "AI agents", description: "Every AI feature and the chat run on an agent you can edit in AI Governance › Assistant: how features, agents, harnesses, skills and tools fit together." },
           { slug: "ai-agent-editor", title: "Editing agents", description: "The agent editor: prompt, tools, skills, subagents, model and tuning — and saving, duplicating, resetting and deleting agents." },
           { slug: "ai-prompt-templates", title: "Prompt templates", description: "Feature variables, conditional sections and skill includes in system prompts and task templates, and how the preview checks them." },
           { slug: "ai-harnesses", title: "Harnesses", description: "How DeepAgents runs an agent: which built-in tools it sees, the prompt suffix, the general-purpose subagent — and the three built-in harnesses." },
@@ -261,7 +261,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         id: "automation",
         pages: [
-          { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — turned on and tool-by-tool in Agents › MCP, read-only by default." },
+          { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — turned on and tool-by-tool in AI Governance › MCP, read-only by default." },
           { slug: "mcp-tools", title: "MCP tool catalog", description: "Every MCP tool with its access level, default state, required permissions and parameters — generated from the server." },
           { slug: "cli", title: "CLI", description: "The chouse command line: query, explore, monitor, run the doctor and manage schedules from scripts and CI." },
           { slug: "cli-reference", title: "CLI command reference", description: "Every chouse command, subcommand and flag — generated from the CLI itself." },

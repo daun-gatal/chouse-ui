@@ -4,7 +4,7 @@ This guide connects Claude Code (or any MCP client) to CHouse UI with a token th
 
 ## 1. Administrator: turn MCP on
 
-1. **Agents › MCP** → switch **MCP server** on.
+1. **AI Governance › MCP** → switch **MCP server** on.
 2. Check the endpoint shown, e.g. `https://chouse.corp/mcp`. If agents reach CHouse UI on another address, set **Public address**.
 3. Leave the tool defaults — read tools on, everything else off — for now.
 
@@ -49,8 +49,8 @@ Ask the agent something real — *"which tables in `shop` are stale, and what fe
 
 ## 5. Watch it
 
-**Agents › Sessions** shows the session: every tool call, bytes read, budget used and any health notices it received. Administrators can set limits in **Agents › Policies** — max read per query, a daily budget, partition filters on large tables, and what to do with tables that have incidents — or **pause all agent access** at once.
+**AI Governance › Sessions** shows the session: every tool call, bytes read, budget used and any health notices it received. Administrators can set limits in **AI Governance › Policies** — max read per query, a daily budget, partition filters on large tables, and what to do with tables that have incidents — or **pause all agent access** at once.
 
 ## 6. Give it more, carefully
 
-To let the agent kill queries or run DDL, an administrator turns those tools on in **Agents › MCP** (with a confirmation), *and* your token needs the matching permissions. Make destructive calls ask you first in the client — see [Human approval per client](/docs/mcp/#human-approval-per-client).
+To let the agent kill queries or run DDL, an administrator turns those tools on in **AI Governance › MCP** (with a confirmation), *and* your token needs the matching permissions. Make destructive calls ask you first in the client — see [Human approval per client](/docs/mcp/#human-approval-per-client).

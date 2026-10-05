@@ -83,9 +83,9 @@ const OBSERVABILITY_PAGES: Array<{ value: string; label: string; to: string; ico
   { value: "monitoring performance regressions slower", label: "Monitoring · Performance", to: "/monitoring/performance", icon: TrendingUp, permissions: [RBAC_PERMISSIONS.PERFORMANCE_VIEW] },
   { value: "monitoring capacity disk forecast cost", label: "Monitoring · Capacity", to: "/monitoring/capacity", icon: HardDrive, permissions: [RBAC_PERMISSIONS.CAPACITY_VIEW] },
   { value: "monitoring upgrades version replay", label: "Monitoring · Upgrades", to: "/monitoring/upgrades", icon: ArrowUpCircle, permissions: [RBAC_PERMISSIONS.UPGRADES_VIEW] },
-  { value: "agents mcp ai sessions budgets", label: "Agents", to: "/agents/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
-  { value: "mcp server tools agents connect", label: "MCP server & tools", to: "/agents/mcp", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
-  { value: "assistant ai agents prompts skills harness subagents deepagents", label: "Agents · Assistant", to: "/agents/assistant", icon: Bot, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
+  { value: "ai governance agents mcp sessions budgets policies tokens", label: "AI Governance", to: "/ai/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { value: "mcp server tools agents connect", label: "MCP server & tools", to: "/ai/mcp", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { value: "assistant ai agents prompts skills harness subagents deepagents", label: "AI Governance · Assistant", to: "/ai/assistant", icon: Bot, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
 ];
 
 export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {

@@ -1,5 +1,5 @@
 /**
- * Agents › Assistant (ADR 0019): every built-in AI agent — the chat and every
+ * AI Governance › Assistant (ADR 0019): every built-in AI agent — the chat and every
  * AI feature — with its harness, skills and tools, managed in the UI.
  * Viewing needs ai_agents:view; changing or testing needs ai_agents:manage.
  */

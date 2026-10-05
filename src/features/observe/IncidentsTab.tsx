@@ -35,7 +35,7 @@ function IncidentRow({ incident }: { incident: UnifiedIncident }): ReactElement 
         <div className="min-w-0">
           <p className="truncate text-[13px] font-medium text-paper">{incident.title}</p>
           <p className="mt-0.5 font-mono text-[10px] text-paper-muted">
-            {incident.source === "data_health" ? "Data Health" : humanize(incident.kind)} · opened {formatAgo(incident.openedAt)}{incident.subject ? ` · ${nodeLabel(incident.subject)}` : ""}
+            {incident.connectionName ? `${incident.connectionName} · ` : ""}{incident.source === "data_health" ? "Data Health" : humanize(incident.kind)} · opened {formatAgo(incident.openedAt)}{incident.subject ? ` · ${nodeLabel(incident.subject)}` : ""}
           </p>
           {incident.rootCause && <p className="mt-1 text-[11px] text-paper-muted"><span className="text-brand">{LAYER_LABEL[incident.rootCause.layer]}</span> · {incident.rootCause.summary}</p>}
         </div>
@@ -195,7 +195,8 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill tone={severityTone(data.severity)}>{data.severity}</StatusPill>
             <StatusPill tone="muted" dot={false}>{data.status}</StatusPill>
-            <span className="text-[11px] text-paper-muted">Opened {formatAgo(data.openedAt)} · {source === "data_health" ? "Data Health promise" : humanize(data.kind)}</span>
+            <span className="text-[11px] text-paper-muted">{data.connectionName ? `${data.connectionName} · ` : ""}Opened {formatAgo(data.openedAt)} · {source === "data_health" ? "Data Health promise" : humanize(data.kind)}</span>
+            {data.acknowledgedByName && <span className="text-[11px] text-paper-muted">· acknowledged by {data.acknowledgedByName}{data.acknowledgedAt ? ` ${formatAgo(data.acknowledgedAt)}` : ""}</span>}
             {data.rca && <span className="text-[11px] text-paper-muted">· root cause computed {formatAgo(data.rca.computedAt)}</span>}
           </div>
         </div>
@@ -243,7 +244,7 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
                 {data.rca.related.map((r) => (
                   <li key={`${r.source}:${r.id}`}>
                     <button type="button" className="text-left text-[12px] text-paper hover:text-brand" onClick={() => navigate(dataPaths.incident(r.source, r.id))}>
-                      {r.relation ? <span className="text-paper-muted">{humanize(r.relation)} · </span> : null}{r.title ?? r.id}
+                      {r.relation ? <span className="text-paper-muted">{humanize(r.relation)} · </span> : null}{r.title ?? "Related incident"}
                     </button>
                   </li>
                 ))}

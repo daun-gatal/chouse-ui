@@ -1,6 +1,6 @@
 ---
-app: Agents › Assistant › Agents › Prompt
-route: /agents/assistant
+app: AI Governance › Assistant › AI Governance › Prompt
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 ---
 # Prompt templates

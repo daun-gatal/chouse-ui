@@ -67,11 +67,11 @@ Ingress reminders:
 {{- end }}{{- end }}
 
 MCP for AI agents is served at /mcp on the same Service and Ingress. It is
-off until an administrator turns it on in Agents › MCP, where the allowed
+off until an administrator turns it on in AI Governance › MCP, where the allowed
 origins and the tools agents get are chosen too.
 {{- if hasKey .Values "mcp" }}
 
 WARNING: `mcp.*` values are no longer used (chart 2.0.0). There is no
 dedicated MCP port, Service or Ingress any more, and the MCP_* settings are
-gone — turn MCP on in Agents › MCP and remove `mcp:` from your values.
+gone — turn MCP on in AI Governance › MCP and remove `mcp:` from your values.
 {{- end }}

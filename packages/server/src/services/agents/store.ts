@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 
 import { all, num, numOrNull, one, run, sql, str, strOrNull, type Row } from "../observe/db";
+import { PAT_PREFIX } from "../../rbac/services/personalAccessTokens";
 import { DEFAULT_AGENT_POLICY, type AgentPolicy, type IncidentMode } from "./budget";
 
 export const SESSION_GAP_MS = 30 * 60 * 1000;
@@ -59,14 +60,14 @@ function sessionRow(r: Row): AgentSession {
   };
 }
 
-/** The current session for a PAT, or a new one after a 30-minute gap. */
+/** The current session for a PAT, or a new one after a 30-minute gap. The first client name seen sticks. */
 export async function touchSession(patId: string | null, userId: string | null, source: AgentSource, clientName: string | null, nowMs = Date.now()): Promise<AgentSession> {
   const key = patId ?? `user:${userId ?? "unknown"}`;
   const latest = await one(sql`
     SELECT * FROM agent_sessions WHERE (pat_id = ${patId} OR (pat_id IS NULL AND user_id = ${userId})) AND source = ${source}
     ORDER BY last_seen_at DESC LIMIT 1`);
   if (latest && nowMs - num(latest.last_seen_at) < SESSION_GAP_MS) {
-    await run(sql`UPDATE agent_sessions SET last_seen_at = ${nowMs}, client_name = COALESCE(${clientName}, client_name) WHERE id = ${str(latest.id)}`);
+    await run(sql`UPDATE agent_sessions SET last_seen_at = ${nowMs}, client_name = COALESCE(client_name, ${clientName}) WHERE id = ${str(latest.id)}`);
     return { ...sessionRow(latest), lastSeenAt: nowMs };
   }
   const id = `${key.slice(0, 40)}:${nowMs}`;
@@ -170,6 +171,52 @@ export async function listPolicies(): Promise<StoredPolicy[]> {
   return (await all(sql`SELECT * FROM agent_policies ORDER BY scope_kind, scope_id`)).map(policyRow);
 }
 
+export interface PolicyScopeOption {
+  id: string;
+  label: string;
+  /** Role description, or the token's owner and key prefix. */
+  detail: string | null;
+  /** Token owner's display name. */
+  owner?: string | null;
+}
+
+/** Roles (matched by name, as tokens carry role names) and active tokens a policy can target. */
+export async function listPolicyScopes(): Promise<{ roles: PolicyScopeOption[]; tokens: PolicyScopeOption[] }> {
+  const roles = (await all(sql`SELECT name, display_name, description FROM rbac_roles ORDER BY priority DESC, display_name`)).map((r) => ({
+    id: str(r.name),
+    label: strOrNull(r.display_name) || str(r.name),
+    detail: strOrNull(r.description),
+  }));
+  const tokens = (await all(sql`
+    SELECT k.id, k.name, k.key_prefix, u.display_name, u.username FROM rbac_api_keys k LEFT JOIN rbac_users u ON u.id = k.user_id
+    WHERE k.revoked_at IS NULL ORDER BY k.name`)).map((r) => {
+    const owner = strOrNull(r.display_name) || strOrNull(r.username);
+    const prefix = strOrNull(r.key_prefix);
+    return { id: str(r.id), label: str(r.name), owner, detail: [owner, prefix ? `${PAT_PREFIX}${prefix}…` : null].filter(Boolean).join(" · ") || null };
+  });
+  return { roles, tokens };
+}
+
+/** Policies with the display name of what they apply to; a missing role or token says so. */
+export async function withScopeLabels(policies: StoredPolicy[]): Promise<Array<StoredPolicy & { scopeLabel: string }>> {
+  const { roles, tokens } = await listPolicyScopes();
+  const role = new Map(roles.map((r) => [r.id, r.label]));
+  const token = new Map(tokens.map((t) => [t.id, t.owner ? `${t.label} · ${t.owner}` : t.label]));
+  return policies.map((p) => ({
+    ...p,
+    scopeLabel: p.scopeKind === "default" ? "Every agent" : p.scopeKind === "role" ? role.get(p.scopeId) ?? `${p.scopeId} (role not found)` : token.get(p.scopeId) ?? "Revoked or deleted token",
+  }));
+}
+
+/** Rejects a role or token scope that does not exist, so a policy can never silently match nothing. */
+export async function policyScopeExists(scopeKind: PolicyInput["scopeKind"], scopeId: string): Promise<boolean> {
+  if (scopeKind === "default") return scopeId === "*";
+  const row = scopeKind === "role"
+    ? await one(sql`SELECT 1 AS x FROM rbac_roles WHERE name = ${scopeId}`)
+    : await one(sql`SELECT 1 AS x FROM rbac_api_keys WHERE id = ${scopeId} AND revoked_at IS NULL`);
+  return row !== null;
+}
+
 export async function upsertPolicy(input: PolicyInput, actorId: string | null): Promise<StoredPolicy> {
   const p = policyInputSchema.parse(input);
   const now = Date.now();
@@ -187,11 +234,19 @@ export async function deletePolicy(id: string): Promise<void> {
   await run(sql`DELETE FROM agent_policies WHERE id = ${id}`);
 }
 
+export interface AppliedPolicy {
+  policy: AgentPolicy;
+  /** Which kind of policy matched; "none" means the built-in defaults (no budget). */
+  source: "pat" | "role" | "default" | "none";
+  /** The matching policies' scope ids: the token id, the role names, or "*". */
+  scopeIds: string[];
+}
+
 /** Most specific policy wins: PAT, then the strictest of the user's roles, then the default. */
-export async function effectivePolicy(patId: string | null, roles: string[]): Promise<AgentPolicy> {
-  const all_ = await listPolicies();
+export async function appliedPolicy(patId: string | null, roles: string[], policies?: StoredPolicy[]): Promise<AppliedPolicy> {
+  const all_ = policies ?? (await listPolicies());
   const pat = patId ? all_.find((p) => p.scopeKind === "pat" && p.scopeId === patId) : undefined;
-  if (pat) return toPolicy(pat);
+  if (pat) return { policy: toPolicy(pat), source: "pat", scopeIds: [pat.scopeId] };
   const roleMatches = all_.filter((p) => p.scopeKind === "role" && roles.includes(p.scopeId));
   if (roleMatches.length > 0) {
     const min = (values: Array<number | null>): number | null => {
@@ -200,14 +255,22 @@ export async function effectivePolicy(patId: string | null, roles: string[]): Pr
     };
     const modes: IncidentMode[] = roleMatches.map((p) => p.incidentMode);
     return {
-      maxBytesPerQuery: min(roleMatches.map((p) => p.maxBytesPerQuery)),
-      dailyBytes: min(roleMatches.map((p) => p.dailyBytes)),
-      partitionFilterBytes: min(roleMatches.map((p) => p.partitionFilterBytes)),
-      incidentMode: modes.includes("block") ? "block" : modes.includes("warn") ? "warn" : "off",
+      policy: {
+        maxBytesPerQuery: min(roleMatches.map((p) => p.maxBytesPerQuery)),
+        dailyBytes: min(roleMatches.map((p) => p.dailyBytes)),
+        partitionFilterBytes: min(roleMatches.map((p) => p.partitionFilterBytes)),
+        incidentMode: modes.includes("block") ? "block" : modes.includes("warn") ? "warn" : "off",
+      },
+      source: "role",
+      scopeIds: roleMatches.map((p) => p.scopeId),
     };
   }
   const fallback = all_.find((p) => p.scopeKind === "default");
-  return fallback ? toPolicy(fallback) : DEFAULT_AGENT_POLICY;
+  return fallback ? { policy: toPolicy(fallback), source: "default", scopeIds: ["*"] } : { policy: DEFAULT_AGENT_POLICY, source: "none", scopeIds: [] };
+}
+
+export async function effectivePolicy(patId: string | null, roles: string[]): Promise<AgentPolicy> {
+  return (await appliedPolicy(patId, roles)).policy;
 }
 
 function toPolicy(p: StoredPolicy): AgentPolicy {

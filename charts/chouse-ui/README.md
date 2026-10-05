@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 2.0.0](https://img.shields.io/badge/Version-2.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.14.0](https://img.shields.io/badge/AppVersion-3.14.0-informational?style=flat-square)
+![Version: 2.0.1](https://img.shields.io/badge/Version-2.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.14.0](https://img.shields.io/badge/AppVersion-3.14.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -135,12 +135,12 @@ The MCP endpoint ([ADR 0017](../../docs/adr/0017-mcp-managed-in-the-ui.md))
 is served at `/mcp` on the web port, so agents reach it through the same
 Service, Ingress and TLS as the UI (`https://<host>/mcp`). There are no chart
 values for it: an administrator turns it on, sets its allowed origins and
-picks the tools agents get in **Agents › MCP**.
+picks the tools agents get in **AI Governance › MCP**.
 
 > **Upgrading from 1.x:** `mcp.*` values, the dedicated port 8752, the
 > `<release>-mcp` Service and the MCP Ingress are gone. Leftover `mcp:` values
 > are ignored (the install notes warn while they are set). Turn MCP on in
-> Agents › MCP and point agents at `https://<host>/mcp`.
+> AI Governance › MCP and point agents at `https://<host>/mcp`.
 
 ## Ingress notes
 

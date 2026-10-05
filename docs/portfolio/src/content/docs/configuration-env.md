@@ -15,10 +15,10 @@ Every setting the server reads, with its default. Set them as environment variab
 | `PORT` | `5521` | HTTP port for the UI, the API and the MCP endpoint (`/mcp`). YAML: `port`. |
 | `NODE_ENV` | `development` | Set `production` for real deployments: the server then refuses to start without `JWT_SECRET`, `RBAC_ENCRYPTION_KEY` and `RBAC_ENCRYPTION_SALT`, tightens the content security policy and enforces `CORS_ORIGIN`. YAML: `node_env`. |
 | `STATIC_PATH` | `./dist` | Directory of the built frontend the server serves. YAML: `static_path`. |
-| `CORS_ORIGIN` | `*` | Allowed browser origins, comma-separated. Set your domain in production — `*` logs a warning there. The MCP endpoint ignores it and uses its own allowed origins (Agents › MCP). YAML: `cors_origin`. |
+| `CORS_ORIGIN` | `*` | Allowed browser origins, comma-separated. Set your domain in production — `*` logs a warning there. The MCP endpoint ignores it and uses its own allowed origins (AI Governance › MCP). YAML: `cors_origin`. |
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error` or `fatal`. Logs are JSON (Pino). YAML: `log_level`. |
 | `CHOUSE_CONFIG_PATH` | — | Path to a YAML configuration file. Its keys are flattened into these variable names and **override** the environment — see [YAML configuration](/docs/configuration-yaml/). |
-| `PUBLIC_BASE_URL` | — | The URL people and agents use to reach CHouse UI, e.g. `https://chouse.example.com`. Used for links in Slack approval messages and as the MCP endpoint address when Agents › MCP has no public address set. |
+| `PUBLIC_BASE_URL` | — | The URL people and agents use to reach CHouse UI, e.g. `https://chouse.example.com`. Used for links in Slack approval messages and as the MCP endpoint address when AI Governance › MCP has no public address set. |
 | `VERSION` | `dev` | Version string shown in the UI and returned by `/api/config`. Set by the release image; leave it alone. |
 
 ## ClickHouse connection defaults
@@ -133,7 +133,7 @@ Every setting the server reads, with its default. Set them as environment variab
 | Variable | Default | Description |
 | --- | --- | --- |
 | `FLEET_POLLER_ENABLED` | — | **Deprecated.** Ignored since 3.14 — fleet collection always runs. A warning is logged when it is set. |
-| `MCP_ENABLED` | — | **Removed.** Removed in 3.14. Turn the endpoint on in Agents › MCP. A warning names any `MCP_*` key still set. |
+| `MCP_ENABLED` | — | **Removed.** Removed in 3.14. Turn the endpoint on in AI Governance › MCP. A warning names any `MCP_*` key still set. |
 | `MCP_PORT` | — | **Removed.** Removed in 3.14. MCP is served at `/mcp` on `PORT`. |
 | `MCP_HOST` | — | **Removed.** Removed in 3.14. MCP is served at `/mcp` on `PORT`. |
-| `MCP_ALLOW_WRITES` | — | **Removed.** Removed in 3.14. Turn write tools on one by one in Agents › MCP. |
+| `MCP_ALLOW_WRITES` | — | **Removed.** Removed in 3.14. Turn write tools on one by one in AI Governance › MCP. |

@@ -218,8 +218,8 @@ export function CapacityView({ refreshKey }: { refreshKey?: number }): ReactElem
                 const max = data.cost?.byConsumer[0]?.readBytes || 1;
                 return (
                   <div key={`${c.kind}:${c.id}`} className="grid grid-cols-[220px_1fr_120px] items-center gap-3">
-                    <span className="truncate text-[12px] text-paper">{humanize(c.kind)} <Mono className="text-paper-muted">{c.id}</Mono></span>
-                    <RatioBar ratio={c.readBytes / max} tone={c.kind === "agent" ? "brand" : "muted"} label={`${c.kind} ${c.id} bytes read`} />
+                    <span className="truncate text-[12px] text-paper" title={c.label ?? c.id}><span className="text-paper-muted">{humanize(c.kind)} ·</span> {c.label ?? c.id}</span>
+                    <RatioBar ratio={c.readBytes / max} tone={c.kind === "agent" ? "brand" : "muted"} label={`${c.kind} ${c.label ?? c.id} bytes read`} />
                     <span className="text-right font-mono text-[11px] text-paper-muted">{formatBytes(c.readBytes)} · {c.cost.toFixed(2)} {data.cost?.currency}</span>
                   </div>
                 );

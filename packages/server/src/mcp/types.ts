@@ -23,6 +23,8 @@ export interface McpToolContext {
   /** X-Connection-Id from the MCP request, if the client pinned one. */
   connectionId?: string;
   clientIp?: string;
+  /** Friendly name of the MCP client (Claude Code, Cursor, …), from `initialize` or its User-Agent. */
+  clientName?: string | null;
   /** Per-subrequest timeout from the MCP settings. */
   timeoutMs: number;
 }

@@ -21,7 +21,7 @@ function IncidentCard({ incident }: { incident: UnifiedIncident }): ReactElement
   return (
     <Panel
       title={incident.title}
-      meta={`${incident.severity} · opened ${formatAgo(incident.openedAt)}`}
+      meta={`${incident.connectionName ? `${incident.connectionName} · ` : ""}${incident.severity} · opened ${formatAgo(incident.openedAt)}`}
       actions={
         <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.incident(incident.source, incident.id))}>
           Open investigation <ArrowRight className="ml-1.5 h-3 w-3" />

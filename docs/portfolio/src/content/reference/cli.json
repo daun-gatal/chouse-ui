@@ -758,7 +758,7 @@
       "path": "chouse mcp",
       "use": "chouse mcp",
       "short": "The MCP endpoint for AI agents: status, tools, client setup",
-      "long": "The server's MCP endpoint (ADR 0013, ADR 0017) is served at /mcp on the\nsame address as the UI. An administrator turns it on and picks the tools in\nthe UI (Agents › MCP); these commands show what your token gets there and\nprint setup for agent hosts. They never change the server's MCP settings.",
+      "long": "The server's MCP endpoint (ADR 0013, ADR 0017) is served at /mcp on the\nsame address as the UI. An administrator turns it on and picks the tools in\nthe UI (AI Governance › MCP); these commands show what your token gets there and\nprint setup for agent hosts. They never change the server's MCP settings.",
       "example": "  chouse mcp status\n  chouse mcp tools\n  chouse mcp config claude-code | sh",
       "group": "agents",
       "runnable": true
@@ -775,7 +775,7 @@
       "path": "chouse mcp settings",
       "use": "chouse mcp settings",
       "short": "The server's MCP settings and every tool's state (agents:view)",
-      "long": "Show what an administrator configured in Agents › MCP: whether the\nendpoint is on, allowed origins, the tool call timeout, and every tool with\nits access level, required permissions and whether it is on (-o yaml for\neverything). Changing them stays in the UI.",
+      "long": "Show what an administrator configured in AI Governance › MCP: whether the\nendpoint is on, allowed origins, the tool call timeout, and every tool with\nits access level, required permissions and whether it is on (-o yaml for\neverything). Changing them stays in the UI.",
       "example": "  chouse mcp settings -o yaml",
       "runnable": true
     },
@@ -791,7 +791,7 @@
       "path": "chouse mcp tools",
       "use": "chouse mcp tools",
       "short": "The MCP tools your token gets",
-      "long": "List the tools an agent using your token sees: the ones an\nadministrator turned on in Agents › MCP that your permissions allow.",
+      "long": "List the tools an agent using your token sees: the ones an\nadministrator turned on in AI Governance › MCP that your permissions allow.",
       "example": "  chouse mcp tools\n  chouse mcp tools -o yaml",
       "runnable": true
     },

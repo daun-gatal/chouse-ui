@@ -19,7 +19,7 @@ Personal access tokens (PATs) let the [CLI](/docs/cli/), [MCP](/docs/mcp/) agent
 - A token carries your identity, not a frozen copy of your rights: every call checks your **current** roles, intersected with the token's scopes. Removing a role, deactivating you or revoking the token takes effect on the next call.
 - Data access policies apply exactly as in the UI.
 - Tokens are independent of browser sessions; signing out doesn't affect them.
-- Every MCP tool call is audited with the token's user, and agent activity appears on [Agents](/docs/agents/).
+- Every MCP tool call is audited with the token's user, and agent activity appears on [AI Governance](/docs/agents/).
 
 ## Rotate and revoke
 

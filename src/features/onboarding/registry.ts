@@ -17,7 +17,7 @@ export const AUTHENTICATED_ROUTE_INVENTORY = [
   "/overview",
   "/monitoring/:tab?",
   "/data/:tab?/:a?/:b?",
-  "/agents/:tab?/:id?",
+  "/ai/:tab?/:id?",
   "/explorer",
   "/admin/:tab?",
   "/admin/users/create",
@@ -35,6 +35,7 @@ export const NON_GUIDED_ROUTE_INVENTORY = [
   "/metrics",
   "/settings",
   "/dataops/:feature?/:sub?",
+  "/agents/:tab?/:id?",
   "*",
 ] as const;
 
@@ -223,10 +224,10 @@ export const ONBOARDING_CHAPTERS: OnboardingChapter[] = [
     estimatedMinutes: 4,
     requiredAny: AGENTS_ACCESS_PERMISSIONS,
     steps: [
-      step("agents.sessions", "Agent sessions", "Every MCP and token session with its queries, bytes read, budget use and health notices; open one to replay its tool calls.", "/agents/sessions", { target: "agents-tab-sessions", requiredAny: [p.AGENTS_VIEW] }),
-      step("agents.policies", "Budgets and incident policy", "Cap reads per query and per day, require partition filters on large tables, and warn or block on tables with incidents.", "/agents/policies", { target: "agents-tab-policies", requiredAny: [p.AGENTS_VIEW] }),
-      step("agents.mcp", "MCP endpoint and tools", "Turn the MCP endpoint on, copy a client setup, and choose which tools agents get — reads are on by default, anything that changes or deletes things stays off until you turn it on.", "/agents/mcp", { target: "agents-tab-mcp", requiredAny: [p.AGENTS_VIEW] }),
-      step("agents.assistant", "CHouse's own AI agents", "Every AI feature and the chat run on an agent you can edit here: prompt, model, tools, skills, subagents and harness. Test a change before you save it, and reset any built-in agent to how it shipped.", "/agents/assistant", { target: "agents-tab-assistant", requiredAny: [p.AI_AGENTS_VIEW] }),
+      step("agents.sessions", "Agent sessions", "Every MCP and token session with its queries, bytes read, budget use and health notices; open one to replay its tool calls.", "/ai/sessions", { target: "agents-tab-sessions", requiredAny: [p.AGENTS_VIEW] }),
+      step("agents.policies", "Budgets and incident policy", "Cap reads per query and per day, require partition filters on large tables, and warn or block on tables with incidents.", "/ai/policies", { target: "agents-tab-policies", requiredAny: [p.AGENTS_VIEW] }),
+      step("agents.mcp", "MCP endpoint and tools", "Turn the MCP endpoint on, copy a client setup, and choose which tools agents get — reads are on by default, anything that changes or deletes things stays off until you turn it on.", "/ai/mcp", { target: "agents-tab-mcp", requiredAny: [p.AGENTS_VIEW] }),
+      step("agents.assistant", "CHouse's own AI agents", "Every AI feature and the chat run on an agent you can edit here: prompt, model, tools, skills, subagents and harness. Test a change before you save it, and reset any built-in agent to how it shipped.", "/ai/assistant", { target: "agents-tab-assistant", requiredAny: [p.AI_AGENTS_VIEW] }),
     ],
   },
   {

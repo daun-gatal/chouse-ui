@@ -68,6 +68,7 @@ const agentKeys = {
   sessions: (days: number) => [...agentKeys.all, "sessions", days] as const,
   session: (id: string) => [...agentKeys.all, "session", id] as const,
   policies: () => [...agentKeys.all, "policies"] as const,
+  policyScopes: () => [...agentKeys.all, "policy-scopes"] as const,
   mcp: () => [...agentKeys.all, "mcp"] as const,
 };
 
@@ -349,11 +350,15 @@ export function useAgentPolicies(enabled = true): UseQueryResult<agents.AgentPol
   return useQuery({ queryKey: agentKeys.policies(), queryFn: agents.listAgentPolicies, enabled });
 }
 
+export function useAgentPolicyScopes(enabled = true): UseQueryResult<agents.PolicyScopes> {
+  return useQuery({ queryKey: agentKeys.policyScopes(), queryFn: agents.listPolicyScopes, enabled });
+}
+
 export function useAgentMutations() {
   const client = useQueryClient();
   const invalidate = (): Promise<void> => client.invalidateQueries({ queryKey: agentKeys.all });
   return {
-    savePolicy: useMutation({ mutationFn: (input: agents.AgentPolicyInput) => agents.saveAgentPolicy(input), onSuccess: invalidate }),
+    assignPolicy: useMutation({ mutationFn: (input: Parameters<typeof agents.assignAgentPolicy>[0]) => agents.assignAgentPolicy(input), onSuccess: invalidate }),
     deletePolicy: useMutation({ mutationFn: (id: string) => agents.deleteAgentPolicy(id), onSuccess: invalidate }),
     pause: useMutation({ mutationFn: (paused: boolean) => agents.setAgentsPaused(paused), onSuccess: invalidate }),
   };
@@ -380,4 +385,19 @@ export function useUpdateMcpSettings(): UseMutationResult<agents.McpOverview, Er
 /** Connections the user may use (EXPLAIN compare, canary replay). */
 export function useMyConnections(enabled = true): UseQueryResult<ClickHouseConnection[]> {
   return useQuery({ queryKey: ["connections", "mine"], queryFn: () => rbacConnectionsApi.getMyConnections(), enabled, staleTime: 60_000 });
+}
+
+/**
+ * Display name of a connection. The active one comes from the session; any
+ * other is looked up, so a raw connection id is never shown.
+ */
+export function useConnectionName(connectionId: string | null | undefined): string | null {
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  const activeConnectionName = useAuthStore((s) => s.activeConnectionName);
+  const isActive = Boolean(connectionId) && connectionId === activeConnectionId && Boolean(activeConnectionName);
+  const { data, isLoading } = useMyConnections(Boolean(connectionId) && !isActive);
+  if (!connectionId) return null;
+  if (isActive) return activeConnectionName;
+  if (isLoading) return "Loading…";
+  return data?.find((c) => c.id === connectionId)?.name ?? "Unknown connection";
 }

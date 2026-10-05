@@ -26,7 +26,7 @@ const defaultOptions: CorsOptions = {
   // binding), which carries `Origin: null` — CORS is the wrong control here and
   // would block the assertion. Its real protections are XML-DSig verification +
   // the browser-bound RelayState cookie + replay/audience checks, not origin.
-  // The MCP endpoint applies its own Origin allowlist (Agents › MCP), which
+  // The MCP endpoint applies its own Origin allowlist (AI Governance › MCP), which
   // must be the only one: CORS_ORIGIN lists the UI, not agent hosts.
   bypassPaths: ["/api/health", "/api/rbac/health", "/api/rbac/status", "/auth/sso/saml/acs", "/mcp"],
 };

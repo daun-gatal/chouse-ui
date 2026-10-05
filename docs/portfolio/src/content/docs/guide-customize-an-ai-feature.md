@@ -6,7 +6,7 @@ You need `ai_agents:manage` and `ai:optimize`, a configured [AI model](/docs/ai-
 
 ## 1. Write the conventions as a skill
 
-**Agents › Assistant › Skills › New skill**:
+**AI Governance › Assistant › Skills › New skill**:
 
 - **Path**: `custom/team-sql-conventions`
 - **SKILL.md**:
@@ -28,7 +28,7 @@ When you rewrite a query:
 
 ## 2. Copy the built-in agent
 
-**Agents › Assistant › Features** → *SQL editor* → **Optimize query** → **Edit agent**. This opens *SQL Optimizer*. Click **Duplicate**: an editor opens for a new agent, *SQL Optimizer (copy)* with the slug `sql-optimizer-copy` — the same prompt, task template, tools and skills. It isn't saved, or bound to anything, until you say so.
+**AI Governance › Assistant › Features** → *SQL editor* → **Optimize query** → **Edit agent**. This opens *SQL Optimizer*. Click **Duplicate**: an editor opens for a new agent, *SQL Optimizer (copy)* with the slug `sql-optimizer-copy` — the same prompt, task template, tools and skills. It isn't saved, or bound to anything, until you say so.
 
 Working on a copy keeps the built-in untouched: CHouse upgrades keep improving it, and switching back is a rebind.
 
@@ -50,7 +50,7 @@ The copy isn't bound to a feature yet, so the editor's **Preview** has no featur
 
 ## 4. Test it before anyone else gets it
 
-**Agents › Assistant › Test console**:
+**AI Governance › Assistant › Test console**:
 
 - **Feature**: Optimize query
 - **Agent**: SQL Optimizer (team)

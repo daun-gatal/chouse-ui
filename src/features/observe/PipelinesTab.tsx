@@ -10,7 +10,7 @@ import { useMemo, useState, type ReactElement } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AlertTriangle, Workflow, X } from "lucide-react";
 
-import { parseTableNode, type Pipeline, type PipelineKind, type PipelineStatus } from "@/api/observe";
+import { isSystemDatabase, parseTableNode, type Pipeline, type PipelineKind, type PipelineStatus } from "@/api/observe";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ function SamplesSheet({ pipeline, onClose }: { pipeline: Pipeline | null; onClos
               </div>
               <div className="flex flex-wrap gap-2">
                 {pipeline.targetNode && <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.lineage(pipeline.targetNode ?? ""))}>Lineage</Button>}
-                {target && <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.dataset(target.database, target.table))}>Target dataset</Button>}
+                {target && !isSystemDatabase(target.database) && <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate(dataPaths.dataset(target.database, target.table))}>Target dataset</Button>}
               </div>
             </div>
           </>

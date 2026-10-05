@@ -66,7 +66,7 @@ Slack, Google Chat, email or any webhook. See [Alerting](/docs/alerting/).
 The [CLI](/docs/cli/) for scripts and CI; [MCP](/docs/mcp/) for AI agents. Both use personal access tokens and the same server rules.
 
 **Can agents change things?**
-Only with tools an administrator has switched on in **Agents › MCP** — reads are on by default, writes and destructive tools are off — and only within the token owner's permissions. Agent queries also pass [budget policies](/docs/agents/). Agents can propose fixes but there is no tool to approve one.
+Only with tools an administrator has switched on in **AI Governance › MCP** — reads are on by default, writes and destructive tools are off — and only within the token owner's permissions. Agent queries also pass [budget policies](/docs/agents/). Agents can propose fixes but there is no tool to approve one.
 
 ## Contributing
 

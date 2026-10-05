@@ -6,7 +6,7 @@ screenshot: data-incidents
 ---
 # Incidents, root cause & fixes
 
-**Data › Incidents** is one list of everything wrong with the data on the active connection: broken [promises](/docs/data-health/), stuck [pipelines](/docs/data-pipelines/), stale or degraded tables, and the part, replication and capacity problems underneath them. Each incident comes with a computed root cause, what it affects, and fixes that run only after approval.
+**Data › Incidents** is one list of everything wrong with the data on the active connection: broken [promises](/docs/data-health/), stuck [pipelines](/docs/data-pipelines/), stale or degraded tables, and the part, replication and capacity problems underneath them. Each incident comes with a computed root cause, what it affects, and fixes that run only after approval. Incidents name their connection, who acknowledged them, and the scheduled queries, tokens and people involved by their current names, never by id.
 
 ## Investigate an incident
 

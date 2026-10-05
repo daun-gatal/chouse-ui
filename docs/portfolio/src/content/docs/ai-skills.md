@@ -1,6 +1,6 @@
 ---
-app: Agents › Assistant › Skills
-route: /agents/assistant
+app: AI Governance › Assistant › Skills
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 screenshot: ai-agents-skills
 ---
@@ -55,7 +55,7 @@ Each agent sees only the skills linked to it, even if other skills share their g
 
 ## Managing skills
 
-**Agents › Assistant › Skills** lists every skill with its description, path, files, how many agents use it, and its status. Open one to edit:
+**AI Governance › Assistant › Skills** lists every skill with its description, path, files, how many agents use it, and its status. Open one to edit:
 
 - **SKILL.md** — the name and description are read from its front matter.
 - **Path** — where agents find it.

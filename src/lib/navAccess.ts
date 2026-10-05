@@ -84,5 +84,5 @@ export const DATA_ACCESS_PERMISSIONS: string[] = [
   RBAC_PERMISSIONS.DATA_HEALTH_VIEW,
 ];
 
-/** Having ANY of these reveals the Agents page (route + nav entry): external agents or the built-in AI agents. */
+/** Having ANY of these reveals the AI Governance page (route + nav entry): external agents or the built-in AI agents. */
 export const AGENTS_ACCESS_PERMISSIONS: string[] = [RBAC_PERMISSIONS.AGENTS_VIEW, RBAC_PERMISSIONS.AI_AGENTS_VIEW];

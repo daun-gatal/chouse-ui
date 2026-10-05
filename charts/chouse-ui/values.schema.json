@@ -175,7 +175,7 @@
       "additionalProperties": false
     },
     "mcp": {
-      "description": "Removed in chart 2.0.0 and ignored: MCP is served at /mcp on the web port and configured in Agents › MCP. Accepted so existing values files still upgrade; the install notes warn while it is set.",
+      "description": "Removed in chart 2.0.0 and ignored: MCP is served at /mcp on the web port and configured in AI Governance › MCP. Accepted so existing values files still upgrade; the install notes warn while it is set.",
       "type": "object"
     },
     "service": {

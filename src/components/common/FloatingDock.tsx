@@ -406,7 +406,7 @@ export default function FloatingDock() {
     ...(canViewData ? [{ icon: Workflow, label: "Data", to: "/data" }] : []),
     ...(canViewFleet ? [{ icon: Globe2, label: "Fleet", to: "/fleet" }] : []),
     ...(canViewDoctor ? [{ icon: Stethoscope, label: "Doctor", to: "/doctor" }] : []),
-    ...(canViewAgents ? [{ icon: Bot, label: "Agents", to: "/agents" }] : []),
+    ...(canViewAgents ? [{ icon: Bot, label: "AI Governance", to: "/ai" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
     { icon: UserCog, label: "Preferences", to: "/preferences" },
   ];

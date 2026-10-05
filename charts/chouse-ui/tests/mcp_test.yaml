@@ -48,7 +48,7 @@ tests:
             - port: 5521
               protocol: TCP
 
-  - it: points at Agents › MCP in the install notes
+  - it: points at AI Governance › MCP in the install notes
     template: NOTES.txt
     set:
       secrets.existingSecret: s

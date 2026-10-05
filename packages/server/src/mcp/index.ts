@@ -4,7 +4,7 @@
  * Served at `/mcp` on the main web port, so it reaches agents through the
  * same Service, Ingress and TLS as the UI — no second listener to expose.
  * Every request: settings check (an administrator turns MCP on in
- * Agents › MCP), Origin validation (spec MUST), PAT-only auth via
+ * AI Governance › MCP), Origin validation (spec MUST), PAT-only auth via
  * verifyBearer(), then the stateless Streamable HTTP transport (no protocol
  * sessions, so multi-replica is correct with zero pod-local state).
  *
@@ -17,6 +17,9 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp";
 import { AppError } from "../types";
+import { describeAgentClient, initializeClientName } from "../services/agents/clients";
+import * as agentStore from "../services/agents/store";
+import { logger } from "../utils/logger";
 import { createMcpAuthMiddleware, type McpTokenVerifier } from "./auth";
 import { originGuard } from "./origin";
 import { getMcpSettings, type StoredMcpSettings } from "./settings";
@@ -53,7 +56,7 @@ export function createMcpApp(deps: McpDeps, options?: McpAppOptions): { app: Hon
           success: false,
           error: {
             code: "MCP_DISABLED",
-            message: "The MCP endpoint is turned off. An administrator can turn it on in Agents › MCP.",
+            message: "The MCP endpoint is turned off. An administrator can turn it on in AI Governance › MCP.",
           },
         },
         404
@@ -80,11 +83,20 @@ export function createMcpApp(deps: McpDeps, options?: McpAppOptions): { app: Hon
     const settings = c.get("mcpSettings");
     const identity: McpIdentity = c.get("mcpIdentity");
     const token: string = c.get("mcpToken");
+    const initializeName = c.req.method === "POST" ? initializeClientName(await c.req.raw.clone().json().catch(() => null)) : null;
+    const clientName = describeAgentClient(initializeName) ?? describeAgentClient(c.req.header("User-Agent"));
+    if (initializeName) {
+      // Stateless MCP sees clientInfo only here; put it on the session now so every later call shows it.
+      await agentStore.touchSession(identity.patId ?? null, identity.userId, "mcp", clientName).catch((err: unknown) => {
+        logger.warn({ module: "Mcp", err: err instanceof Error ? err.message : String(err) }, "Failed to record MCP client");
+      });
+    }
     const mcp: McpToolContext = {
       identity,
       token,
       connectionId: c.req.header("X-Connection-Id"),
       clientIp: c.req.header("X-Forwarded-For") || c.req.header("X-Real-IP"),
+      clientName,
       timeoutMs: settings.timeoutSeconds * 1000,
     };
 

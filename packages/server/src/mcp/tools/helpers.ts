@@ -69,7 +69,7 @@ async function recordAgentToolCall(
 ): Promise<void> {
   if (scope.recorded) return;
   try {
-    const session = await agentStore.touchSession(ctx.identity.patId ?? null, ctx.identity.userId, "mcp", null);
+    const session = await agentStore.touchSession(ctx.identity.patId ?? null, ctx.identity.userId, "mcp", ctx.clientName ?? null);
     await agentStore.recordToolCall({
       sessionId: session.id,
       patId: ctx.identity.patId ?? null,

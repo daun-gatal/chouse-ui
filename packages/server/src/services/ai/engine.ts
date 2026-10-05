@@ -135,10 +135,10 @@ export function boundAgent(snapshot: RegistrySnapshot, featureId: string): Agent
   const binding = snapshot.bindings.get(featureId);
   const agent = binding ? snapshot.agents.get(binding.agentId) : undefined;
   if (!agent) {
-    throw AppError.badRequest(`AI feature '${featureId}' has no valid agent — bind one in Agents › Assistant.`);
+    throw AppError.badRequest(`AI feature '${featureId}' has no valid agent — bind one in AI Governance › Assistant.`);
   }
   if (!agent.enabled) {
-    throw AppError.badRequest(`AI feature '${featureId}' is bound to the disabled agent '${agent.name}' — enable it or rebind the feature in Agents › Assistant.`);
+    throw AppError.badRequest(`AI feature '${featureId}' is bound to the disabled agent '${agent.name}' — enable it or rebind the feature in AI Governance › Assistant.`);
   }
   return agent;
 }

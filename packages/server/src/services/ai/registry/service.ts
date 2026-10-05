@@ -1,5 +1,5 @@
 /**
- * Registry management (ADR 0019 §10): the operations behind Agents › Assistant.
+ * Registry management (ADR 0019 §10): the operations behind AI Governance › Assistant.
  *
  * Every write is validated against the whole registry (a change may not
  * introduce problems), recorded as a revision, and bumps the registry version.

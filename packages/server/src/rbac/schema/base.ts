@@ -142,7 +142,7 @@ export const PERMISSIONS = {
   AI_MODELS_DELETE: 'ai_models:delete',
 
   // AI agent registry (ADR 0019): every DeepAgents agent, harness, skill and
-  // feature binding is managed in Agents › Assistant.
+  // feature binding is managed in AI Governance › Assistant.
   AI_AGENTS_VIEW: 'ai_agents:view',
   AI_AGENTS_MANAGE: 'ai_agents:manage',
 

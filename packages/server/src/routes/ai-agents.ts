@@ -1,5 +1,5 @@
 /**
- * `/api/ai-agents` — the AI agent registry behind Agents › Assistant (ADR 0019).
+ * `/api/ai-agents` — the AI agent registry behind AI Governance › Assistant (ADR 0019).
  *
  * Permission map:
  *   registry, revisions, prompt preview                ai_agents:view

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for Agents › Assistant (ADR 0019): grouping, compatibility
+ * Pure helpers for AI Governance › Assistant (ADR 0019): grouping, compatibility
  * previews, agent trees, drafts and test-console inputs. The server validates
  * every save; these only shape the UI and give early hints.
  */

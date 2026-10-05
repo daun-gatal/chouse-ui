@@ -52,10 +52,10 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "PORT", section: "Core server", default: "5521", description: "HTTP port for the UI, the API and the MCP endpoint (`/mcp`)." },
   { name: "NODE_ENV", section: "Core server", default: "development", description: "Set `production` for real deployments: the server then refuses to start without `JWT_SECRET`, `RBAC_ENCRYPTION_KEY` and `RBAC_ENCRYPTION_SALT`, tightens the content security policy and enforces `CORS_ORIGIN`." },
   { name: "STATIC_PATH", section: "Core server", default: "./dist", description: "Directory of the built frontend the server serves." },
-  { name: "CORS_ORIGIN", section: "Core server", default: "*", description: "Allowed browser origins, comma-separated. Set your domain in production — `*` logs a warning there. The MCP endpoint ignores it and uses its own allowed origins (Agents › MCP)." },
+  { name: "CORS_ORIGIN", section: "Core server", default: "*", description: "Allowed browser origins, comma-separated. Set your domain in production — `*` logs a warning there. The MCP endpoint ignores it and uses its own allowed origins (AI Governance › MCP)." },
   { name: "LOG_LEVEL", section: "Core server", default: "info", description: "`trace`, `debug`, `info`, `warn`, `error` or `fatal`. Logs are JSON (Pino)." },
   { name: "CHOUSE_CONFIG_PATH", section: "Core server", description: "Path to a YAML configuration file. Its keys are flattened into these variable names and **override** the environment — see [YAML configuration](/docs/configuration-yaml/)." },
-  { name: "PUBLIC_BASE_URL", section: "Core server", description: "The URL people and agents use to reach CHouse UI, e.g. `https://chouse.example.com`. Used for links in Slack approval messages and as the MCP endpoint address when Agents › MCP has no public address set." },
+  { name: "PUBLIC_BASE_URL", section: "Core server", description: "The URL people and agents use to reach CHouse UI, e.g. `https://chouse.example.com`. Used for links in Slack approval messages and as the MCP endpoint address when AI Governance › MCP has no public address set." },
   { name: "VERSION", section: "Core server", default: "dev", description: "Version string shown in the UI and returned by `/api/config`. Set by the release image; leave it alone." },
 
   // ClickHouse defaults
@@ -131,8 +131,8 @@ export const CONFIG_KEYS: ConfigKey[] = [
 
   // Removed / deprecated
   { name: "FLEET_POLLER_ENABLED", section: "Removed or deprecated", status: "deprecated", description: "Ignored since 3.14 — fleet collection always runs. A warning is logged when it is set." },
-  { name: "MCP_ENABLED", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. Turn the endpoint on in Agents › MCP. A warning names any `MCP_*` key still set." },
+  { name: "MCP_ENABLED", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. Turn the endpoint on in AI Governance › MCP. A warning names any `MCP_*` key still set." },
   { name: "MCP_PORT", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. MCP is served at `/mcp` on `PORT`." },
   { name: "MCP_HOST", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. MCP is served at `/mcp` on `PORT`." },
-  { name: "MCP_ALLOW_WRITES", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. Turn write tools on one by one in Agents › MCP." },
+  { name: "MCP_ALLOW_WRITES", section: "Removed or deprecated", status: "removed", description: "Removed in 3.14. Turn write tools on one by one in AI Governance › MCP." },
 ];

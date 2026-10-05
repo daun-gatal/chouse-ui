@@ -1,5 +1,5 @@
 /**
- * Agents › Assistant list views: every AI feature with its bound agent, the
+ * AI Governance › Assistant list views: every AI feature with its bound agent, the
  * agent tree, and the read-only tool catalog.
  */
 

@@ -31,7 +31,7 @@ function renderDockItem(): QueryClient {
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
           <Route path="/" element={<McpStatusDockItem />} />
-          <Route path="/agents/mcp" element={<p>Agents MCP page</p>} />
+          <Route path="/ai/mcp" element={<p>AI Governance MCP page</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -44,19 +44,19 @@ describe("McpStatusDockItem", () => {
     canViewAgents = false;
   });
 
-  it("opens Agents › MCP for people who can see Agents", async () => {
+  it("opens AI Governance › MCP for people who can see AI Governance", async () => {
     canViewAgents = true;
     renderDockItem();
 
     fireEvent.click(await screen.findByRole("button", { name: "MCP server: enabled" }));
-    expect(await screen.findByText("Agents MCP page")).toBeTruthy();
+    expect(await screen.findByText("AI Governance MCP page")).toBeTruthy();
   });
 
   it("stays a plain indicator without agents:view", async () => {
     renderDockItem();
 
     fireEvent.click(await screen.findByRole("button", { name: "MCP server: enabled" }));
-    expect(screen.queryByText("Agents MCP page")).toBeNull();
+    expect(screen.queryByText("AI Governance MCP page")).toBeNull();
   });
 
   it("renders the enabled state once the config flag resolves", async () => {

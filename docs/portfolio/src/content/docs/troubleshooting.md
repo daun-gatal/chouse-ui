@@ -43,11 +43,11 @@ Find the symptom, check the cause, apply the fix. Server logs are JSON (Pino) on
 | AI buttons missing for one user | No `ai:optimize` / `ai:chat` | Grant them through a role |
 | No alert delivered | Channel misconfigured or disabled | **Send test** on the channel in [Alerting](/docs/alerting/) |
 | Doctor scheduled scan didn't run | Schedule disabled, or no AI model | Check **Scheduled scans** on the [Doctor](/docs/doctor/#scheduled-scans) page |
-| MCP returns `404 MCP_DISABLED` | The endpoint is off (the default) | Turn it on in **Agents › MCP** — see [MCP](/docs/mcp/) |
-| MCP returns `403 ORIGIN_NOT_ALLOWED` | The client sends an `Origin` that isn't allowed | Add the origin in **Agents › MCP**, or use a client that sends none |
+| MCP returns `404 MCP_DISABLED` | The endpoint is off (the default) | Turn it on in **AI Governance › MCP** — see [MCP](/docs/mcp/) |
+| MCP returns `403 ORIGIN_NOT_ALLOWED` | The client sends an `Origin` that isn't allowed | Add the origin in **AI Governance › MCP**, or use a client that sends none |
 | MCP or CLI returns `401` | Token revoked, expired or mistyped | Create a new [token](/docs/personal-access-tokens/) |
-| An agent can't see a tool | The tool is off, or the token lacks its permission | Check the tool in **Agents › MCP** and the [tool catalog](/docs/mcp-tools/) |
-| Agent queries blocked | A budget policy, or agent access is paused | See **Agents › Policies** — see [Agents](/docs/agents/) |
+| An agent can't see a tool | The tool is off, or the token lacks its permission | Check the tool in **AI Governance › MCP** and the [tool catalog](/docs/mcp-tools/) |
+| Agent queries blocked | A budget policy, or agent access is paused | See **AI Governance › Policies** — see [AI Governance](/docs/agents/) |
 
 ## Start-up & upgrades
 

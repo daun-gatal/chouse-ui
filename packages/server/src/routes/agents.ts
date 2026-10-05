@@ -21,6 +21,9 @@ import { listToolDefinitions, MCP_PATH, toolCatalog } from "../mcp/server";
 import { getMcpSettings, mcpSettingsUpdateSchema, saveMcpSettings, type StoredMcpSettings } from "../mcp/settings";
 import { AppError, requireParam } from "../types";
 import { canSeeAllQueryText } from "./observe/access";
+import { principalLabels } from "../services/observe/principals";
+import { describeAgentClient } from "../services/agents/clients";
+import { all, sql, str, strOrNull } from "../services/observe/db";
 
 const agentsRoute = new Hono();
 agentsRoute.use("*", rbacAuthMiddleware);
@@ -44,9 +47,66 @@ agentsRoute.get("/summary", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c
   });
 });
 
+/** Role names → display names for each user, in one query. */
+async function rolesByUser(userIds: string[]): Promise<Map<string, Array<{ name: string; label: string }>>> {
+  const out = new Map<string, Array<{ name: string; label: string }>>();
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return out;
+  const rows = await all(sql`
+    SELECT ur.user_id, r.name, r.display_name FROM rbac_user_roles ur JOIN rbac_roles r ON r.id = ur.role_id
+    WHERE ur.user_id IN (${sql.join(unique.map((id) => sql`${id}`), sql`, `)}) ORDER BY r.priority DESC, r.display_name`);
+  for (const r of rows) {
+    const list = out.get(str(r.user_id)) ?? [];
+    list.push({ name: str(r.name), label: strOrNull(r.display_name) || str(r.name) });
+    out.set(str(r.user_id), list);
+  }
+  return out;
+}
+
+interface SessionPolicy {
+  source: agents.AppliedPolicy["source"];
+  /** What the applied policy targets, by display name. */
+  label: string;
+  dailyBytes: number | null;
+}
+
+/**
+ * Sessions record token and user ids; the UI shows the client, the token and
+ * its owner, the user's roles and the policy that governs it, all by name.
+ */
+async function withNames<T extends agents.AgentSession>(sessions: T[]): Promise<Array<T & { patName: string | null; userName: string | null; roles: Array<{ name: string; label: string }>; policy: SessionPolicy }>> {
+  const patIds = [...new Set(sessions.flatMap((s) => (s.patId ? [s.patId] : [])))];
+  const [labels, tokenNames, roles, policies] = await Promise.all([
+    principalLabels(sessions.flatMap((s) => (s.userId ? [{ kind: "person", id: s.userId }] : []))),
+    patIds.length
+      ? all(sql`SELECT id, name FROM rbac_api_keys WHERE id IN (${sql.join(patIds.map((id) => sql`${id}`), sql`, `)})`).then((rows) => new Map(rows.map((r) => [str(r.id), str(r.name)])))
+      : Promise.resolve(new Map<string, string>()),
+    rolesByUser(sessions.flatMap((s) => (s.userId ? [s.userId] : []))),
+    agents.listPolicies(),
+  ]);
+  return Promise.all(sessions.map(async (s) => {
+    const userRoles = s.userId ? roles.get(s.userId) ?? [] : [];
+    const applied = await agents.appliedPolicy(s.patId, userRoles.map((r) => r.name), policies);
+    const roleLabel = (name: string): string => userRoles.find((r) => r.name === name)?.label ?? name;
+    return {
+      ...s,
+      // Normalized at read time too, so sessions recorded before client detection read the same way.
+      clientName: describeAgentClient(s.clientName),
+      patName: s.patId ? tokenNames.get(s.patId) ?? "Deleted token" : null,
+      userName: s.userId ? labels.get(`person:${s.userId}`) ?? null : null,
+      roles: userRoles,
+      policy: {
+        source: applied.source,
+        label: applied.source === "pat" ? "This token" : applied.source === "role" ? applied.scopeIds.map(roleLabel).join(", ") : applied.source === "default" ? "Default" : "No policy",
+        dailyBytes: applied.policy.dailyBytes,
+      },
+    };
+  }));
+}
+
 agentsRoute.get("/sessions", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => {
   const days = Math.min(30, Math.max(1, Number(c.req.query("days") ?? 1)));
-  return ok(c, { sessions: await agents.listSessions(Date.now() - days * 86_400_000) });
+  return ok(c, { sessions: await withNames(await agents.listSessions(Date.now() - days * 86_400_000)) });
 });
 
 agentsRoute.get("/sessions/:id", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => {
@@ -54,15 +114,55 @@ agentsRoute.get("/sessions/:id", requirePermission(PERMISSIONS.AGENTS_VIEW), asy
   if (!session) throw AppError.notFound("Session not found");
   const own = session.userId === getRbacUser(c).sub;
   const calls = await agents.listToolCalls(session.id);
-  return ok(c, { session, calls: own || canSeeAllQueryText(c) ? calls : calls.map((call) => ({ ...call, argsSummary: call.argsSummary ? "(hidden: needs query:history:view:all)" : null })) });
+  return ok(c, { session: (await withNames([session]))[0], calls: own || canSeeAllQueryText(c) ? calls : calls.map((call) => ({ ...call, argsSummary: call.argsSummary ? "(hidden: needs query:history:view:all)" : null })) });
 });
 
-agentsRoute.get("/policies", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => ok(c, { policies: await agents.listPolicies() }));
+agentsRoute.get("/policies", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => ok(c, { policies: await agents.withScopeLabels(await agents.listPolicies()) }));
+
+/** What a policy can be scoped to, by display name: every role and every active token. */
+agentsRoute.get("/policy-scopes", requirePermission(PERMISSIONS.AGENTS_MANAGE), async (c) => ok(c, await agents.listPolicyScopes()));
 
 agentsRoute.put("/policies", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator("json", agents.policyInputSchema), async (c) => {
-  const policy = await agents.upsertPolicy(c.req.valid("json"), getRbacUser(c).sub);
+  const input = c.req.valid("json");
+  if (!(await agents.policyScopeExists(input.scopeKind, input.scopeId))) {
+    throw AppError.badRequest(input.scopeKind === "role" ? "That role does not exist" : input.scopeKind === "pat" ? "That token does not exist or was revoked" : "The default policy applies to every agent");
+  }
+  const policy = await agents.upsertPolicy(input, getRbacUser(c).sub);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_POLICY_UPDATE, getRbacUser(c).sub, { resourceType: "agent_policy", resourceId: policy.id, details: { scopeKind: policy.scopeKind, scopeId: policy.scopeId } });
   return ok(c, policy);
+});
+
+const policyTargetSchema = agents.policyInputSchema.pick({ scopeKind: true, scopeId: true });
+const policyAssignSchema = z.object({
+  settings: agents.policyInputSchema.omit({ scopeKind: true, scopeId: true }),
+  /** Everything the policy applies to; each target keeps a single policy, so assigning one moves it here. */
+  targets: z.array(policyTargetSchema).min(1).max(200),
+  /** Policies of the group being edited whose target was deselected. */
+  removeIds: z.array(z.string().min(1).max(100)).max(200).default([]),
+});
+
+/** One policy, many roles / tokens: the same limits written to every target (the wizard's save). */
+agentsRoute.put("/policies/assign", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator("json", policyAssignSchema), async (c) => {
+  const { settings, targets, removeIds } = c.req.valid("json");
+  // Validate every target before writing anything, so a bad pick never leaves a half-saved policy.
+  for (const t of targets) {
+    if (!(await agents.policyScopeExists(t.scopeKind, t.scopeId))) {
+      throw AppError.badRequest(t.scopeKind === "role" ? `Role '${t.scopeId}' does not exist` : t.scopeKind === "pat" ? "A selected token does not exist or was revoked" : "The default policy applies to every agent");
+    }
+  }
+  const actor = getRbacUser(c).sub;
+  const saved: agents.StoredPolicy[] = [];
+  for (const t of targets) {
+    const policy = await agents.upsertPolicy({ ...settings, ...t }, actor);
+    saved.push(policy);
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_POLICY_UPDATE, actor, { resourceType: "agent_policy", resourceId: policy.id, details: { scopeKind: policy.scopeKind, scopeId: policy.scopeId } });
+  }
+  const keep = new Set(saved.map((p) => p.id));
+  for (const id of removeIds.filter((id) => !keep.has(id))) {
+    await agents.deletePolicy(id);
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_POLICY_UPDATE, actor, { resourceType: "agent_policy", resourceId: id, details: { deleted: true } });
+  }
+  return ok(c, { policies: await agents.withScopeLabels(saved) });
 });
 
 agentsRoute.delete("/policies/:id", requirePermission(PERMISSIONS.AGENTS_MANAGE), async (c) => {
@@ -82,7 +182,7 @@ agentsRoute.post("/pause", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValida
 // --- MCP (ADR 0017) ---------------------------------------------------------------
 
 /**
- * Where agents reach /mcp: the address set in Agents › MCP, else
+ * Where agents reach /mcp: the address set in AI Governance › MCP, else
  * PUBLIC_BASE_URL, else unknown here (the UI falls back to its own origin,
  * which is right whenever people and agents use the same address).
  */

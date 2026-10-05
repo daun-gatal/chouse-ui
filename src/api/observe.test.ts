@@ -24,6 +24,7 @@ import {
   listIncidents,
   listPipelines,
   parseTableNode,
+  isSystemDatabase,
   pinCriticality,
   preflightDdl,
   recomputeRca,
@@ -151,6 +152,17 @@ describe("Chouse AI incident explanation", () => {
     );
     expect((await explainIncident("observe", "o1", { modelId: "m1" })).confidence).toBe("high");
     expect(body).toEqual({ capability: "explain-incident", input: { source: "observe", incidentId: "o1" }, modelId: "m1" });
+  });
+});
+
+describe("isSystemDatabase", () => {
+  it("recognises ClickHouse's own databases in any case", () => {
+    expect(isSystemDatabase("system")).toBe(true);
+    expect(isSystemDatabase("INFORMATION_SCHEMA")).toBe(true);
+    expect(isSystemDatabase("information_schema")).toBe(true);
+    expect(isSystemDatabase("shop")).toBe(false);
+    expect(isSystemDatabase("system_logs")).toBe(false);
+    expect(isSystemDatabase(null)).toBe(false);
   });
 });
 

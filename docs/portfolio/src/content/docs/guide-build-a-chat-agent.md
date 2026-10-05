@@ -4,7 +4,7 @@ This guide adds a chat agent for one team — a *Shop Analyst* that knows the `s
 
 ## 1. Describe the data in a skill
 
-**Agents › Assistant › Skills › New skill**, path `custom/shop-data`:
+**AI Governance › Assistant › Skills › New skill**, path `custom/shop-data`:
 
 ```md
 ---
@@ -27,7 +27,7 @@ Keep definitions here rather than in the prompt: you can pin the skill to more t
 
 ## 2. Create the agent
 
-**Agents › Assistant › Agents › New agent**:
+**AI Governance › Assistant › AI Governance › New agent**:
 
 - **Name** `Shop Analyst`, **Slug** `shop-analyst`
 - Leave **Runs an AI feature** off — this is a chat agent.

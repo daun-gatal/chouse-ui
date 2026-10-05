@@ -1,6 +1,6 @@
 /**
  * Write tools: reversible-ish operational actions.
- * Off until an administrator turns each one on in Agents › MCP (ADR 0017).
+ * Off until an administrator turns each one on in AI Governance › MCP (ADR 0017).
  */
 
 import { z } from "zod";

@@ -159,7 +159,8 @@ export function useJobOwners(jobs: ScheduledQuery[] | undefined, enabled: boolea
     for (const u of usersQuery.data?.users ?? []) {
       byId.set(u.id, u.displayName || u.username || u.email || u.id);
     }
-    const nameOf = (id: string | null): string => (id ? byId.get(id) ?? `user ${id.slice(0, 8)}` : "—");
+    // The list holds active users only; never fall back to a raw id.
+    const nameOf = (id: string | null): string => (id ? byId.get(id) ?? "Inactive or deleted user" : "—");
     const ownerIds = new Set<string>();
     for (const j of jobs ?? []) if (j.createdBy) ownerIds.add(j.createdBy);
     const options: OwnerOption[] = [...ownerIds]

@@ -1,18 +1,27 @@
 /**
  * Agent budget policy form ↔ API shape (ADR 0016 §10). The form edits sizes
  * in GiB; the API stores bytes. An empty field means "no limit".
+ *
+ * A policy applies to one or more targets (every agent, roles, tokens). The
+ * server keeps one row per target, so a "policy" in the UI is the group of
+ * rows that share the same limits.
  */
 
-import type { AgentPolicy, AgentPolicyInput } from "@/api/agents";
+import type { AgentPolicy, AgentPolicyInput, AgentPolicySettings, AgentPolicyTarget } from "@/api/agents";
 
 export interface PolicyForm {
-  scopeKind: AgentPolicyInput["scopeKind"];
-  scopeId: string;
   maxGiBPerQuery: string;
   dailyGiB: string;
   partitionFilterGiB: string;
   incidentMode: AgentPolicyInput["incidentMode"];
   alertMultiplier: string;
+}
+
+export interface PolicyGroup {
+  /** Stable while the limits are unchanged. */
+  key: string;
+  settings: AgentPolicySettings;
+  members: AgentPolicy[];
 }
 
 const GIB = 1024 ** 3;
@@ -21,18 +30,16 @@ function gib(bytes: number | null): string {
   return bytes === null ? "" : String(Math.round((bytes / GIB) * 100) / 100);
 }
 
-export function policyToForm(policy?: AgentPolicy): PolicyForm {
-  if (!policy) {
-    return { scopeKind: "default", scopeId: "*", maxGiBPerQuery: "", dailyGiB: "", partitionFilterGiB: "", incidentMode: "warn", alertMultiplier: "" };
+export function policyToForm(settings?: AgentPolicySettings): PolicyForm {
+  if (!settings) {
+    return { maxGiBPerQuery: "", dailyGiB: "", partitionFilterGiB: "", incidentMode: "warn", alertMultiplier: "" };
   }
   return {
-    scopeKind: policy.scopeKind,
-    scopeId: policy.scopeId,
-    maxGiBPerQuery: gib(policy.maxBytesPerQuery),
-    dailyGiB: gib(policy.dailyBytes),
-    partitionFilterGiB: gib(policy.partitionFilterBytes),
-    incidentMode: policy.incidentMode,
-    alertMultiplier: policy.alertMultiplier === null ? "" : String(policy.alertMultiplier),
+    maxGiBPerQuery: gib(settings.maxBytesPerQuery),
+    dailyGiB: gib(settings.dailyBytes),
+    partitionFilterGiB: gib(settings.partitionFilterBytes),
+    incidentMode: settings.incidentMode,
+    alertMultiplier: settings.alertMultiplier === null ? "" : String(settings.alertMultiplier),
   };
 }
 
@@ -44,10 +51,8 @@ function bytesOrNull(value: string, label: string): number | null | string {
   return Math.round(n * GIB);
 }
 
-/** API input, or the first validation problem. */
-export function formToPolicy(form: PolicyForm): AgentPolicyInput | { error: string } {
-  const scopeId = form.scopeKind === "default" ? "*" : form.scopeId.trim();
-  if (!scopeId) return { error: form.scopeKind === "pat" ? "Pick a token id" : "Pick a role" };
+/** API settings, or the first validation problem. */
+export function formToSettings(form: PolicyForm): AgentPolicySettings | { error: string } {
   const maxBytesPerQuery = bytesOrNull(form.maxGiBPerQuery, "Max read per query");
   const dailyBytes = bytesOrNull(form.dailyGiB, "Daily read budget");
   const partitionFilterBytes = bytesOrNull(form.partitionFilterGiB, "Partition filter threshold");
@@ -59,14 +64,45 @@ export function formToPolicy(form: PolicyForm): AgentPolicyInput | { error: stri
     alertMultiplier = n;
   }
   return {
-    scopeKind: form.scopeKind,
-    scopeId,
     maxBytesPerQuery: typeof maxBytesPerQuery === "number" ? maxBytesPerQuery : null,
     dailyBytes: typeof dailyBytes === "number" ? dailyBytes : null,
     partitionFilterBytes: typeof partitionFilterBytes === "number" ? partitionFilterBytes : null,
     incidentMode: form.incidentMode,
     alertMultiplier,
   };
+}
+
+export function targetKey(target: AgentPolicyTarget): string {
+  return `${target.scopeKind}:${target.scopeId}`;
+}
+
+function settingsKey(s: AgentPolicySettings): string {
+  return [s.maxBytesPerQuery, s.dailyBytes, s.partitionFilterBytes, s.incidentMode, s.alertMultiplier].join("|");
+}
+
+const KIND_ORDER: Record<AgentPolicyTarget["scopeKind"], number> = { default: 0, role: 1, pat: 2 };
+
+/** Rows with identical limits are one policy; the default-scoped group first, then by size. */
+export function groupPolicies(policies: AgentPolicy[]): PolicyGroup[] {
+  const groups = new Map<string, PolicyGroup>();
+  for (const p of policies) {
+    const settings: AgentPolicySettings = { maxBytesPerQuery: p.maxBytesPerQuery, dailyBytes: p.dailyBytes, partitionFilterBytes: p.partitionFilterBytes, incidentMode: p.incidentMode, alertMultiplier: p.alertMultiplier };
+    const key = settingsKey(settings);
+    const group = groups.get(key) ?? { key, settings, members: [] };
+    group.members.push(p);
+    groups.set(key, group);
+  }
+  const out = [...groups.values()];
+  for (const g of out) g.members.sort((a, b) => KIND_ORDER[a.scopeKind] - KIND_ORDER[b.scopeKind] || (a.scopeLabel ?? a.scopeId).localeCompare(b.scopeLabel ?? b.scopeId));
+  const hasDefault = (g: PolicyGroup): boolean => g.members.some((m) => m.scopeKind === "default");
+  return out.sort((a, b) => Number(hasDefault(b)) - Number(hasDefault(a)) || b.members.length - a.members.length);
+}
+
+/** What a save sends: the chosen targets, and the group's rows that were deselected. */
+export function assignment(group: PolicyGroup | undefined, targets: AgentPolicyTarget[]): { targets: AgentPolicyTarget[]; removeIds: string[] } | { error: string } {
+  if (targets.length === 0) return { error: "Choose at least one role, token or every agent" };
+  const chosen = new Set(targets.map(targetKey));
+  return { targets, removeIds: (group?.members ?? []).filter((m) => !chosen.has(targetKey(m))).map((m) => m.id) };
 }
 
 /** Share of the daily budget a session has used, 0..1, or null without a budget. */

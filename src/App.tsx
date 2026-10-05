@@ -9,7 +9,7 @@ import FleetPage from "@/pages/Fleet";
 import DoctorPage from "@/pages/Doctor";
 import MonitoringPage from "@/pages/Monitoring";
 import DataPage, { LegacyDataOpsRedirect } from "@/pages/Data";
-import AgentsPage from "@/pages/Agents";
+import AgentsPage, { LegacyAgentsRedirect } from "@/pages/Agents";
 import PreferencesPage from "@/pages/Preferences";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
@@ -233,15 +233,18 @@ export default function App() {
               {/* Old DataOps bookmarks */}
               <Route path="/dataops/:feature?/:sub?" element={<LegacyDataOpsRedirect />} />
 
-              {/* Agents - MCP / PAT sessions, budgets and the pause switch (ADR 0016) */}
+              {/* AI Governance - MCP / PAT sessions, budgets, the pause switch (ADR 0016) and CHouse's own AI agents (ADR 0019) */}
               <Route
-                path="/agents/:tab?/:id?"
+                path="/ai/:tab?/:id?"
                 element={
                   <AdminRoute requiredPermission={AGENTS_ACCESS_PERMISSIONS}>
                     <AgentsPage />
                   </AdminRoute>
                 }
               />
+
+              {/* The page was called Agents before 3.15 */}
+              <Route path="/agents/:tab?/:id?" element={<LegacyAgentsRedirect />} />
 
               {/* Explorer */}
               <Route

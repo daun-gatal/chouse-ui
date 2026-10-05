@@ -50,6 +50,7 @@ import { MultiSelect } from "./MultiSelect";
 import { MacrosHelp } from "./MacrosHelp";
 import { assessScheduledQuery, draftScheduledQuery, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
 import { AssessmentView } from "@/features/dataops-ai";
+import { useConnectionName } from "@/features/observe/hooks";
 import { useDataOpsModelId } from "@/hooks";
 
 // Heavy Monaco editor — lazy so its chunk only loads when the builder opens.
@@ -242,7 +243,8 @@ export function JobWizard({ isOpen, onClose, job, prefill, onCreated }: JobWizar
   // The job runs on the currently active connection (create); an edited job keeps
   // its original connection. No picker — it follows the connection the user has
   // selected in the app, exactly like an interactive query.
-  const connectionName = job ? (job.connectionId === activeConnectionId ? activeConnectionName : job.connectionId) : activeConnectionName;
+  const jobConnectionName = useConnectionName(job?.connectionId);
+  const connectionName = job ? jobConnectionName : activeConnectionName;
 
   // Steps shown — Output only when the user can author materialize jobs.
   const steps = useMemo(() => (canWrite ? STEPS : STEPS.filter((s) => s !== "Output")), [canWrite]);
@@ -493,7 +495,7 @@ function SourceStep({ form, update, connectionName, preview, onValidate, validat
       <div className={sectionCls}>
         <Label className={labelCls}>Connection</Label>
         <div className="flex h-9 items-center rounded-xs border border-ink-500 bg-ink-50 px-3 text-[12px] text-paper">
-          {connectionName || form.connectionId || "No active connection — select one in the app first"}
+          {connectionName || "No active connection — select one in the app first"}
         </div>
         <p className="text-[11px] text-paper-muted">Runs on your active connection, using its ClickHouse credentials.</p>
       </div>
@@ -852,7 +854,7 @@ function ReviewStep({ form, channels, connectionName }: { form: FormState; chann
   const selectedChannels = channels.filter((c) => form.channelIds.includes(c.id)).map((c) => c.name);
   const rows: Array<[string, string]> = [
     ["Name", form.name],
-    ["Connection", connectionName ?? form.connectionId],
+    ["Connection", connectionName ?? "—"],
     ["Frequency", form.frequency === "cron" ? `cron ${form.cronExpr}` : form.frequency],
     ["Alert on failure", selectedChannels.length > 0 ? selectedChannels.join(", ") : "no channels"],
     ["Output", form.outputMode === "none" ? "read-only" : `${form.outputMode} → ${form.destDatabase}.${form.destTable}`],

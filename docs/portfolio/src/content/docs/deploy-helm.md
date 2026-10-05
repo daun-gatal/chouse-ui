@@ -74,7 +74,7 @@ The collector needs no values. Optional values tune it and enable Slack approval
 
 ## MCP
 
-There are no MCP values. The [MCP endpoint](/docs/mcp/) is served at `/mcp` on the same Service, Ingress and TLS as the UI; an administrator turns it on in **Agents › MCP**.
+There are no MCP values. The [MCP endpoint](/docs/mcp/) is served at `/mcp` on the same Service, Ingress and TLS as the UI; an administrator turns it on in **AI Governance › MCP**.
 
 ## Ingress
 
@@ -100,7 +100,7 @@ kubectl logs deploy/chouse-ui | grep RBAC     # migrations
 
 The startup probe allows five minutes so long migrations aren't killed. Read [What's new](/docs/whats-new/) before upgrading across a release.
 
-> **Upgrading to chart 2.0:** the `mcp.*` values, port 8752, the `<release>-mcp` Service and the MCP Ingress are gone. Leftover `mcp:` values are ignored, with a warning in the install notes. Turn MCP on in **Agents › MCP** and point agents at `https://<host>/mcp`.
+> **Upgrading to chart 2.0:** the `mcp.*` values, port 8752, the `<release>-mcp` Service and the MCP Ingress are gone. Leftover `mcp:` values are ignored, with a warning in the install notes. Turn MCP on in **AI Governance › MCP** and point agents at `https://<host>/mcp`.
 
 ## Move from Docker Compose
 

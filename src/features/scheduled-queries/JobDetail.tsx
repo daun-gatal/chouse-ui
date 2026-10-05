@@ -25,9 +25,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useDataOpsModelId } from "@/hooks";
 import { formatClickHouseSQL } from "@/lib/formatSql";
-import { useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
 import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
+import { useConnectionName } from "@/features/observe/hooks";
 import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
 import { LineageTab } from "./LineageTab";
@@ -59,11 +60,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const canProtect = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT);
   const modelId = useDataOpsModelId();
-  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
-  const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
-  // The list is scoped to the active connection, so a visible job is always on
-  // it — show the human-readable name, falling back to the id defensively.
-  const connectionLabel = job.connectionId === activeConnectionId && activeConnectionName ? activeConnectionName : job.connectionId;
+  const connectionLabel = useConnectionName(job.connectionId) ?? "—";
   const runMutation = useRunScheduledQuery();
   const updateMutation = useUpdateScheduledQuery();
   const { data: runs = [] } = useScheduledQueryRuns(job.id);

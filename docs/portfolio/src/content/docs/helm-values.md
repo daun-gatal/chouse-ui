@@ -1,7 +1,7 @@
 ---
 generated: charts/chouse-ui/values.yaml (via the chart README)
 ---
-Every value of the `chouse-ui` Helm chart, version **2.0.0**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
+Every value of the `chouse-ui` Helm chart, version **2.0.1**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
 
 The app itself is configured through the free-form `config:` value, which the chart renders to a YAML file loaded via `CHOUSE_CONFIG_PATH` — so every key on [Environment variables](/docs/configuration-env/) can go there. Secrets belong in `secrets.*` or an existing Kubernetes secret, not in `config:`.
 

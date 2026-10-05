@@ -1,18 +1,18 @@
 ---
-app: Agents › Assistant › Agents
-route: /agents/assistant
+app: AI Governance › Assistant › Agents
+route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
 screenshot: ai-agents-editor
 ---
 # Editing agents
 
-Open an agent from **Agents › Assistant › Agents** (or from the agent menu of a feature) to see everything it is made of. With `ai_agents:view` the editor is read-only; with `ai_agents:manage` you can change it, test it and save it.
+Open an agent from **AI Governance › Assistant › Agents** (or from the agent menu of a feature) to see everything it is made of. With `ai_agents:view` the editor is read-only; with `ai_agents:manage` you can change it, test it and save it.
 
 ## The agent tree
 
 The **Agents** tab lists routers and top-level agents, with their subagents indented below them. Each row shows the agent's type (*Feature* or *Chat / subagent*), its harness, how many tools it has, what uses it (features and parent agents), and its status: **built-in**, **customized** (a built-in you changed) or **custom** (added here), plus *disabled* and a problem count when they apply. Click a row to open the editor.
 
-![The agent tree in Agents › Assistant](/docs/img/app/ai-agents-tree.jpg "Routers and top-level agents, with their subagents indented below")
+![The agent tree in AI Governance › Assistant](/docs/img/app/ai-agents-tree.jpg "Routers and top-level agents, with their subagents indented below")
  **New agent** opens an empty editor with the Focused harness and a step budget of 8.
 
 There are two kinds of agent, and the editor switches between them with **Runs an AI feature (has a task template)**:

@@ -1,5 +1,5 @@
 /**
- * Agents › MCP helpers: the endpoint URL, ready-to-paste client configs, and
+ * AI Governance › MCP helpers: the endpoint URL, ready-to-paste client configs, and
  * catalog grouping/filtering. Snippets read the token from the
  * `CH_HOUSE_PAT` environment variable (or the client's secret prompt) so a
  * token never lands in a config file.
@@ -53,7 +53,7 @@ export function isLocalHost(hostname: string): boolean {
 }
 
 /**
- * The endpoint agents connect to: the public address set in Agents › MCP,
+ * The endpoint agents connect to: the public address set in AI Governance › MCP,
  * else the server's PUBLIC_BASE_URL, else this page's origin plus the app's
  * base path — right whenever people and agents use the same address (the
  * usual Ingress setup).
