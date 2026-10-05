@@ -293,6 +293,7 @@ export function useContextMutations() {
     deleteMetric: useMutation({ mutationFn: (id: string) => ctx.deleteMetric(id, cid(c)), onSuccess: invalidate }),
     importDbt: useMutation({ mutationFn: (manifest: unknown) => ctx.importDbtManifest(manifest, cid(c)), onSuccess: invalidate }),
     compileWatcher: useMutation({ mutationFn: (input: { text: string; modelId?: string }) => ctx.compileWatcher(input.text, input.modelId, cid(c)) }),
+    draft: useMutation({ mutationFn: (input: { database: string; table: string; modelId?: string }) => ctx.draftTableContext(input.database, input.table, input.modelId, cid(c)) }),
   };
 }
 

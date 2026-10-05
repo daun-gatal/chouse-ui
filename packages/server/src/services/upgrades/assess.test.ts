@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { compareVersions, matchRules, replayable, replayQuery, RULES } from "./assess";
+import { compareVersions, isMissingObject, matchRules, replayable, replayQuery, replayShape, RULES, stripFormat } from "./assess";
 
 const facts = {
   columnTypes: [{ table: "events.raw", column: "payload", type: "Object('json')" }],
@@ -43,5 +43,54 @@ describe("workload replay", () => {
     // HTTP clients append a FORMAT clause; it is stripped, not a reason to skip the shape.
     expect(replayable("SELECT sum(number) FROM numbers(10) FORMAT JSONEachRow")).toBe(true);
     expect(replayQuery("SELECT sum(number) FROM numbers(10) FORMAT JSONEachRow")).toBe("SELECT count() AS c, sum(cityHash64(*)) AS h FROM (SELECT sum(number) FROM numbers(10))");
+  });
+});
+
+describe("replay outcomes", () => {
+  const ok = (hash: string, ms = 10) => async (): Promise<{ hash: string; ms: number }> => ({ hash, ms });
+  const fail = (message: string, code?: string) => async (): Promise<never> => {
+    throw Object.assign(new Error(message), code ? { code } : {});
+  };
+  const never = async (): Promise<never> => {
+    throw new Error("canary must not run");
+  };
+
+  it("skips a shape the baseline can no longer run, without touching the canary", async () => {
+    const r = await replayShape(fail("Database e2e_sq does not exist.", "81"), never);
+    expect(r.outcome).toBe("skipped");
+    expect(r.canary).toBeNull();
+    expect(r.error).toContain("e2e_sq");
+  });
+
+  it("reports an object missing only on the canary as missing", async () => {
+    const r = await replayShape(ok("1:2", 3), fail("Unknown table expression identifier 'public.test_2' in scope SELECT * FROM public.test_2 LIMIT 100.", "60"));
+    expect(r.outcome).toBe("missing");
+    expect(r.baseline?.ms).toBe(3);
+  });
+
+  it("keeps other canary failures as errors", async () => {
+    expect((await replayShape(ok("1:2"), fail("Timeout exceeded: elapsed 60 seconds", "159"))).outcome).toBe("error");
+  });
+
+  it("compares hashes and latency", async () => {
+    expect((await replayShape(ok("1:2"), ok("1:2"))).outcome).toBe("same");
+    expect((await replayShape(ok("1:2"), ok("1:3"))).outcome).toBe("differs");
+    expect((await replayShape(ok("1:2", 100), ok("1:2", 200))).outcome).toBe("slower");
+    // Tiny queries are noisy; under 50 ms is never "slower".
+    expect((await replayShape(ok("1:2", 5), ok("1:2", 20))).outcome).toBe("same");
+  });
+
+  it("recognises missing objects by code or message", () => {
+    expect(isMissingObject(Object.assign(new Error("x"), { code: "60" }))).toBe(true);
+    expect(isMissingObject(Object.assign(new Error("x"), { code: "81" }))).toBe(true);
+    expect(isMissingObject(Object.assign(new Error("x"), { code: "47" }))).toBe(true);
+    expect(isMissingObject(new Error("Table analytics.orders does not exist."))).toBe(true);
+    expect(isMissingObject(new Error("Unknown table expression identifier 't'"))).toBe(true);
+    expect(isMissingObject(Object.assign(new Error("Memory limit exceeded"), { code: "241" }))).toBe(false);
+    expect(isMissingObject("not an error")).toBe(false);
+  });
+
+  it("displays the replayed text without the logged FORMAT clause", () => {
+    expect(stripFormat("SELECT * FROM public.test_2 LIMIT 100 FORMAT JSON")).toBe("SELECT * FROM public.test_2 LIMIT 100");
   });
 });

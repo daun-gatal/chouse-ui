@@ -6,6 +6,9 @@
  *   the closed remediation catalog server-side and invalid ones are dropped.
  * - compile-watcher: turns a sentence into a Data Health promise draft whose
  *   check is validated by the Data Health schema and compiler.
+ * - draft-table-context: drafts a table's curated context from metadata and a
+ *   server-built, aggregate-only profile; the model gets no tools and its
+ *   suggestions are validated before they reach the form.
  */
 
 import { z } from "zod";
@@ -13,7 +16,11 @@ import { z } from "zod";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { evaluateRules, getRulesForUser } from "../../../rbac/services/dataAccess";
 import { AppError } from "../../../types";
-import { all, sql, str } from "../../observe/db";
+import { logger } from "../../../utils/logger";
+import { getTableContext } from "../../context/store";
+import { clip, normalizeTags, redactQueryLiterals, tableStem, validMetrics, type DraftMetric } from "../../context/draftRules";
+import { PROFILE_MAX_ROWS, profileTable, type TableProfile } from "../../context/profile";
+import { all, num, one, sql, str, strOrNull } from "../../observe/db";
 import { incidentConnection, incidentDetail } from "../../observe/views";
 import { actionParamsSchema, buildAction } from "../../remediation/catalog";
 import { compileDataHealthQuery, DataHealthCompileError } from "../../dataHealth/compiler";
@@ -201,3 +208,161 @@ Comparisons with "the same hour last week" become a custom_metric ratio expressi
     };
   },
 };
+
+// --- draft-table-context ----------------------------------------------------------
+
+const DraftParsed = z.object({
+  description: z.string().nullable(),
+  grain: z.string().nullable(),
+  owner: z.string().nullable(),
+  insteadOf: z.string().nullable(),
+  deprecated: z.boolean(),
+  tags: z.array(z.string()),
+  metrics: z.array(z.object({ name: z.string(), expression: z.string(), description: z.string().nullable() })),
+  notes: z.array(z.string()),
+});
+
+export interface TableContextDraft {
+  draft: { description: string | null; grain: string | null; owner: string | null; insteadOf: string | null; deprecated: boolean; tags: string[] };
+  metrics: DraftMetric[];
+  /** Suggestions removed by server-side validation (unknown table, invalid metric…). */
+  dropped: number;
+  /** Which evidence the draft was built from, for the reviewer. */
+  basedOn: string[];
+  notes: string[];
+  model: string;
+  generatedAt: number;
+}
+
+interface DraftPrepared {
+  database: string;
+  table: string;
+  columns: Set<string>;
+  metricNames: Set<string>;
+  relatedTables: string[];
+  basedOn: string[];
+  evidence: Record<string, unknown>;
+}
+
+const SYSTEM_DATABASES = new Set(["system", "information_schema", "INFORMATION_SCHEMA"]);
+
+export const draftTableContextCapability: StructuredCapability<{ connectionId: string; database: string; table: string }, DraftPrepared, z.infer<typeof DraftParsed>, TableContextDraft> = {
+  id: "draft-table-context",
+  delivery: "structured",
+  permission: PERMISSIONS.AI_OPTIMIZE,
+  inputSchema: z.object({ connectionId: z.string().min(1), database: z.string().min(1).max(256), table: z.string().min(1).max(256) }),
+  outputSchema: DraftParsed,
+  tuning: { stopAtSteps: 3, temperature: 0, maxOutputTokens: 2500 },
+  async prepare(input, ctx) {
+    if (!can(ctx, PERMISSIONS.CONTEXT_EDIT)) throw AppError.forbidden("Drafting table context needs context:edit");
+    if (SYSTEM_DATABASES.has(input.database)) throw AppError.badRequest("System tables have no curated context");
+    const allowed = await tableAllowed(ctx, input.connectionId);
+    if (!allowed(input.database, input.table)) throw AppError.forbidden("You do not have access to this table");
+    const context = await getTableContext(input.connectionId, input.database, input.table);
+    if (!context) throw AppError.notFound("Table not found");
+    const catalog = await one(sql`SELECT comment FROM obs_catalog_tables WHERE connection_id = ${input.connectionId} AND database_name = ${input.database} AND table_name = ${input.table}`);
+
+    const fq = `${input.database}.${input.table}`;
+    const writers = (await all(sql`
+      SELECT user_name, SUM(total_ms) AS total FROM obs_query_fingerprints
+      WHERE connection_id = ${input.connectionId} AND query_kind = 'Insert' AND tables LIKE ${`%"${fq}"%`}
+      GROUP BY user_name ORDER BY total DESC LIMIT 3`)).map((w) => str(w.user_name)).filter(Boolean);
+
+    const stem = tableStem(input.table);
+    const related = (await all(sql`
+      SELECT t.table_name, t.engine, COALESCE(b.reads_7d, 0) AS reads_7d FROM obs_catalog_tables t
+      LEFT JOIN obs_table_baselines b ON b.connection_id = t.connection_id AND b.database_name = t.database_name AND b.table_name = t.table_name
+      WHERE t.connection_id = ${input.connectionId} AND t.database_name = ${input.database} AND t.table_name <> ${input.table}`))
+      .filter((t) => tableStem(str(t.table_name)) === stem && allowed(input.database, str(t.table_name)))
+      .slice(0, 5)
+      .map((t) => ({ table: `${input.database}.${str(t.table_name)}`, engine: str(t.engine), reads7d: num(t.reads_7d) }));
+    const self = await one(sql`SELECT reads_7d FROM obs_table_baselines WHERE connection_id = ${input.connectionId} AND database_name = ${input.database} AND table_name = ${input.table}`);
+
+    const tablePii = (context.curated?.tags ?? []).some((t) => t.toLowerCase() === "pii");
+    let profile: TableProfile | null = null;
+    try {
+      profile = await profileTable(input.connectionId, input.database, input.table, context.derived.columns, { tablePii, catalogRows: context.derived.totalRows });
+    } catch (error) {
+      // The draft still works from metadata alone; a failed profile only narrows the evidence.
+      logger.warn({ module: "ContextDraft", err: error instanceof Error ? error.message : String(error) }, "Table profile failed");
+    }
+
+    const patterns = context.patterns.slice(0, 5).map((p) => ({ query: redactQueryLiterals(p.sampleQuery), runs: p.runs, users: p.users }));
+    const basedOn = [
+      `${context.derived.columns.length} columns`,
+      profile ? `profile of ${profile.partial ? `the first ${formatRows(PROFILE_MAX_ROWS)}` : formatRows(profile.rows)} rows (aggregates only)` : "no profile (query failed)",
+      ...(patterns.length ? [`${patterns.length} query patterns`] : []),
+      ...(writers.length ? [`writers: ${writers.join(", ")}`] : []),
+      ...(context.curated?.source === "dbt" ? ["dbt description"] : []),
+      ...(related.length ? [`${related.length} similarly named tables`] : []),
+    ];
+    return {
+      database: input.database,
+      table: input.table,
+      columns: new Set(context.derived.columns.map((c) => c.name)),
+      metricNames: new Set(context.metrics.map((m) => m.name)),
+      relatedTables: related.map((r) => r.table),
+      basedOn,
+      evidence: {
+        table: fq,
+        comment: catalog ? strOrNull(catalog.comment) : null,
+        engine: context.derived.engine,
+        sortingKey: context.derived.sortingKey,
+        partitionKey: context.derived.partitionKey,
+        totalRows: context.derived.totalRows,
+        reads7d: self ? num(self.reads_7d) : null,
+        columns: context.derived.columns,
+        profile,
+        commonJoins: context.derived.joins,
+        queryPatterns: patterns,
+        writers,
+        similarlyNamedTables: related,
+        currentContext: context.curated ? { description: context.curated.description, grain: context.curated.grain, owner: context.curated.owner, insteadOf: context.curated.insteadOf, deprecated: context.curated.deprecated, tags: context.curated.tags, source: context.curated.source } : null,
+        existingMetrics: context.metrics.map((m) => ({ name: m.name, expression: m.expression })),
+      },
+    };
+  },
+  tools: () => ({}),
+  instructions: () => instructions(`Draft the curated context of ONE ClickHouse table for analysts and AI agents, from the evidence only.
+description: 1-3 plain sentences: what one row represents, where the data comes from (writers, joins), and how it is typically queried. Never quote data values.
+grain: what one row is, e.g. "one row per order line"; null if the columns do not make it clear.
+owner: only a team or person named in the table comment, column comments or current context; otherwise null. Never guess from user names.
+insteadOf: a table from similarlyNamedTables that should be used instead of this one, only when this one is clearly the older variant (suffix like _old/_v1, far fewer reads); otherwise null.
+deprecated: true only with the same evidence as insteadOf.
+tags: up to 5 short lowercase topic tags (domain, e.g. "finance", "events"); add "pii" when columns hold personal data.
+metrics: up to 3 canonical aggregate expressions over this table's columns (e.g. sum(amount), uniqExact(user_id)) that the query patterns actually use; skip names in existingMetrics.
+notes: short caveats for the reviewer (e.g. "profile covers only part of the table"). Empty when none.`),
+  messages: (prepared) => evidence(prepared.evidence),
+  finalize(parsed, prepared, _ctx, meta) {
+    let dropped = 0;
+    let insteadOf = clip(parsed.insteadOf, 300);
+    if (insteadOf && !prepared.relatedTables.includes(insteadOf)) {
+      insteadOf = null;
+      dropped++;
+    }
+    const metrics = validMetrics(parsed.metrics, prepared.columns, prepared.metricNames);
+    return {
+      draft: {
+        description: clip(parsed.description, 4000),
+        grain: clip(parsed.grain, 500),
+        owner: clip(parsed.owner, 200),
+        insteadOf,
+        // Deprecation is only credible together with a replacement that passed validation.
+        deprecated: parsed.deprecated && insteadOf !== null,
+        tags: normalizeTags(parsed.tags),
+      },
+      metrics: metrics.metrics,
+      dropped: dropped + metrics.dropped,
+      basedOn: prepared.basedOn,
+      notes: parsed.notes.map((n) => n.trim().slice(0, 300)).filter(Boolean).slice(0, 5),
+      model: meta.modelLabel,
+      generatedAt: Date.now(),
+    };
+  },
+};
+
+function formatRows(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 100_000) / 10}M`;
+  if (n >= 1_000) return `${Math.round(n / 100) / 10}K`;
+  return String(n);
+}

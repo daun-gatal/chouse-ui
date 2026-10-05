@@ -573,6 +573,7 @@ export const AUDIT_ACTIONS = {
   CONTEXT_METRIC_UPSERT: 'context.metric_upsert',
   CONTEXT_METRIC_DELETE: 'context.metric_delete',
   CONTEXT_DBT_IMPORT: 'context.dbt_import',
+  CONTEXT_AI_DRAFT: 'context.ai_draft',
   REMEDIATION_PROPOSE: 'remediation.propose',
   REMEDIATION_APPROVE: 'remediation.approve',
   REMEDIATION_REJECT: 'remediation.reject',

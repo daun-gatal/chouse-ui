@@ -9,14 +9,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowUpCircle, Loader2, PlayCircle } from "lucide-react";
 
-import type { Finding } from "@/api/upgrades";
+import type { Finding, ReplayOutcome } from "@/api/upgrades";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { upgradeKeys, useAssessment, useMyConnections, useReplay, useRollout, useUpgradeMutations, useUpgrades } from "./hooks";
-import { formatAgo, formatCount, humanize, type Tone } from "./lib";
+import { formatAgo, formatCount, humanize, TONE_TEXT, type Tone } from "./lib";
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, OBS_LABEL, Panel, StatusPill } from "./ui";
 
 const SEVERITY_TONE: Record<Finding["severity"], Tone> = { blocker: "bad", warning: "warn", info: "info" };
@@ -24,6 +24,14 @@ const VERDICT: Record<string, { label: string; tone: Tone }> = {
   not_ready: { label: "Not ready", tone: "bad" },
   ready_with_warnings: { label: "Ready with warnings", tone: "warn" },
   ready: { label: "Ready", tone: "ok" },
+};
+const REPLAY_OUTCOME: Record<ReplayOutcome, { label: string; tone: Tone }> = {
+  same: { label: "same", tone: "ok" },
+  differs: { label: "differs", tone: "bad" },
+  error: { label: "error", tone: "bad" },
+  missing: { label: "missing on canary", tone: "warn" },
+  slower: { label: "slower", tone: "warn" },
+  skipped: { label: "skipped", tone: "muted" },
 };
 
 export function UpgradesView({ refreshKey }: { refreshKey?: number }): ReactElement {
@@ -136,7 +144,7 @@ export function UpgradesView({ refreshKey }: { refreshKey?: number }): ReactElem
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel
           title="Workload replay on a canary"
-          meta="Top read-only query shapes, compared result and latency"
+          meta="Top read-only shapes from the active connection (baseline), compared on a canary for result and latency"
           actions={canRun ? (
             <div className="flex items-center gap-2">
               <Select value={canary} onValueChange={setCanary}>
@@ -149,19 +157,19 @@ export function UpgradesView({ refreshKey }: { refreshKey?: number }): ReactElem
         >
           {!replayDetail.data ? <EmptyState title="No replays yet" /> : (
             <>
-              <div className="grid grid-cols-4 gap-2">
-                {([["Same result", replayDetail.data.same, "ok"], ["Differs", replayDetail.data.differs, "bad"], ["Slower ≥ 1.5×", replayDetail.data.slower, "warn"], ["Errors", replayDetail.data.errors, "bad"]] as const).map(([label, n, tone]) => (
+              <div className="grid grid-cols-3 gap-2 md:grid-cols-5">
+                {([["Same result", replayDetail.data.same, "ok"], ["Differs", replayDetail.data.differs, "bad"], ["Slower ≥ 1.5×", replayDetail.data.slower, "warn"], ["Missing on canary", replayDetail.data.missing, "warn"], ["Errors", replayDetail.data.errors, "bad"]] as const).map(([label, n, tone]) => (
                   <div key={label} className="rounded-xs border border-ink-500 p-2"><p className={OBS_LABEL}>{label}</p><p className={`mt-1 text-[18px] font-semibold tabular-nums ${n > 0 && tone !== "ok" ? (tone === "bad" ? "text-red-500" : "text-amber-500") : "text-paper"}`}>{formatCount(n)}</p></div>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] text-paper-muted">{replayDetail.data.status === "running" ? "Running…" : `${formatCount(replayDetail.data.total)} shapes replayed ${formatAgo(replayDetail.data.finishedAt ?? replayDetail.data.startedAt)}`}</p>
+              <p className="mt-2 text-[11px] text-paper-muted">{replayDetail.data.status === "running" ? "Running…" : `${formatCount(replayDetail.data.total)} shapes replayed ${formatAgo(replayDetail.data.finishedAt ?? replayDetail.data.startedAt)}${replayDetail.data.skipped > 0 ? ` · ${formatCount(replayDetail.data.skipped)} skipped (they fail on the baseline too)` : ""}`}</p>
               {replayDetail.data.results.length > 0 && (
                 <DataTable label="Replay differences" head={["Shape", "Outcome", "Baseline → canary"]}>
                   {replayDetail.data.results.slice(0, 20).map((r) => (
                     <tr key={r.fingerprint}>
                       <td className="max-w-[260px]"><Mono className="block truncate text-paper">{r.sampleQuery ?? r.fingerprint}</Mono></td>
-                      <td><StatusPill tone={r.outcome === "error" || r.outcome === "differs" ? "bad" : "warn"}>{r.outcome}</StatusPill></td>
-                      <td className="whitespace-nowrap tabular-nums text-paper-muted">{r.baselineMs ?? "—"} → {r.canaryMs ?? "—"} ms{r.error ? <span className="block text-[10px] text-red-500">{r.error}</span> : null}</td>
+                      <td><StatusPill tone={REPLAY_OUTCOME[r.outcome].tone}>{REPLAY_OUTCOME[r.outcome].label}</StatusPill></td>
+                      <td className="whitespace-nowrap tabular-nums text-paper-muted">{r.baselineMs ?? "—"} → {r.canaryMs ?? "—"} ms{r.error ? <span className={`block text-[10px] ${TONE_TEXT[REPLAY_OUTCOME[r.outcome].tone]}`}>{r.error}</span> : null}</td>
                     </tr>
                   ))}
                 </DataTable>

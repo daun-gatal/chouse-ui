@@ -16,9 +16,20 @@ screenshot: monitoring-upgrades
 
 ## Replay on a canary
 
-**Workload replay on a canary** runs your top read-only query shapes on a **Canary connection** that already runs the target version, and compares each with the current server: **same result**, **different result**, **slower**, or **error**. Differences are listed under **Replay differences**. Only read-only queries are replayed.
+**Workload replay on a canary** runs the top read-only query shapes of the **active connection** (the baseline) on a **Canary connection** that already runs the target version, and compares each result and run time. Only read-only queries are replayed. Each shape gets one outcome:
 
-Set up the canary as an ordinary [connection](/docs/connections/) pointing at a server on the new version, with a copy of the data you care about.
+| Outcome | Meaning |
+| --- | --- |
+| **Same result** | Same rows and no slower. |
+| **Differs** | The canary returned different rows. |
+| **Slower ≥ 1.5×** | Same rows, at least 1.5× slower (and over 50 ms). |
+| **Missing on canary** | The table, database or column exists only on the baseline. This is a gap in the canary's schema, not an upgrade regression. |
+| **Errors** | The query works on the baseline but fails on the canary. These are what the replay is for. |
+| **Skipped** | The query no longer runs on the baseline either, usually because its table was dropped after it was logged. Skipped shapes are listed but not counted. |
+
+**Replay differences** lists every shape that wasn't the same, most serious first, as the text that was actually replayed (the client's `FORMAT` clause is removed).
+
+Set up the canary as an ordinary [connection](/docs/connections/) pointing at a server on the new version, with a copy of the data you care about. The active connection never appears in the canary list, because it is the baseline. To compare from a different server, switch connections first.
 
 ## Track the rollout
 
