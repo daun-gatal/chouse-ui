@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.14.1] - 2026-10-05
+
+### Added
+- **Policies for many roles and tokens** — a budget policy is created and edited in a two-step wizard (limits, then who it applies to) and can apply to every agent, any number of roles and any number of tokens at once, picked by display name; tokens show their owner and key prefix, and revoked tokens aren't offered
+- **More on each agent session** — Sessions shows the client the agent came from (Claude Code, Cursor, Codex, VS Code, the `chouse` CLI, …), the user and their roles by display name, and the policy that governs the session with its daily budget
+
+### Changed
+- **Agents is now AI Governance** — the page moved to `/ai` (old `/agents/…` links redirect) and is called AI Governance, since CHouse's own AI agents live under its Assistant tab
+- **Names instead of ids on the Data page** — incidents show their connection and who acknowledged them; related incidents show their titles; root-cause chains, blast radius, lineage, pipelines and cost by consumer name the scheduled query, token or person instead of an id
+
+### Fixed
+- **Agent budgets not applied to token queries** — queries made over MCP or with a personal access token skipped budget policies, the incident block and the pause switch, were not counted on the agent's session, and were not attributed to the token in `log_comment`; they are now governed, counted and attributed
+- **Policies for missing roles or tokens** — saving a policy for a role or token that doesn't exist (or a revoked token) is rejected instead of silently matching nothing
+- **Dataset button on system tables** — in lineage, the Dataset button is disabled for `system` and `information_schema` tables, which have no dataset page
+- **Wrong connection in the promise editor** — editing a promise on another connection showed the active connection's name; scheduled-query details no longer fall back to a raw connection id
+
 ## [v3.14.0] - 2026-10-05
 
 ### Added
@@ -159,13 +175,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Scheduled Query job detail connection label** — show the connection's name instead of its raw id.
 - **AI structured output on OpenAI-compatible models** — forced tool-calling instead of OpenAI's strict `json_schema` response format when the resolved model is a non-native `ChatOpenAI` instance (covers `openai-compatible` providers like DeepSeek/Qwen proxies). Fixes generic failures on complex-schema capabilities when using third-party OpenAI-compatible endpoints.
 - **Onboarding journey stability** — Keeps Doctor actions fixed while AI and connection controls load, prevents exit/completion races, refreshes expired sessions during progress saves, preserves concurrent progress from multiple tabs or devices, and allows the freshly seeded super administrator to finish setup after adding an active connection.
-
-## [v3.7.1] - 2026-06-28
-
-### Changed
-- **Dependency security updates** — Bumped dependencies to clear known high-severity advisories with no breaking API changes: `drizzle-orm` (0.38 → 0.45), `hono` (4.11 → 4.12), `react-router-dom` (7.10 → 7.15+), `nodemailer` (8 → 9), `yaml` (2.8 → 2.9) and `dompurify` (3.3 → 3.4). The transitive `lodash` (via `dagre`) is pinned to a patched release through an `overrides` entry.
-
-### Fixed
-- **User management metric cards** — Active/Inactive (and Total) counts on the Admin → User management tab are now computed from backend totals over the whole filtered set instead of the current page, so they no longer change when the page size changes.
-- **Query Logs RBAC user** — Query Logs now reads the RBAC actor from the dedicated `log_comment` column (falling back to the `Settings` map), so queries run through the app correctly attribute to the RBAC user instead of falling back to the bare ClickHouse user. RBAC-user resolution is also decoupled from the audit-log fetch: a failing or permission-gated audit request (e.g. right after login) no longer drops every row back to the ClickHouse user, since `log_comment`-tagged queries resolve independently. A resolved-but-deleted RBAC user no longer leaks a raw UUID into the user column.
 
