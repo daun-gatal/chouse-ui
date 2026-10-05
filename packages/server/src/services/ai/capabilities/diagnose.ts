@@ -1,42 +1,34 @@
 /**
- * Capabilities: diagnose-error / diagnose-parts / diagnose-schema.
+ * Features: diagnose-error / diagnose-parts / diagnose-schema.
  *
- * All three are read-only single-node investigators that return the shared
- * ErrorDiagnosis shape. They differ only in prompt, the user message, and the
- * `name` field of the result — so they share a builder.
+ * All three are read-only single-node investigations that return the shared
+ * ErrorDiagnosis shape. Each is bound to its own agent in the registry; the
+ * features supply the node and the finding as template variables.
  */
 
 import { z } from "zod";
 import type { AgentMessage } from "../types";
-import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
-import { CLICKHOUSE_PLAYBOOK } from "../../clickhousePlaybook";
 import {
   ErrorDiagnosisSchema,
   type ErrorDiagnosis,
   type ParsedDiagnosis,
   type FleetNode,
-  queryNodeTool,
   resolveNode,
 } from "./fleetShared";
-import {
-  ERROR_DIAGNOSE_PROMPT,
-  PARTS_DIAGNOSE_PROMPT,
-  SCHEMA_DIAGNOSE_PROMPT,
-} from "./diagnosePrompts";
 import type { StructuredCapability } from "../types";
 
 interface NodePrepared {
   node: FleetNode;
 }
 
-const DIAGNOSE_TUNING = { stopAtSteps: 8, temperature: 0.1, maxOutputTokens: 8000 };
+const NODE_VARIABLES = {
+  "node.id": { type: "string", description: "Connection id of the node under investigation." },
+  "node.name": { type: "string", description: "Connection name of that node." },
+} as const;
 
-/**
- * Shared lifecycle for a single-node diagnosis: resolve the node from the
- * session's connection, expose the query_node tool, and run the prompt.
- */
+/** Resolve the node from the session's connection. */
 function resolveNodePrepared(ctx: { connectionId?: string }): Promise<NodePrepared> {
   if (!ctx.connectionId) {
     throw AppError.badRequest("No active ClickHouse connection.");
@@ -44,8 +36,8 @@ function resolveNodePrepared(ctx: { connectionId?: string }): Promise<NodePrepar
   return resolveNode(ctx.connectionId).then((node) => ({ node }));
 }
 
-function diagnoseTools(prepared: NodePrepared): AgentToolSet {
-  return queryNodeTool([prepared.node]) as AgentToolSet;
+function nodeVariables(prepared: NodePrepared): Record<string, string> {
+  return { "node.id": prepared.node.id, "node.name": prepared.node.name };
 }
 
 // ============================================
@@ -65,34 +57,42 @@ export const diagnoseErrorCapability: StructuredCapability<
   ErrorDiagnosis
 > = {
   id: "diagnose-error",
+  title: "Diagnose a server error",
+  description: "Errors › Diagnose: explains one server error from system.errors and gives a concrete fix.",
+  surface: "diagnostics",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  contexts: ["fleet"],
+  variables: {
+    ...NODE_VARIABLES,
+    "error.code": { type: "string", description: "Error code, or \"?\"." },
+    "error.name": { type: "string", description: "Error name, e.g. TOO_MANY_PARTS." },
+    "error.message": { type: "string", description: "Last error message, or \"(none)\"." },
+  },
   inputSchema: z.object({
     name: z.string().min(1),
     code: z.number().int().optional(),
     message: z.string().optional(),
   }),
   outputSchema: ErrorDiagnosisSchema,
-  tuning: DIAGNOSE_TUNING,
 
   async prepare(input, ctx) {
     return { ...(await resolveNodePrepared(ctx)), input };
   },
-  tools: diagnoseTools,
-  instructions: () => `${ERROR_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): AgentMessage[] {
-    const { node, input } = prepared;
-    return [
-      {
-        role: "user",
-        content: `Node id: "${node.id}" (name: ${node.name}). Diagnose this ClickHouse error and give a solution.\n\nCode: ${input.code ?? "?"}\nName: ${input.name}\nLast message: ${input.message ?? "(none)"}\n\nInvestigate with query_node (connectionId="${node.id}") if useful, then return the structured diagnosis.`,
-      },
-    ];
+  fleetNodes: (prepared) => [prepared.node],
+  templateVariables(prepared) {
+    const { input } = prepared;
+    return {
+      ...nodeVariables(prepared),
+      "error.code": String(input.code ?? "?"),
+      "error.name": input.name,
+      "error.message": input.message ?? "(none)",
+    };
   },
-  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
+  fallbackMessages(prepared, _ctx, raw, prompts): AgentMessage[] {
     const { input } = prepared;
     return [
-      { role: "system", content: ERROR_DIAGNOSE_PROMPT },
+      { role: "system", content: prompts.core },
       {
         role: "user",
         content: `Error — Code: ${input.code ?? "?"}, Name: ${input.name}, Last message: ${input.message ?? "(none)"}.\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured diagnosis now.`,
@@ -127,30 +127,31 @@ export const diagnosePartsCapability: StructuredCapability<
   ErrorDiagnosis
 > = {
   id: "diagnose-parts",
+  title: "Diagnose part health",
+  description: "Parts › Diagnose: explains part and partition health of one MergeTree table.",
+  surface: "diagnostics",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  contexts: ["fleet"],
+  variables: {
+    ...NODE_VARIABLES,
+    database: { type: "string", description: "Database of the table." },
+    table: { type: "string", description: "Table name." },
+  },
   inputSchema: z.object({ database: z.string().min(1), table: z.string().min(1) }),
   outputSchema: ErrorDiagnosisSchema,
-  tuning: DIAGNOSE_TUNING,
 
   async prepare(input, ctx) {
     return { ...(await resolveNodePrepared(ctx)), input };
   },
-  tools: diagnoseTools,
-  instructions: () => `${PARTS_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): AgentMessage[] {
-    const { node, input } = prepared;
-    return [
-      {
-        role: "user",
-        content: `Node id: "${node.id}" (name: ${node.name}). Diagnose the part/partition health of table \`${input.database}.${input.table}\` and give a solution. Investigate with query_node (connectionId="${node.id}"), then return the structured diagnosis.`,
-      },
-    ];
+  fleetNodes: (prepared) => [prepared.node],
+  templateVariables(prepared) {
+    return { ...nodeVariables(prepared), database: prepared.input.database, table: prepared.input.table };
   },
-  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
+  fallbackMessages(prepared, _ctx, raw, prompts): AgentMessage[] {
     const { input } = prepared;
     return [
-      { role: "system", content: PARTS_DIAGNOSE_PROMPT },
+      { role: "system", content: prompts.core },
       {
         role: "user",
         content: `Table ${input.database}.${input.table}.\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured diagnosis now.`,
@@ -199,8 +200,21 @@ export const diagnoseSchemaCapability: StructuredCapability<
   ErrorDiagnosis
 > = {
   id: "diagnose-schema",
+  title: "Diagnose a schema finding",
+  description: "Schema Advisor › Diagnose: turns one column-level finding into a concrete ALTER TABLE fix.",
+  surface: "diagnostics",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  contexts: ["fleet"],
+  variables: {
+    ...NODE_VARIABLES,
+    database: { type: "string", description: "Database of the table." },
+    table: { type: "string", description: "Table name." },
+    column: { type: "string", description: "Column name." },
+    columnType: { type: "string", description: "Current column type." },
+    category: { type: "string", description: "Finding category: nullable, oversized or compression." },
+    sizeLine: { type: "string", description: "One line with rows / on-disk / uncompressed bytes, or empty." },
+  },
   inputSchema: z.object({
     database: z.string().min(1),
     table: z.string().min(1),
@@ -216,28 +230,28 @@ export const diagnoseSchemaCapability: StructuredCapability<
       .optional(),
   }),
   outputSchema: ErrorDiagnosisSchema,
-  tuning: DIAGNOSE_TUNING,
 
   async prepare(input, ctx) {
     return { ...(await resolveNodePrepared(ctx)), input };
   },
-  tools: diagnoseTools,
-  instructions: () => `${SCHEMA_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): AgentMessage[] {
-    const { node, input } = prepared;
-    const sizeLine = schemaSizeLine(input.metrics);
-    return [
-      {
-        role: "user",
-        content: `Node id: "${node.id}" (name: ${node.name}). Database: ${input.database}. Table: ${input.table}. Column: \`${input.column}\` (type: ${input.columnType}). Issue category: ${input.category}.\n${sizeLine}\nInvestigate with query_node (connectionId="${node.id}") and produce the structured diagnosis with a concrete ALTER TABLE fix.`,
-      },
-    ];
+  fleetNodes: (prepared) => [prepared.node],
+  templateVariables(prepared) {
+    const { input } = prepared;
+    return {
+      ...nodeVariables(prepared),
+      database: input.database,
+      table: input.table,
+      column: input.column,
+      columnType: input.columnType,
+      category: input.category,
+      sizeLine: schemaSizeLine(input.metrics),
+    };
   },
-  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
+  fallbackMessages(prepared, _ctx, raw, prompts): AgentMessage[] {
     const { input } = prepared;
     const sizeLine = schemaSizeLine(input.metrics);
     return [
-      { role: "system", content: SCHEMA_DIAGNOSE_PROMPT },
+      { role: "system", content: prompts.core },
       {
         role: "user",
         content: `Schema issue — db: ${input.database}, table: ${input.table}, column: \`${input.column}\` (${input.columnType}), category: ${input.category}. ${sizeLine}\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured diagnosis now.`,

@@ -16,6 +16,7 @@ import { SYSTEM_ROLES } from '../schema/base';
 import { hashPassword } from '../services/password';
 import { logger } from '../../utils/logger';
 import { OBSERVE_MIGRATIONS } from './observeMigrations';
+import { AI_REGISTRY_MIGRATIONS } from './aiRegistryMigrations';
 
 // ============================================
 // Types
@@ -46,7 +47,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.55.0';
+export const APP_VERSION = '1.56.0';
 
 // ============================================
 // Error Helpers
@@ -4727,6 +4728,7 @@ export const MIGRATIONS: Migration[] = [
     down: async () => { /* forward-only */ },
   },
   ...OBSERVE_MIGRATIONS,
+  ...AI_REGISTRY_MIGRATIONS,
 ];
 
 // ============================================

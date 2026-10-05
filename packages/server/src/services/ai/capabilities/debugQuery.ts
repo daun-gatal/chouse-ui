@@ -1,19 +1,14 @@
 /**
- * Capability: debug-query — the SQL editor "Debug" dialog (opens on failure).
- * Loads the debugger skill, inspects DDL, validates the fix, returns a
+ * Feature: debug-query — the SQL editor "Debug" dialog (opens on failure).
+ * The bound agent (registry) inspects DDL, validates the fix and returns a
  * structured DebugResult.
  */
 
 import { z } from "zod";
-import type { AgentMessage } from "../types";
-import type { AgentToolSet } from "../langchainTools";
 import { PERMISSIONS } from "../../../rbac/schema/base";
-import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
 import {
   DebugOutputSchema,
-  DEBUGGER_INSTRUCTIONS,
-  buildDebugPrompt,
   stripFormatClause,
   unfence,
 } from "./optimizerShared";
@@ -48,8 +43,17 @@ export const debugQueryCapability: StructuredCapability<
   DebugResult
 > = {
   id: "debug-query",
+  title: "Debug query",
+  description: "SQL editor › Debug: explains why a query failed and returns a validated fix.",
+  surface: "sql-editor",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  contexts: ["session"],
+  variables: {
+    query: { type: "string", description: "The failed query (trimmed)." },
+    error: { type: "string", description: "The ClickHouse error message (trimmed)." },
+    additionalPrompt: { type: "string", description: "Extra instructions from the user (trimmed; empty when none)." },
+  },
   inputSchema: z.object({
     query: z.string().min(1, "Query is required"),
     error: z.string().min(1, "Error message is required"),
@@ -57,24 +61,13 @@ export const debugQueryCapability: StructuredCapability<
     database: z.string().optional(),
   }),
   outputSchema: DebugOutputSchema,
-  tuning: { stopAtSteps: 10, temperature: 0 },
 
   prepare(input) {
     return { query: input.query, error: input.error, additionalPrompt: input.additionalPrompt };
   },
 
-  tools(_prepared, ctx): AgentToolSet {
-    return coreTools(ctx);
-  },
-
-  instructions() {
-    return DEBUGGER_INSTRUCTIONS;
-  },
-
-  messages(prepared): AgentMessage[] {
-    return [
-      { role: "user", content: buildDebugPrompt(prepared.query, prepared.error, prepared.additionalPrompt) },
-    ];
+  templateVariables(prepared) {
+    return { query: prepared.query.trim(), error: prepared.error.trim(), additionalPrompt: prepared.additionalPrompt?.trim() ?? "" };
   },
 
   finalize(parsed, prepared) {

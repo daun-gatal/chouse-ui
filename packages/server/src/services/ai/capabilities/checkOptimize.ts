@@ -1,17 +1,15 @@
 /**
- * Capability: check-optimize — lightweight background pre-screen that decides
- * whether a query is worth optimizing. Capped at 4 steps; degrades gracefully
- * (never throws) via softFail so the SQL editor's silent check stays silent.
+ * Feature: check-optimize — lightweight background pre-screen that decides
+ * whether a query is worth optimizing. Degrades gracefully (never throws) via
+ * softFail so the SQL editor's silent check stays silent — including when its
+ * agent binding is missing.
  */
 
 import { z } from "zod";
-import type { AgentMessage } from "../types";
-import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
-import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
-import { EvaluatorOutputSchema, EVALUATOR_INSTRUCTIONS } from "./optimizerShared";
+import { EvaluatorOutputSchema } from "./optimizerShared";
 
 export interface CheckOptimizeInput {
   query: string;
@@ -35,29 +33,25 @@ export const checkOptimizeCapability: StructuredCapability<
   OptimizationCheckResult
 > = {
   id: "check-optimize",
+  title: "Optimization pre-screen",
+  description: "SQL editor: silently decides whether a query is worth optimizing before offering Optimize.",
+  surface: "sql-editor",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  // Session tools are offered only when a live session is present.
+  contexts: ["session"],
+  variables: {
+    query: { type: "string", description: "The query to evaluate (trimmed)." },
+  },
   inputSchema: z.object({ query: z.string().min(1, "Query is required") }),
   outputSchema: EvaluatorOutputSchema,
-  tuning: { stopAtSteps: 4, temperature: 0 },
 
   prepare(input) {
     return { query: input.query };
   },
 
-  tools(_prepared, ctx): AgentToolSet {
-    // Only a cheap subset of schema tools — and only when a session is present.
-    if (!ctx.clickhouseService) return {};
-    const { analyze_query, get_table_ddl, get_table_schema } = coreTools(ctx) as Record<string, unknown>;
-    return { analyze_query, get_table_ddl, get_table_schema } as AgentToolSet;
-  },
-
-  instructions() {
-    return EVALUATOR_INSTRUCTIONS;
-  },
-
-  messages(prepared): AgentMessage[] {
-    return [{ role: "user", content: `Evaluate this query:\n\`\`\`sql\n${prepared.query.trim()}\n\`\`\`` }];
+  templateVariables(prepared) {
+    return { query: prepared.query.trim() };
   },
 
   finalize(parsed) {

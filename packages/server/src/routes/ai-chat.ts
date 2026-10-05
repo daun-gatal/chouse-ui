@@ -18,13 +18,16 @@ import {
 import { userHasPermission } from "../rbac/services/rbac";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { isAIEnabled } from "../services/aiConfig";
-import { invokeCapabilityAgent } from "../services/ai/engine";
-import { chatCapability } from "../services/ai/capabilities/chat";
+import { invokeChat } from "../services/ai/engine";
+import { getRegistrySnapshot } from "../services/ai/registry/cache";
+import { chatAgentCandidates } from "../services/ai/registry/chatAgents";
+import { extractTokenFromHeader } from "../rbac/services/jwt";
 import {
     createThread,
     listThreads,
     getThread,
     updateThreadTitle,
+    updateThreadAgent,
     deleteThread,
     addMessage,
     getMessages,
@@ -191,6 +194,26 @@ aiChat.get("/models", async (c) => {
     }
 });
 
+/**
+ * GET /ai-chat/agents
+ * Chat agents the user may pick (ADR 0019): routers first, then top-level
+ * agents. `isDefault` marks the agent bound to the chat feature.
+ */
+aiChat.get("/agents", async (c) => {
+    const snapshot = await getRegistrySnapshot();
+    const ctx = { isAdmin: c.get("isRbacAdmin") || false, permissions: c.get("rbacPermissions") || [] };
+    const boundId = snapshot.bindings.get("chat")?.agentId;
+    const agents = chatAgentCandidates(snapshot, ctx).map((agent) => ({
+        id: agent.id,
+        slug: agent.slug,
+        name: agent.name,
+        description: agent.description,
+        kind: agent.kind,
+        isDefault: agent.id === boundId,
+    }));
+    return c.json({ success: true, data: agents });
+});
+
 // ============================================
 // Invoked Chat Endpoint
 // ============================================
@@ -208,6 +231,8 @@ export const InvokeRequestSchema = z.object({
     message: z.string().min(1, "Message is required").max(MAX_MESSAGE_LENGTH, "Message too long"),
     messages: z.array(InvokeMessageSchema).max(MAX_MESSAGES_PAYLOAD).optional(),
     modelId: z.string().optional(),
+    /** Chat agent for this turn; null = the chat feature's bound agent. Saved on the thread. */
+    agentId: z.string().min(1).nullable().optional(),
 });
 
 /** Per-user rate limit for invoked chat (expensive LLM + tools). */
@@ -266,7 +291,7 @@ export function parseToolResult(value: unknown, depth = 0): unknown {
  * Run the DeepAgent asynchronously and return one complete response.
  */
 aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema), async (c) => {
-    const { threadId, message, messages: frontendMessages, modelId } = c.req.valid("json");
+    const { threadId, message, messages: frontendMessages, modelId, agentId } = c.req.valid("json");
     const rbacUserId = c.get("rbacUserId")!;
     const isRbacAdmin = c.get("isRbacAdmin") || false;
     const rbacPermissions = c.get("rbacPermissions") || [];
@@ -301,25 +326,30 @@ aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema
         clickhouseService: service,
         defaultDatabase: session?.connectionConfig?.database,
         modelId,
+        // CHouse management tools call the API in-process as this user.
+        bearerToken: extractTokenFromHeader(c.req.header("Authorization")) ?? undefined,
     };
+    const requestedAgentId = agentId === undefined ? thread.agentId : agentId;
 
     try {
-        const result = await invokeCapabilityAgent(
-            chatCapability,
-            { threadId },
-            runContext,
-            coreMessages,
-            c.req.raw.signal,
-        );
+        const result = await invokeChat(runContext, coreMessages, {
+            agentId: requestedAgentId,
+            signal: c.req.raw.signal,
+        });
         const content = stripScratchpad(result.content);
         if (!content.trim()) {
             throw AppError.internal("Chouse AI returned an empty response. Please try again.");
+        }
+        if (agentId !== undefined && agentId !== thread.agentId) {
+            await updateThreadAgent(threadId, rbacUserId, agentId);
         }
 
         const toolCalls = result.toolCalls.map((call) => ({
             name: call.name,
             args: call.args,
             result: jsonSafe(parseToolResult(call.result)),
+            // Only calls made below the agent that answered carry a path.
+            ...(call.agent && call.agent !== result.agent.slug ? { agent: call.agent } : {}),
         }));
         const chartSpecs = toolCalls
             .filter((call) =>
@@ -354,6 +384,7 @@ aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema
                 content,
                 toolCalls,
                 chartSpecs,
+                agent: result.agent,
             },
         });
     } catch (error) {
@@ -393,6 +424,7 @@ aiChat.get("/threads", async (c) => {
 const CreateThreadSchema = z.object({
     title: z.string().optional(),
     connectionId: z.string().optional(),
+    agentId: z.string().min(1).nullable().optional(),
 });
 
 /**
@@ -401,10 +433,17 @@ const CreateThreadSchema = z.object({
  */
 aiChat.post("/threads", zValidator("json", CreateThreadSchema), async (c) => {
     const rbacUserId = c.get("rbacUserId")!;
-    const { title, connectionId } = c.req.valid("json");
+    const { title, connectionId, agentId } = c.req.valid("json");
 
+    if (agentId) {
+        const snapshot = await getRegistrySnapshot();
+        const ctx = { isAdmin: c.get("isRbacAdmin") || false, permissions: c.get("rbacPermissions") || [] };
+        if (!chatAgentCandidates(snapshot, ctx).some((agent) => agent.id === agentId)) {
+            throw AppError.badRequest("That chat agent is not available to you. Pick another agent.");
+        }
+    }
     const connId = connectionId || c.get("rbacConnectionId");
-    const thread = await createThread(rbacUserId, title, connId);
+    const thread = await createThread(rbacUserId, title, connId, agentId ?? null);
 
     return c.json({
         success: true,

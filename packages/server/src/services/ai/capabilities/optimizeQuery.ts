@@ -1,23 +1,19 @@
 /**
- * Capability: optimize-query — the SQL editor "Optimize" button.
- * Session/service-based agent; validates table access, loads the optimizer
- * skill, fetches DDL + EXPLAIN, returns a structured optimization.
+ * Feature: optimize-query — the SQL editor "Optimize" button.
+ * Validates table access; the bound agent (registry) inspects DDL + EXPLAIN on
+ * the session's connection and returns a structured optimization, which
+ * finalize proves with a before→after EXPLAIN estimate.
  */
 
 import { z } from "zod";
-import type { AgentMessage } from "../types";
-import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { validateQueryAccess } from "../../../middleware/dataAccess";
-import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
 import { explainEstimate } from "./fleetShared";
 import {
   QueryOptimizationOutputSchema,
   type QueryOptimization,
-  OPTIMIZER_INSTRUCTIONS,
-  buildOptimizationPrompt,
   stripFormatClause,
   unfence,
 } from "./optimizerShared";
@@ -43,15 +39,22 @@ export const optimizeQueryCapability: StructuredCapability<
   QueryOptimization
 > = {
   id: "optimize-query",
+  title: "Optimize query",
+  description: "SQL editor › Optimize: rewrites a SELECT for speed and memory, proven with a before→after EXPLAIN estimate.",
+  surface: "sql-editor",
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
+  contexts: ["session"],
+  variables: {
+    query: { type: "string", description: "The SELECT to optimize (trimmed)." },
+    additionalPrompt: { type: "string", description: "Extra instructions from the user (trimmed; empty when none)." },
+  },
   inputSchema: z.object({
     query: z.string().min(1, "Query is required"),
     additionalPrompt: z.string().optional(),
     database: z.string().optional(),
   }),
   outputSchema: QueryOptimizationOutputSchema,
-  tuning: { stopAtSteps: 10, temperature: 0 },
 
   async prepare(input, ctx) {
     const trimmed = input.query.trim().toUpperCase();
@@ -74,16 +77,8 @@ export const optimizeQueryCapability: StructuredCapability<
     return { query: input.query, additionalPrompt: input.additionalPrompt, warnings: access.warnings };
   },
 
-  tools(_prepared, ctx): AgentToolSet {
-    return coreTools(ctx);
-  },
-
-  instructions() {
-    return OPTIMIZER_INSTRUCTIONS;
-  },
-
-  messages(prepared): AgentMessage[] {
-    return [{ role: "user", content: buildOptimizationPrompt(prepared.query, prepared.additionalPrompt) }];
+  templateVariables(prepared) {
+    return { query: prepared.query.trim(), additionalPrompt: prepared.additionalPrompt?.trim() ?? "" };
   },
 
   async finalize(parsed, prepared, ctx) {

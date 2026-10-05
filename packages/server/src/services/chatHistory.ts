@@ -23,6 +23,8 @@ export interface ChatThread {
     userId: string;
     title: string | null;
     connectionId: string | null;
+    /** Chat agent chosen for the thread (ADR 0019); null = the chat feature's bound agent. */
+    agentId: string | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -32,7 +34,7 @@ export interface ChatMessage {
     threadId: string;
     role: 'user' | 'assistant';
     content: string;
-    toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> | null;
+    toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown; agent?: string }> | null;
     chartSpecs?: Array<Record<string, unknown>> | null;
     createdAt: Date;
 }
@@ -47,7 +49,8 @@ export interface ChatMessage {
 export async function createThread(
     userId: string,
     title?: string,
-    connectionId?: string
+    connectionId?: string,
+    agentId?: string | null
 ): Promise<ChatThread> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -61,6 +64,7 @@ export async function createThread(
         userId,
         title: title || null,
         connectionId: connectionId || null,
+        agentId: agentId || null,
         createdAt: now,
         updatedAt: now,
     });
@@ -70,6 +74,7 @@ export async function createThread(
         userId,
         title: title || null,
         connectionId: connectionId || null,
+        agentId: agentId || null,
         createdAt: now,
         updatedAt: now,
     };
@@ -115,6 +120,7 @@ export async function listThreads(
         userId: t.userId,
         title: t.title,
         connectionId: t.connectionId,
+        agentId: t.agentId ?? null,
         createdAt: t.createdAt instanceof Date ? t.createdAt : new Date(t.createdAt),
         updatedAt: t.updatedAt instanceof Date ? t.updatedAt : new Date(t.updatedAt),
     }));
@@ -147,6 +153,7 @@ export async function getThread(
         userId: t.userId,
         title: t.title,
         connectionId: t.connectionId,
+        agentId: t.agentId ?? null,
         createdAt: t.createdAt instanceof Date ? t.createdAt : new Date(t.createdAt),
         updatedAt: t.updatedAt instanceof Date ? t.updatedAt : new Date(t.updatedAt),
     };
@@ -166,6 +173,26 @@ export async function updateThreadTitle(
     // @ts-ignore - Union type issue with RbacDb, resolved at runtime
     await db.update(schema.aiChatThreads)
         .set({ title, updatedAt: new Date() })
+        .where(and(
+            eq(schema.aiChatThreads.id, threadId),
+            eq(schema.aiChatThreads.userId, userId)
+        ));
+}
+
+/**
+ * Set the thread's chat agent (null = the chat feature's bound agent)
+ */
+export async function updateThreadAgent(
+    threadId: string,
+    userId: string,
+    agentId: string | null
+): Promise<void> {
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+
+    // @ts-ignore - Union type issue with RbacDb, resolved at runtime
+    await db.update(schema.aiChatThreads)
+        .set({ agentId, updatedAt: new Date() })
         .where(and(
             eq(schema.aiChatThreads.id, threadId),
             eq(schema.aiChatThreads.userId, userId)

@@ -500,6 +500,8 @@ export const aiChatThreads = sqliteTable('rbac_ai_chat_threads', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title'),
   connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  // Chat agent chosen for the thread (ADR 0019); null = the chat feature's bound agent.
+  agentId: text('agent_id'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
