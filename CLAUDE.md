@@ -168,6 +168,15 @@ type: minor
 
 Skip the fragment only for non-user-visible changes (refactors, CI, docs-only).
 
+**`minor` and `major` fragments also update the release announcement** (same PR):
+the "New · X.Y" banner on the landing page and docs home
+(`docs/portfolio/src/content/release.ts`) and the docs page **What's new in X.Y**
+(`docs/portfolio/src/content/docs/whats-new.md`). Both describe the *next* feature
+release. The first `minor`/`major` fragment after a release starts the next
+version there, and CI fails until it does. Later ones add their highlight and any
+upgrade step. `patch` fragments change neither. See
+[.rules/RELEASE_NOTES.md](.rules/RELEASE_NOTES.md).
+
 ### How releases happen
 
 When a PR containing a fragment merges to `main`, `auto-release.yml` fires automatically:
@@ -211,5 +220,6 @@ data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
 | After finishing a task — scan files you touched | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — remove unused imports, symbols, exports left behind |
 | Proactively scanning the codebase for cleanup | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — full scan process including dependency and barrel-export checks |
 | A change is user-visible (new feature, bug fix, removal) | Drop a fragment in `changelogs/unreleased/<pr-number>-<slug>.md` — never edit `CHANGELOG.md` directly |
+| The fragment is `minor` or `major` | **[.rules/RELEASE_NOTES.md](.rules/RELEASE_NOTES.md)** — update the landing/docs release banner (`docs/portfolio/src/content/release.ts`) and **What's new in X.Y** (`whats-new.md`) in the same PR: highlight, upgrade steps, and the version when it's the first feature of a new release. |
 | Touching `rbac/db/migrations.ts` (add or edit a migration) | **MANDATORY** — add/update `migrations.test.ts` (per-version `VERSION_CHECKS` + data-migration cases) and run `./scripts/test-migrations.sh` (SQLite + PostgreSQL/Docker). See [Database Migrations](#database-migrations--testing-is-mandatory). |
 | Changing env vars / config keys, server port or health endpoints, required secrets, the Dockerfile, background services/leases, or anything under `charts/` | **[.rules/HELM_CHART.md](.rules/HELM_CHART.md)** — whether the Helm chart must change in the same PR, how to version it (bump `Chart.yaml` `version`; never `appVersion`), and what to regenerate/test. |

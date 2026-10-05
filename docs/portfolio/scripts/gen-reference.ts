@@ -23,6 +23,9 @@
  *     every live entry there is still read
  *   - every screen in the app (routes and their tabs) is documented by some
  *     page — in its `route:` frontmatter or mentioned in its text
+ *   - the announced release (src/content/release.ts: the landing banner and
+ *     the What's new title) is not behind the version that the unreleased
+ *     minor/major changelog fragments will produce
  *
  * Needs the repo checkout and `bun install` in packages/server (it imports
  * server modules). The site build itself only reads the generated files, so
@@ -43,6 +46,7 @@ import { SEED_AGENTS, SEED_BINDINGS, SEED_HARNESSES, SEED_SKILLS, type SeedAgent
 import type { AnyCapability } from "../../../packages/server/src/services/ai/types";
 import { CONTEXT_HINTS, CONTEXT_LABELS, SURFACE_LABELS, SURFACE_ORDER } from "../../../src/features/agents/assistant/lib";
 import { CONFIG_KEYS, CONFIG_SECTIONS, IGNORED_ENV } from "../src/content/reference/config-keys";
+import { RELEASE } from "../src/content/release";
 import { slugify } from "../src/docs-site/lib";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -753,6 +757,36 @@ function checkScreenCoverage(): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Release notes
+
+/**
+ * The `major.minor` the unreleased fragments will release, or null when they
+ * are patch-only (a patch release keeps the current announcement).
+ */
+function upcomingFeatureVersion(): string | null {
+  const dir = join(REPO, "changelogs", "unreleased");
+  const types = readdirSync(dir)
+    .filter((f) => f.endsWith(".md") && f !== "README.md")
+    .map((f) => /^type:\s*(major|minor|patch)\s*$/m.exec(readFileSync(join(dir, f), "utf8"))?.[1]);
+  const [major, minor] = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version
+    .split(".")
+    .map(Number);
+  if (types.includes("major")) return `${major + 1}.0`;
+  if (types.includes("minor")) return `${major}.${minor + 1}`;
+  return null;
+}
+
+function checkReleaseNotes(): string[] {
+  const upcoming = upcomingFeatureVersion();
+  if (!upcoming || upcoming === RELEASE.version) return [];
+  const kind = upcoming.endsWith(".0") ? "major" : "minor";
+  return [
+    `Unreleased changelog fragments make the next release ${upcoming} (${kind}), but the site still announces ${RELEASE.version} — ` +
+      `update src/content/release.ts and src/content/docs/whats-new.md for ${upcoming} (see .rules/RELEASE_NOTES.md)`,
+  ];
+}
+
+// ---------------------------------------------------------------------------
 
 function main(): void {
   const outputs: Record<string, string> = {
@@ -778,7 +812,7 @@ function main(): void {
     }
   }
 
-  const gaps = [...checkEnvCoverage(), ...checkScreenCoverage()];
+  const gaps = [...checkEnvCoverage(), ...checkScreenCoverage(), ...checkReleaseNotes()];
   for (const gap of gaps) console.error(`✗ ${gap}`);
   for (const path of stale) console.error(`✗ ${path} is stale — run \`bun scripts/gen-reference.ts\` in docs/portfolio`);
 

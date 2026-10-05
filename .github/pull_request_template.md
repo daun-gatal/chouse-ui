@@ -44,6 +44,7 @@ Closes #
 <!-- For everything else, add a fragment file so the release is automatic. -->
 
 - [ ] Added `changelogs/unreleased/<pr-number>-<slug>.md`
+- [ ] `minor`/`major` fragment: updated the release banner (`docs/portfolio/src/content/release.ts`) and **What's new** (`whats-new.md`) — see `.rules/RELEASE_NOTES.md`
 
 <details>
 <summary>Fragment format</summary>

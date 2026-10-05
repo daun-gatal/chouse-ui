@@ -175,6 +175,10 @@ function checkLinks(pages: LoadedPage[]): void {
       check(source, match[1]);
     }
   }
+  const releaseSource = "src/content/release.ts";
+  for (const match of readFileSync(join(ROOT, releaseSource), "utf8").matchAll(/["'`](\/docs\/[^"'`\s]*)["'`]/g)) {
+    check(releaseSource, match[1]);
+  }
   if (errors.length) throw new Error(`Broken docs links:\n  - ${errors.join("\n  - ")}`);
 }
 
