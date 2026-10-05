@@ -53,7 +53,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "quick-start", title: "Quick start", description: "Run CHouse UI with Docker Compose in under five minutes — UI on port 5521, ClickHouse on 8123, default admin login." },
           { slug: "first-login", title: "First login", description: "Sign in with the seeded admin account, rotate the password, and take the first-run tour." },
           { slug: "concepts", title: "Core concepts", description: "The six ideas behind everything else: own users and roles, connections, the server proxy, metadata-based observation, approved fixes and governed agents." },
-          { slug: "whats-new", title: "What's new in 3.14", description: "Data observability, approved fixes, Agents and MCP in the UI, CLI 1.0, Helm chart 2.0 — and what to change when you upgrade." },
+          { slug: "whats-new", title: "What's new in 3.14", description: "Data observability, approved fixes, AI agents and MCP in the UI, CLI 1.0, Helm chart 2.0 — and what to change when you upgrade." },
         ],
       },
     ],
