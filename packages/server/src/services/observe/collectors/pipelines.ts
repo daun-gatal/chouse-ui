@@ -8,6 +8,9 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { logger } from "../../../utils/logger";
+import { nextFireTimes, type CadenceSpec } from "../../scheduledQueries/cadence";
+import { isFrequency } from "../../scheduledQueries/types";
+import { MIN_CADENCE_SAMPLES } from "../baselines";
 import { selectRows } from "../clickhouse";
 import type { CollectorContext, ConnectionCollector } from "../collector";
 import { all, json, num, numOrNull, runBatch, str, strOrNull, type Row } from "../db";
@@ -31,10 +34,37 @@ import {
   type CatalogTable,
   type PipelineDef,
 } from "../adapters";
-import { openOrUpdateIncident, recoverIncident } from "../incidents";
+import { openOrUpdateIncident, recoverIncident, recoverIncidentsExcept, updateActiveIncident } from "../incidents";
 
 const MAX_WINDOW_MS = 15 * 60 * 1000;
 export const BAD_STATUSES: PipelineStatus[] = ["retrying", "stalled", "failing", "stopped"];
+/** A pipeline must stay bad this long before it opens an incident. */
+export const INCIDENT_HOLD_MS = 5 * 60 * 1000;
+
+export type IncidentAction = "none" | "open" | "update" | "recover";
+
+/**
+ * What one collector run does to a pipeline's incident. A bad status opens
+ * one only once it has held for INCIDENT_HOLD_MS, so a one-minute blip never
+ * pages; an open incident follows changes in the reason; leaving the bad
+ * statuses recovers it.
+ */
+export function incidentAction(input: {
+  status: PipelineStatus;
+  since: number;
+  nowMs: number;
+  previous: { status: PipelineStatus; reason: string | null; updatedAt: number } | null;
+  reason: string;
+}): IncidentAction {
+  const { status, since, nowMs, previous, reason } = input;
+  const bad = BAD_STATUSES.includes(status);
+  if (!bad) return previous && BAD_STATUSES.includes(previous.status) ? "recover" : "none";
+  const heldNow = nowMs - since >= INCIDENT_HOLD_MS;
+  const heldBefore = previous !== null && previous.status === status && previous.updatedAt - since >= INCIDENT_HOLD_MS;
+  if (heldNow && !heldBefore) return "open";
+  if (previous && (previous.status !== status || previous.reason !== reason)) return "update";
+  return "none";
+}
 
 async function loadCatalog(connectionId: string): Promise<CatalogTable[]> {
   const rows = await all(sql`SELECT database_name, table_name, engine, create_query, total_rows FROM obs_catalog_tables WHERE connection_id = ${connectionId}`);
@@ -60,6 +90,8 @@ interface ExistingPipeline {
   targetNode: string | null;
   name: string;
   lastSampleAt: number | null;
+  reason: string | null;
+  updatedAt: number;
 }
 
 async function loadExisting(connectionId: string): Promise<Map<string, ExistingPipeline>> {
@@ -73,6 +105,8 @@ async function loadExisting(connectionId: string): Promise<Map<string, ExistingP
     targetNode: strOrNull(r.target_node),
     name: str(r.name),
     lastSampleAt: numOrNull(r.last_sample_at),
+    reason: strOrNull(r.status_reason),
+    updatedAt: num(r.updated_at),
   }]));
 }
 
@@ -114,22 +148,62 @@ export function learnedCadenceSeconds(history: PipelineSample[], def: PipelineDe
   const successes = [...new Set(history.map((s) => s.lastSuccessAt).filter((v): v is number => v !== null))].sort((a, b) => a - b);
   const gaps: number[] = [];
   for (let i = 1; i < successes.length; i++) gaps.push((successes[i] - successes[i - 1]) / 1000);
-  return gaps.length >= 3 ? median(gaps) : null;
+  // Enough gaps that a person running a few inserts by hand is not mistaken
+  // for a regular writer (same bar as table cadences).
+  return gaps.length >= MIN_CADENCE_SAMPLES ? median(gaps) : null;
+}
+
+/**
+ * The longest gap between a schedule's next few fires, in seconds, or null when
+ * the clock never fires it (manual and event-chained jobs). The longest gap
+ * keeps an irregular cron (weekdays only, say) from looking late on Monday.
+ */
+export function schedulePeriodSeconds(spec: CadenceSpec, nowMs: number): number | null {
+  const fires = nextFireTimes(spec, 8, nowMs);
+  let gap = 0;
+  for (let i = 1; i < fires.length; i++) gap = Math.max(gap, fires[i] - fires[i - 1]);
+  return gap > 0 ? gap / 1000 : null;
+}
+
+function jobSpec(job: Row): CadenceSpec {
+  const frequency = str(job.frequency);
+  return {
+    frequency: isFrequency(frequency) ? frequency : "daily",
+    hour: num(job.hour),
+    dayOfWeek: num(job.day_of_week),
+    dayOfMonth: num(job.day_of_month),
+    cronExpr: strOrNull(job.cron_expr),
+    timezone: strOrNull(job.timezone) ?? "UTC",
+  };
 }
 
 async function scheduledJobs(connectionId: string, ctx: AdapterContext): Promise<AdapterResult> {
   const out: AdapterResult = { defs: [], samples: new Map(), unsupported: new Map(), attrs: new Map() };
-  const jobs = await all(sql`SELECT id, name, dest_database, dest_table, output_mode, enabled FROM scheduled_queries WHERE connection_id = ${connectionId}`);
+  const jobs = await all(sql`
+    SELECT id, name, dest_database, dest_table, output_mode, enabled, frequency, hour, day_of_week, day_of_month, cron_expr, timezone
+    FROM scheduled_queries WHERE connection_id = ${connectionId}`);
   for (const job of jobs) {
     const jobId = str(job.id);
     const id = `scheduled_job:${jobId}`;
     const target = job.dest_database && job.dest_table && str(job.output_mode) !== "none" ? `table:${str(job.dest_database)}.${str(job.dest_table)}` : null;
-    out.defs.push({ id, kind: "scheduled_job", engine: "CHouse scheduler", name: str(job.name), sourceLabel: null, sourceNode: `job:${jobId}`, targetNode: target, attrs: { enabled: num(job.enabled) === 1 } });
-    const runs = await all(sql`
-      SELECT status, finished_at, message FROM scheduled_query_runs
-      WHERE query_id = ${jobId} AND started_at > ${ctx.sinceMs} ORDER BY started_at DESC LIMIT 50`);
+    const enabled = num(job.enabled) === 1;
+    // A job's schedule is its cadence: learning one from run history mistakes a
+    // burst of manual "Run now" clicks for an every-few-minutes job.
+    const periodSeconds = enabled ? schedulePeriodSeconds(jobSpec(job), ctx.nowMs) : null;
+    out.defs.push({
+      id, kind: "scheduled_job", engine: "CHouse scheduler", name: str(job.name), sourceLabel: null, sourceNode: `job:${jobId}`, targetNode: target,
+      attrs: { enabled, periodSeconds, expectsRecurring: periodSeconds !== null, paused: enabled ? null : "The job is disabled" },
+    });
+    const runs = await all(sql`SELECT status FROM scheduled_query_runs WHERE query_id = ${jobId} AND started_at > ${ctx.sinceMs}`);
     const last = await all(sql`SELECT finished_at FROM scheduled_query_runs WHERE query_id = ${jobId} AND status = 'success' ORDER BY finished_at DESC LIMIT 1`);
-    const errors = runs.filter((r) => str(r.status) === "error");
+    // Judge the job by its latest finished run: a failure that a retry already
+    // fixed is not an outage, and a failed daily run stays failing until the
+    // next run succeeds instead of fading after a few minutes.
+    const latest = await all(sql`
+      SELECT status, message FROM scheduled_query_runs
+      WHERE query_id = ${jobId} AND status <> 'running' ORDER BY started_at DESC LIMIT 1`);
+    const latestFailed = latest[0] !== undefined && ["error", "failed"].includes(str(latest[0].status));
+    const failure = latestFailed ? strOrNull(latest[0].message) ?? "the run reported an error" : null;
     const sample: PipelineSample = {
       sampledAt: ctx.nowMs,
       unitsIn: runs.length,
@@ -138,10 +212,11 @@ async function scheduledJobs(connectionId: string, ctx: AdapterContext): Promise
       lagSeconds: null,
       backlog: null,
       backlogUnit: null,
-      errors: errors.length,
-      errorSample: errors[0] ? strOrNull(errors[0].message) : null,
+      errors: latestFailed ? 1 : 0,
+      errorSample: failure,
       errorClass: null,
-      progressing: runs.length === 0 ? null : runs.some((r) => str(r.status) === "success"),
+      progressing: latestFailed ? null : runs.some((r) => str(r.status) === "success") ? true : null,
+      lastRunFailure: failure,
     };
     out.samples.set(id, sample);
   }
@@ -203,9 +278,12 @@ export const pipelinesCollector: ConnectionCollector = {
       for (const [k, v] of r.unsupported) unsupported.set(k, v);
       for (const [k, v] of r.attrs) attrs.set(k, v);
     }
-    // Writers that went quiet still need a sample so "stopped" can be detected.
+    // Writers that went quiet still need a sample so "stopped" can be detected,
+    // unless their target table was dropped: then the writer is gone, not stopped.
+    const liveTables = new Set(catalog.map((t) => `table:${t.database}.${t.table}`));
     for (const p of existing.values()) {
       if (p.kind !== "writer" || defs.has(p.id)) continue;
+      if (catalog.length > 0 && p.targetNode?.startsWith("table:") && !liveTables.has(p.targetNode)) continue;
       if (p.lastSampleAt === null || ctx.nowMs - p.lastSampleAt > 24 * 3600 * 1000) continue;
       defs.set(p.id, { id: p.id, kind: "writer", engine: "", name: p.name, sourceLabel: null, sourceNode: null, targetNode: p.targetNode, attrs: p.attrs });
       samples.set(p.id, { sampledAt: ctx.nowMs, unitsIn: 0, bytesIn: null, lastSuccessAt: typeof p.attrs.lastSuccessAt === "number" ? p.attrs.lastSuccessAt : null, lagSeconds: null, backlog: null, backlogUnit: null, errors: 0, errorSample: null, errorClass: null, progressing: null });
@@ -213,17 +291,34 @@ export const pipelinesCollector: ConnectionCollector = {
 
     const history = await recentSamples(connectionId, 120);
     const statements: SQL[] = [];
-    const transitions: Array<{ def: PipelineDef; from: PipelineStatus | null; to: PipelineStatus; reason: string; sample: PipelineSample | undefined }> = [];
+    const badNow: string[] = [];
+    const transitions: Array<{ def: PipelineDef; action: IncidentAction; to: PipelineStatus; reason: string; since: number }> = [];
     for (const def of defs.values()) {
       const sample = samples.get(def.id);
       const past = history.get(def.id) ?? [];
       const window = sample ? [...past.slice(0, 5).reverse(), sample] : past.slice(0, 5).reverse();
       const mergedAttrs = { ...(existing.get(def.id)?.attrs ?? {}), ...def.attrs, ...(attrs.get(def.id) ?? {}), ...(sample?.lastSuccessAt ? { lastSuccessAt: sample.lastSuccessAt } : {}) };
       const cadence = learnedCadenceSeconds([...past, ...(sample ? [sample] : [])], { ...def, attrs: mergedAttrs });
-      const verdict = classifyPipeline(window, { nowMs: ctx.nowMs, cadenceSeconds: cadence, unsupported: unsupported.get(def.id) ?? null });
+      // Switches come from this run's evidence only, never from stored attrs.
+      const fresh = { ...def.attrs, ...(attrs.get(def.id) ?? {}) };
+      const verdict = classifyPipeline(window, {
+        nowMs: ctx.nowMs,
+        cadenceSeconds: cadence,
+        unsupported: unsupported.get(def.id) ?? null,
+        paused: typeof fresh.paused === "string" ? fresh.paused : null,
+        expectsRecurring: fresh.expectsRecurring !== false,
+      });
       const prev = existing.get(def.id);
       const since = prev && prev.status === verdict.status ? prev.statusSince : ctx.nowMs;
-      if (!prev || prev.status !== verdict.status) transitions.push({ def, from: prev?.status ?? null, to: verdict.status, reason: verdict.reason, sample });
+      const action = incidentAction({
+        status: verdict.status,
+        since,
+        nowMs: ctx.nowMs,
+        previous: prev ? { status: prev.status, reason: prev.reason, updatedAt: prev.updatedAt } : null,
+        reason: verdict.reason,
+      });
+      if (BAD_STATUSES.includes(verdict.status)) badNow.push(def.id);
+      if (action !== "none") transitions.push({ def, action, to: verdict.status, reason: verdict.reason, since });
       const attrsJson = JSON.stringify({ ...mergedAttrs, cadenceSeconds: cadence });
       statements.push(sql`
         INSERT INTO obs_pipelines (connection_id, pipeline_id, kind, engine, name, source_label, source_node, target_node, status, status_reason, status_since, last_sample_at, unsupported, attrs, updated_at)
@@ -252,21 +347,27 @@ export const pipelinesCollector: ConnectionCollector = {
     statements.push(sql`DELETE FROM obs_pipeline_samples WHERE connection_id = ${connectionId} AND sampled_at < ${ctx.nowMs - 48 * 3600 * 1000}`);
     await runBatch(statements);
     await ctx.setWatermark(ctx.nowMs);
+    // Only a pipeline that is bad right now may hold an open incident. This also
+    // closes incidents of pipelines that disappeared (job deleted, view dropped)
+    // and ones opened under older, looser rules.
+    await recoverIncidentsExcept(connectionId, "pipeline", badNow);
 
     for (const t of transitions) {
-      if (BAD_STATUSES.includes(t.to)) {
-        await openOrUpdateIncident({
-          connectionId,
-          kind: "pipeline",
-          subjectRef: t.def.id,
-          subjectNode: t.def.targetNode,
-          severity: STATUS_SEVERITY[t.to] >= STATUS_SEVERITY.failing ? "critical" : "warning",
-          summary: `${t.def.name}: ${t.reason}`,
-          onsetAt: ctx.nowMs,
-        });
-      } else if (t.from && BAD_STATUSES.includes(t.from)) {
+      if (t.action === "recover") {
         await recoverIncident(connectionId, "pipeline", t.def.id);
+        continue;
       }
+      const input = {
+        connectionId,
+        kind: "pipeline" as const,
+        subjectRef: t.def.id,
+        subjectNode: t.def.targetNode,
+        severity: STATUS_SEVERITY[t.to] >= STATUS_SEVERITY.failing ? "critical" as const : "warning" as const,
+        summary: `${t.def.name}: ${t.reason}`,
+        onsetAt: t.since,
+      };
+      if (t.action === "open") await openOrUpdateIncident(input);
+      else await updateActiveIncident(input);
     }
   },
 };

@@ -12,25 +12,37 @@ export type Criticality = "critical" | "important" | "standard";
 export interface Cadence {
   p50Seconds: number;
   p99Seconds: number;
+  /** Longest gap in the learning window: the nightly or weekend lull. */
+  maxSeconds: number;
   samples: number;
 }
 
 /** Minimum gaps before a cadence is trusted. */
 export const MIN_CADENCE_SAMPLES = 5;
 
-/** Learn the write cadence from ascending write timestamps (ms). */
+/**
+ * Parts landing this close together are one write. A single INSERT creates a
+ * part per partition and per block, and counting those as separate writes
+ * would teach a daily load an "every few seconds" cadence.
+ */
+export const WRITE_BURST_SECONDS = 60;
+
+/** Learn the write cadence from write timestamps (ms), bursts collapsed. */
 export function learnCadence(writeTimesMs: number[]): Cadence | null {
   const times = [...writeTimesMs].filter(Number.isFinite).sort((a, b) => a - b);
   const gaps: number[] = [];
+  let burstStart = times[0];
   for (let i = 1; i < times.length; i++) {
-    const gap = (times[i] - times[i - 1]) / 1000;
-    if (gap > 0) gaps.push(gap);
+    const gap = (times[i] - burstStart) / 1000;
+    if (gap <= WRITE_BURST_SECONDS) continue;
+    gaps.push(gap);
+    burstStart = times[i];
   }
   if (gaps.length < MIN_CADENCE_SAMPLES) return null;
   const p50 = quantile(gaps, 0.5);
   const p99 = quantile(gaps, 0.99);
   if (p50 === null || p99 === null) return null;
-  return { p50Seconds: round(p50, 1), p99Seconds: round(p99, 1), samples: gaps.length };
+  return { p50Seconds: round(p50, 1), p99Seconds: round(p99, 1), maxSeconds: round(Math.max(...gaps), 1), samples: gaps.length };
 }
 
 export interface BandSlot {
@@ -86,6 +98,13 @@ export function checkVolume(band: VolumeBand, hourStartMs: number, rows: number,
   return { outside: rows < lower || rows > upper, expected: slot.median, lower, upper, deviation };
 }
 
+/** The clock-driven pipeline (scheduled job, refreshable view) that writes a table. */
+export interface ProducerSignal {
+  name: string;
+  status: string;
+  reason: string | null;
+}
+
 export interface TableSignals {
   nowMs: number;
   lastWriteAtMs: number | null;
@@ -94,6 +113,8 @@ export interface TableSignals {
   firstSeenAtMs: number | null;
   lastHour: HourlyVolume | null;
   band: VolumeBand;
+  /** Set when a scheduled job or refreshable view writes the table. */
+  producer?: ProducerSignal | null;
 }
 
 export interface TableVerdict {
@@ -111,12 +132,48 @@ function human(seconds: number): string {
 }
 
 /** Overdue threshold: well past the slowest normal gap, never below 15 minutes. */
-export function staleAfterSeconds(cadence: Cadence): number {
+export function staleAfterSeconds(cadence: Pick<Cadence, "p99Seconds">): number {
   return Math.max(3 * cadence.p99Seconds, cadence.p99Seconds + 900);
 }
 
+const PRODUCER_BAD = new Set(["retrying", "stalled", "failing", "stopped"]);
+
+/**
+ * Does the learned hour-of-week band expect writes in the complete hours since
+ * the last write? Null when those hours have not been learned yet.
+ */
+export function bandExpectsWrites(band: VolumeBand, lastWriteAtMs: number, nowMs: number, minSamples = 3): boolean | null {
+  const HOUR_MS = 3600 * 1000;
+  let known = false;
+  for (let h = Math.floor(lastWriteAtMs / HOUR_MS) * HOUR_MS + HOUR_MS; h + HOUR_MS <= nowMs; h += HOUR_MS) {
+    const slot = band[String(hourOfWeek(h))];
+    if (!slot || slot.n < minSamples) continue;
+    known = true;
+    if (slot.median > 0) return true;
+    // A week of hours is every slot once; looking further adds nothing.
+    if (h - lastWriteAtMs > 7 * 24 * HOUR_MS) break;
+  }
+  return known ? false : null;
+}
+
 export function classifyTable(signals: TableSignals): TableVerdict {
-  const { nowMs, lastWriteAtMs, cadence, firstSeenAtMs, lastHour, band } = signals;
+  const { nowMs, lastWriteAtMs, cadence, firstSeenAtMs, lastHour, band, producer } = signals;
+  // A table written on a clock is as fresh as the job that writes it: a job
+  // that ran fine but had nothing new to write leaves the data current, and a
+  // paused job sets no freshness expectation at all.
+  if (producer) {
+    if (producer.status === "paused") {
+      return { state: "trusted", reason: `Written by ${producer.name}, which is paused${producer.reason ? ` (${producer.reason})` : ""}` };
+    }
+    if (PRODUCER_BAD.has(producer.status)) {
+      const age = lastWriteAtMs === null ? null : Math.max(0, (nowMs - lastWriteAtMs) / 1000);
+      return {
+        state: "stale",
+        reason: `${producer.name} is ${producer.status}${producer.reason ? `: ${producer.reason}` : ""}${age === null ? "" : `; last write ${human(age)} ago`}`,
+      };
+    }
+    return { state: "trusted", reason: `Written by ${producer.name}${producer.reason ? `: ${producer.reason}` : ""}` };
+  }
   if (cadence === null || lastWriteAtMs === null) {
     if (firstSeenAtMs !== null && nowMs - firstSeenAtMs < LEARNING_PERIOD_MS) {
       return { state: "learning", reason: "Learning the write pattern" };
@@ -125,10 +182,17 @@ export function classifyTable(signals: TableSignals): TableVerdict {
   }
   const ageSeconds = Math.max(0, (nowMs - lastWriteAtMs) / 1000);
   if (ageSeconds > staleAfterSeconds(cadence)) {
-    return {
-      state: "stale",
-      reason: `No writes for ${human(ageSeconds)} (normally every ${human(cadence.p50Seconds)}, at most ${human(cadence.p99Seconds)})`,
-    };
+    // Overdue against the typical gap, but nights and weekends are quiet for
+    // many tables. Stale only when the hour-of-week pattern expected writes
+    // since, or the silence is longer than any lull seen this week.
+    const unusual = ageSeconds > 1.5 * cadence.maxSeconds;
+    if (unusual || bandExpectsWrites(band, lastWriteAtMs, nowMs) === true) {
+      return {
+        state: "stale",
+        reason: `No writes for ${human(ageSeconds)} (normally every ${human(cadence.p50Seconds)}, at most ${human(cadence.p99Seconds)})`,
+      };
+    }
+    return { state: "trusted", reason: `Quiet for ${human(ageSeconds)}, a normal lull (gaps up to ${human(cadence.maxSeconds)} seen this week)` };
   }
   if (lastHour) {
     const verdict = checkVolume(band, lastHour.hourStartMs, lastHour.rows);

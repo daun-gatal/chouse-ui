@@ -6,11 +6,11 @@ import { describe, it, expect } from "vitest";
 import {
   getDeviceType,
   getDockPrefsFromWorkspace,
-  getChatPrefsFromWorkspace,
+  getChatSheetWidth,
   mergeDockPrefsIntoWorkspace,
-  mergeChatPrefsIntoWorkspace,
+  mergeChatSheetWidthIntoWorkspace,
   DOCK_DEFAULT_PREFERENCES_BY_DEVICE,
-  CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE,
+  CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE,
   type WorkspacePreferencesMap,
 } from "./devicePreferences";
 
@@ -54,17 +54,12 @@ describe("devicePreferences", () => {
     });
   });
 
-  describe("CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE", () => {
-    it("has position and size for all device types", () => {
-      for (const device of ["mobile", "tablet", "laptop", "pc"] as const) {
-        const def = CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE[device];
-        expect(def).toHaveProperty("position");
-        expect(def.position).toHaveProperty("x");
-        expect(def.position).toHaveProperty("y");
-        expect(def).toHaveProperty("size");
-        expect(def.size).toHaveProperty("width");
-        expect(def.size).toHaveProperty("height");
+  describe("CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE", () => {
+    it("opens the sheet wide on every docked device", () => {
+      for (const device of ["tablet", "laptop", "pc"] as const) {
+        expect(CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE[device]).toBeGreaterThanOrEqual(680);
       }
+      expect(CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE.pc).toBeGreaterThan(CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE.laptop);
     });
   });
 
@@ -99,33 +94,22 @@ describe("devicePreferences", () => {
     });
   });
 
-  describe("getChatPrefsFromWorkspace", () => {
-    it("returns position and size from byDevice[device] when present", () => {
-      const workspace: WorkspacePreferencesMap = {
-        byDevice: {
-          tablet: {
-            chatPreferences: { position: { x: 10, y: 20 }, size: { width: 600, height: 800 } },
-          },
-        },
-      };
-      const result = getChatPrefsFromWorkspace(workspace, "tablet");
-      expect(result.position).toEqual({ x: 10, y: 20 });
-      expect(result.size).toEqual({ width: 600, height: 800 });
+  describe("getChatSheetWidth", () => {
+    it("returns the width the user dragged to", () => {
+      const workspace: WorkspacePreferencesMap = { byDevice: { laptop: { chatPreferences: { sheetWidth: 640 } } } };
+      expect(getChatSheetWidth(workspace, "laptop")).toBe(640);
     });
 
-    it("falls back to legacy chatPreferences then default", () => {
-      const workspace: WorkspacePreferencesMap = {
-        chatPreferences: { position: { x: 5, y: 5 } },
-      };
-      const result = getChatPrefsFromWorkspace(workspace, "laptop");
-      expect(result.position).toEqual({ x: 5, y: 5 });
-      expect(result.size).toEqual(CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE.laptop.size);
+    it("ignores legacy floating-window geometry and uses the device default", () => {
+      const workspace = {
+        chatPreferences: { size: { width: 420, height: 560 } },
+        byDevice: { laptop: { chatPreferences: { position: { x: 40, y: 40 }, size: { width: 420, height: 0 } } } },
+      } as WorkspacePreferencesMap;
+      expect(getChatSheetWidth(workspace, "laptop")).toBe(CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE.laptop);
     });
 
-    it("returns device default when nothing saved", () => {
-      const result = getChatPrefsFromWorkspace(undefined, "pc");
-      expect(result.position).toEqual(CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE.pc.position);
-      expect(result.size).toEqual(CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE.pc.size);
+    it("returns the device default when nothing is saved", () => {
+      expect(getChatSheetWidth(undefined, "pc")).toBe(CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE.pc);
     });
   });
 
@@ -158,18 +142,15 @@ describe("devicePreferences", () => {
     });
   });
 
-  describe("mergeChatPrefsIntoWorkspace", () => {
-    it("sets byDevice[device].chatPreferences with position and size", () => {
-      const workspace: WorkspacePreferencesMap = {};
-      const merged = mergeChatPrefsIntoWorkspace(workspace, "laptop", {
-        position: { x: 40, y: 40 },
-        size: { width: 420, height: 560 },
-      });
+  describe("mergeChatSheetWidthIntoWorkspace", () => {
+    it("stores only the sheet width and keeps the dock slice", () => {
+      const workspace: WorkspacePreferencesMap = {
+        byDevice: { laptop: { dockPreferences: { placement: "left" }, chatPreferences: { sheetWidth: 500 } } },
+      };
+      const merged = mergeChatSheetWidthIntoWorkspace(workspace, "laptop", 720);
       const laptop = ((merged as Record<string, unknown>).byDevice as Record<string, unknown>).laptop as Record<string, unknown>;
-      expect(laptop.chatPreferences).toEqual({
-        position: { x: 40, y: 40 },
-        size: { width: 420, height: 560 },
-      });
+      expect(laptop.chatPreferences).toEqual({ sheetWidth: 720 });
+      expect(laptop.dockPreferences).toEqual({ placement: "left" });
     });
   });
 });

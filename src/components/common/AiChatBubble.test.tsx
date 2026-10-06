@@ -247,4 +247,58 @@ describe("AiChatBubble", () => {
     expect(connectionALoads).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Start new chat" })).not.toBeNull();
   });
+
+  it("opens the sheet at the device default width, ignoring legacy floating-window sizes", async () => {
+    mocks.getPreferences.mockResolvedValue({
+      workspacePreferences: { byDevice: { laptop: { chatPreferences: { size: { width: 420, height: 0 } } } } },
+    });
+    render(<AiChatBubble />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    await waitFor(() => expect(mocks.getPreferences).toHaveBeenCalled());
+
+    const sheet = (await screen.findByRole("dialog", { name: "AI chat assistant" })).parentElement;
+    expect(sheet?.style.width).toBe("760px");
+    expect(screen.queryByRole("button", { name: "Cycle sheet width" })).toBeNull();
+  });
+
+  it("lets a new chat run while another thread is still answering", async () => {
+    let resolveFirst: (result: { content: string; toolCalls: unknown[]; chartSpecs: unknown[] }) => void = () => undefined;
+    mocks.invokeChatMessage.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveFirst = resolve;
+    }));
+    const thread = (id: string): Record<string, string | null> => ({
+      id,
+      userId: "user-1",
+      title: null,
+      connectionId: "connection-a",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    });
+    mocks.createThread.mockResolvedValueOnce(thread("thread-1")).mockResolvedValueOnce(thread("thread-2"));
+    render(<AiChatBubble />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
+    const composer = await screen.findByPlaceholderText("Ask about your databases, schemas, queries…");
+    fireEvent.change(composer, { target: { value: "Slow question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(mocks.invokeChatMessage).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Stop generating" })).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByText("New conversation");
+    const freshComposer = screen.getByPlaceholderText<HTMLTextAreaElement>("Ask about your databases, schemas, queries…");
+    expect(freshComposer.disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: "Stop generating" })).toBeNull();
+
+    fireEvent.change(freshComposer, { target: { value: "Second question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(mocks.invokeChatMessage).toHaveBeenCalledTimes(2));
+    expect(mocks.invokeChatMessage.mock.calls.map(([threadId]) => threadId)).toEqual(["thread-1", "thread-2"]);
+
+    await act(async () => {
+      resolveFirst({ content: "Slow answer", toolCalls: [], chartSpecs: [] });
+    });
+  });
 });

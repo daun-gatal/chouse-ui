@@ -52,6 +52,42 @@ describe("classifyPipeline — one vocabulary for every source", () => {
     expect(classifyPipeline([sample(quiet, 2), sample(quiet, 1), sample(quiet, 0)], ctx).status).toBe("stopped");
   });
 
+  it("never stopped when nothing promises another run (manual or disabled job)", () => {
+    const quiet = { unitsIn: 0, lastSuccessAt: NOW - 3600_000, progressing: null };
+    const verdict = classifyPipeline([sample(quiet, 2), sample(quiet, 1), sample(quiet, 0)], { ...ctx, expectsRecurring: false });
+    expect(verdict.status).toBe("healthy");
+  });
+
+  it("never infers stopped without a known cadence (one-off writer)", () => {
+    const quiet = { unitsIn: 0, lastSuccessAt: NOW - 6 * 3600_000, progressing: null };
+    expect(classifyPipeline([sample(quiet, 0)], { nowMs: NOW, cadenceSeconds: null }).status).toBe("healthy");
+  });
+
+  it("reports a deliberately switched-off pipeline as paused, whatever its history", () => {
+    const failing = { errors: 3, errorSample: "boom", progressing: false };
+    const verdict = classifyPipeline([sample(failing, 2), sample(failing, 1), sample(failing, 0)], { ...ctx, paused: "The job is disabled" });
+    expect(verdict).toEqual({ status: "paused", reason: "The job is disabled" });
+  });
+
+  describe("discrete runs", () => {
+    const run = (failure: string | null, minutesAgo: number, errors = 0): PipelineSample => sample({ lastRunFailure: failure, errors }, minutesAgo);
+
+    it("is failing while the latest run failed, however old", () => {
+      const verdict = classifyPipeline([run("boom", 2, 1), run("boom", 1, 1), run("boom", 0, 1)], { nowMs: NOW, cadenceSeconds: 86_400 });
+      expect(verdict).toEqual({ status: "failing", reason: "Last run failed: boom" });
+    });
+
+    it("recovers as soon as a run succeeds, ignoring earlier failed samples", () => {
+      const verdict = classifyPipeline([run("boom", 2, 1), run("boom", 1, 1), run(null, 0)], { nowMs: NOW, cadenceSeconds: 86_400 });
+      expect(verdict.status).toBe("healthy");
+    });
+  });
+
+  it("a daily cadence tolerates a quiet day", () => {
+    const quiet = { unitsIn: 0, lastSuccessAt: NOW - 20 * 3600_000, progressing: null };
+    expect(classifyPipeline([sample(quiet, 0)], { nowMs: NOW, cadenceSeconds: 86_400 }).status).toBe("healthy");
+  });
+
   it("lagging: replication or consumer lag over the limit, or a growing backlog", () => {
     expect(classifyPipeline([sample({ lagSeconds: 900 }, 0)], ctx).status).toBe("lagging");
     const growing = [sample({ backlog: 10, backlogUnit: "rows" }, 2), sample({ backlog: 20, backlogUnit: "rows" }, 1), sample({ backlog: 30, backlogUnit: "rows" }, 0)];

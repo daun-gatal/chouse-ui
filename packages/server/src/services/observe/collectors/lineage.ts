@@ -15,6 +15,7 @@ import type { CollectorContext, ConnectionCollector } from "../collector";
 import { all, runBatch, str } from "../db";
 import { NOT_OBSERVE, selectRows } from "../clickhouse";
 import { externalNodeId, parseSelectSources, tableNodeId } from "../catalogParse";
+import { pruneLineage } from "../orphans";
 import { upsertEdge, type LineageEdge } from "./catalog";
 
 const FIRST_WINDOW_MS = 24 * 3600 * 1000;
@@ -220,6 +221,10 @@ export const lineageCollector: ConnectionCollector = {
     // Observed edges age out after the retention window.
     const retentionMs = Number(process.env.OBSERVE_RETENTION_DAYS ?? 90) * 24 * 3600 * 1000;
     statements.push(sql`DELETE FROM obs_lineage_edges WHERE connection_id = ${connectionId} AND origin = 'observed' AND last_seen_at < ${now - retentionMs}`);
+    // Deleted scheduled jobs and saved queries leave the graph with them.
+    const jobs = new Set((await all(sql`SELECT id FROM scheduled_queries`)).map((r) => `job:${str(r.id)}`));
+    statements.push(...await pruneLineage(connectionId, "job:", (id) => jobs.has(id)));
+    statements.push(...await pruneLineage(connectionId, "sq:", (id) => saved.nodes.has(id)));
     await runBatch(statements);
     const newest = groups.reduce((max, g) => Math.max(max, Number(g.last_ms) || 0), from);
     await ctx.setWatermark(newest);

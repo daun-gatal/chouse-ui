@@ -81,7 +81,7 @@ export async function computeSuggestions(connectionId: string, limit = 50): Prom
     const p99 = numOrNull(b.cadence_p99_s);
     const p50 = numOrNull(b.cadence_p50_s);
     if (eventTime && p99 !== null && p50 !== null) {
-      const maxAge = Math.max(300, Math.round(staleAfterSeconds({ p50Seconds: p50, p99Seconds: p99, samples: 0 })));
+      const maxAge = Math.max(300, Math.round(staleAfterSeconds({ p99Seconds: p99 })));
       const key = `freshness:${fq}`;
       if (!dismissed.has(key)) {
         suggestions.push({

@@ -222,7 +222,22 @@ export async function updatePromiseMetadata(id: string, input: CreatePromiseMeta
       retention_days = ${input.retentionDays}, schema_snapshot = ${schemaSnapshot}, updated_at = ${Date.now()}
     WHERE id = ${id}
   `);
+  if (!input.enabled) await closeIncidentsForPausedPromise(id);
   return true;
+}
+
+/**
+ * A paused promise is no longer evaluated, so nothing would ever recover its
+ * open incidents; they would stay on the Data page indefinitely.
+ */
+async function closeIncidentsForPausedPromise(promiseId: string): Promise<void> {
+  const open = await all(sql`SELECT id FROM data_health_incidents WHERE promise_id = ${promiseId} AND status <> 'recovered'`);
+  const now = Date.now();
+  for (const row of open) {
+    const incidentId = String(row.id);
+    await run(sql`UPDATE data_health_incidents SET status = 'recovered', recovered_at = ${now}, last_event_at = ${now}, updated_at = ${now} WHERE id = ${incidentId}`);
+    await addIncidentEvent(incidentId, "recovered", null, null, { reason: "promise_paused" });
+  }
 }
 
 export async function replaceChecks(promiseId: string, checks: DataHealthCheckDefinition[]): Promise<void> {

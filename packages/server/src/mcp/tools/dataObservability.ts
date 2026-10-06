@@ -33,7 +33,7 @@ const metricSchema: Record<string, z.ZodTypeAny> = {
 };
 
 const pipelineSchema: Record<string, z.ZodTypeAny> = {
-  status: z.enum(["healthy", "lagging", "stalled", "retrying", "failing", "stopped", "inefficient", "unsupported_on_version"]).optional().describe("Only pipelines in this status"),
+  status: z.enum(["healthy", "lagging", "stalled", "retrying", "failing", "stopped", "inefficient", "paused", "unsupported_on_version"]).optional().describe("Only pipelines in this status"),
   kind: z.string().min(1).optional().describe("Only this source kind (e.g. kafka, s3queue, refreshable_view)"),
   connection_id: connectionArg,
 };

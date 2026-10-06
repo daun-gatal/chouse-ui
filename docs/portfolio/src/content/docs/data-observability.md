@@ -41,7 +41,9 @@ Each table has a **trust state**:
 | **learning** | Not enough history yet to judge |
 | **trusted** | Writes and volume are within the learned baseline |
 | **degraded** | Volume is outside the learned band |
-| **stale** | No write for longer than the table normally goes without one |
+| **stale** | No write for longer than the table normally goes without one, outside its usual quiet hours |
+
+A table written by a [scheduled query](/docs/scheduled-queries/) or a refreshable view follows that job instead. It is *stale* only when the job is failing or overdue. A run that succeeded with nothing new to write leaves the table *trusted*, and so does a paused job. Several parts written by one insert count as one write, and a quiet night or weekend that the table has already gone through this week is not *stale*.
 
 [Promises](/docs/data-health/) add explicit expectations on top — "loaded by 07:00", "no duplicate order ids" — when the learned baseline isn't enough.
 

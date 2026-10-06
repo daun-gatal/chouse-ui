@@ -15,8 +15,11 @@ export interface DockPreferences {
 }
 
 export interface ChatPreferences {
-  position?: { x: number; y: number };
-  size?: { width: number; height: number };
+  /**
+   * Width of the docked AI chat sheet in px, saved only when the user drags its
+   * edge. Older floating-window `position`/`size` values are ignored on purpose.
+   */
+  sheetWidth?: number;
 }
 
 /** Per-dialog position/size for explorer windows (Upload file, AI debugger, etc.). Keyed by dialogId. */
@@ -56,15 +59,15 @@ export const DOCK_DEFAULT_PREFERENCES_BY_DEVICE: Record<DeviceType, DockPreferen
   pc: { placement: "bottom", mode: "sidebar", orientation: "horizontal", autoHide: true, sessionExpanded: false },
 };
 
-/** Default chat position and size per device type. */
-export const CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE: Record<
-  DeviceType,
-  { position: { x: number; y: number }; size: { width: number; height: number } }
-> = {
-  mobile: { position: { x: 0, y: 0 }, size: { width: 0, height: 0 } }, // full viewport; size ignored
-  tablet: { position: { x: 24, y: 24 }, size: { width: 680, height: 840 } },
-  laptop: { position: { x: 40, y: 40 }, size: { width: 420, height: 560 } },
-  pc: { position: { x: 80, y: 80 }, size: { width: 520, height: 700 } },
+/**
+ * Default AI chat sheet width per device: wide enough for tables and charts.
+ * Callers clamp it to the viewport; mobile is always full screen.
+ */
+export const CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE: Record<DeviceType, number> = {
+  mobile: 0,
+  tablet: 680,
+  laptop: 760,
+  pc: 880,
 };
 
 /**
@@ -81,24 +84,15 @@ export function getDockPrefsFromWorkspace(
   return DOCK_DEFAULT_PREFERENCES_BY_DEVICE[deviceType];
 }
 
-/**
- * Resolve chat preferences (position + size) for a device: byDevice[device] → legacy → default.
- */
-export function getChatPrefsFromWorkspace(
+/** The user's saved AI chat sheet width for a device, or the device default. */
+export function getChatSheetWidth(
   workspace: WorkspacePreferencesMap | undefined,
   deviceType: DeviceType
-): { position: { x: number; y: number }; size: { width: number; height: number } } {
-  const byDevice = workspace?.byDevice?.[deviceType]?.chatPreferences;
-  const legacy = workspace?.chatPreferences as ChatPreferences | undefined;
-  const defaultForDevice = CHAT_DEFAULT_POSITION_AND_SIZE_BY_DEVICE[deviceType];
-
-  const position = byDevice?.position ?? legacy?.position ?? defaultForDevice.position;
-  const size = byDevice?.size ?? legacy?.size ?? defaultForDevice.size;
-
-  return {
-    position: { x: position?.x ?? 0, y: position?.y ?? 0 },
-    size: { width: size?.width ?? defaultForDevice.size.width, height: size?.height ?? defaultForDevice.size.height },
-  };
+): number {
+  const saved = workspace?.byDevice?.[deviceType]?.chatPreferences?.sheetWidth;
+  return typeof saved === "number" && Number.isFinite(saved) && saved > 0
+    ? saved
+    : CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE[deviceType];
 }
 
 /**
@@ -117,17 +111,18 @@ export function mergeDockPrefsIntoWorkspace(
 }
 
 /**
- * Merge chat preferences (position + size) for a device into a copy of workspacePreferences (for PUT).
+ * Save the AI chat sheet width for a device into a copy of workspacePreferences
+ * (for PUT), replacing any legacy floating-window geometry.
  */
-export function mergeChatPrefsIntoWorkspace(
+export function mergeChatSheetWidthIntoWorkspace(
   workspace: WorkspacePreferencesMap | undefined,
   deviceType: DeviceType,
-  chatPrefs: ChatPreferences
+  sheetWidth: number
 ): Record<string, unknown> {
   const current = (workspace ?? {}) as Record<string, unknown>;
   const byDevice = { ...(current.byDevice as Record<string, unknown> | undefined) };
-  const deviceSlice = { ...(byDevice[deviceType] as Record<string, unknown> | undefined), chatPreferences: chatPrefs };
-  byDevice[deviceType] = deviceSlice;
+  const chatPreferences: ChatPreferences = { sheetWidth };
+  byDevice[deviceType] = { ...(byDevice[deviceType] as Record<string, unknown> | undefined), chatPreferences };
   return { ...current, byDevice };
 }
 
