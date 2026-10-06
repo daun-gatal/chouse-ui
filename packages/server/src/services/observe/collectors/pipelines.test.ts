@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import type { CadenceSpec } from "../../scheduledQueries/cadence";
-import { INCIDENT_HOLD_MS, incidentAction, learnedCadenceSeconds, schedulePeriodSeconds } from "./pipelines";
+import { incidentAction, incidentHoldMs, learnedCadenceSeconds, schedulePeriodSeconds } from "./pipelines";
 
 const NOW = Date.UTC(2026, 9, 7, 12, 0, 0);
 const DAY = 86_400;
@@ -51,7 +51,7 @@ describe("incidentAction", () => {
   });
 
   it("opens once, on the run where the hold is crossed", () => {
-    const since = NOW - INCIDENT_HOLD_MS;
+    const since = NOW - incidentHoldMs();
     expect(incidentAction({ status: "failing", since, nowMs: NOW, previous: prev("failing"), reason: "r" })).toBe("open");
     expect(incidentAction({ status: "failing", since, nowMs: NOW + MIN, previous: { status: "failing", reason: "r", updatedAt: NOW }, reason: "r" })).toBe("none");
   });
@@ -64,5 +64,22 @@ describe("incidentAction", () => {
     expect(incidentAction({ status: "healthy", since: NOW, nowMs: NOW, previous: prev("failing"), reason: "ok" })).toBe("recover");
     expect(incidentAction({ status: "paused", since: NOW, nowMs: NOW, previous: prev("stopped"), reason: "off" })).toBe("recover");
     expect(incidentAction({ status: "healthy", since: NOW, nowMs: NOW, previous: prev("healthy"), reason: "ok" })).toBe("none");
+  });
+});
+
+describe("incidentHoldMs", () => {
+  it("defaults to five minutes and follows OBSERVE_INCIDENT_HOLD_SECONDS", () => {
+    const saved = process.env.OBSERVE_INCIDENT_HOLD_SECONDS;
+    try {
+      delete process.env.OBSERVE_INCIDENT_HOLD_SECONDS;
+      expect(incidentHoldMs()).toBe(300_000);
+      process.env.OBSERVE_INCIDENT_HOLD_SECONDS = "0";
+      expect(incidentHoldMs()).toBe(0);
+      process.env.OBSERVE_INCIDENT_HOLD_SECONDS = "nonsense";
+      expect(incidentHoldMs()).toBe(300_000);
+    } finally {
+      if (saved === undefined) delete process.env.OBSERVE_INCIDENT_HOLD_SECONDS;
+      else process.env.OBSERVE_INCIDENT_HOLD_SECONDS = saved;
+    }
   });
 });

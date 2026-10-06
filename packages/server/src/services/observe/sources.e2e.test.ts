@@ -140,6 +140,8 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     process.env.RBAC_ENCRYPTION_KEY ||= "e2e0000000000000000000000000000000000000000000000000000000000000";
     process.env.RBAC_ENCRYPTION_SALT ||= "e2e1111111111111111111111111111111111111111111111111111111111111";
     process.env.REMEDIATION_MAINTENANCE_WINDOW = "02:00-04:00";
+    // The suite runs for minutes, not hours: open pipeline incidents on the first bad run.
+    process.env.OBSERVE_INCIDENT_HOLD_SECONDS = "0";
     await freshDatabase("sqlite");
     await runMigrations({ skipSeed: true });
     for (const id of [PROPOSER, APPROVER_A, APPROVER_B]) {

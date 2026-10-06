@@ -35,7 +35,7 @@ screenshot: data-pipelines
 | **paused** | Switched off on purpose — a disabled scheduled query or a view stopped with `SYSTEM STOP VIEW`. Never opens an incident |
 | **unsupported on this version** | This ClickHouse version doesn't expose the evidence (e.g. no `s3queue_log` on 23.8) |
 
-The point is the failures clients never see: a consumer stuck on one batch, a file that failed every retry, a view that rejects each insert. They stay on the list until data flows again, and open an [incident](/docs/data-incidents/) when the pipeline stays bad for five minutes and feeds a table that is promised, critical or important. The incident recovers once the pipeline is healthy, paused or gone.
+The point is the failures clients never see: a consumer stuck on one batch, a file that failed every retry, a view that rejects each insert. They stay on the list until data flows again, and open an [incident](/docs/data-incidents/) when the pipeline stays bad for five minutes (`OBSERVE_INCIDENT_HOLD_SECONDS`) and feeds a table that is promised, critical or important. The incident recovers once the pipeline is healthy, paused or gone.
 
 Going quiet is not the same as stopping. A source without a known cadence (a one-off writer, a dictionary that reloads only when its source changes) is never called *stopped*. A Kafka consumer still polling an empty topic stays *healthy*, and a replicated database is judged as a whole, so a quiet source table is fine. A scheduled query is judged by its latest run: a failure that a retry fixed does not count, and a failed run stays *failing* until the next run succeeds. Failed reads of an external table count only when the source itself is unreachable, not when the query had a typo.
 

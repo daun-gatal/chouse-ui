@@ -38,14 +38,17 @@ import { openOrUpdateIncident, recoverIncident, recoverIncidentsExcept, updateAc
 
 const MAX_WINDOW_MS = 15 * 60 * 1000;
 export const BAD_STATUSES: PipelineStatus[] = ["retrying", "stalled", "failing", "stopped"];
-/** A pipeline must stay bad this long before it opens an incident. */
-export const INCIDENT_HOLD_MS = 5 * 60 * 1000;
+/** How long a pipeline must stay bad before it opens an incident (OBSERVE_INCIDENT_HOLD_SECONDS, default 5 min). */
+export function incidentHoldMs(): number {
+  const seconds = Number(process.env.OBSERVE_INCIDENT_HOLD_SECONDS ?? 300);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 300_000;
+}
 
 export type IncidentAction = "none" | "open" | "update" | "recover";
 
 /**
  * What one collector run does to a pipeline's incident. A bad status opens
- * one only once it has held for INCIDENT_HOLD_MS, so a one-minute blip never
+ * one only once it has held for incidentHoldMs(), so a one-minute blip never
  * pages; an open incident follows changes in the reason; leaving the bad
  * statuses recovers it.
  */
@@ -59,8 +62,9 @@ export function incidentAction(input: {
   const { status, since, nowMs, previous, reason } = input;
   const bad = BAD_STATUSES.includes(status);
   if (!bad) return previous && BAD_STATUSES.includes(previous.status) ? "recover" : "none";
-  const heldNow = nowMs - since >= INCIDENT_HOLD_MS;
-  const heldBefore = previous !== null && previous.status === status && previous.updatedAt - since >= INCIDENT_HOLD_MS;
+  const hold = incidentHoldMs();
+  const heldNow = nowMs - since >= hold;
+  const heldBefore = previous !== null && previous.status === status && previous.updatedAt - since >= hold;
   if (heldNow && !heldBefore) return "open";
   if (previous && (previous.status !== status || previous.reason !== reason)) return "update";
   return "none";

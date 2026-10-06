@@ -10,3 +10,4 @@ type: patch
 - **External table failures** — only errors reaching the external source count. A user's typo or an ad-hoc query that ran out of memory no longer marks the source as failing.
 - **Incident flapping** — a pipeline must stay bad for five minutes before it opens an incident. An open incident's summary keeps up with the pipeline, and it recovers as soon as the pipeline is healthy, paused or gone.
 - **False stale tables** — a table written by a scheduled query or refreshable view follows that job: it is not stale while the job runs fine or is paused, and when it is stale the reason names the broken job. The parts of one insert count as one write, and nightly or weekend lulls the table has already shown this week no longer mark it stale.
+- **Vulnerable dependencies** — `@modelcontextprotocol/sdk` 1.31.0 (OAuth client credential leak), `proxy-addr` 2.0.8 and `source-map-js` 1.2.2.
