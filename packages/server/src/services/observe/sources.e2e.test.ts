@@ -235,8 +235,15 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     await pg.unsafe(`INSERT INTO legacy_${RUN} SELECT g FROM generate_series(1, 10) g`);
     await exec(`INSERT INTO ${DB}.pg_sync SELECT id FROM ${DB}.pg_legacy`);
     await pg.unsafe(`DROP TABLE legacy_${RUN}`);
-    // Let the bad sources fail at least once.
+    // Let the bad sources fail at least once. Object storage queues mark a file
+    // Failed only after its retries, so wait for that rather than a fixed delay.
     await sleep(8000);
+    for (const [log, table] of [["s3queue_log", "s3_bad_in"], ["azure_queue_log", "az_bad_in"]]) {
+      await waitFor(`${table} failures`, async () => {
+        await exec("SYSTEM FLUSH LOGS");
+        return (await scalar(`SELECT count() FROM system.${log} WHERE database = '${DB}' AND table = '${table}' AND toString(status) = 'Failed'`)) > 0;
+      });
+    }
 
     // First pass learns the catalog and baselines; criticality makes incidents page.
     await collect();

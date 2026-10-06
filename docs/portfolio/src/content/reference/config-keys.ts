@@ -101,6 +101,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "OBSERVE_MAX_FINGERPRINTS", section: "Data observability", default: "5000", description: "Most query shapes tracked per connection for performance baselines." },
   { name: "OBSERVE_MAX_PARALLEL", section: "Data observability", default: "4", description: "Collector runs a pod executes at once." },
   { name: "OBSERVE_RUN_TIMEOUT_SECONDS", section: "Data observability", default: "120", description: "Time limit for one collector run before it is abandoned." },
+  { name: "OBSERVE_INCIDENT_HOLD_SECONDS", section: "Data observability", default: "300", description: "Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample." },
   { name: "OBSERVE_CAPACITY_THRESHOLD", section: "Data observability", default: "0.85", description: "Disk fill ratio that capacity forecasts warn about (0–1)." },
   { name: "OBSERVE_SCRATCH_DATABASE", section: "Data observability", default: "chouse_scratch", description: "Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`." },
 

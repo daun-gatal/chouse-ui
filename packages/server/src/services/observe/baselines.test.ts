@@ -27,6 +27,14 @@ describe("learnCadence", () => {
     expect(cadence?.samples).toBe(6);
   });
 
+  it("keeps a long INSERT … SELECT emitting a part every 39s as one write", () => {
+    // Hourly job; each run writes ten parts 39s apart over ~6 minutes.
+    const times = Array.from({ length: 8 }, (_, run) => run * HOUR).flatMap((t) => Array.from({ length: 10 }, (_, p) => t + p * 39_000));
+    const cadence = learnCadence(times);
+    expect(cadence?.p50Seconds).toBe(3600);
+    expect(cadence?.samples).toBe(7);
+  });
+
   it("records the longest lull", () => {
     const times = [0, 1, 2, 3, 4, 5, 65].map((h) => h * HOUR);
     expect(learnCadence(times)?.maxSeconds).toBe(60 * 3600);

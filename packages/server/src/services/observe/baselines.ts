@@ -21,9 +21,10 @@ export interface Cadence {
 export const MIN_CADENCE_SAMPLES = 5;
 
 /**
- * Parts landing this close together are one write. A single INSERT creates a
- * part per partition and per block, and counting those as separate writes
- * would teach a daily load an "every few seconds" cadence.
+ * Parts landing within this of the previous part belong to the same write. A
+ * single INSERT creates a part per partition and per block — a long
+ * INSERT … SELECT keeps emitting them for minutes — and counting those as
+ * separate writes would teach a daily load an "every few seconds" cadence.
  */
 export const WRITE_BURST_SECONDS = 60;
 
@@ -33,9 +34,8 @@ export function learnCadence(writeTimesMs: number[]): Cadence | null {
   const gaps: number[] = [];
   let burstStart = times[0];
   for (let i = 1; i < times.length; i++) {
-    const gap = (times[i] - burstStart) / 1000;
-    if (gap <= WRITE_BURST_SECONDS) continue;
-    gaps.push(gap);
+    if ((times[i] - times[i - 1]) / 1000 <= WRITE_BURST_SECONDS) continue;
+    gaps.push((times[i] - burstStart) / 1000);
     burstStart = times[i];
   }
   if (gaps.length < MIN_CADENCE_SAMPLES) return null;
