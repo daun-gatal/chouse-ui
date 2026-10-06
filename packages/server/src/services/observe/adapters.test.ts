@@ -6,6 +6,7 @@ import {
   databaseReplication,
   externalTables,
   isSourceFailure,
+  objectStorageQueues,
   queueEngines,
   refreshableViews,
   refreshPeriodSeconds,
@@ -149,5 +150,20 @@ describe("externalTables", () => {
     const sample = out.samples.get("external_table:db.pg_users");
     expect(sample?.errors).toBe(3);
     expect(sample?.progressing).toBe(false);
+  });
+});
+
+describe("objectStorageQueues", () => {
+  it("keeps a file that failed for good visible after its one Failed log row", async () => {
+    const client = fakeClient([
+      [/last_status/, [{ database: "db", table: "s3_bad_in", files: 1, exception: "Cannot parse input (CANNOT_PARSE_INPUT_ASSERTION_FAILED)" }]],
+    ]);
+    const ctx = adapterCtx(client, ["s3queue_log"]);
+    ctx.capabilities.systemColumns.set("s3queue_log", new Set(["database", "file_name"]));
+    const out = await objectStorageQueues(ctx, [table("db", "s3_bad_in", "S3Queue")]);
+    const sample = out.samples.get("object_storage_queue:db.s3_bad_in");
+    expect(sample?.errors).toBe(1);
+    expect(sample?.errorSample).toContain("1 file(s) failed after all retries");
+    expect(sample?.errorClass).toBe("data");
   });
 });

@@ -391,12 +391,27 @@ export async function objectStorageQueues(ctx: AdapterContext, tables: CatalogTa
       backlog = new Map(rows.map((r) => [`${r.database}.${r.table}`, Number(r.processing)]));
       failedFiles = new Map(rows.filter((r) => Number(r.failed) > 0).map((r) => [`${r.database}.${r.table}`, Number(r.failed)]));
     }
-    const lastFailure = supported && failedFiles.size > 0
-      ? new Map((await selectRows<{ database: string; table: string; exception: string }>(ctx.client, `
-        SELECT database, table, argMaxIf(exception, event_time, exception != '') AS exception
-        FROM system.${log} WHERE event_time > now() - {lookback:UInt32} AND toString(status) = 'Failed'
-        GROUP BY database, table`, { params: { lookback: STICKY_LOOKBACK_SECONDS } })).map((r) => [`${r.database}.${r.table}`, r.exception]))
-      : new Map<string, string>();
+    // A file that failed for good is logged as Failed once; keeper's metadata
+    // cache may already have evicted it. Read the last day of the log too, so
+    // the failure stays visible until that file is processed.
+    const loggedFailures = supported && hasColumn(ctx.capabilities, log, "file_name")
+      ? await selectRows<{ database: string; table: string; files: number; exception: string }>(ctx.client, `
+        SELECT database, table, count() AS files, any(last_exception) AS exception
+        FROM (
+          SELECT database, table, file_name,
+            argMax(toString(status), event_time) AS last_status,
+            argMax(exception, event_time) AS last_exception
+          FROM system.${log} WHERE event_time > now() - {lookback:UInt32}
+          GROUP BY database, table, file_name
+        )
+        WHERE last_status = 'Failed'
+        GROUP BY database, table`, { params: { lookback: STICKY_LOOKBACK_SECONDS } })
+      : [];
+    const lastFailure = new Map(loggedFailures.map((r) => [`${r.database}.${r.table}`, r.exception]));
+    for (const r of loggedFailures) {
+      const key = `${r.database}.${r.table}`;
+      failedFiles.set(key, Math.max(failedFiles.get(key) ?? 0, Number(r.files)));
+    }
     for (const q of ofEngine) {
       const key = `${q.database}.${q.table}`;
       const id = `object_storage_queue:${key}`;
