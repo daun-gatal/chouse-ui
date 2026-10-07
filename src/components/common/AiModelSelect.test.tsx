@@ -18,10 +18,11 @@ describe('useAiModelSelection', () => {
     it('loads the shared model list and selects the configured default', async () => {
         const { result } = renderHook(() => useAiModelSelection(true), { wrapper: createWrapper() });
 
-        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        // The default is picked in an effect one render after loading finishes, so wait on the selection itself.
+        await waitFor(() => expect(result.current.selectedModelId).toBe('model-1'));
 
+        expect(result.current.isLoading).toBe(false);
         expect(result.current.models).toHaveLength(2);
-        expect(result.current.selectedModelId).toBe('model-1');
     });
 
     it('does not fetch models while its AI window is closed', () => {
