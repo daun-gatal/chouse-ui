@@ -134,6 +134,31 @@ describe.skipIf(!URL_)("observability collectors e2e (ADR 0016)", () => {
     expect(Number(baselines.find((b) => String(b.table_name) === "orders_daily")?.reads_7d)).toBeGreaterThan(0);
   });
 
+  it("forgets a dropped table everywhere on the Data page", async () => {
+    await exec(`CREATE TABLE ${DB}.doomed (id UInt64) ENGINE = MergeTree ORDER BY id`);
+    await writer.command({ query: `INSERT INTO ${DB}.doomed SELECT number FROM numbers(10)` });
+    await exec("SYSTEM FLUSH LOGS");
+    for (const collector of [catalogCollector, lineageCollector, tablesCollector, pipelinesCollector]) await runCollector(collector);
+    const mentions = async (): Promise<Record<string, number>> => {
+      const node = `table:${DB}.doomed`;
+      const count = async (statement: ReturnType<typeof sql>): Promise<number> => Number((await rawAll(statement))[0]?.n ?? 0);
+      return {
+        baselines: await count(sql`SELECT COUNT(*) AS n FROM obs_table_baselines WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'doomed'`),
+        catalog: await count(sql`SELECT COUNT(*) AS n FROM obs_catalog_tables WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'doomed'`),
+        nodes: await count(sql`SELECT COUNT(*) AS n FROM obs_lineage_nodes WHERE connection_id = ${connectionId} AND node_id = ${node}`),
+        edges: await count(sql`SELECT COUNT(*) AS n FROM obs_lineage_edges WHERE connection_id = ${connectionId} AND (source_id = ${node} OR target_id = ${node})`),
+        pipelines: await count(sql`SELECT COUNT(*) AS n FROM obs_pipelines WHERE connection_id = ${connectionId} AND target_node = ${node}`),
+      };
+    };
+    expect(await mentions()).toMatchObject({ baselines: 1, catalog: 1 });
+
+    // A plain DROP, as the UI or a person runs it: Atomic databases keep the
+    // data around for a while, but the table is gone.
+    await exec(`DROP TABLE ${DB}.doomed`);
+    for (const collector of [catalogCollector, lineageCollector, tablesCollector, pipelinesCollector]) await runCollector(collector);
+    expect(await mentions()).toEqual({ baselines: 0, catalog: 0, nodes: 0, edges: 0, pipelines: 0 });
+  });
+
   it("classifies pipelines of every kind with one vocabulary", async () => {
     const start = Date.now();
     // Let the first refresh attempt fail before sampling.

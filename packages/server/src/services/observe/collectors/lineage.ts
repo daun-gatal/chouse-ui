@@ -90,7 +90,9 @@ export function buildObservedGraph(groups: QueryGroup[], defaultDatabase: string
   const edges: ObservedGraph["edges"] = new Map();
   const tableNode = (fqtn: string): string | null => {
     const q = splitQualified(fqtn.includes(".") ? fqtn : `${defaultDatabase}.${fqtn}`);
-    if (!q || q.database === "system") return null;
+    // `numbers()` and other table functions appear in query_log.tables as
+    // `_table_function.<name>`; they are not tables (their reads are external_read).
+    if (!q || q.database === "system" || q.database === "_table_function") return null;
     const id = tableNodeId(q.database, q.table);
     if (!nodes.has(id)) nodes.set(id, { id, kind: "table", label: `${q.database}.${q.table}`, database: q.database, table: q.table });
     return id;
@@ -178,7 +180,7 @@ export const lineageCollector: ConnectionCollector = {
       SELECT
         toString(query_kind) AS qkind,
         if(query_kind = 'Insert', replaceRegexpAll(extract(query, '(?i)INSERT\\\\s+INTO\\\\s+(?:TABLE\\\\s+)?([\\\\w.\`"]+)'), '[\`"]', ''), '') AS target,
-        arraySort(arrayDistinct(arrayFilter(t -> NOT startsWith(t, 'system.'), tables))) AS tbls,
+        arraySort(arrayDistinct(arrayFilter(t -> NOT startsWith(t, 'system.') AND NOT startsWith(t, '_table_function.'), tables))) AS tbls,
         arrayDistinct(arrayFlatten(groupArray(columns))) AS cols,
         arraySort(arrayDistinct(used_table_functions)) AS tfuncs,
         JSONExtractString(log_comment, 'source') AS src,
