@@ -9,13 +9,41 @@ import { sql, type SQL } from "drizzle-orm";
 import { hasTable } from "../capabilities";
 import { selectRows } from "../clickhouse";
 import type { CollectorContext, ConnectionCollector } from "../collector";
-import { all, num, runBatch, str } from "../db";
-import { classifyTable, learnCadence, learnVolumeBand, type HourlyVolume } from "../baselines";
+import { all, json, num, runBatch, str, strOrNull } from "../db";
+import { classifyTable, learnCadence, learnVolumeBand, type HourlyVolume, type ProducerSignal } from "../baselines";
 
 const EXCLUDED = "('system', 'INFORMATION_SCHEMA', 'information_schema')";
 const BAND_DAYS = 28;
 const CADENCE_DAYS = 7;
 const HOUR = 3600 * 1000;
+
+/** Worst first: a broken producer explains staleness, then a healthy one, then a paused one. */
+const PRODUCER_RANK: Record<string, number> = { retrying: 0, stalled: 0, failing: 0, stopped: 0, healthy: 1, lagging: 1, inefficient: 1, paused: 2 };
+
+/**
+ * Clock-driven producers (scheduled jobs, refreshable views) per written table,
+ * keyed `db.table`. Pipelines this server cannot judge are left out so the
+ * table falls back to its own write pattern.
+ */
+async function clockProducers(connectionId: string): Promise<Map<string, ProducerSignal>> {
+  const rows = await all(sql`
+    SELECT kind, name, status, status_reason, target_node, attrs FROM obs_pipelines
+    WHERE connection_id = ${connectionId} AND kind IN ('scheduled_job', 'refreshable_view')`);
+  const best = new Map<string, ProducerSignal>();
+  for (const r of rows) {
+    const status = str(r.status);
+    if (!(status in PRODUCER_RANK)) continue;
+    const attrs = json<Record<string, unknown>>(r.attrs, {});
+    const node = typeof attrs.writesTo === "string" ? attrs.writesTo : strOrNull(r.target_node);
+    if (!node?.startsWith("table:")) continue;
+    const key = node.slice("table:".length);
+    const current = best.get(key);
+    if (!current || PRODUCER_RANK[status] < PRODUCER_RANK[current.status]) {
+      best.set(key, { name: str(r.name), status, reason: strOrNull(r.status_reason) });
+    }
+  }
+  return best;
+}
 
 export const tablesCollector: ConnectionCollector = {
   name: "tables",
@@ -84,6 +112,7 @@ export const tablesCollector: ConnectionCollector = {
       hourlyByTable.set(key, list);
     }
 
+    const producers = await clockProducers(connectionId);
     const updates: SQL[] = [];
     const lastCompleteHour = Math.floor(now / HOUR) * HOUR - HOUR;
     for (const t of totals) {
@@ -105,6 +134,7 @@ export const tablesCollector: ConnectionCollector = {
         firstSeenAtMs: firstSeen.get(key) ?? now,
         lastHour: dense.find((h) => h.hourStartMs === lastCompleteHour) ?? null,
         band,
+        producer: producers.get(key) ?? null,
       });
       const reason = partLog ? verdict.reason : `${verdict.reason} (system.part_log is disabled; freshness from part modification times)`;
       const prev = existing.get(key);

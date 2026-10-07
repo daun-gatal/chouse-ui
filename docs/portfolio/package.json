@@ -31,5 +31,8 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3",
     "vite": "^7.2.6"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2"
   }
 }

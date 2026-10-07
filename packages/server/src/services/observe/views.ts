@@ -8,6 +8,7 @@ import { downstreamOf, upstreamOf, type ChainStep, type GraphEdge } from "./rca"
 import { getStoredRca } from "./rcaService";
 import { getObserveIncident, listObserveIncidents, type IncidentSource } from "./incidents";
 import { checkVolume, type VolumeBand } from "./baselines";
+import { isQuietStatus } from "./pipelineStatus";
 import { principalLabels, principalNodeLabels } from "./principals";
 
 export type Allowed = (database: string | null | undefined, table: string | null | undefined) => boolean;
@@ -192,7 +193,7 @@ async function loadGraph(connectionId: string): Promise<{ nodes: Map<string, Gra
   const state = new Map(baselineRows.map((b) => [`table:${str(b.database_name)}.${str(b.table_name)}`, { status: str(b.state), reason: strOrNull(b.state_reason) }]));
   for (const p of pipelineRows) {
     const target = str(p.target_node);
-    if (target && !["healthy", "unsupported_on_version"].includes(str(p.status))) state.set(target, { status: str(p.status), reason: strOrNull(p.status_reason) });
+    if (target && !isQuietStatus(str(p.status))) state.set(target, { status: str(p.status), reason: strOrNull(p.status_reason) });
   }
   const principals = await principalNodeLabels(nodeRows.map((n) => str(n.node_id)));
   const nodes = new Map<string, GraphNode>(nodeRows.map((n) => {
@@ -441,7 +442,7 @@ export async function overview(connectionId: string, allowed: Allowed, scope: In
       critical: incidents.filter((i) => i.severity === "critical").length,
       top: incidents.slice(0, 3),
     },
-    pipelines: { total: pipelines.length, byStatus: statusCounts, attention: pipelines.filter((p) => !["healthy", "unsupported_on_version"].includes(String(p.status))).slice(0, 8) },
+    pipelines: { total: pipelines.length, byStatus: statusCounts, attention: pipelines.filter((p) => !isQuietStatus(String(p.status))).slice(0, 8) },
     topTables: datasets.slice(0, 12),
     recentChanges: changes,
   };
@@ -493,9 +494,10 @@ export async function capacity(connectionId: string, allowed: Allowed, includeCo
   const history = (await all(sql`SELECT node, disk_name, sampled_at, total_bytes, free_bytes FROM obs_capacity_samples WHERE connection_id = ${connectionId} AND sampled_at >= ${Date.now() - 30 * 86_400_000} ORDER BY sampled_at`))
     .map((s) => ({ node: str(s.node), disk: str(s.disk_name), at: num(s.sampled_at), used: num(s.total_bytes) - num(s.free_bytes), total: num(s.total_bytes) }));
   const growth = (await all(sql`
-    SELECT database_name, table_name, SUM(bytes_added) AS bytes FROM obs_table_samples
-    WHERE connection_id = ${connectionId} AND granularity = 'hour' AND sampled_at >= ${Date.now() - 30 * 86_400_000}
-    GROUP BY database_name, table_name ORDER BY bytes DESC LIMIT 50`))
+    SELECT s.database_name, s.table_name, SUM(s.bytes_added) AS bytes FROM obs_table_samples s
+    JOIN obs_catalog_tables t ON t.connection_id = s.connection_id AND t.database_name = s.database_name AND t.table_name = s.table_name
+    WHERE s.connection_id = ${connectionId} AND s.granularity = 'hour' AND s.sampled_at >= ${Date.now() - 30 * 86_400_000}
+    GROUP BY s.database_name, s.table_name ORDER BY bytes DESC LIMIT 50`))
     .filter((g) => allowed(str(g.database_name), str(g.table_name)))
     .slice(0, 10)
     .map((g) => ({ database: str(g.database_name), table: str(g.table_name), bytesPerDay: num(g.bytes) / 30 }));

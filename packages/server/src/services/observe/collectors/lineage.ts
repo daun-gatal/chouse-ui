@@ -15,6 +15,7 @@ import type { CollectorContext, ConnectionCollector } from "../collector";
 import { all, runBatch, str } from "../db";
 import { NOT_OBSERVE, selectRows } from "../clickhouse";
 import { externalNodeId, parseSelectSources, tableNodeId } from "../catalogParse";
+import { pruneLineage } from "../orphans";
 import { upsertEdge, type LineageEdge } from "./catalog";
 
 const FIRST_WINDOW_MS = 24 * 3600 * 1000;
@@ -89,7 +90,9 @@ export function buildObservedGraph(groups: QueryGroup[], defaultDatabase: string
   const edges: ObservedGraph["edges"] = new Map();
   const tableNode = (fqtn: string): string | null => {
     const q = splitQualified(fqtn.includes(".") ? fqtn : `${defaultDatabase}.${fqtn}`);
-    if (!q || q.database === "system") return null;
+    // `numbers()` and other table functions appear in query_log.tables as
+    // `_table_function.<name>`; they are not tables (their reads are external_read).
+    if (!q || q.database === "system" || q.database === "_table_function") return null;
     const id = tableNodeId(q.database, q.table);
     if (!nodes.has(id)) nodes.set(id, { id, kind: "table", label: `${q.database}.${q.table}`, database: q.database, table: q.table });
     return id;
@@ -177,7 +180,7 @@ export const lineageCollector: ConnectionCollector = {
       SELECT
         toString(query_kind) AS qkind,
         if(query_kind = 'Insert', replaceRegexpAll(extract(query, '(?i)INSERT\\\\s+INTO\\\\s+(?:TABLE\\\\s+)?([\\\\w.\`"]+)'), '[\`"]', ''), '') AS target,
-        arraySort(arrayDistinct(arrayFilter(t -> NOT startsWith(t, 'system.'), tables))) AS tbls,
+        arraySort(arrayDistinct(arrayFilter(t -> NOT startsWith(t, 'system.') AND NOT startsWith(t, '_table_function.'), tables))) AS tbls,
         arrayDistinct(arrayFlatten(groupArray(columns))) AS cols,
         arraySort(arrayDistinct(used_table_functions)) AS tfuncs,
         JSONExtractString(log_comment, 'source') AS src,
@@ -220,6 +223,10 @@ export const lineageCollector: ConnectionCollector = {
     // Observed edges age out after the retention window.
     const retentionMs = Number(process.env.OBSERVE_RETENTION_DAYS ?? 90) * 24 * 3600 * 1000;
     statements.push(sql`DELETE FROM obs_lineage_edges WHERE connection_id = ${connectionId} AND origin = 'observed' AND last_seen_at < ${now - retentionMs}`);
+    // Deleted scheduled jobs and saved queries leave the graph with them.
+    const jobs = new Set((await all(sql`SELECT id FROM scheduled_queries`)).map((r) => `job:${str(r.id)}`));
+    statements.push(...await pruneLineage(connectionId, "job:", (id) => jobs.has(id)));
+    statements.push(...await pruneLineage(connectionId, "sq:", (id) => saved.nodes.has(id)));
     await runBatch(statements);
     const newest = groups.reduce((max, g) => Math.max(max, Number(g.last_ms) || 0), from);
     await ctx.setWatermark(newest);

@@ -10,8 +10,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useWindowSize, type Breakpoint } from '@/hooks/useWindowSize';
 import { useDeviceType } from '@/hooks/useDeviceType';
 import {
-    getChatPrefsFromWorkspace,
-    mergeChatPrefsIntoWorkspace,
+    CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE,
+    getChatSheetWidth,
+    mergeChatSheetWidthIntoWorkspace,
     type DeviceType,
     type WorkspacePreferencesMap,
 } from '@/lib/devicePreferences';
@@ -75,8 +76,6 @@ import {
     FileText,
     Server,
     GripVertical,
-    Maximize2,
-    Minimize2,
     TrendingUp,
     PieChart,
     ScatterChart,
@@ -96,11 +95,9 @@ import {
 // Resize constants
 // ============================================
 
-// Right-edge side-sheet widths (cycled by header toggle, resizable from left edge)
-const SHEET_WIDTH_COMPACT = 420;
-const SHEET_WIDTH_STANDARD = 560;
-const SHEET_WIDTH_WIDE = 760;
-const MIN_SHEET_WIDTH = 360;
+// Right-edge side sheet: opens at the device default, resizable from its left edge.
+// The minimum keeps every header control on screen.
+const MIN_SHEET_WIDTH = 440;
 const MAX_SHEET_WIDTH_RATIO = 0.7; // never exceed 70% of viewport width
 
 // Register highlight.js languages
@@ -145,6 +142,8 @@ interface UIMessage {
     /** The agent that answered this turn. */
     agentName?: string;
 }
+
+const NO_MESSAGES: UIMessage[] = [];
 
 function isActiveChatConnection(connectionId: string | null): boolean {
     return useAuthStore.getState().activeConnectionId === connectionId;
@@ -301,10 +300,13 @@ function SidebarThreadButton({
     onStartEdit,
     onSaveTitle,
     onCancelEdit,
+    busy,
 }: {
     thread: ChatThread;
     activeId: string | null;
     editingId: string | null;
+    /** The thread is still generating a reply in the background. */
+    busy: boolean;
     onLoad: (id: string) => void;
     onDelete: (id: string, e: React.MouseEvent) => void;
     onStartEdit: (id: string, e: React.MouseEvent) => void;
@@ -363,8 +365,17 @@ function SidebarThreadButton({
                     <>
                         <span className="block truncate">{thread.title || 'New Thread'}</span>
                         <span className="flex items-center gap-1 mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                            <Clock className="w-2.5 h-2.5" />
-                            {timeAgo(thread.updatedAt)}
+                            {busy ? (
+                                <>
+                                    <Loader2 className="w-2.5 h-2.5 text-brand motion-safe:animate-spin" aria-hidden />
+                                    Answering…
+                                </>
+                            ) : (
+                                <>
+                                    <Clock className="w-2.5 h-2.5" />
+                                    {timeAgo(thread.updatedAt)}
+                                </>
+                            )}
                         </span>
                     </>
                 )}
@@ -411,6 +422,7 @@ function CollapsibleThreadGroup({
     onStartEdit,
     onSaveTitle,
     onCancelEdit,
+    busyIds,
     defaultExpanded = true,
 }: {
     title: string;
@@ -422,6 +434,7 @@ function CollapsibleThreadGroup({
     onStartEdit: (id: string, e: React.MouseEvent) => void;
     onSaveTitle: (id: string, title: string) => void;
     onCancelEdit: () => void;
+    busyIds: ReadonlySet<string>;
     defaultExpanded?: boolean;
 }) {
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -462,6 +475,7 @@ function CollapsibleThreadGroup({
                             onStartEdit={onStartEdit}
                             onSaveTitle={onSaveTitle}
                             onCancelEdit={onCancelEdit}
+                            busy={busyIds.has(t.id)}
                         />
                     ))}
                 </div>
@@ -796,66 +810,86 @@ const INVOKE_STATUS_STEPS = [
     'Preparing the response',
 ];
 
+/** Apply `update` to one thread's messages, leaving every other thread untouched. */
+type UpdateThreadMessages = (threadId: string, update: (previous: UIMessage[]) => UIMessage[]) => void;
+
+/** Patch the trailing assistant placeholder of a thread, if there is one. */
+function patchLastAssistant(messages: UIMessage[], patch: (last: UIMessage) => UIMessage | null): UIMessage[] {
+    const last = messages[messages.length - 1];
+    if (last?.role !== 'assistant') return messages;
+    const next = patch(last);
+    if (!next) return messages;
+    return [...messages.slice(0, -1), next];
+}
+
+interface ThreadRun {
+    controller: AbortController;
+    timer: number;
+}
+
+/**
+ * Runs chat turns per thread, so a reply still generating in one thread never
+ * blocks (or lands in) another: each thread has its own controller, status and
+ * placeholder message.
+ */
 function useAiChatInvoke({
-    setMessages,
+    updateThreadMessages,
     loadThreads,
     selectedModelId,
     selectedAgentId,
     activeConnectionId,
 }: {
-    setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
+    updateThreadMessages: UpdateThreadMessages;
     loadThreads: () => void;
     selectedModelId: string;
     /** Chat agent for this thread; null = the default agent. */
     selectedAgentId: string | null;
     activeConnectionId: string | null;
 }) {
-    const [isInvoking, setIsInvoking] = useState(false);
-    const [toolStatus, setToolStatus] = useState<string | null>(null);
-    const abortRef = useRef<AbortController | null>(null);
-    const invocationSequenceRef = useRef(0);
-    const statusTimerRef = useRef<number | null>(null);
+    /** threadId → current status line; a key is present while that thread is generating. */
+    const [statusByThread, setStatusByThread] = useState<Record<string, string>>({});
+    const runsRef = useRef(new Map<string, ThreadRun>());
+    /** Bumped by cancelAll so replies from a previous connection are dropped. */
+    const epochRef = useRef(0);
+
+    const setThreadStatus = useCallback((threadId: string, status: string | null) => {
+        setStatusByThread((previous) => {
+            if (status === null) {
+                if (!(threadId in previous)) return previous;
+                const rest = { ...previous };
+                delete rest[threadId];
+                return rest;
+            }
+            return { ...previous, [threadId]: status };
+        });
+    }, []);
 
     const runInvoke = useCallback(async (
         threadId: string,
         prompt: string,
         messageHistory: { role: string; content: string }[],
-    ) => {
-        const invocationSequence = ++invocationSequenceRef.current;
+    ): Promise<void> => {
+        if (runsRef.current.has(threadId)) return;
+        const epoch = epochRef.current;
         const invocationConnectionId = activeConnectionId;
+        const isCurrent = (): boolean => epoch === epochRef.current && isActiveChatConnection(invocationConnectionId);
         const controller = new AbortController();
-        abortRef.current = controller;
-        setIsInvoking(true);
-        setToolStatus(INVOKE_STATUS_STEPS[0]);
-        setMessages((previous) => {
-            const updated = [...previous];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'assistant' && last.isInvoking) {
-                updated[updated.length - 1] = { ...last, toolStatus: INVOKE_STATUS_STEPS[0] };
-            }
-            return updated;
-        });
+
+        const showStatus = (status: string): void => {
+            setThreadStatus(threadId, status);
+            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => (
+                last.isInvoking ? { ...last, toolStatus: status } : null
+            )));
+        };
 
         let statusIndex = 0;
-        const statusTimer = window.setInterval(() => {
-            if (
-                invocationSequence !== invocationSequenceRef.current ||
-                !isActiveChatConnection(invocationConnectionId)
-            ) return;
-
+        const timer = window.setInterval(() => {
+            if (!isCurrent()) return;
             statusIndex = (statusIndex + 1) % INVOKE_STATUS_STEPS.length;
-            const status = INVOKE_STATUS_STEPS[statusIndex];
-            setToolStatus(status);
-            setMessages((previous) => {
-                const updated = [...previous];
-                const last = updated[updated.length - 1];
-                if (last?.role === 'assistant' && last.isInvoking) {
-                    updated[updated.length - 1] = { ...last, toolStatus: status };
-                }
-                return updated;
-            });
+            showStatus(INVOKE_STATUS_STEPS[statusIndex]);
         }, 2500);
-        statusTimerRef.current = statusTimer;
+        runsRef.current.set(threadId, { controller, timer });
+        showStatus(INVOKE_STATUS_STEPS[0]);
 
         try {
             const result = await invokeChatMessage(
@@ -866,39 +900,25 @@ function useAiChatInvoke({
                 controller.signal,
                 selectedAgentId,
             );
+            if (!isCurrent()) return;
 
-            if (
-                invocationSequence !== invocationSequenceRef.current ||
-                !isActiveChatConnection(invocationConnectionId)
-            ) return;
-
-            setMessages((previous) => {
-                const updated = [...previous];
-                const last = updated[updated.length - 1];
-                if (last?.role === 'assistant') {
-                    updated[updated.length - 1] = {
-                        ...last,
-                        content: result.content,
-                        isInvoking: false,
-                        toolStatus: undefined,
-                        toolCalls: result.toolCalls.map((call, index) => ({
-                            id: `activity_${index + 1}`,
-                            tool: call.name,
-                            args: call.args,
-                            status: 'done',
-                            agent: call.agent,
-                        })),
-                        chartSpecs: result.chartSpecs,
-                        agentName: result.agent?.name,
-                    };
-                }
-                return updated;
-            });
+            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({
+                ...last,
+                content: result.content,
+                isInvoking: false,
+                toolStatus: undefined,
+                toolCalls: result.toolCalls.map((call, index) => ({
+                    id: `activity_${index + 1}`,
+                    tool: call.name,
+                    args: call.args,
+                    status: 'done',
+                    agent: call.agent,
+                })),
+                chartSpecs: result.chartSpecs,
+                agentName: result.agent?.name,
+            })));
         } catch (error: unknown) {
-            if (
-                invocationSequence !== invocationSequenceRef.current ||
-                !isActiveChatConnection(invocationConnectionId)
-            ) return;
+            if (!isCurrent()) return;
 
             const wasStopped = error instanceof Error && error.name === 'AbortError';
             const isNetwork = error instanceof Error &&
@@ -911,52 +931,44 @@ function useAiChatInvoke({
                         ? error.message
                         : 'Something went wrong. You can retry.';
 
-            setMessages((previous) => {
-                const updated = [...previous];
-                const last = updated[updated.length - 1];
-                if (last?.role === 'assistant') {
-                    updated[updated.length - 1] = {
-                        ...last,
-                        content: errorMessage,
-                        isInvoking: false,
-                        isError: !wasStopped,
-                        retryPrompt: wasStopped ? undefined : prompt,
-                        retryable: !wasStopped,
-                        toolStatus: undefined,
-                    };
-                }
-                return updated;
-            });
+            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({
+                ...last,
+                content: errorMessage,
+                isInvoking: false,
+                isError: !wasStopped,
+                retryPrompt: wasStopped ? undefined : prompt,
+                retryable: !wasStopped,
+                toolStatus: undefined,
+            })));
         } finally {
-            window.clearInterval(statusTimer);
-            if (statusTimerRef.current === statusTimer) statusTimerRef.current = null;
-
-            if (invocationSequence === invocationSequenceRef.current) {
-                setToolStatus(null);
-                setIsInvoking(false);
-                if (abortRef.current === controller) abortRef.current = null;
-                if (isActiveChatConnection(invocationConnectionId)) loadThreads();
+            window.clearInterval(timer);
+            if (runsRef.current.get(threadId)?.controller === controller) {
+                runsRef.current.delete(threadId);
+                setThreadStatus(threadId, null);
             }
+            if (isCurrent()) loadThreads();
         }
-    }, [activeConnectionId, loadThreads, selectedModelId, selectedAgentId, setMessages]);
+    }, [activeConnectionId, loadThreads, selectedModelId, selectedAgentId, setThreadStatus, updateThreadMessages]);
 
-    const handleStop = useCallback(() => {
-        abortRef.current?.abort();
+    /** Stop one thread's reply; the request settles as "Generation stopped." */
+    const stopThread = useCallback((threadId: string) => {
+        runsRef.current.get(threadId)?.controller.abort();
     }, []);
 
-    const cancelInvoke = useCallback(() => {
-        invocationSequenceRef.current += 1;
-        abortRef.current?.abort();
-        abortRef.current = null;
-        if (statusTimerRef.current !== null) {
-            window.clearInterval(statusTimerRef.current);
-            statusTimerRef.current = null;
+    /** Drop every in-flight reply without touching messages (connection switch). */
+    const cancelAll = useCallback(() => {
+        epochRef.current += 1;
+        for (const run of runsRef.current.values()) {
+            run.controller.abort();
+            window.clearInterval(run.timer);
         }
-        setToolStatus(null);
-        setIsInvoking(false);
+        runsRef.current.clear();
+        setStatusByThread({});
     }, []);
 
-    return { runInvoke, isInvoking, toolStatus, handleStop, cancelInvoke };
+    useEffect(() => cancelAll, [cancelAll]);
+
+    return { runInvoke, statusByThread, stopThread, cancelAll };
 }
 
 // ============================================
@@ -1032,7 +1044,7 @@ export default function AiChatBubble() {
     const isDesktop = breakpoint === 'desktop';
 
     // Sheet width state (desktop & tablet only — mobile is always full screen)
-    const [sheetWidth, setSheetWidth] = useState(SHEET_WIDTH_STANDARD);
+    const [sheetWidth, setSheetWidth] = useState(() => CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE[deviceType]);
     const sheetWidthRef = useRef(sheetWidth);
     useEffect(() => {
         sheetWidthRef.current = sheetWidth;
@@ -1052,12 +1064,7 @@ export default function AiChatBubble() {
             try {
                 const current = await rbacUserPreferencesApi.getPreferences();
                 const workspace = current.workspacePreferences as WorkspacePreferencesMap | undefined;
-                // Keep the prefs API shape (position + size) but pin position to {0,0} and
-                // store the sheet width in size.width — height fills viewport now.
-                const merged = mergeChatPrefsIntoWorkspace(workspace, deviceType, {
-                    position: { x: 0, y: 0 },
-                    size: { width, height: 0 },
-                });
+                const merged = mergeChatSheetWidthIntoWorkspace(workspace, deviceType, width);
                 await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
             } catch (err) {
                 log.error('[AiChatBubble] Failed to save preferences:', err);
@@ -1072,10 +1079,7 @@ export default function AiChatBubble() {
             try {
                 const prefs = await rbacUserPreferencesApi.getPreferences();
                 const workspace = prefs.workspacePreferences as WorkspacePreferencesMap | undefined;
-                const { size: loadedSize } = getChatPrefsFromWorkspace(workspace, deviceType);
-                if (deviceType !== 'mobile' && loadedSize.width >= MIN_SHEET_WIDTH) {
-                    setSheetWidth(loadedSize.width);
-                }
+                if (deviceType !== 'mobile') setSheetWidth(getChatSheetWidth(workspace, deviceType));
                 lastLoadedDeviceRef.current = deviceType;
             } catch (err) {
                 log.error('[AiChatBubble] Failed to load preferences:', err);
@@ -1093,6 +1097,9 @@ export default function AiChatBubble() {
     const singleColPromptThreshold = 520;
     const shouldHideSidebar = showSidebar && !isMobile && logicalWidth < hideSidebarThreshold;
     const useSingleColPrompt = isMobile || logicalWidth < singleColPromptThreshold;
+    // Narrow sheets drop header decoration so the controls always stay visible.
+    const compactHeader = !isMobile && logicalWidth < 600;
+    const pickerWidthClass = compactHeader ? 'max-w-[100px]' : 'max-w-[180px]';
 
     // Width-only resize (drag the left edge of the sheet)
     const [isResizing, setIsResizing] = useState(false);
@@ -1146,11 +1153,27 @@ export default function AiChatBubble() {
     const [threads, setThreads] = useState<ChatThread[]>([]);
     const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
     const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
-    const [messages, setMessages] = useState<UIMessage[]>([]);
+    /** Messages per thread, so a reply finishing in the background lands in its own thread. */
+    const [messagesByThread, setMessagesByThread] = useState<Record<string, UIMessage[]>>({});
+    const messages = useMemo(
+        () => (activeThreadId ? messagesByThread[activeThreadId] ?? NO_MESSAGES : NO_MESSAGES),
+        [activeThreadId, messagesByThread],
+    );
+    const updateThreadMessages = useCallback<UpdateThreadMessages>((threadId, update) => {
+        setMessagesByThread((previous) => {
+            const current = previous[threadId] ?? NO_MESSAGES;
+            const next = update(current);
+            return next === current ? previous : { ...previous, [threadId]: next };
+        });
+    }, []);
     const [isLoadingThreads, setIsLoadingThreads] = useState(false);
 
     // Input state
     const [input, setInput] = useState('');
+    const inputValueRef = useRef(input);
+    useEffect(() => {
+        inputValueRef.current = input;
+    }, [input]);
     const [shuffleKey, setShuffleKey] = useState(() => Date.now());
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1282,13 +1305,33 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId]);
 
-    const { runInvoke, isInvoking, toolStatus, handleStop, cancelInvoke } = useAiChatInvoke({
-        setMessages,
+    const { runInvoke, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
+        updateThreadMessages,
         loadThreads,
         selectedModelId,
         selectedAgentId,
         activeConnectionId,
     });
+    const isInvoking = activeThreadId !== null && activeThreadId in statusByThread;
+    const toolStatus = activeThreadId ? statusByThread[activeThreadId] ?? null : null;
+    const busyThreadIds = useMemo(() => new Set(Object.keys(statusByThread)), [statusByThread]);
+    const runningThreadIdsRef = useRef(busyThreadIds);
+    useEffect(() => {
+        runningThreadIdsRef.current = busyThreadIds;
+    }, [busyThreadIds]);
+    const handleStop = useCallback(() => {
+        if (activeThreadId) stopThread(activeThreadId);
+    }, [activeThreadId, stopThread]);
+
+    // Each thread keeps its own unsent draft, so switching threads never loses text.
+    const draftsRef = useRef(new Map<string | null, string>());
+    const draftThreadRef = useRef<string | null>(activeThreadId);
+    useEffect(() => {
+        if (draftThreadRef.current === activeThreadId) return;
+        draftsRef.current.set(draftThreadRef.current, inputValueRef.current);
+        draftThreadRef.current = activeThreadId;
+        setInput(draftsRef.current.get(activeThreadId) ?? '');
+    }, [activeThreadId]);
 
     const previousActiveConnectionIdRef = useRef(activeConnectionId);
     useEffect(() => {
@@ -1296,14 +1339,15 @@ export default function AiChatBubble() {
 
         previousActiveConnectionIdRef.current = activeConnectionId;
         threadLoadSequenceRef.current += 1;
-        cancelInvoke();
+        cancelAll();
         setThreads([]);
         setActiveThreadId(null);
         setEditingThreadId(null);
-        setMessages([]);
+        setMessagesByThread({});
+        draftsRef.current.clear();
         setInput('');
         setIsLoadingThreads(false);
-    }, [activeConnectionId, cancelInvoke]);
+    }, [activeConnectionId, cancelAll]);
 
     // Focus input when thread loads
     useEffect(() => {
@@ -1353,7 +1397,6 @@ export default function AiChatBubble() {
             // 3) Opened after more than 5 minutes
             if (!isSameConnection || !isWithinTimeLimit) {
                 setActiveThreadId(null);
-                setMessages([]);
             }
 
             // This marker owns the retained chat state. Updating it while closed
@@ -1365,11 +1408,17 @@ export default function AiChatBubble() {
     const loadThread = useCallback(async (threadId: string) => {
         const loadConnectionId = activeConnectionId;
         try {
+            // A thread still generating owns newer messages than the server has.
+            if (runningThreadIdsRef.current.has(threadId)) {
+                setActiveThreadId(threadId);
+                return;
+            }
             const data = await getThread(threadId);
             if (!isActiveChatConnection(loadConnectionId)) return;
             setActiveThreadId(threadId);
             setSelectedAgentId(data.agentId ?? null);
-            setMessages(
+            if (runningThreadIdsRef.current.has(threadId)) return;
+            updateThreadMessages(threadId, () =>
                 data.messages.map((m: ChatMessage) => ({
                     id: m.id,
                     role: m.role,
@@ -1389,7 +1438,7 @@ export default function AiChatBubble() {
         } catch (err) {
             log.error('[AiChat] Failed to load thread:', err);
         }
-    }, [activeConnectionId]);
+    }, [activeConnectionId, updateThreadMessages]);
 
     const handleNewThread = useCallback(async () => {
         const createConnectionId = activeConnectionId;
@@ -1398,7 +1447,6 @@ export default function AiChatBubble() {
             if (!isActiveChatConnection(createConnectionId)) return;
             setThreads((prev) => [thread, ...prev]);
             setActiveThreadId(thread.id);
-            setMessages([]);
         } catch (err) {
             log.error('[AiChat] Failed to create thread:', err);
         }
@@ -1408,15 +1456,21 @@ export default function AiChatBubble() {
         e.stopPropagation();
         try {
             await deleteThread(threadId);
+            stopThread(threadId);
             setThreads((prev) => prev.filter((t) => t.id !== threadId));
+            setMessagesByThread((prev) => {
+                const rest = { ...prev };
+                delete rest[threadId];
+                return rest;
+            });
+            draftsRef.current.delete(threadId);
             if (activeThreadId === threadId) {
                 setActiveThreadId(null);
-                setMessages([]);
             }
         } catch (err) {
             log.error('[AiChat] Failed to delete thread:', err);
         }
-    }, [activeThreadId]);
+    }, [activeThreadId, stopThread]);
 
     const handleStartEditThread = useCallback((_threadId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -1474,7 +1528,7 @@ export default function AiChatBubble() {
         const messageHistory = messages.map((m) => ({ role: m.role, content: m.content }));
         messageHistory.push({ role: 'user', content: trimmed });
 
-        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        updateThreadMessages(activeThreadId, (prev) => [...prev, userMsg, assistantMsg]);
         setInput('');
         // Reset textarea height back to single line
         if (inputRef.current) {
@@ -1482,23 +1536,14 @@ export default function AiChatBubble() {
         }
 
         await runInvoke(activeThreadId, trimmed, messageHistory);
-    }, [input, isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
+    }, [input, isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
         if (!retryPrompt || isInvoking || !activeThreadId) return;
 
-        // Remove the last error assistant message, then re-run
-        setMessages((prev) => {
-            const updated = [...prev];
-            if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
-                updated.pop();
-            }
-            return updated;
-        });
-
-        // Add a fresh placeholder
-        setMessages((prev) => [
-            ...prev,
+        // Replace the failed assistant message with a fresh placeholder, then re-run
+        updateThreadMessages(activeThreadId, (prev) => [
+            ...(prev[prev.length - 1]?.role === 'assistant' ? prev.slice(0, -1) : prev),
             {
                 id: `assistant_${Date.now()}`,
                 role: 'assistant',
@@ -1514,7 +1559,7 @@ export default function AiChatBubble() {
         messageHistory.push({ role: 'user', content: retryPrompt });
 
         await runInvoke(activeThreadId, retryPrompt, messageHistory);
-    }, [isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
+    }, [isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1522,45 +1567,6 @@ export default function AiChatBubble() {
             handleSend();
         }
     }, [handleSend]);
-
-    // Helper to send a suggested prompt — shares runInvoke for consistent error handling
-    const handleSuggestedPrompt = useCallback(async (prompt: string) => {
-        if (isInvoking) return;
-        let threadId = activeThreadId;
-        if (!threadId) {
-            const createConnectionId = activeConnectionId;
-            try {
-                const thread = await createThread(undefined, createConnectionId ?? undefined, selectedAgentId);
-                if (!isActiveChatConnection(createConnectionId)) return;
-                setThreads((prev) => [thread, ...prev]);
-                setActiveThreadId(thread.id);
-                threadId = thread.id;
-                setMessages([]);
-            } catch (err) {
-                log.error('[AiChat] Failed to create thread:', err);
-                return;
-            }
-        }
-
-        const userMsg: UIMessage = {
-            id: `user_${Date.now()}`,
-            role: 'user',
-            content: prompt,
-            createdAt: new Date().toISOString(),
-        };
-        const assistantMsg: UIMessage = {
-            id: `assistant_${Date.now()}`,
-            role: 'assistant',
-            content: '',
-            createdAt: new Date().toISOString(),
-            isInvoking: true,
-        };
-
-        setMessages((prev) => [...prev, userMsg, assistantMsg]);
-        setInput('');
-
-        await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
-    }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId, selectedAgentId]);
 
     if (!hasPermission) return null;
     if (aiEnabled !== true) {
@@ -1675,37 +1681,39 @@ export default function AiChatBubble() {
                             )}
 
                             {/* Header — never shrinks (sheet is anchored; no longer draggable) */}
-                            <div className="relative z-10 flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-ink-200 border-b border-ink-500">
-                                <div className="flex items-center gap-3">
+                            <div className="relative z-10 flex-shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 bg-ink-200 border-b border-ink-500">
+                                <div className="flex min-w-0 items-center gap-3">
                                     <button
                                         type="button"
                                         onClick={() => setShowSidebar(!showSidebar)}
-                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
+                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title={showSidebar ? 'Close sidebar' : 'Thread history'}
                                         aria-label={showSidebar ? 'Close sidebar' : 'Thread history'}
                                     >
                                         {showSidebar ? <PanelLeftClose className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
                                     </button>
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="relative">
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                        <div className={`relative shrink-0 ${compactHeader ? 'hidden' : ''}`}>
                                             <span className="grid h-7 w-7 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
                                                 <Bot className="h-3.5 w-3.5" aria-hidden />
                                             </span>
                                             <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-ink-200" aria-hidden />
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] font-semibold text-paper">CHouse AI</span>
-                                            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Online</span>
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <span className="truncate text-[13px] font-semibold text-paper">CHouse AI</span>
+                                            {!compactHeader && (
+                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Online</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-0.5">
+                                <div className="flex shrink-0 items-center gap-0.5">
                                     {chatAgents.length > 1 && (
                                         <div className="mr-1 hidden sm:block">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <button type="button" aria-label="Chat agent" className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors max-w-[180px]">
+                                                    <button type="button" aria-label="Chat agent" className={`inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors ${pickerWidthClass}`}>
                                                         <span className="truncate">{chatAgents.find((a) => a.id === selectedAgentId)?.name ?? chatAgents.find((a) => a.isDefault)?.name ?? 'Default agent'}</span>
                                                         <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
                                                     </button>
@@ -1746,7 +1754,7 @@ export default function AiChatBubble() {
                                         <div className="mr-2 hidden sm:block">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <button type="button" className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors max-w-[180px]">
+                                                    <button type="button" aria-label="AI model" className={`inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors ${pickerWidthClass}`}>
                                                         <span className="truncate">{aiModels.find(m => m.id === selectedModelId)?.name || 'Select model'}</span>
                                                         <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
                                                     </button>
@@ -1785,26 +1793,6 @@ export default function AiChatBubble() {
                                             </DropdownMenu>
                                         </div>
                                     )}
-                                    {!isMobile && (
-                                        <button
-                                            onClick={() => {
-                                                // Cycle: compact → standard → wide → compact
-                                                const next = sheetWidth >= SHEET_WIDTH_WIDE
-                                                    ? SHEET_WIDTH_COMPACT
-                                                    : sheetWidth >= SHEET_WIDTH_STANDARD
-                                                        ? SHEET_WIDTH_WIDE
-                                                        : SHEET_WIDTH_STANDARD;
-                                                const clamped = Math.min(next, maxSheetWidth);
-                                                setSheetWidth(clamped);
-                                                saveChatPrefsDebounced(clamped);
-                                            }}
-                                            className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper mr-1"
-                                            title={sheetWidth >= SHEET_WIDTH_WIDE ? 'Compact sheet' : sheetWidth >= SHEET_WIDTH_STANDARD ? 'Wide sheet' : 'Standard sheet'}
-                                            aria-label="Cycle sheet width"
-                                        >
-                                            {sheetWidth >= SHEET_WIDTH_WIDE ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                                        </button>
-                                    )}
                                     <button
                                         onClick={handleExportThread}
                                         disabled={!activeThreadId || messages.length === 0}
@@ -1818,6 +1806,7 @@ export default function AiChatBubble() {
                                         onClick={handleNewThread}
                                         className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title="New chat"
+                                        aria-label="New chat"
                                     >
                                         <Plus className="w-4 h-4" />
                                     </button>
@@ -1825,6 +1814,7 @@ export default function AiChatBubble() {
                                         onClick={() => setIsOpen(false)}
                                         className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title="Close (Esc)"
+                                        aria-label="Close chat"
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -1860,6 +1850,7 @@ export default function AiChatBubble() {
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
                                                         onCancelEdit={handleCancelEditThread}
+                                                        busyIds={busyThreadIds}
                                                         defaultExpanded={true}
                                                     />
                                                     <CollapsibleThreadGroup
@@ -1872,6 +1863,7 @@ export default function AiChatBubble() {
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
                                                         onCancelEdit={handleCancelEditThread}
+                                                        busyIds={busyThreadIds}
                                                         defaultExpanded={true}
                                                     />
                                                     <CollapsibleThreadGroup
@@ -1884,6 +1876,7 @@ export default function AiChatBubble() {
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
                                                         onCancelEdit={handleCancelEditThread}
+                                                        busyIds={busyThreadIds}
                                                         defaultExpanded={true}
                                                     />
                                                     {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (

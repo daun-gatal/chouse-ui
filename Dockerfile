@@ -58,20 +58,20 @@ COPY --from=build /app/packages/server/package.json ./packages/server/
 COPY --from=build /app/packages/server/src ./packages/server/src
 COPY --from=build /app/packages/server/tsconfig.json ./packages/server/
 
-# The root package.json is deliberately NOT copied. Its presence makes Bun treat
-# /app as a workspace root and also install the *frontend's* runtime dependencies
-# (~735 MB) — which the runtime never loads, because the frontend is served as the
-# pre-built static bundle in /app/dist. Leaving it out keeps the install to the
-# server's own 227 packages and off the vulnerability scanners' radar.
-
-# Install server production dependencies only.
-# Bun's global install cache is populated during resolution and holds the *whole*
-# dependency tree, dev included (~1 GB of prebuilt binaries such as old esbuild
-# releases). It is build-time scratch, so drop it in the same layer — otherwise it
-# ships in the image and gets scanned as if it were part of the runtime.
-WORKDIR /app/packages/server
-RUN bun install --production && \
-    rm -rf /root/.bun/install/cache
+# Install the server's production dependencies from the lockfile, so the image
+# runs exactly the versions CI tested and a package published minutes ago (still
+# 404 on npm's CDN) can never break the build. `--filter` limits the install to
+# the server workspace: the frontend's runtime dependencies (~735 MB) are never
+# loaded — the frontend is served as the pre-built bundle in /app/dist — and stay
+# off the vulnerability scanners' radar. The root manifest and lockfile are
+# removed afterwards; only the install needs them.
+# Bun's global install cache holds the *whole* dependency tree, dev included
+# (~1 GB of prebuilt binaries such as old esbuild releases). It is build-time
+# scratch, so drop it in the same layer — otherwise it ships in the image and gets
+# scanned as if it were part of the runtime.
+COPY --from=build /app/package.json /app/bun.lock ./
+RUN bun install --production --frozen-lockfile --filter '@chouseui/server' && \
+    rm -rf /root/.bun/install/cache package.json bun.lock
 
 # Back to app root
 WORKDIR /app

@@ -11,6 +11,7 @@ import type { ConnectionCollector, CollectorContext } from "../collector";
 import { runBatch } from "../db";
 import { hasTable } from "../capabilities";
 import { selectRows } from "../clickhouse";
+import { pruneLineage } from "../orphans";
 import {
   classifyObject,
   externalNodeId,
@@ -231,6 +232,13 @@ export const catalogCollector: ConnectionCollector = {
     for (const edge of graph.edges.values()) statements.push(upsertEdge(connectionId, edge, "structural", now));
     // Structural edges that no longer exist disappear; observed ones age out by retention.
     statements.push(sql`DELETE FROM obs_lineage_edges WHERE connection_id = ${connectionId} AND origin = 'structural' AND last_seen_at < ${now}`);
+    // Observed edges outlive a DROP TABLE by the whole retention window; prune
+    // them now, but only from a complete listing so a capped one never drops a
+    // table that merely did not fit.
+    if (tables.length < MAX_TABLES) {
+      const live = new Set([...tables.map((t) => tableNodeId(t.database, t.name)), ...graph.nodes.keys()]);
+      statements.push(...await pruneLineage(connectionId, "table:", (id) => live.has(id)));
+    }
     await runBatch(statements);
   },
 };

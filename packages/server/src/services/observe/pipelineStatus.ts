@@ -14,6 +14,7 @@ export const PIPELINE_STATUSES = [
   "failing",
   "stopped",
   "inefficient",
+  "paused",
   "unsupported_on_version",
 ] as const;
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
@@ -26,6 +27,7 @@ export const STATUS_SEVERITY: Record<PipelineStatus, number> = {
   stopped: 4,
   lagging: 3,
   inefficient: 2,
+  paused: 1,
   unsupported_on_version: 1,
   healthy: 0,
 };
@@ -45,13 +47,33 @@ export interface PipelineSample {
   progressing: boolean | null;
   /** Adapter-detected inefficiency, e.g. "avg 14 rows per insert". */
   inefficiency?: string | null;
+  /** The latest discrete run failed (a job, say); stays set until a run succeeds. */
+  lastRunFailure?: string | null;
+}
+
+/** Statuses that are calm by design: never an incident, never "needs attention". */
+export const QUIET_STATUSES: PipelineStatus[] = ["healthy", "paused", "unsupported_on_version"];
+
+export function isQuietStatus(status: string): boolean {
+  return QUIET_STATUSES.some((quiet) => quiet === status);
 }
 
 export interface StatusContext {
   nowMs: number;
-  /** Learned p50 gap between successes, seconds; null if unknown. */
+  /**
+   * Expected gap between successes, seconds: a declared schedule or a learned
+   * p50. Null when unknown — and then "stopped" is never inferred, because a
+   * one-off or irregular source going quiet is not an outage.
+   */
   cadenceSeconds: number | null;
   unsupported?: string | null;
+  /** Set when the pipeline is switched off on purpose (disabled job, stopped view). */
+  paused?: string | null;
+  /**
+   * False when nothing promises another success (a manual, event-chained or
+   * disabled scheduled job), so a quiet spell is not "stopped".
+   */
+  expectsRecurring?: boolean;
 }
 
 export interface StatusVerdict {
@@ -71,11 +93,32 @@ function fmtSeconds(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
+/** "stopped" only when a known cadence says another success is overdue. */
+function stoppedVerdict(latest: PipelineSample, ctx: StatusContext): StatusVerdict | null {
+  if (latest.lastSuccessAt === null || ctx.expectsRecurring === false || ctx.cadenceSeconds === null) return null;
+  const age = (ctx.nowMs - latest.lastSuccessAt) / 1000;
+  const limit = Math.max(3 * ctx.cadenceSeconds, 600);
+  return age > limit ? { status: "stopped", reason: `Nothing succeeded for ${fmtSeconds(age)}` } : null;
+}
+
+function stoppedOrHealthy(latest: PipelineSample, ctx: StatusContext): StatusVerdict {
+  const stopped = stoppedVerdict(latest, ctx);
+  if (stopped) return stopped;
+  return latest.lastSuccessAt === null ? { status: "healthy", reason: "No completed run observed yet" } : { status: "healthy", reason: "Last run succeeded" };
+}
+
 export function classifyPipeline(samplesIn: PipelineSample[], ctx: StatusContext): StatusVerdict {
   if (ctx.unsupported) return { status: "unsupported_on_version", reason: ctx.unsupported };
+  if (ctx.paused) return { status: "paused", reason: ctx.paused };
   const samples = [...samplesIn].sort((a, b) => a.sampledAt - b.sampledAt);
   if (samples.length === 0) return { status: "healthy", reason: "No activity sampled yet" };
   const latest = samples[samples.length - 1];
+  // Discrete runs (scheduled jobs) are judged by the latest run alone; an
+  // earlier failure that a later run fixed is history, not a status.
+  if (latest.lastRunFailure !== undefined) {
+    if (latest.lastRunFailure) return { status: "failing", reason: `Last run failed: ${latest.lastRunFailure}` };
+    return stoppedOrHealthy(latest, ctx);
+  }
   const recent = tail(samples, CONSECUTIVE);
   const enough = recent.length >= CONSECUTIVE;
   const noProgress = enough && recent.every((s) => s.progressing === false);
@@ -93,11 +136,8 @@ export function classifyPipeline(samplesIn: PipelineSample[], ctx: StatusContext
     const total = erroring.reduce((sum, s) => sum + (s.errors ?? 0), 0);
     return { status: "failing", reason: `${Math.round(total)} errors in the last ${recent.length} samples: ${latest.errorSample ?? erroring[0].errorSample ?? ""}`.trim() };
   }
-  if (latest.lastSuccessAt !== null) {
-    const age = (ctx.nowMs - latest.lastSuccessAt) / 1000;
-    const limit = ctx.cadenceSeconds === null ? 3600 : Math.max(3 * ctx.cadenceSeconds, 600);
-    if (age > limit) return { status: "stopped", reason: `Nothing succeeded for ${fmtSeconds(age)}` };
-  }
+  const stopped = stoppedVerdict(latest, ctx);
+  if (stopped) return stopped;
   const lagLimit = Math.max(300, 3 * (ctx.cadenceSeconds ?? 0));
   if (latest.lagSeconds !== null && latest.lagSeconds > lagLimit) {
     return { status: "lagging", reason: `${fmtSeconds(latest.lagSeconds)} behind` };

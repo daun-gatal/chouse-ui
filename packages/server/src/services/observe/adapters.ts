@@ -13,7 +13,7 @@ import { hasColumn, hasTable, missingMessage, type Capabilities } from "./capabi
 import { NOT_OBSERVE, selectRows } from "./clickhouse";
 import { classifyError } from "./errorClass";
 import type { PipelineSample } from "./pipelineStatus";
-import { OBJECT_STORAGE_QUEUE_ENGINES, QUEUE_ENGINES } from "./catalogParse";
+import { OBJECT_STORAGE_QUEUE_ENGINES, parseMvTarget, QUEUE_ENGINES } from "./catalogParse";
 
 export const PIPELINE_KINDS = [
   "materialized_view",
@@ -184,6 +184,36 @@ export async function materializedViews(ctx: AdapterContext, tables: CatalogTabl
   return out;
 }
 
+const INTERVAL_UNIT_SECONDS: Record<string, number> = {
+  SECOND: 1, MINUTE: 60, HOUR: 3600, DAY: 86_400, WEEK: 604_800, MONTH: 31 * 86_400, QUARTER: 92 * 86_400, YEAR: 366 * 86_400,
+};
+
+/** Sum an interval such as "1 HOUR 30 MINUTE" starting at `from`; null when none is there. */
+function intervalSecondsAt(query: string, from: number): number | null {
+  const part = /^\s*(\d+)\s+(SECOND|MINUTE|HOUR|DAY|WEEK|MONTH|QUARTER|YEAR)S?\b/i;
+  let rest = query.slice(from);
+  let total = 0;
+  for (let m = part.exec(rest); m; m = part.exec(rest)) {
+    total += Number(m[1]) * INTERVAL_UNIT_SECONDS[m[2].toUpperCase()];
+    rest = rest.slice(m[0].length);
+  }
+  return total > 0 ? total : null;
+}
+
+/**
+ * The longest normal gap between refreshes of a refreshable view, in seconds:
+ * its EVERY / AFTER interval plus any RANDOMIZE FOR jitter. Null when the
+ * clause cannot be read, so the view is never judged against a guess.
+ */
+export function refreshPeriodSeconds(createQuery: string): number | null {
+  const head = /\bREFRESH\s+(?:EVERY|AFTER)\b/i.exec(createQuery);
+  if (!head) return null;
+  const period = intervalSecondsAt(createQuery, head.index + head[0].length);
+  if (period === null) return null;
+  const jitter = /\bRANDOMIZE\s+FOR\b/i.exec(createQuery);
+  return period + (jitter ? intervalSecondsAt(createQuery, jitter.index + jitter[0].length) ?? 0 : 0);
+}
+
 export async function refreshableViews(ctx: AdapterContext, tables: CatalogTable[]): Promise<AdapterResult> {
   const out = result();
   const views = tables.filter((t) => t.engine === "MaterializedView" && /\bREFRESH\s+(EVERY|AFTER)\b/i.test(t.createQuery));
@@ -200,10 +230,11 @@ export async function refreshableViews(ctx: AdapterContext, tables: CatalogTable
   const byView = new Map(rows.map((r) => [`${r.database}.${r.view}`, r]));
   for (const v of views) {
     const id = `refreshable_view:${v.database}.${v.table}`;
-    const every = /\bREFRESH\s+EVERY\s+(\d+)\s+(SECOND|MINUTE|HOUR|DAY|WEEK)/i.exec(v.createQuery);
-    const unitSeconds: Record<string, number> = { SECOND: 1, MINUTE: 60, HOUR: 3600, DAY: 86400, WEEK: 604800 };
-    const periodSeconds = every ? Number(every[1]) * unitSeconds[every[2].toUpperCase()] : null;
-    out.defs.push({ id, kind: "refreshable_view", engine: "MaterializedView REFRESH", name: `${v.database}.${v.table}`, sourceLabel: null, sourceNode: null, targetNode: tableNode(v.database, v.table), attrs: { periodSeconds } });
+    const periodSeconds = refreshPeriodSeconds(v.createQuery);
+    // A `TO` view refreshes into another table; that table is what goes stale.
+    const to = parseMvTarget(v.createQuery, v.database);
+    const writesTo = to ? tableNode(to.database, to.table) : tableNode(v.database, v.table);
+    out.defs.push({ id, kind: "refreshable_view", engine: "MaterializedView REFRESH", name: `${v.database}.${v.table}`, sourceLabel: null, sourceNode: null, targetNode: tableNode(v.database, v.table), attrs: { periodSeconds, writesTo } });
     if (!supported) {
       out.unsupported.set(id, missingMessage(ctx.capabilities, "view_refreshes"));
       continue;
@@ -221,12 +252,17 @@ export async function refreshableViews(ctx: AdapterContext, tables: CatalogTable
       sample.progressing = r.exception ? false : sample.lastSuccessAt !== null ? true : null;
     }
     out.samples.set(id, sample);
-    out.attrs.set(id, { periodSeconds });
+    // SYSTEM STOP VIEW is deliberate: the view is paused, not broken.
+    const paused = r?.status === "Disabled" ? "Refreshes are stopped (SYSTEM STOP VIEW)" : null;
+    out.attrs.set(id, { periodSeconds, writesTo, paused });
   }
   return out;
 }
 
 // --- queue engines (Kafka, RabbitMQ, NATS, FileLog) -------------------------
+
+/** A streaming Kafka consumer polls continuously; ten quiet minutes means it stopped. */
+const KAFKA_HEARTBEAT_SECONDS = 200;
 
 export async function queueEngines(ctx: AdapterContext, tables: CatalogTable[], views: Map<string, ViewStats>): Promise<AdapterResult> {
   const out = result();
@@ -289,12 +325,27 @@ export async function queueEngines(ctx: AdapterContext, tables: CatalogTable[], 
         sample.lastSuccessAt = Number(k.last_commit_ms) > 0 ? Number(k.last_commit_ms) : sample.lastSuccessAt;
         // Offsets not committed while batches keep failing = the retry loop.
         sample.progressing = newCommits > 0;
+        // A consumer still polling an empty topic is idle, not stopped: Kafka only
+        // commits when messages arrive, so the poll is its heartbeat.
+        const lastPoll = Number(k.last_poll_ms);
+        if (!recentException && newMessages === 0 && lastPoll >= ctx.sinceMs) {
+          sample.progressing = null;
+          sample.lastSuccessAt = Math.max(sample.lastSuccessAt ?? 0, lastPoll);
+        }
         if (recentException) {
           sample.errors = Math.max(1, sample.errors ?? 0);
           sample.errorSample = k.exception;
           sample.errorClass = classifyError(k.exception);
         }
-        out.attrs.set(id, { messages: Number(k.messages), commits: Number(k.commits), lastPollMs: Number(k.last_poll_ms) });
+        // Only a consumer with an attached view streams; without one it never polls.
+        const streaming = (ctx.viewsBySource.get(node) ?? []).length > 0;
+        out.attrs.set(id, {
+          messages: Number(k.messages),
+          commits: Number(k.commits),
+          lastPollMs: lastPoll,
+          periodSeconds: streaming ? KAFKA_HEARTBEAT_SECONDS : null,
+          expectsRecurring: streaming,
+        });
       }
     }
     out.samples.set(id, sample);
@@ -340,12 +391,27 @@ export async function objectStorageQueues(ctx: AdapterContext, tables: CatalogTa
       backlog = new Map(rows.map((r) => [`${r.database}.${r.table}`, Number(r.processing)]));
       failedFiles = new Map(rows.filter((r) => Number(r.failed) > 0).map((r) => [`${r.database}.${r.table}`, Number(r.failed)]));
     }
-    const lastFailure = supported && failedFiles.size > 0
-      ? new Map((await selectRows<{ database: string; table: string; exception: string }>(ctx.client, `
-        SELECT database, table, argMaxIf(exception, event_time, exception != '') AS exception
-        FROM system.${log} WHERE event_time > now() - {lookback:UInt32} AND toString(status) = 'Failed'
-        GROUP BY database, table`, { params: { lookback: STICKY_LOOKBACK_SECONDS } })).map((r) => [`${r.database}.${r.table}`, r.exception]))
-      : new Map<string, string>();
+    // A file that failed for good is logged as Failed once; keeper's metadata
+    // cache may already have evicted it. Read the last day of the log too, so
+    // the failure stays visible until that file is processed.
+    const loggedFailures = supported && hasColumn(ctx.capabilities, log, "file_name")
+      ? await selectRows<{ database: string; table: string; files: number; exception: string }>(ctx.client, `
+        SELECT database, table, count() AS files, any(last_exception) AS exception
+        FROM (
+          SELECT database, table, file_name,
+            argMax(toString(status), event_time) AS last_status,
+            argMax(exception, event_time) AS last_exception
+          FROM system.${log} WHERE event_time > now() - {lookback:UInt32}
+          GROUP BY database, table, file_name
+        )
+        WHERE last_status = 'Failed'
+        GROUP BY database, table`, { params: { lookback: STICKY_LOOKBACK_SECONDS } })
+      : [];
+    const lastFailure = new Map(loggedFailures.map((r) => [`${r.database}.${r.table}`, r.exception]));
+    for (const r of loggedFailures) {
+      const key = `${r.database}.${r.table}`;
+      failedFiles.set(key, Math.max(failedFiles.get(key) ?? 0, Number(r.files)));
+    }
     for (const q of ofEngine) {
       const key = `${q.database}.${q.table}`;
       const id = `object_storage_queue:${key}`;
@@ -381,6 +447,11 @@ export async function objectStorageQueues(ctx: AdapterContext, tables: CatalogTa
 
 // --- tables written by replication / external engines ---------------------
 
+/** An exception from reaching an external system, as opposed to a bad query. */
+export function isSourceFailure(exception: string | null | undefined): boolean {
+  return classifyError(exception) === "external";
+}
+
 export async function databaseReplication(ctx: AdapterContext, tables: CatalogTable[], databaseEngines: Map<string, string>): Promise<AdapterResult> {
   const out = result();
   const replicated = tables.filter((t) => {
@@ -396,6 +467,10 @@ export async function databaseReplication(ctx: AdapterContext, tables: CatalogTa
         AND database IN ({dbs:Array(String)}) GROUP BY database, table`, { params: { since: sec(ctx.sinceMs), dbs: [...new Set(replicated.map((t) => t.database))] } })
     : [];
   const byTable = new Map(rows.map((r) => [`${r.database}.${r.table}`, r]));
+  // One replication stream serves the whole database, and a quiet source table
+  // is normal, so "nothing replicated" is judged per database, not per table.
+  const lastByDatabase = new Map<string, number>();
+  for (const r of rows) lastByDatabase.set(r.database, Math.max(lastByDatabase.get(r.database) ?? 0, Number(r.last_ms)));
   for (const t of replicated) {
     const key = `${t.database}.${t.table}`;
     const id = `database_replication:${key}`;
@@ -408,9 +483,10 @@ export async function databaseReplication(ctx: AdapterContext, tables: CatalogTa
     const r = byTable.get(key);
     const prev = ctx.previous.get(id) ?? {};
     const sample = emptySample(ctx.nowMs);
+    const databaseLast = lastByDatabase.get(t.database);
     sample.unitsIn = r ? Number(r.rows) : 0;
-    sample.lastSuccessAt = r ? Number(r.last_ms) : (typeof prev.lastWriteMs === "number" ? prev.lastWriteMs : null);
-    sample.progressing = r ? true : null;
+    sample.lastSuccessAt = databaseLast ?? (typeof prev.lastWriteMs === "number" ? prev.lastWriteMs : null);
+    sample.progressing = databaseLast !== undefined ? true : null;
     out.samples.set(id, sample);
     out.attrs.set(id, { lastWriteMs: sample.lastSuccessAt });
   }
@@ -422,29 +498,36 @@ export async function externalTables(ctx: AdapterContext, tables: CatalogTable[]
   const external = tables.filter((t) => ["PostgreSQL", "MySQL", "MongoDB", "S3", "URL", "HDFS", "AzureBlobStorage", "ODBC", "JDBC", "Iceberg", "DeltaLake", "Hudi"].includes(t.engine));
   if (external.length === 0) return out;
   const names = external.map((t) => `${t.database}.${t.table}`);
-  const rows = await selectRows<{ tbl: string; ok: number; failed: number; last_ok_ms: number; exception: string }>(ctx.client, `
-    SELECT arrayJoin(arrayIntersect(tables, {names:Array(String)})) AS tbl,
+  const rows = await selectRows<{ tbl: string; code: number; ok: number; failed: number; last_ok_ms: number; exception: string }>(ctx.client, `
+    SELECT arrayJoin(arrayIntersect(tables, {names:Array(String)})) AS tbl, exception_code AS code,
       countIf(type = 'QueryFinish') AS ok,
       countIf(type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')) AS failed,
       toUnixTimestamp(maxIf(event_time, type = 'QueryFinish')) * 1000 AS last_ok_ms,
       argMaxIf(exception, event_time, exception != '') AS exception
     FROM system.query_log
     WHERE event_time > fromUnixTimestamp({since:UInt32}) AND type != 'QueryStart' AND hasAny(tables, {names:Array(String)}) AND ${NOT_OBSERVE}
-    GROUP BY tbl`, { params: { since: sec(ctx.sinceMs), names } });
-  const byTable = new Map(rows.map((r) => [r.tbl, r]));
+    GROUP BY tbl, code`, { params: { since: sec(ctx.sinceMs), names } });
+  const byTable = new Map<string, typeof rows>();
+  for (const r of rows) byTable.set(r.tbl, [...(byTable.get(r.tbl) ?? []), r]);
   for (const t of external) {
     const key = `${t.database}.${t.table}`;
     const id = `external_table:${key}`;
     out.defs.push({ id, kind: "external_table", engine: t.engine, name: key, sourceLabel: t.engine, sourceNode: null, targetNode: tableNode(t.database, t.table), attrs: {} });
-    const r = byTable.get(key);
+    const groups = byTable.get(key);
     const sample = emptySample(ctx.nowMs);
-    if (r) {
-      sample.errors = Number(r.failed);
-      sample.errorSample = r.exception || null;
-      sample.errorClass = classifyError(r.exception);
-      sample.lastSuccessAt = Number(r.last_ok_ms) > 0 ? Number(r.last_ok_ms) : null;
-      sample.progressing = Number(r.ok) > 0;
-      sample.unitsIn = Number(r.ok);
+    if (groups) {
+      // Someone's typo or slow ad-hoc query is not the source failing: only
+      // errors that point at the external system count against the pipeline.
+      const sourceFailures = groups.filter((g) => Number(g.failed) > 0 && isSourceFailure(g.exception));
+      const ok = groups.reduce((sum, g) => sum + Number(g.ok), 0);
+      const lastOk = groups.reduce((max, g) => Math.max(max, Number(g.last_ok_ms) || 0), 0);
+      const exception = sourceFailures[0]?.exception ?? null;
+      sample.errors = sourceFailures.reduce((sum, g) => sum + Number(g.failed), 0);
+      sample.errorSample = exception;
+      sample.errorClass = classifyError(exception);
+      sample.lastSuccessAt = lastOk > 0 ? lastOk : null;
+      sample.progressing = ok > 0 ? true : sample.errors > 0 ? false : null;
+      sample.unitsIn = ok;
     }
     out.samples.set(id, sample);
   }
@@ -505,7 +588,9 @@ export async function dictionaries(ctx: AdapterContext): Promise<AdapterResult> 
   for (const d of rows) {
     const key = `${d.database}.${d.name}`;
     const id = `dictionary:${key}`;
-    out.defs.push({ id, kind: "dictionary", engine: "Dictionary", name: key, sourceLabel: null, sourceNode: null, targetNode: tableNode(d.database, d.name), attrs: { lifetimeMax: Number(d.lifetime_max) } });
+    // A dictionary only reloads when its source changed (or never, with
+    // LIFETIME(0)), so an old load time is normal; failures surface as errors.
+    out.defs.push({ id, kind: "dictionary", engine: "Dictionary", name: key, sourceLabel: null, sourceNode: null, targetNode: tableNode(d.database, d.name), attrs: { lifetimeMax: Number(d.lifetime_max), expectsRecurring: false } });
     const sample = emptySample(ctx.nowMs);
     sample.lastSuccessAt = Number(d.last_ok_ms) > 0 ? Number(d.last_ok_ms) : null;
     sample.errors = d.exception ? 1 : 0;
@@ -514,7 +599,7 @@ export async function dictionaries(ctx: AdapterContext): Promise<AdapterResult> 
     sample.unitsIn = Number(d.elements);
     sample.progressing = d.exception ? false : d.status.startsWith("LOADED") ? true : null;
     out.samples.set(id, sample);
-    out.attrs.set(id, { lifetimeMax: Number(d.lifetime_max) });
+    out.attrs.set(id, { lifetimeMax: Number(d.lifetime_max), expectsRecurring: false });
   }
   return out;
 }

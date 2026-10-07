@@ -367,4 +367,18 @@ describe("Data Health store", () => {
     expect(events.some((event) => event.type === "opened" && event.runId === "run-error-1")).toBe(true);
     expect(events.some((event) => event.type === "recovered" && event.runId === "run-recovered")).toBe(true);
   });
+
+  it("closes a promise's open incidents when it is paused", async () => {
+    const jobId = await scheduledStore.createJob(jobInput, null, "data_health_check");
+    const promiseId = await store.createPromiseMetadata(promiseInput(jobId));
+    const promise = await store.getPromise(promiseId);
+    if (!promise) throw new Error("promise missing");
+    expect((await store.transitionExecutionIncident(promise, true, "run-error-1", "Monitor timed out")).type).toBe("opened");
+
+    await store.updatePromiseMetadata(promiseId, { ...promiseInput(jobId), enabled: false });
+
+    expect((await store.listIncidents(promiseId)).every((incident) => incident.status === "recovered")).toBe(true);
+    const events = await store.listIncidentEventsForPromise(promiseId);
+    expect(events.some((event) => event.type === "recovered" && event.payload.reason === "promise_paused")).toBe(true);
+  });
 });

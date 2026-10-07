@@ -279,7 +279,7 @@ Ingestion pipelines (Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, refreshable vie
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `status` | `healthy | lagging | stalled | retrying | failing | stopped | inefficient | unsupported_on_version` | No | Only pipelines in this status |
+| `status` | `healthy | lagging | stalled | retrying | failing | stopped | inefficient | paused | unsupported_on_version` | No | Only pipelines in this status |
 | `kind` | `string` | No | Only this source kind (e.g. kafka, s3queue, refreshable_view) |
 | `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
 

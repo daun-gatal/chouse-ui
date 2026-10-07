@@ -38,8 +38,9 @@ export const PIPELINE_STATUS: Record<PipelineStatus, { label: string; tone: Tone
   stalled: { label: "Stalled", tone: "bad", description: "No progress and no visible error" },
   retrying: { label: "Retrying", tone: "bad", description: "Repeating the same work without committing" },
   failing: { label: "Failing", tone: "bad", description: "Errors on every attempt" },
-  stopped: { label: "Stopped", tone: "warn", description: "Detached, paused or writer gone" },
+  stopped: { label: "Stopped", tone: "warn", description: "No success within its expected cadence" },
   inefficient: { label: "Inefficient", tone: "warn", description: "Healthy but creating merge pressure" },
+  paused: { label: "Paused", tone: "muted", description: "Switched off on purpose (disabled job, stopped view); not expected to run" },
   unsupported_on_version: { label: "Not on this version", tone: "muted", description: "The server version does not expose this source" },
 };
 

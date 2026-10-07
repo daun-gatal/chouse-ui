@@ -129,12 +129,32 @@ export async function openOrUpdateIncident(input: OpenIncidentInput): Promise<Ob
   return getObserveIncident(id);
 }
 
+/** Refresh the summary and severity of an incident that is already open; never opens one. */
+export async function updateActiveIncident(input: OpenIncidentInput): Promise<void> {
+  const active = await one(sql`
+    SELECT id, severity FROM obs_incidents WHERE connection_id = ${input.connectionId} AND kind = ${input.kind} AND subject_ref = ${input.subjectRef} AND status <> 'recovered'
+    ORDER BY opened_at DESC LIMIT 1`);
+  if (!active) return;
+  const now = Date.now();
+  const severity = str(active.severity) === "warning" && input.severity === "critical" ? "critical" : str(active.severity);
+  await run(sql`UPDATE obs_incidents SET summary = ${input.summary}, severity = ${severity}, last_event_at = ${now}, updated_at = ${now} WHERE id = ${str(active.id)}`);
+}
+
 export async function recoverIncident(connectionId: string, kind: ObserveIncidentKind, subjectRef: string): Promise<void> {
   const now = Date.now();
   await run(sql`
     UPDATE obs_incidents SET status = 'recovered', recovered_at = ${now}, last_event_at = ${now}, updated_at = ${now}
     WHERE connection_id = ${connectionId} AND kind = ${kind} AND subject_ref = ${subjectRef} AND status <> 'recovered'
   `);
+}
+
+/** Recover the active incidents of `kind` whose subject is not in `stillBad`. */
+export async function recoverIncidentsExcept(connectionId: string, kind: ObserveIncidentKind, stillBad: Iterable<string>): Promise<void> {
+  const live = new Set(stillBad);
+  const active = await all(sql`SELECT subject_ref FROM obs_incidents WHERE connection_id = ${connectionId} AND kind = ${kind} AND status <> 'recovered'`);
+  for (const ref of new Set(active.map((r) => str(r.subject_ref)))) {
+    if (!live.has(ref)) await recoverIncident(connectionId, kind, ref);
+  }
 }
 
 export async function acknowledgeObserveIncident(id: string, actorId: string): Promise<ObserveIncident | null> {

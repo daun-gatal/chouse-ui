@@ -140,6 +140,8 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     process.env.RBAC_ENCRYPTION_KEY ||= "e2e0000000000000000000000000000000000000000000000000000000000000";
     process.env.RBAC_ENCRYPTION_SALT ||= "e2e1111111111111111111111111111111111111111111111111111111111111";
     process.env.REMEDIATION_MAINTENANCE_WINDOW = "02:00-04:00";
+    // The suite runs for minutes, not hours: open pipeline incidents on the first bad run.
+    process.env.OBSERVE_INCIDENT_HOLD_SECONDS = "0";
     await freshDatabase("sqlite");
     await runMigrations({ skipSeed: true });
     for (const id of [PROPOSER, APPROVER_A, APPROVER_B]) {
@@ -233,8 +235,15 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     await pg.unsafe(`INSERT INTO legacy_${RUN} SELECT g FROM generate_series(1, 10) g`);
     await exec(`INSERT INTO ${DB}.pg_sync SELECT id FROM ${DB}.pg_legacy`);
     await pg.unsafe(`DROP TABLE legacy_${RUN}`);
-    // Let the bad sources fail at least once.
+    // Let the bad sources fail at least once. Object storage queues mark a file
+    // Failed only after its retries, so wait for that rather than a fixed delay.
     await sleep(8000);
+    for (const [log, table] of [["s3queue_log", "s3_bad_in"], ["azure_queue_log", "az_bad_in"]]) {
+      await waitFor(`${table} failures`, async () => {
+        await exec("SYSTEM FLUSH LOGS");
+        return (await scalar(`SELECT count() FROM system.${log} WHERE database = '${DB}' AND table = '${table}' AND toString(status) = 'Failed'`)) > 0;
+      });
+    }
 
     // First pass learns the catalog and baselines; criticality makes incidents page.
     await collect();

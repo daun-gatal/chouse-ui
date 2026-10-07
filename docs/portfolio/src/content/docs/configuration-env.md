@@ -85,6 +85,7 @@ Every setting the server reads, with its default. Set them as environment variab
 | `OBSERVE_MAX_FINGERPRINTS` | `5000` | Most query shapes tracked per connection for performance baselines. YAML: `observe.max_fingerprints`. |
 | `OBSERVE_MAX_PARALLEL` | `4` | Collector runs a pod executes at once. |
 | `OBSERVE_RUN_TIMEOUT_SECONDS` | `120` | Time limit for one collector run before it is abandoned. |
+| `OBSERVE_INCIDENT_HOLD_SECONDS` | `300` | Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample. |
 | `OBSERVE_CAPACITY_THRESHOLD` | `0.85` | Disk fill ratio that capacity forecasts warn about (0–1). |
 | `OBSERVE_SCRATCH_DATABASE` | `chouse_scratch` | Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`. YAML: `observe.scratch_database`. |
 

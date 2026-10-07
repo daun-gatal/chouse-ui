@@ -127,6 +127,9 @@
     "picomatch": "^4.0.4",
     "ws": "^8.21.0",
     "uuid": "^11.1.1",
+    "proxy-addr": "^2.0.8",
+    "source-map-js": "^1.2.2",
+    "shell-quote": "^1.9.0",
     "@node-saml/node-saml": {
       "@xmldom/xmldom": "^0.8.15"
     },

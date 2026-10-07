@@ -18,6 +18,7 @@ export type PipelineStatus =
   | "failing"
   | "stopped"
   | "inefficient"
+  | "paused"
   | "unsupported_on_version";
 export type PipelineKind =
   | "materialized_view"
