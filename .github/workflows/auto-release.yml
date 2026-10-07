@@ -617,6 +617,10 @@ jobs:
           tag_name: v${{ needs.assemble.outputs.version }}
           name: v${{ needs.assemble.outputs.version }}
           body_path: RELEASE_NOTES.md
+          # App releases take over `releases/latest`, which the docs use for
+          # the CLI install one-liner. The installer resolves the newest cli-v*
+          # tag on its own, so shipping it here keeps that link working.
+          files: scripts/install-cli.sh
           draft: false
           prerelease: false
           generate_release_notes: false
