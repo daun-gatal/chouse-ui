@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.14.2] - 2026-10-07
+
+### Fixed
+- **AI chat sheet width** — the chat sheet now opens wide by default on each device (tablet, laptop, desktop) and keeps only the width you drag it to. The width-cycling button is gone. Older floating-window sizes no longer shrink the sheet, and the header controls stay visible at the minimum width.
+- **Parallel AI chats** — starting a new chat while another thread is still answering no longer locks the composer. Each thread runs, stops and shows its status on its own, and a reply that finishes in the background lands in its own thread.
+- **Deleted objects on the Data page** — dropped tables and deleted scheduled jobs and saved queries are pruned from lineage, and dropped tables are hidden from capacity growth. Incidents for pipelines that no longer exist are now recovered instead of staying open.
+- **False "stopped" pipelines and incidents** — a pipeline is now *stopped* only against a known cadence: a scheduled query's schedule, a refreshable view's interval (`AFTER`, `MONTH` and `RANDOMIZE FOR` included), or a cadence learned from a regular writer. It is no longer judged against a guessed hour. Idle Kafka consumers, quiet tables in a replicated database, dictionaries that reload only on change, and one-off writers no longer show as stopped.
+- **Paused pipelines** — disabled scheduled queries and views stopped with `SYSTEM STOP VIEW` now show as *paused* and never open an incident. Pausing a Data Health promise closes its open incidents.
+- **Scheduled query status** — a job is judged by its latest run. A failure that a retry fixed no longer opens an incident, and a failed run stays *failing* until the next run succeeds.
+- **External table failures** — only errors reaching the external source count. A user's typo or an ad-hoc query that ran out of memory no longer marks the source as failing.
+- **Incident flapping** — a pipeline must stay bad for five minutes before it opens an incident. An open incident's summary keeps up with the pipeline, and it recovers as soon as the pipeline is healthy, paused or gone.
+- **False stale tables** — a table written by a scheduled query or refreshable view follows that job: it is not stale while the job runs fine or is paused, and when it is stale the reason names the broken job. The parts of one insert count as one write, and nightly or weekend lulls the table has already shown this week no longer mark it stale.
+- **Vulnerable dependencies** — `@modelcontextprotocol/sdk` 1.31.0 (OAuth client credential leak), `proxy-addr` 2.0.8 and `source-map-js` 1.2.2.
+- **S3Queue / AzureQueue failures forgotten** — a file that failed after all its retries now keeps the queue *failing* for up to a day, until the file is processed. Previously it showed only for the minute it was logged, unless keeper's metadata cache still held it.
+- **Browser tab titles**: Data, Fleet, Doctor, AI Governance and Preferences now show their own tab title instead of `CHouse UI | Home`
+
 ## [v3.14.1] - 2026-10-05
 
 ### Added
@@ -148,31 +164,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Provider-neutral AI structured output** — Scheduled Queries, Data Health, and other structured AI features now negotiate bounded native, tool-calling, and schema-guided JSON strategies without masking authentication, throttling, or timeout errors. Administrators can optionally override the strategy per model from AI settings.
-
-## [v3.8.0] - 2026-07-15
-
-### Added
-- **Configurable AI model runtime parameters** — admins can now tune per Provider Model: sampling (temperature, top-p, top-k, frequency/presence penalties), output limits (max tokens, stop sequences, verbosity), reasoning (effort level, thinking budgets), reliability (retries, request timeout), and the agent runtime (recursion limit, run timeout), plus an advanced escape hatch for extra provider kwargs. Fields are provider-aware (OpenAI, Anthropic, Google, OpenAI-compatible) with validation on both the form and the API, and take effect on the next AI run without a restart.
-- **Expanded AI providers** — Chouse AI now supports Azure OpenAI, Groq, Mistral, Cohere, Ollama, xAI (Grok), DeepSeek, Cerebras, and AWS Bedrock as first-class provider types, plus preset OpenAI-compatible endpoints for Fireworks AI, Together AI, and OpenRouter. Each provider exposes only the runtime parameters its SDK actually supports, Ollama needs no API key, and Bedrock is configured with dedicated AWS region/access-key fields (stored encrypted).
-- **Explorer query history** — Track SQL editor executions with connection, status, duration, and row metadata, then search, filter, reopen, or delete history entries from Explorer.
-- **Data Health Promises** — protect ClickHouse datasets with scheduled freshness, volume, per-column completeness, composite-key uniqueness, repeatable validity rules, schema, and repeatable custom-metric checks. Evaluations consistently use UTC: native `DateTime` values are compared as instants, local `Date`/`Date32` values map UTC boundaries through a required calendar timezone with day-level freshness and cadence, string timestamps require their stored-value timezone, and integer timestamps require an explicit seconds-to-nanoseconds unit. Table promises automatically add safe pruning predicates for recognized time-based ClickHouse partition keys, including local calendar/date partitions. Choosing a dataset query auto-detects its output columns, turning the event-time, completeness, and uniqueness pickers into dropdowns instead of free-text fields, matching the table-source experience. Investigate evidence — including the actual evaluated schedule window, with an explanation when a passing check has no violating rows — and manage low-noise incidents (dedicated execution-failure incidents, recovery transitions, immutable event timelines, transition-based notifications) from DataOps. Runs on both SQLite and PostgreSQL.
-- **DataOps AI operator assistance** — add evidence-grounded operational briefs, intent-based Scheduled Query drafting, preflight review, failed-run and Data Health incident investigation, health-check recommendations, noise tuning, incident correlation, historical promise backtests, bounded failing-row diagnostics, coverage-gap discovery, and confirmed historical recovery planning across Scheduled Queries and Data Health.
-- **Metadata-backed Explorer history** — Sync each user's bounded query execution history to the metadata database while retaining immediate local access and importing existing browser-local entries.
-- **Unified onboarding** — Adds fresh-install security and connection setup, a permission-aware Getting Started hub, resumable viewport-safe contextual guides for every CHouse product area, and persistent cross-device progress. Guide targets auto-scroll only when needed, explanations and highlights appear as one settled frame without an intermediate opening window, and transient dialogs, sheets, menus, selects, popovers, and AI windows close before every transition. Async Fleet, Doctor, and Preferences controls expose stable anchors before guidance appears; delayed destination rendering keeps the best visible target instead of moving the explanation; and persistence failures remain recoverable in place. Monitoring, DataOps, and Admin steps activate and highlight their exact horizontally revealable nested tab; isolated Doctor guide routes avoid loading an unrelated report; the dock stays available during guidance; background scrolling and focus stay contained; and every chapter, including the last card, remains reachable inside a dedicated short-screen scroll region. Onboarding updates merge atomically with other workspace preferences so dock, theme, and layout saves cannot overwrite guide progress.
-- **DataOps AI model picker** — choose which active AI model powers the AI features on the DataOps page (operational briefs, run diagnoses, query drafts, health-promise recommendations and tuning) from a minimal button in the page header. The selection is stored per user and falls back to the system default model automatically when cleared or when the chosen model is deactivated.
-
-### Changed
-- **Faster Chouse AI runtime** — AI capabilities now use bounded, focused DeepAgents tool loops
-- **Richer AI charts** — chart results now infer and label the correct axes, normalize ClickHouse
-- **Consistent AI windows** — Query Logs, Explorer, Errors, Parts, Schema Advisor, query debugging,
-- **Scheduled Query job journey** — consolidate a formatted read-only query definition, delivery safeguards, runtime lineage, and run investigation into a focused job detail page, reducing Scheduled Queries navigation to Overview and Jobs.
-
-### Fixed
-- **Google provider base URL** — custom base URLs configured on Google providers are now actually passed to the Gemini client.
-- **Recursion-limit errors** — LangGraph "Recursion limit reached" failures now surface a friendly message pointing at the configurable Provider Model recursion limit instead of a generic provider error.
-- **AI chart rendering** — unwrap JSON-serialized LangChain tool results and recover missing or
-- **DataOps active-connection scoping** — Scheduled Queries and Data Health now show only the active connection's jobs, promises, and incidents, so editing, schema browsing, test runs, and AI assistance always operate on the connection a resource was created for. Resources pinned to other connections keep running in the background and reappear when switching connections. Updates can no longer silently move a job or promise to a different connection, and the AI preflight review is refused when the session is on a different connection than the job.
-- **Scheduled Query job detail connection label** — show the connection's name instead of its raw id.
-- **AI structured output on OpenAI-compatible models** — forced tool-calling instead of OpenAI's strict `json_schema` response format when the resolved model is a non-native `ChatOpenAI` instance (covers `openai-compatible` providers like DeepSeek/Qwen proxies). Fixes generic failures on complex-schema capabilities when using third-party OpenAI-compatible endpoints.
-- **Onboarding journey stability** — Keeps Doctor actions fixed while AI and connection controls load, prevents exit/completion races, refreshes expired sessions during progress saves, preserves concurrent progress from multiple tabs or devices, and allows the freshly seeded super administrator to finish setup after adding an active connection.
 
