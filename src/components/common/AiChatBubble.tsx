@@ -1093,9 +1093,10 @@ export default function AiChatBubble() {
     const logicalHeight = viewportHeight;
 
     // Adaptive internal layout thresholds
-    const hideSidebarThreshold = 720;
+    const dockSidebarThreshold = 720;
     const singleColPromptThreshold = 520;
-    const shouldHideSidebar = showSidebar && !isMobile && logicalWidth < hideSidebarThreshold;
+    // Too narrow to dock the history beside the chat, so it slides over the chat instead.
+    const sidebarIsOverlay = isMobile || logicalWidth < dockSidebarThreshold;
     const useSingleColPrompt = isMobile || logicalWidth < singleColPromptThreshold;
     // Narrow sheets drop header decoration so the controls always stay visible.
     const compactHeader = !isMobile && logicalWidth < 600;
@@ -1440,6 +1441,12 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId, updateThreadMessages]);
 
+    // An overlaid history covers the chat, so close it once the user picks where to go.
+    const handleSelectThread = useCallback((threadId: string): void => {
+        if (sidebarIsOverlay) setShowSidebar(false);
+        void loadThread(threadId);
+    }, [sidebarIsOverlay, loadThread]);
+
     const handleNewThread = useCallback(async () => {
         const createConnectionId = activeConnectionId;
         try {
@@ -1451,6 +1458,11 @@ export default function AiChatBubble() {
             log.error('[AiChat] Failed to create thread:', err);
         }
     }, [activeConnectionId, selectedAgentId]);
+
+    const handleNewThreadFromHeader = useCallback((): void => {
+        if (sidebarIsOverlay) setShowSidebar(false);
+        void handleNewThread();
+    }, [sidebarIsOverlay, handleNewThread]);
 
     const handleDeleteThread = useCallback(async (threadId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -1803,7 +1815,7 @@ export default function AiChatBubble() {
                                         <Download className="w-4 h-4" />
                                     </button>
                                     <button
-                                        onClick={handleNewThread}
+                                        onClick={handleNewThreadFromHeader}
                                         className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title="New chat"
                                         aria-label="New chat"
@@ -1822,9 +1834,13 @@ export default function AiChatBubble() {
                             </div>
 
                             <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
-                                {/* Thread Sidebar — on mobile it acts as an overlay/slideover. Auto-hide on small desktop logical widths. */}
-                                {showSidebar && !shouldHideSidebar && (
-                                    <div className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : 'absolute left-0 top-0 bottom-0 w-72 md:relative md:w-72'}`}>
+                                {/* Thread Sidebar — full-screen on phones, slides over narrow sheets, docked on wide ones. */}
+                                {showSidebar && (
+                                    <div
+                                        data-testid="ai-chat-thread-sidebar"
+                                        data-overlay={sidebarIsOverlay ? 'true' : 'false'}
+                                        className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : sidebarIsOverlay ? 'absolute inset-y-0 left-0 w-72 max-w-[85%] shadow-2xl shadow-black/40' : 'relative w-72'}`}
+                                    >
                                         <div className="p-3">
                                             <div className="mb-3 flex items-center justify-between px-1">
                                                 <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
@@ -1845,7 +1861,7 @@ export default function AiChatBubble() {
                                                         threads={groupedThreads.recent}
                                                         activeId={activeThreadId}
                                                         editingId={editingThreadId}
-                                                        onLoad={loadThread}
+                                                        onLoad={handleSelectThread}
                                                         onDelete={handleDeleteThread}
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
@@ -1858,7 +1874,7 @@ export default function AiChatBubble() {
                                                         threads={groupedThreads.last24Hours}
                                                         activeId={activeThreadId}
                                                         editingId={editingThreadId}
-                                                        onLoad={loadThread}
+                                                        onLoad={handleSelectThread}
                                                         onDelete={handleDeleteThread}
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
@@ -1871,7 +1887,7 @@ export default function AiChatBubble() {
                                                         threads={groupedThreads.last7Days}
                                                         activeId={activeThreadId}
                                                         editingId={editingThreadId}
-                                                        onLoad={loadThread}
+                                                        onLoad={handleSelectThread}
                                                         onDelete={handleDeleteThread}
                                                         onStartEdit={handleStartEditThread}
                                                         onSaveTitle={handleSaveThreadTitle}
