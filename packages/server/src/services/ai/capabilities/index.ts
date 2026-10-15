@@ -31,6 +31,7 @@ import {
   tuneHealthPromiseCapability,
 } from "./dataOps";
 import { compileWatcherCapability, draftTableContextCapability, explainIncidentCapability } from "./observe";
+import { draftAiAgentCapability, draftAiHarnessCapability, draftAiSkillCapability } from "./authoring";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -55,6 +56,9 @@ export const CAPABILITIES = {
   "explain-incident": explainIncidentCapability,
   "compile-watcher": compileWatcherCapability,
   "draft-table-context": draftTableContextCapability,
+  "draft-ai-skill": draftAiSkillCapability,
+  "draft-ai-agent": draftAiAgentCapability,
+  "draft-ai-harness": draftAiHarnessCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;

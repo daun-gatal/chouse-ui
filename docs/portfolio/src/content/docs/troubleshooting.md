@@ -55,7 +55,7 @@ Find the symptom, check the cause, apply the fix. Server logs are JSON (Pino) on
 | --- | --- | --- |
 | Refuses to start in production | `JWT_SECRET`, `RBAC_ENCRYPTION_KEY` or `RBAC_ENCRYPTION_SALT` missing or the wrong length | Generate them as in [Secrets](/docs/configuration-secrets/) |
 | Logs an error about the scheduler and HA | SQLite with `CHOUSE_HA=true` | Use PostgreSQL for more than one replica |
-| Warning about `MCP_*` or `FLEET_POLLER_ENABLED` | Settings removed or deprecated in 3.14 | Remove them — see [What's new](/docs/whats-new/#upgrading-from-313) |
+| Warning about `MCP_*` or `FLEET_POLLER_ENABLED` | Settings removed or deprecated in 3.14 | Remove them. MCP is now turned on and configured in **AI Governance › MCP** — see [MCP](/docs/mcp/); fleet collection always runs, and `FLEET_POLL_INTERVAL_SECONDS` still sets its interval |
 | Migration fails on upgrade | Unexpected database state | Restore the backup, run the previous version, and [open an issue](https://github.com/daun-gatal/chouse-ui/issues) with the log |
 
 ## Collect diagnostics

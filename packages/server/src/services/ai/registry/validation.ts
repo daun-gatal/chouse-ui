@@ -37,10 +37,14 @@ export const TUNING_LIMITS = {
   maxOutputTokens: { min: 256, max: 200_000 },
 } as const;
 
-const FEATURES = CAPABILITIES as Record<string, AnyCapability>;
+// Read lazily: capabilities that draft registry entities import this module,
+// so CAPABILITIES may still be initializing when this module first loads.
+function featureMap(): Record<string, AnyCapability> {
+  return CAPABILITIES as Record<string, AnyCapability>;
+}
 
 function features(): AnyCapability[] {
-  return Object.values(FEATURES);
+  return Object.values(featureMap());
 }
 
 function skillByName(snapshot: RegistrySnapshot, name: string): SkillDef | undefined {
@@ -226,7 +230,7 @@ function walk(rootId: string, snapshot: RegistrySnapshot): { agents: AgentDef[];
 }
 
 function bindingProblems(featureId: string, agentId: string, snapshot: RegistrySnapshot): string[] {
-  const feature = FEATURES[featureId];
+  const feature = featureMap()[featureId];
   if (!feature) return [`Unknown feature '${featureId}'`];
   const agent = snapshot.agents.get(agentId);
   if (!agent) return [`'${feature.title}' is bound to an agent that no longer exists`];
@@ -324,7 +328,7 @@ export function usagesOf(snapshot: RegistrySnapshot, entity: "agent" | "harness"
   const uses: string[] = [];
   if (entity === "agent") {
     for (const binding of snapshot.bindings.values()) {
-      if (binding.agentId === id) uses.push(`feature '${FEATURES[binding.featureId]?.title ?? binding.featureId}'`);
+      if (binding.agentId === id) uses.push(`feature '${featureMap()[binding.featureId]?.title ?? binding.featureId}'`);
     }
     for (const agent of snapshot.agents.values()) if (agent.subagents.includes(id)) uses.push(`agent '${agent.name}' (subagent)`);
   }

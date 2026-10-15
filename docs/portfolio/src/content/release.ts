@@ -28,15 +28,13 @@ export interface Release {
 }
 
 export const RELEASE: Release = {
-  version: "3.14",
+  version: "3.15",
   kind: "minor",
-  summary: "Watch the data itself, fix what breaks with approval, and manage every AI agent in the UI.",
+  summary: "Describe an agent, harness or skill, and review a complete draft written by Chouse AI.",
   highlights: [
-    { label: "Data observability", href: "/docs/data-observability/" },
-    { label: "Approved fixes", href: "/docs/data-incidents/" },
-    { label: "AI agents in the UI", href: "/docs/ai-agents/" },
-    { label: "MCP in the UI", href: "/docs/mcp/" },
-    { label: "CLI 1.0", href: "/docs/cli/" },
+    { label: "Draft with AI", href: "/docs/ai-draft-with-ai/" },
+    { label: "Skills from a runbook", href: "/docs/ai-draft-with-ai/#starting-a-draft" },
+    { label: "Refine with AI", href: "/docs/ai-draft-with-ai/#refine-with-ai" },
   ],
 };
 
