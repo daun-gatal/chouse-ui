@@ -3,15 +3,16 @@
  * agent tree, and the read-only tool catalog.
  */
 
-import { Fragment, type ReactElement } from "react";
+import { Fragment, useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { Bot, Pencil, Plus } from "lucide-react";
 
-import { agentInputOf, type AiAgent, type AiRegistry } from "@/api/aiAgents";
+import { agentInputOf, type AgentInput, type AiAgent, type AiRegistry } from "@/api/aiAgents";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, EmptyState, Mono, Panel, StatusPill } from "@/features/observe/ui";
 import type { AgentEditorTarget } from "./AgentEditor";
+import { DraftWithAiButton, DraftWithAiDialog } from "./DraftWithAi";
 import { useAssistantMutations } from "./hooks";
 import { agentTree, blankAgent, compatibleAgents, CONTEXT_LABELS, groupFeatures, groupTools, problemsFor, type AgentTreeNode } from "./lib";
 import { ContextBadge, errorMessage, OriginBadge } from "./shared";
@@ -119,12 +120,25 @@ function TreeRows({ node, depth, registry, onEdit }: { node: AgentTreeNode; dept
 
 export function AgentsView({ registry, canManage, onEdit }: { registry: AiRegistry; canManage: boolean; onEdit: (target: AgentEditorTarget) => void }): ReactElement {
   const tree = agentTree(registry);
+  const [drafting, setDrafting] = useState(false);
   return (
     <Panel
       title="Agents"
       meta="Routers and top-level agents, with their subagents below them"
-      actions={canManage ? <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => onEdit({ agent: null, initial: blankAgent(registry) })}><Plus className="mr-1 h-3 w-3" /> New agent</Button> : undefined}
+      actions={canManage ? (
+        <span className="flex gap-2">
+          {registry.drafting.agent && <DraftWithAiButton onClick={() => setDrafting(true)} />}
+          <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => onEdit({ agent: null, initial: blankAgent(registry) })}><Plus className="mr-1 h-3 w-3" /> New agent</Button>
+        </span>
+      ) : undefined}
     >
+      {drafting && (
+        <DraftWithAiDialog<AgentInput> kind="agent" registry={registry} onClose={() => setDrafting(false)}
+          onDrafted={(result, origin) => {
+            setDrafting(false);
+            onEdit({ agent: null, initial: result.input, aiDraft: result, origin, featureId: origin.agentHints?.featureId ?? undefined });
+          }} />
+      )}
       {tree.length === 0 ? <EmptyState icon={Bot} title="No agents" /> : (
         <DataTable label="Agents" head={["Agent", "Type", "Harness", "Tools", "Used by", "Status"]}>
           {tree.map((node) => <TreeRows key={node.agent.id} node={node} depth={0} registry={registry} onEdit={onEdit} />)}

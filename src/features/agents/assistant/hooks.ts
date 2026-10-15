@@ -87,3 +87,8 @@ export function usePromptPreview(): UseMutationResult<aiAgents.PromptPreview, Er
 export function useAgentTest(): UseMutationResult<aiAgents.TestResult, Error, aiAgents.TestRequest> {
   return useMutation({ mutationFn: aiAgents.runAgentTest });
 }
+
+/** Draft with AI. Drafting never writes to the registry, so nothing is refreshed. */
+export function useDraft<T>(kind: aiAgents.DraftKind): UseMutationResult<aiAgents.DraftResult<T>, Error, aiAgents.DraftRequest<T>> {
+  return useMutation({ mutationFn: (request: aiAgents.DraftRequest<T>) => aiAgents.draftEntity<T>(kind, request) });
+}

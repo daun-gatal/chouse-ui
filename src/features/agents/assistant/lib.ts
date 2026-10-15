@@ -10,13 +10,16 @@ import type {
   AiFeature,
   AiRegistry,
   CatalogTool,
+  DraftKind,
+  DraftResult,
   FeatureSurface,
   RegistryProblem,
+  SectionState,
   ToolContextKind,
   VariableSpec,
 } from "@/api/aiAgents";
 
-export const SURFACE_ORDER: FeatureSurface[] = ["chat", "sql-editor", "doctor", "diagnostics", "dataops", "observe"];
+export const SURFACE_ORDER: FeatureSurface[] = ["chat", "sql-editor", "doctor", "diagnostics", "dataops", "observe", "governance"];
 
 export const SURFACE_LABELS: Record<FeatureSurface, string> = {
   chat: "Chat",
@@ -25,6 +28,7 @@ export const SURFACE_LABELS: Record<FeatureSurface, string> = {
   diagnostics: "Diagnostics",
   dataops: "DataOps",
   observe: "Observability",
+  governance: "AI Governance",
 };
 
 export const CONTEXT_LABELS: Record<ToolContextKind, string> = {
@@ -279,4 +283,42 @@ export function parseOverrides(text: string): Record<string, string> {
     if (tool && description) out[tool] = description;
   }
   return out;
+}
+
+// ============================================
+// Draft with AI
+// ============================================
+
+export const SECTION_LABELS: Record<DraftKind, Record<string, string>> = {
+  agent: { identity: "Identity", prompt: "Prompt", tools: "Tools", skills: "Skills", subagents: "Subagents", settings: "Settings" },
+  harness: { identity: "Identity", builtinTools: "Built-in tools", generalPurpose: "General-purpose subagent", promptSuffix: "Prompt suffix", overrides: "Tool description overrides" },
+  skill: { path: "Path", skillMd: "SKILL.md", files: "Reference files", enabled: "Enabled" },
+};
+
+export const STATE_MARK: Record<SectionState, string> = { drafted: "✓", empty: "∅", attention: "⚠" };
+
+export const STATE_LABEL: Record<SectionState, string> = {
+  drafted: "Drafted",
+  empty: "Empty on purpose",
+  attention: "Needs attention",
+};
+
+/** Sections of a draft that still need attention, in editor order. */
+export function attentionSections(result: Pick<DraftResult<unknown>, "kind" | "sections">): string[] {
+  return Object.keys(SECTION_LABELS[result.kind]).filter((section) => result.sections[section]?.state === "attention");
+}
+
+/** Every open problem of a draft, labelled by section, for the save warning. */
+export function draftWarnings(result: Pick<DraftResult<unknown>, "kind" | "sections" | "problems">): string[] {
+  const labels = SECTION_LABELS[result.kind];
+  const fromSections = attentionSections(result).flatMap((section) => result.sections[section].problems.map((p) => `${labels[section]}: ${p}`));
+  const covered = new Set(attentionSections(result).flatMap((section) => result.sections[section].problems));
+  return [...fromSections, ...result.problems.filter((p) => !covered.has(p))];
+}
+
+/** Features an agent can be drafted for (structured features, not the drafters themselves). */
+export function draftableFeatures(registry: AiRegistry): AiFeature[] {
+  return registry.features
+    .filter((f) => f.delivery === "structured" && f.surface !== "governance")
+    .sort((a, b) => a.title.localeCompare(b.title));
 }

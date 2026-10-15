@@ -59,7 +59,7 @@ export type AgentMessage = {
 export type DeliveryMode = "structured" | "invoke";
 
 /** Where a feature shows up in the product (groups the AI Governance › Assistant feature list). */
-export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat";
+export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat" | "governance";
 
 export interface FeatureInfo {
   id: string;

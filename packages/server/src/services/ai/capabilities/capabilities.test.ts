@@ -44,11 +44,12 @@ describe("capability registry", () => {
     expect(getCapability("nope")).toBeUndefined();
   });
 
-  it("exposes all 22 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(22);
+  it("exposes all 25 capabilities", () => {
+    expect(CAPABILITY_IDS).toHaveLength(25);
     expect(CAPABILITY_IDS).toContain("explain-incident");
     expect(CAPABILITY_IDS).toContain("compile-watcher");
     expect(CAPABILITY_IDS).toContain("draft-table-context");
+    expect(CAPABILITY_IDS).toEqual(expect.arrayContaining(["draft-ai-skill", "draft-ai-agent", "draft-ai-harness"]));
   });
 });
 
@@ -141,7 +142,7 @@ describe("feature contracts (ADR 0019)", () => {
     for (const cap of Object.values(CAPABILITIES)) {
       expect(cap.title.length).toBeGreaterThan(0);
       expect(cap.description.length).toBeGreaterThan(0);
-      expect(["sql-editor", "doctor", "diagnostics", "dataops", "observe", "chat"]).toContain(cap.surface);
+      expect(["sql-editor", "doctor", "diagnostics", "dataops", "observe", "chat", "governance"]).toContain(cap.surface);
       for (const context of cap.contexts) expect(["session", "fleet", "userApi"]).toContain(context);
     }
   });
