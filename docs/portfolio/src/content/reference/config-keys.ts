@@ -96,7 +96,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "AUTH_SSO_PROVIDERS_<ID>_<FIELD>", section: "Single sign-on", secret: true, description: "One provider per `<ID>`: `TYPE`, `DISPLAY_NAME`, `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET`, `SCOPES`, endpoints, claim and role mapping, and SAML fields. See [SSO](/docs/sso/) for every field." },
 
   // Observability
-  { name: "OBSERVE_FLEET_INTERVAL", section: "Data observability", default: "30", description: "Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`." },
+  { name: "OBSERVE_FLEET_INTERVAL", section: "Data observability", default: "30", description: "Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. An interval set in **Admin › Connections › Collection schedule** wins over both; the other collectors are only set there." },
   { name: "OBSERVE_RETENTION_DAYS", section: "Data observability", default: "90", description: "Days an observed lineage edge (one seen in query logs, not declared in DDL) is kept after it was last seen." },
   { name: "OBSERVE_MAX_FINGERPRINTS", section: "Data observability", default: "5000", description: "Most query shapes tracked per connection for performance baselines." },
   { name: "OBSERVE_MAX_PARALLEL", section: "Data observability", default: "4", description: "Collector runs a pod executes at once." },

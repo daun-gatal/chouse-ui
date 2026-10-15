@@ -1,8 +1,9 @@
 /**
  * Connection edit › Observability (ADR 0016 §1, §8): which system tables the
  * connection's user cannot read (collectors degrade, they never fail the
- * connection — missing grants only warn) and the separate remediation
- * credential approved fixes run with.
+ * connection — missing grants only warn), the separate remediation
+ * credential approved fixes run with, and this connection's collection
+ * schedule (issue #380).
  */
 
 import { useState, type KeyboardEvent, type ReactElement } from "react";
@@ -13,6 +14,7 @@ import { checkPrivileges } from "@/api/observe";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { CollectorSchedule } from "./CollectorSchedule";
 import { useRemediationCredential, useSaveRemediationCredential } from "./hooks";
 import { formatAgo } from "./lib";
 
@@ -78,6 +80,11 @@ export function ConnectionObservability({ connectionId }: { connectionId: string
             </div>
           )
         )}
+      </div>
+      <div>
+        <p className={LABEL}>Collection schedule</p>
+        <p className="mb-2 mt-1 text-[11px] text-paper-faint">How often each collector reads this server, and what that costs. Settings here win over the defaults in Collection schedule on the Connections page.</p>
+        <CollectorSchedule connectionId={connectionId} canEdit={canEdit} />
       </div>
       <div>
         <p className={LABEL}>Remediation credential</p>

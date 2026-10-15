@@ -28,15 +28,13 @@ export interface Release {
 }
 
 export const RELEASE: Release = {
-  version: "3.14",
+  version: "3.15",
   kind: "minor",
-  summary: "Watch the data itself, fix what breaks with approval, and manage every AI agent in the UI.",
+  summary: "Set how often data observability reads each cluster, and see what it costs.",
   highlights: [
-    { label: "Data observability", href: "/docs/data-observability/" },
-    { label: "Approved fixes", href: "/docs/data-incidents/" },
-    { label: "AI agents in the UI", href: "/docs/ai-agents/" },
-    { label: "MCP in the UI", href: "/docs/mcp/" },
-    { label: "CLI 1.0", href: "/docs/cli/" },
+    { label: "Collection schedule", href: "/docs/connections/#collection-schedule" },
+    { label: "Collector cost per day", href: "/docs/connections/#collection-schedule" },
+    { label: "Lighter collection", href: "/docs/data-observability/#how-often-it-runs" },
   ],
 };
 

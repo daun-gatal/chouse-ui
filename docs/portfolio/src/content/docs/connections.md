@@ -29,6 +29,17 @@ A new connection is invisible to non-admins until a [data access policy](/docs/d
 
 Open a connection's **Edit** dialog. The **Observability grants** panel checks what the connection's ClickHouse user can read and lists the exact `GRANT` statements for anything missing. Saving never fails because of a missing grant — the collector that needs it is simply switched off, and the affected features show missing evidence. See [How data is watched](/docs/data-observability/#grant-the-collector-what-it-needs).
 
+## Collection schedule
+
+The observability collectors read every connection's system tables on a schedule — see [How data is watched](/docs/data-observability/#how-often-it-runs). **Collection schedule** in the page header sets how often each collector runs for **every connection**; a connection's **Edit** dialog sets its **own** schedule, which wins over that. Reading the schedule needs `connections:view`, changing it `connections:edit`.
+
+For each collector you choose:
+
+- **Runs** — how often, from its fastest allowed interval up to once a day. *Inherit* follows the setting for every connection, or the built-in interval.
+- **State** — *Running* or *Paused*. A paused collector stops reading that server and its Data pages stop updating; the Data page's status chip turns amber and names it. *Fleet health* can't be paused (Monitoring and alerts depend on it), and it runs once for all connections, so it has no per-connection setting.
+
+Next to each collector you see its last run on that connection — how long it took, how many queries it ran and how much it read — and **Read per day**: that read multiplied by the runs a day at the chosen interval. In the schedule for every connection, **Read per day** is summed over the active connections. Changes apply within a few seconds on every server, with no restart, and are recorded in the audit log as `observe.collectors_update`.
+
 ## Remediation credential
 
 In the same dialog, **Remediation credential** stores a second ClickHouse login, used only to run approved [fixes](/docs/data-incidents/#set-up-fixes-for-a-connection). It is encrypted like the main password and can be removed at any time; without it, fixes can't run on this connection.

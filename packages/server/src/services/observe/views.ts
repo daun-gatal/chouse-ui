@@ -4,6 +4,7 @@
  */
 
 import { all, json, num, numOrNull, one, sql, str, strOrNull, type Row } from "./db";
+import { effectiveSchedule, getCollectorSettings } from "./collectorSettings";
 import { downstreamOf, upstreamOf, type ChainStep, type GraphEdge } from "./rca";
 import { getStoredRca } from "./rcaService";
 import { getObserveIncident, listObserveIncidents, type IncidentSource } from "./incidents";
@@ -23,6 +24,7 @@ function nodeOk(allowed: Allowed, nodeId: string | null): boolean {
 // --- collector status ---------------------------------------------------------
 
 export async function collectorStatus(connectionId: string): Promise<{ collectors: Row[]; serverVersion: string | null; probedAt: number | null }> {
+  const settings = await getCollectorSettings();
   const collectors = (await all(sql`SELECT * FROM obs_collector_status WHERE connection_id = ${connectionId} ORDER BY collector`)).map((r) => ({
     collector: str(r.collector),
     state: str(r.state),
@@ -31,6 +33,11 @@ export async function collectorStatus(connectionId: string): Promise<{ collector
     lastError: strOrNull(r.last_error),
     missingPrivileges: json<string[] | null>(r.missing_privileges, null),
     durationMs: numOrNull(r.duration_ms),
+    readRows: numOrNull(r.read_rows),
+    readBytes: numOrNull(r.read_bytes),
+    queryCount: numOrNull(r.query_count),
+    // Paused in Admin › Connections: its evidence goes stale on purpose.
+    paused: effectiveSchedule(settings, str(r.collector), 0, connectionId).paused,
   }));
   const caps = await one(sql`SELECT server_version, probed_at FROM obs_capabilities WHERE connection_id = ${connectionId}`);
   return { collectors, serverVersion: caps ? strOrNull(caps.server_version) : null, probedAt: caps ? numOrNull(caps.probed_at) : null };
