@@ -29,7 +29,7 @@ import { pipelinesCollector } from "./collectors/pipelines";
 import { profilesCollector } from "./collectors/profiles";
 import { queriesCollector } from "./collectors/queries";
 import { tablesCollector } from "./collectors/tables";
-import { usageCollector } from "./collectors/usage";
+import { LOG_FLUSH_LAG_MS, usageCollector } from "./collectors/usage";
 import { observeClient } from "./clickhouse";
 
 const URL_ = process.env["OBSERVE_E2E_URL"] ?? "";
@@ -54,8 +54,8 @@ describe.skipIf(!URL_)("observability collectors e2e (ADR 0016)", () => {
       client,
       capabilities,
       nowMs,
-      getWatermark: async () => watermarks.get(collector.name) ?? 0,
-      setWatermark: async (value) => void watermarks.set(collector.name, value),
+      getWatermark: async (step) => watermarks.get(step ? `${collector.name}:${step}` : collector.name) ?? 0,
+      setWatermark: async (value, step) => void watermarks.set(step ? `${collector.name}:${step}` : collector.name, value),
     };
     await collector.run(ctx);
   }
@@ -126,12 +126,38 @@ describe.skipIf(!URL_)("observability collectors e2e (ADR 0016)", () => {
 
   it("learns baselines and usage", async () => {
     await runCollector(tablesCollector);
-    await runCollector(usageCollector);
+    // usage closes its window LOG_FLUSH_LAG_MS before now; run "later" so the reads above are inside it.
+    const later = Date.now() + 2 * LOG_FLUSH_LAG_MS;
+    await runCollector(usageCollector, later);
     const baselines = await rawAll(sql`SELECT table_name, state, reads_7d FROM obs_table_baselines WHERE connection_id = ${connectionId} AND database_name = ${DB}`);
     const raw = baselines.find((b) => String(b.table_name) === "orders_raw");
     expect(raw).toBeDefined();
     expect(["learning", "trusted"]).toContain(String(raw?.state));
     expect(Number(baselines.find((b) => String(b.table_name) === "orders_daily")?.reads_7d)).toBeGreaterThan(0);
+
+    // Shapes come from daily rollups now; the filter column of the repeated SELECT is learned from them.
+    const shapes = await rawAll(sql`SELECT runs FROM obs_query_shape_days WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'orders_daily'`);
+    const runs = shapes.reduce((n, r) => n + Number(r.runs), 0);
+    expect(runs).toBeGreaterThanOrEqual(6);
+    const filters = await rawAll(sql`SELECT filter_columns FROM obs_usage_rollups WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'orders_daily' AND principal_kind = '_filters'`);
+    expect(Object.keys(JSON.parse(String(filters[0]?.filter_columns ?? "{}")))).toContain("day");
+    const write = await rawAll(sql`SELECT write_times FROM obs_table_write_times WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'orders_raw'`);
+    expect(JSON.parse(String(write[0]?.write_times ?? "[]")).length).toBeGreaterThan(0);
+  });
+
+  it("reads only new log rows on the next run, without counting any twice", async () => {
+    const before = await rawAll(sql`SELECT SUM(runs) AS runs FROM obs_query_shape_days WHERE connection_id = ${connectionId}`);
+    const reads = await rawAll(sql`SELECT SUM(reads) AS reads FROM obs_usage_rollups WHERE connection_id = ${connectionId} AND principal_kind <> '_filters'`);
+    const times = await rawAll(sql`SELECT write_times FROM obs_table_write_times WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'orders_raw'`);
+    await runCollector(usageCollector, Date.now() + 2 * LOG_FLUSH_LAG_MS);
+    await runCollector(tablesCollector);
+    const afterShapes = await rawAll(sql`SELECT SUM(runs) AS runs FROM obs_query_shape_days WHERE connection_id = ${connectionId}`);
+    const afterReads = await rawAll(sql`SELECT SUM(reads) AS reads FROM obs_usage_rollups WHERE connection_id = ${connectionId} AND principal_kind <> '_filters'`);
+    const afterTimes = await rawAll(sql`SELECT write_times FROM obs_table_write_times WHERE connection_id = ${connectionId} AND database_name = ${DB} AND table_name = 'orders_raw'`);
+    // Nothing new was read from ClickHouse by this suite in between, so nothing is added again.
+    expect(Number(afterShapes[0].runs)).toBe(Number(before[0].runs));
+    expect(Number(afterReads[0].reads)).toBe(Number(reads[0].reads));
+    expect(String(afterTimes[0].write_times)).toBe(String(times[0].write_times));
   });
 
   it("forgets a dropped table everywhere on the Data page", async () => {

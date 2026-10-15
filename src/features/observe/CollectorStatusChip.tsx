@@ -13,20 +13,24 @@ import { formatAgo } from "./lib";
 export function CollectorStatusChip(): ReactElement | null {
   const { data } = useCollectorStatus();
   if (!data) return null;
-  const failing = data.collectors.filter((c) => c.state === "error" || (c.missingPrivileges?.length ?? 0) > 0);
+  const failing = data.collectors.filter((c) => !c.paused && (c.state === "error" || (c.missingPrivileges?.length ?? 0) > 0));
+  const paused = data.collectors.filter((c) => c.paused);
   const lastOk = Math.max(0, ...data.collectors.map((c) => c.lastOkAt ?? 0));
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span tabIndex={0} className="inline-flex h-9 items-center gap-2 rounded-xs border border-ink-500 px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand" data-onboarding-id="data-collector-status">
-            <span className={cn("h-1.5 w-1.5 rounded-full", failing.length > 0 ? "bg-amber-500" : "bg-emerald-500")} aria-hidden />
+            <span className={cn("h-1.5 w-1.5 rounded-full", failing.length > 0 || paused.length > 0 ? "bg-amber-500" : "bg-emerald-500")} aria-hidden />
             {data.serverVersion ? `CH ${data.serverVersion.split(".").slice(0, 2).join(".")}` : "Collector"} · {lastOk ? formatAgo(lastOk) : "pending"}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-80 rounded-xs border-ink-500 bg-ink-200 text-[11px] text-paper">
+          {paused.length > 0 && (
+            <p className="mb-1 text-amber-500">Paused in Admin › Connections: {paused.map((c) => c.collector).join(", ")}. Their evidence is not updated.</p>
+          )}
           {failing.length === 0 ? (
-            <p>All {data.collectors.length} collectors healthy.</p>
+            <p>All {data.collectors.length - paused.length} running collectors healthy.</p>
           ) : (
             <ul className="space-y-1">
               {failing.map((c) => (

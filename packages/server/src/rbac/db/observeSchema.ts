@@ -592,3 +592,48 @@ export function observeSchemaStatements(dialect: Dialect): string[] {
 export const OBSERVE_TABLE_NAMES: string[] = OBSERVE_TABLES
   .map((stmt) => /^CREATE TABLE IF NOT EXISTS (\w+)/.exec(stmt)?.[1])
   .filter((name): name is string => typeof name === "string");
+
+/**
+ * Issue #380 (migration 1.57.0): stored state that lets the `usage` and
+ * `tables` collectors read only new `query_log` / `part_log` rows.
+ */
+const COLLECTOR_LOAD_TABLES: string[] = [
+  // Per-day rollups of SELECT shapes per table; the 30-day view is summed from these.
+  `CREATE TABLE IF NOT EXISTS obs_query_shape_days (
+    connection_id TEXT NOT NULL,
+    database_name TEXT NOT NULL,
+    table_name    TEXT NOT NULL,
+    fingerprint   TEXT NOT NULL,
+    day           {BIGINT} NOT NULL,
+    runs          {BIGINT} NOT NULL DEFAULT 0,
+    users         {BIGINT} NOT NULL DEFAULT 0,
+    p95_ms        {REAL} NOT NULL DEFAULT 0,
+    read_rows_sum {REAL} NOT NULL DEFAULT 0,
+    sample_query  TEXT,
+    PRIMARY KEY (connection_id, database_name, table_name, fingerprint, day)
+  )`,
+  // The most recent insert times per table (7 days), for write cadence.
+  `CREATE TABLE IF NOT EXISTS obs_table_write_times (
+    connection_id TEXT NOT NULL,
+    database_name TEXT NOT NULL,
+    table_name    TEXT NOT NULL,
+    write_times   TEXT NOT NULL DEFAULT '[]',
+    last_write_at {BIGINT},
+    updated_at    {BIGINT} NOT NULL DEFAULT 0,
+    PRIMARY KEY (connection_id, database_name, table_name)
+  )`,
+];
+
+/** Render the 1.57.0 statements for one dialect. */
+export function collectorLoadSchemaStatements(dialect: Dialect): string[] {
+  const bigint = dialect === "sqlite" ? "INTEGER" : "BIGINT";
+  const real = dialect === "sqlite" ? "REAL" : "DOUBLE PRECISION";
+  return COLLECTOR_LOAD_TABLES.map((stmt) => stmt.replaceAll("{BIGINT}", bigint).replaceAll("{REAL}", real));
+}
+
+/** Per-run cost columns 1.57.0 adds to obs_collector_status. */
+export const COLLECTOR_COST_COLUMNS: ReadonlyArray<{ name: string; type: "BIGINT" | "REAL" }> = [
+  { name: "read_rows", type: "REAL" },
+  { name: "read_bytes", type: "REAL" },
+  { name: "query_count", type: "BIGINT" },
+];

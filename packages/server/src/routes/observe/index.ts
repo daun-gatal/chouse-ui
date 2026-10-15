@@ -13,6 +13,7 @@
  *   codec trials                                                upgrades:run
  *   schema preflight                                            query:execute:ddl, table:alter or table:drop
  *   privilege report / re-check                                 connections:view / connections:edit
+ *   collection schedule (read / change)                         connections:view / connections:edit
  */
 
 import { Hono, type Context } from "hono";
@@ -26,6 +27,8 @@ import { createAuditLogWithContext } from "../../rbac/services/rbac";
 import { checkPrivileges, probeCapabilities } from "../../services/observe/capabilities";
 import { observeClient, selectRows } from "../../services/observe/clickhouse";
 import { setCostRates, startCodecTrial } from "../../services/observe/codecTrials";
+import { saveSchedules, scheduleMapSchema, scheduleProblems } from "../../services/observe/collectorSettings";
+import { scheduleView } from "../../services/observe/scheduleView";
 import { acknowledgeObserveIncident, type IncidentSource } from "../../services/observe/incidents";
 import { computeAndStoreRca } from "../../services/observe/rcaService";
 import { computeSuggestions, dismissSuggestion, pinCriticality } from "../../services/observe/suggestions";
@@ -77,6 +80,48 @@ observe.post("/privileges/check", requirePermission(PERMISSIONS.CONNECTIONS_EDIT
   const client = await observeClient(connectionId, "privileges");
   const caps = await probeCapabilities(connectionId, client, true);
   return ok(c, { serverVersion: caps.serverVersion, ...(await checkPrivileges(client, caps, conn.username)) });
+});
+
+// --- collection schedule (issue #380) -------------------------------------------------
+
+const scheduleBody = z.object({ collectors: scheduleMapSchema }).strict();
+
+async function liveConnectionIds(): Promise<Set<string>> {
+  const { connections } = await listConnections({ activeOnly: false });
+  return new Set(connections.map((conn) => conn.id));
+}
+
+observe.get("/collectors/schedule", requirePermission(PERMISSIONS.CONNECTIONS_VIEW), async (c) => ok(c, await scheduleView(null)));
+
+observe.get("/collectors/schedule/:connectionId", requirePermission(PERMISSIONS.CONNECTIONS_VIEW), async (c) => {
+  const connectionId = requireParam(c, "connectionId");
+  if (!(await liveConnectionIds()).has(connectionId)) throw AppError.notFound("Connection not found");
+  await assertConnectionAccess(c, connectionId);
+  return ok(c, await scheduleView(connectionId));
+});
+
+observe.put("/collectors/schedule", requirePermission(PERMISSIONS.CONNECTIONS_EDIT), zValidator("json", scheduleBody), async (c) => {
+  const { collectors } = c.req.valid("json");
+  const problems = scheduleProblems(collectors, "defaults");
+  if (problems.length > 0) throw AppError.badRequest(problems.join("; "));
+  const actor = getRbacUser(c).sub;
+  await saveSchedules({ connectionId: null }, collectors, await liveConnectionIds(), actor);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.OBSERVE_COLLECTORS_UPDATE, actor, { resourceType: "collector_schedule", resourceId: "defaults", details: { collectors } });
+  return ok(c, await scheduleView(null));
+});
+
+observe.put("/collectors/schedule/:connectionId", requirePermission(PERMISSIONS.CONNECTIONS_EDIT), zValidator("json", scheduleBody), async (c) => {
+  const connectionId = requireParam(c, "connectionId");
+  const live = await liveConnectionIds();
+  if (!live.has(connectionId)) throw AppError.notFound("Connection not found");
+  await assertConnectionAccess(c, connectionId);
+  const { collectors } = c.req.valid("json");
+  const problems = scheduleProblems(collectors, "connection");
+  if (problems.length > 0) throw AppError.badRequest(problems.join("; "));
+  const actor = getRbacUser(c).sub;
+  await saveSchedules({ connectionId }, collectors, live, actor);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.OBSERVE_COLLECTORS_UPDATE, actor, { resourceType: "collector_schedule", resourceId: connectionId, details: { collectors } });
+  return ok(c, await scheduleView(connectionId));
 });
 
 // --- overview, lineage, pipelines, datasets, coverage ------------------------------

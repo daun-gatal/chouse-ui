@@ -355,6 +355,12 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("admin", "ai_agents:manage")).toBe(true);
     expect(await h.roleHasPermission("developer", "ai_agents:manage")).toBe(false);
   },
+  "1.57.0": async () => {
+    // Issue #380: incremental usage / tables state and per-run collector cost.
+    expect(await h.tableExists("obs_query_shape_days")).toBe(true);
+    expect(await h.tableExists("obs_table_write_times")).toBe(true);
+    for (const c of ["read_rows", "read_bytes", "query_count"]) expect(await h.columnExists("obs_collector_status", c)).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -884,6 +890,50 @@ for (const dialect of DIALECTS) {
       await runMigrations({ skipSeed: true });
       expect(await h.tableExists("fleet_poller_lease")).toBe(false);
       expect(await h.tableExists("obs_leases")).toBe(true);
+    });
+  });
+
+  describe(`migrations · collector load upgrade (issue #380) [${dialect}]`, () => {
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.56.0" });
+      // Collector status written before the cost columns existed.
+      await h.rawRun(sql`INSERT INTO obs_collector_status (connection_id, collector, state, last_run_at, last_ok_at, duration_ms)
+        VALUES ('conn-1', 'usage', 'ok', ${Date.now()}, ${Date.now()}, 96)`);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("keeps existing collector status, with no cost recorded yet", async () => {
+      const rows = await h.rawAll(sql`SELECT state, duration_ms, read_rows, read_bytes, query_count FROM obs_collector_status WHERE connection_id = 'conn-1' AND collector = 'usage'`);
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].state)).toBe("ok");
+      expect(Number(rows[0].duration_ms)).toBe(96);
+      expect(rows[0].read_rows).toBeNull();
+      expect(rows[0].read_bytes).toBeNull();
+      expect(rows[0].query_count).toBeNull();
+    });
+
+    it("creates the incremental state empty — the collectors fill it", async () => {
+      expect(await h.rowCount("obs_query_shape_days")).toBe(0);
+      expect(await h.rowCount("obs_table_write_times")).toBe(0);
+    });
+
+    it("stores the new columns' values", async () => {
+      await h.rawRun(sql`UPDATE obs_collector_status SET read_rows = ${123456789012}, read_bytes = ${3.5e10}, query_count = ${4} WHERE connection_id = 'conn-1'`);
+      await h.rawRun(sql`INSERT INTO obs_query_shape_days (connection_id, database_name, table_name, fingerprint, day, runs, users, p95_ms, read_rows_sum, sample_query)
+        VALUES ('conn-1', 'db', 't', '123', ${Date.now()}, 5, 2, 12.5, 1000, 'SELECT 1')`);
+      const rows = await h.rawAll(sql`SELECT read_rows, read_bytes, query_count FROM obs_collector_status WHERE connection_id = 'conn-1'`);
+      expect(Number(rows[0].read_rows)).toBe(123456789012);
+      expect(Number(rows[0].read_bytes)).toBe(3.5e10);
+      expect(Number(rows[0].query_count)).toBe(4);
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.57.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("obs_query_shape_days")).toBe(1);
+      expect(await h.rowCount("obs_collector_status")).toBe(1);
     });
   });
 

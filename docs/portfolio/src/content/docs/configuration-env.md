@@ -80,7 +80,7 @@ Every setting the server reads, with its default. Set them as environment variab
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `OBSERVE_FLEET_INTERVAL` | `30` | Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. YAML: `observe.fleet_interval`. |
+| `OBSERVE_FLEET_INTERVAL` | `30` | Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. An interval set in **Admin › Connections › Collection schedule** wins over both; the other collectors are only set there. YAML: `observe.fleet_interval`. |
 | `OBSERVE_RETENTION_DAYS` | `90` | Days an observed lineage edge (one seen in query logs, not declared in DDL) is kept after it was last seen. YAML: `observe.retention_days`. |
 | `OBSERVE_MAX_FINGERPRINTS` | `5000` | Most query shapes tracked per connection for performance baselines. YAML: `observe.max_fingerprints`. |
 | `OBSERVE_MAX_PARALLEL` | `4` | Collector runs a pod executes at once. |

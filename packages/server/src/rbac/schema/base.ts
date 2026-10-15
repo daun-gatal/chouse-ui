@@ -576,6 +576,7 @@ export const AUDIT_ACTIONS = {
   OBSERVE_INCIDENT_ACKNOWLEDGE: 'observe.incident_acknowledge',
   OBSERVE_COST_RATES_UPDATE: 'observe.cost_rates_update',
   OBSERVE_CODEC_TRIAL: 'observe.codec_trial',
+  OBSERVE_COLLECTORS_UPDATE: 'observe.collectors_update',
   CONTEXT_UPDATE: 'context.update',
   CONTEXT_METRIC_UPSERT: 'context.metric_upsert',
   CONTEXT_METRIC_DELETE: 'context.metric_delete',

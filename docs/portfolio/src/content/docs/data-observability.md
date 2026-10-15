@@ -53,6 +53,21 @@ The connection's ClickHouse user must be able to read the system tables above. S
 
 Collector health is shown as a chip on the Data page header. Settings that tune it (`OBSERVE_*`) are on [Environment variables](/docs/configuration-env/#data-observability).
 
+## How often it runs
+
+Each collector has a built-in interval:
+
+| Collector | Built-in interval | Fastest allowed |
+| --- | --- | --- |
+| Fleet health | 30 s (`OBSERVE_FLEET_INTERVAL`) | 10 s |
+| Pipelines | 1 min | 30 s |
+| Catalog, Table baselines, Observed lineage, Changes | 5 min | 1 min |
+| Usage, Query performance, Capacity, Column profiles | 15 min | 5 min |
+
+Every collector can run as slowly as once a day. Change the intervals in **Admin › Connections › Collection schedule**, for every connection or for one — see [Collection schedule](/docs/connections/#collection-schedule). The schedule shows what each collector read on its last run and what that adds up to per day, so you can see where the load comes from before you change anything. A slower interval means slower answers: a stale table is noticed later, a new reader appears later.
+
+The collectors that read `system.query_log` and `system.part_log` read only the rows written since their last run. Usage keeps 30 days of query shapes as daily rollups in the RBAC database instead of scanning 30 days of `query_log` on every run; after an install or upgrade it reads the newest 3 days first and fills in the older days 3 days per run. Two numbers it keeps are approximate: a query shape's distinct users (the largest daily count) and its p95 duration (the run-weighted average of daily p95s).
+
 ## Permissions
 
 | Tab | Needs any of |

@@ -1,6 +1,6 @@
 # What's new in 3.15
 
-3.15 makes the AI agent registry easy to start from. Instead of writing an agent, harness or skill from a blank template, describe what you want and review a complete draft that only uses what exists in your registry.
+3.15 makes the AI agent registry easy to start from, and makes data observability much cheaper to run on busy clusters. Describe an agent, harness or skill and review a complete draft that only uses what exists in your registry; and decide how often observability reads each cluster, with what that costs in front of you.
 
 ## Highlights
 
@@ -10,6 +10,10 @@
 
 **Redraft and refine** — Redraft any single section, or refine a draft — or any custom agent, harness or skill — with an instruction such as "make it stricter about DDL". You review the result before saving, as always. → [Refine with AI](/docs/ai-draft-with-ai/#refine-with-ai)
 
+**Collection schedule** — **Admin › Connections › Collection schedule** sets how often each observability collector runs, for every connection, and a connection's **Edit** dialog can set its own. Pause a collector you don't need; a paused one is named on the Data page so its stale pages are no surprise. Each collector shows what its last run read and what that adds up to per day at the interval you pick, so you can see where the load comes from before changing anything. Changes apply within seconds on every server. → [Collection schedule](/docs/connections/#collection-schedule)
+
+**Lighter collection** — The *Usage* collector no longer scans 30 days of `system.query_log` — including every query's text — on every run: it reads only the rows since its last run and keeps daily rollups. On the lab clusters that scan was about 88% of everything collection read from ClickHouse, and it grew with every query the cluster ran. *Table baselines* reads only new `system.part_log` rows for write cadence. → [How often it runs](/docs/data-observability/#how-often-it-runs)
+
 ## Upgrading from 3.14
 
 Migrations run on start; nothing to run by hand. Check these:
@@ -17,5 +21,7 @@ Migrations run on start; nothing to run by hand. Check these:
 | What changed | What to do |
 | --- | --- |
 | Three built-in drafter agents (*Agent Author*, *Harness Author*, *Skill Author*) and their features are installed on start | Nothing to do. Drafting needs `ai_agents:manage` and `ai:optimize`; Admin and Super Admin have both |
+| Usage rebuilds its 30 days of query shapes from the newest days back, 3 days per run | Nothing to do. Filter columns and query patterns come back on the first run and are complete after about 2½ hours |
+| `OBSERVE_FLEET_INTERVAL` now sets only the built-in fleet interval | Nothing to do; an interval set in **Collection schedule** wins over it |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).

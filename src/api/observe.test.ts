@@ -7,6 +7,7 @@ import {
   checkPrivileges,
   dismissSuggestion,
   getCapacity,
+  getCollectorSchedule,
   getCollectorStatus,
   getCoverage,
   getDataset,
@@ -31,6 +32,7 @@ import {
   setCostRates,
   startCodecTrial,
   tableNode,
+  saveCollectorSchedule,
 } from "./observe";
 
 interface Seen {
@@ -176,5 +178,21 @@ describe("lineage node ids", () => {
     expect(parseTableNode("kafka_topic:orders")).toBeNull();
     expect(parseTableNode("table:noDot")).toBeNull();
     expect(parseTableNode(null)).toBeNull();
+  });
+
+  it("reads and saves the collection schedule for every connection or one", async () => {
+    const seen = capture({ collectors: [], updatedBy: null, updatedAt: null });
+    await getCollectorSchedule(null);
+    await getCollectorSchedule("c/1");
+    await saveCollectorSchedule(null, { usage: { intervalSeconds: 3600 } });
+    await saveCollectorSchedule("c1", { profiles: { paused: true } });
+    expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
+      "GET /api/observe/collectors/schedule",
+      "GET /api/observe/collectors/schedule/c%2F1",
+      "PUT /api/observe/collectors/schedule",
+      "PUT /api/observe/collectors/schedule/c1",
+    ]);
+    expect(seen[2].body).toEqual({ collectors: { usage: { intervalSeconds: 3600 } } });
+    expect(seen[3].body).toEqual({ collectors: { profiles: { paused: true } } });
   });
 });

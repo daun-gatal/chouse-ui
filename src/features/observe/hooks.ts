@@ -33,6 +33,7 @@ export const observeKeys = {
   performance: (c: string | null) => [...observeKeys.all, "performance", c] as const,
   fingerprint: (c: string | null, fp: string) => [...observeKeys.all, "fingerprint", c, fp] as const,
   capacity: (c: string | null) => [...observeKeys.all, "capacity", c] as const,
+  schedule: (c: string | null) => [...observeKeys.all, "schedule", c] as const,
 };
 
 const remediationKeys = {
@@ -400,4 +401,18 @@ export function useConnectionName(connectionId: string | null | undefined): stri
   if (isActive) return activeConnectionName;
   if (isLoading) return "Loading…";
   return data?.find((c) => c.id === connectionId)?.name ?? "Unknown connection";
+}
+
+/** The collection schedule: the defaults (null) or one connection's (Admin › Connections). */
+export function useCollectorSchedule(connectionId: string | null, enabled = true): UseQueryResult<observe.CollectorScheduleView> {
+  return useQuery({ queryKey: observeKeys.schedule(connectionId), queryFn: () => observe.getCollectorSchedule(connectionId), enabled });
+}
+
+export function useSaveCollectorSchedule(): UseMutationResult<observe.CollectorScheduleView, Error, { connectionId: string | null; collectors: Record<string, observe.CollectorScheduleSetting> }> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ connectionId, collectors }) => observe.saveCollectorSchedule(connectionId, collectors),
+    // A default change shows up in every connection's view, and in the Data page status.
+    onSuccess: () => client.invalidateQueries({ queryKey: observeKeys.all }),
+  });
 }

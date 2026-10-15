@@ -43,6 +43,12 @@ export interface CollectorState {
   lastError: string | null;
   missingPrivileges: string[] | null;
   durationMs: number | null;
+  /** What the last run read from ClickHouse; null before the first measured run. */
+  readRows?: number | null;
+  readBytes?: number | null;
+  queryCount?: number | null;
+  /** Paused in Admin › Connections: its evidence goes stale on purpose. */
+  paused?: boolean;
 }
 
 export interface CollectorStatus {
@@ -385,6 +391,54 @@ function seg(value: string): string {
 
 export function getCollectorStatus(connectionId?: string): Promise<CollectorStatus> {
   return api.get<CollectorStatus>("/observe/status", scope(connectionId));
+}
+
+// --- collection schedule (Admin › Connections) -------------------------------------
+
+/** One scope's setting for a collector; null or absent inherits. */
+export interface CollectorScheduleSetting {
+  intervalSeconds?: number | null;
+  paused?: boolean | null;
+}
+
+export type ScheduleSource = "built-in" | "default" | "connection";
+
+export interface CollectorScheduleRow {
+  name: string;
+  label: string;
+  description: string;
+  reads: string;
+  slower: string;
+  minSeconds: number;
+  maxSeconds: number;
+  global: boolean;
+  pausable: boolean;
+  builtInSeconds: number;
+  defaults: CollectorScheduleSetting;
+  /** This connection's own setting (connection view only). */
+  override: CollectorScheduleSetting | null;
+  effective: { intervalSeconds: number; intervalSource: ScheduleSource; paused: boolean; pausedSource: ScheduleSource };
+  /** The last run on this connection (connection view only). */
+  status: (Pick<CollectorState, "state" | "lastRunAt" | "lastOkAt" | "lastError" | "durationMs"> & { readRows: number | null; readBytes: number | null; queryCount: number | null }) | null;
+  projectedBytesPerDay: number | null;
+  overriddenOn: number;
+  pausedOn: number;
+}
+
+export interface CollectorScheduleView {
+  collectors: CollectorScheduleRow[];
+  updatedBy: string | null;
+  updatedAt: number | null;
+}
+
+/** The schedule for every connection (no id: the defaults) or for one connection. */
+export function getCollectorSchedule(connectionId: string | null): Promise<CollectorScheduleView> {
+  return api.get<CollectorScheduleView>(connectionId ? `/observe/collectors/schedule/${seg(connectionId)}` : "/observe/collectors/schedule");
+}
+
+/** Replace the defaults (no id) or one connection's overrides. */
+export function saveCollectorSchedule(connectionId: string | null, collectors: Record<string, CollectorScheduleSetting>): Promise<CollectorScheduleView> {
+  return api.put<CollectorScheduleView>(connectionId ? `/observe/collectors/schedule/${seg(connectionId)}` : "/observe/collectors/schedule", { collectors });
 }
 
 export function getPrivileges(connectionId?: string): Promise<{ missingGrants: string[]; collectors: CollectorState[] }> {
