@@ -29,7 +29,13 @@ import { StatusPill } from "./ui";
 
 const INHERIT = "inherit";
 const LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
-const TRIGGER = "h-8 w-full min-w-[150px] rounded-xs border-ink-500 bg-ink-200 text-[11px]";
+const TRIGGER = "h-8 w-full rounded-xs border-ink-500 bg-ink-200 text-[11px]";
+/**
+ * Columns once the schedule has room (its own width, not the window's: it
+ * also sits in narrow panels); below that each collector stacks as a card.
+ */
+const ROW_GRID = "grid grid-cols-2 gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_170px_150px_170px_96px]";
+const CELL_LABEL = `${LABEL} mb-1 block @2xl:hidden`;
 
 function draftInterval(row: CollectorScheduleRow, scope: ScheduleScope, draft: CollectorScheduleSetting): number {
   return draft.intervalSeconds ?? inheritedInterval(row, scope).seconds;
@@ -82,8 +88,8 @@ function ScheduleRowView({ row, scope, draft, canEdit, onChange }: {
   const globalHere = scope === "connection" && row.global;
 
   return (
-    <tr className="border-t border-ink-500 align-top">
-      <td className="py-2 pr-3">
+    <div role="row" className={`${ROW_GRID} border-t border-ink-500 py-2`}>
+      <div role="cell" className="col-span-2 min-w-0 @2xl:col-span-1">
         <div className="flex items-center gap-1.5 text-[12px] text-paper">
           {row.label}
           {row.global && <StatusPill tone="muted" dot={false}>all connections</StatusPill>}
@@ -91,8 +97,9 @@ function ScheduleRowView({ row, scope, draft, canEdit, onChange }: {
         <p className="text-[11px] text-paper-faint">{row.description}</p>
         <p className="font-mono text-[10px] text-paper-faint">Reads {row.reads}</p>
         {(paused || slower) && <p className="mt-1 text-[11px] text-amber-500">{paused ? "Paused: its Data pages stop updating. " : ""}{row.slower}</p>}
-      </td>
-      <td className="py-2 pr-3">
+      </div>
+      <div role="cell" className="min-w-0">
+        <span className={CELL_LABEL}>Runs</span>
         {globalHere ? (
           <span className="text-[11px] text-paper-muted">Every {formatDuration(row.effective.intervalSeconds)} — set in the defaults</span>
         ) : (
@@ -108,8 +115,9 @@ function ScheduleRowView({ row, scope, draft, canEdit, onChange }: {
             </SelectContent>
           </Select>
         )}
-      </td>
-      <td className="py-2 pr-3">
+      </div>
+      <div role="cell" className="min-w-0">
+        <span className={CELL_LABEL}>State</span>
         {globalHere || !row.pausable ? (
           <span className="text-[11px] text-paper-muted">Always runs</span>
         ) : (
@@ -126,19 +134,21 @@ function ScheduleRowView({ row, scope, draft, canEdit, onChange }: {
             </SelectContent>
           </Select>
         )}
-      </td>
-      <td className="py-2 pr-3">
+      </div>
+      <div role="cell" className="min-w-0">
+        <span className={CELL_LABEL}>{scope === "connection" ? "Last run" : "Connections"}</span>
         {scope === "connection" ? <LastRun row={row} /> : (
           <span className="text-[11px] text-paper-muted">
             {row.global ? "—" : row.overriddenOn > 0 ? `Own setting on ${row.overriddenOn} connection${row.overriddenOn === 1 ? "" : "s"}` : "No connection overrides"}
             {row.pausedOn > 0 && <span className="block text-amber-500">Paused on {row.pausedOn}</span>}
           </span>
         )}
-      </td>
-      <td className="py-2 text-right font-mono text-[11px] tabular-nums text-paper">
+      </div>
+      <div role="cell" className="font-mono text-[11px] tabular-nums text-paper @2xl:text-right">
+        <span className={CELL_LABEL}>Read per day</span>
         {day === null ? <span className="text-paper-faint">—</span> : `${formatBytes(day)}/day`}
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
 
@@ -158,25 +168,19 @@ function ScheduleTable({ view, scope, connectionId, canEdit }: { view: Collector
   };
 
   return (
-    <div className="space-y-2">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left" aria-label="Collection schedule">
-          <thead>
-            <tr>
-              <th className={`${LABEL} pb-1 pr-3`}>Collector</th>
-              <th className={`${LABEL} pb-1 pr-3`}>Runs</th>
-              <th className={`${LABEL} pb-1 pr-3`}>State</th>
-              <th className={`${LABEL} pb-1 pr-3`}>{scope === "connection" ? "Last run" : "Connections"}</th>
-              <th className={`${LABEL} pb-1 text-right`} title={scope === "connection" ? "The last run's reads at this schedule" : "Summed over active connections at the saved schedule"}>Read per day</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.collectors.map((row) => (
-              <ScheduleRowView key={row.name} row={row} scope={scope} draft={drafts[row.name] ?? {}} canEdit={canEdit}
-                onChange={(next) => setDrafts((d) => ({ ...d, [row.name]: next }))} />
-            ))}
-          </tbody>
-        </table>
+    <div className="@container space-y-2">
+      <div role="table" aria-label="Collection schedule">
+        <div role="row" className={`${ROW_GRID} hidden pb-1 @2xl:grid`}>
+          <span role="columnheader" className={LABEL}>Collector</span>
+          <span role="columnheader" className={LABEL}>Runs</span>
+          <span role="columnheader" className={LABEL}>State</span>
+          <span role="columnheader" className={LABEL}>{scope === "connection" ? "Last run" : "Connections"}</span>
+          <span role="columnheader" className={`${LABEL} text-right`} title={scope === "connection" ? "The last run's reads at this schedule" : "Summed over active connections at the saved schedule"}>Read per day</span>
+        </div>
+        {view.collectors.map((row) => (
+          <ScheduleRowView key={row.name} row={row} scope={scope} draft={drafts[row.name] ?? {}} canEdit={canEdit}
+            onChange={(next) => setDrafts((d) => ({ ...d, [row.name]: next }))} />
+        ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] text-paper-faint">

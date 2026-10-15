@@ -57,11 +57,11 @@ describe("CollectorSchedule", () => {
     render(<CollectorSchedule connectionId="c1" canEdit />, { wrapper });
 
     const table = await screen.findByRole("table", { name: "Collection schedule" });
-    const usage = within(table).getByText("Usage").closest("tr") as HTMLElement;
+    const usage = within(table).getByText("Usage").closest("[role=\"row\"]") as HTMLElement;
     expect(within(usage).getByText(/3 queries · 1\.0 MiB read/)).toBeTruthy();
     expect(within(usage).getByText("96.0 MiB/day")).toBeTruthy();
     // Fleet runs once for all connections: no per-connection setting.
-    const fleetRow = within(table).getByText("Fleet health").closest("tr") as HTMLElement;
+    const fleetRow = within(table).getByText("Fleet health").closest("[role=\"row\"]") as HTMLElement;
     expect(within(fleetRow).getByText(/set in the defaults/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /save schedule/i }).hasAttribute("disabled")).toBe(true);
 
@@ -79,7 +79,7 @@ describe("CollectorSchedule", () => {
     server.use(http.get("/api/observe/collectors/schedule/c1", () => HttpResponse.json({ success: true, data: view([row({})]) })));
     const user = userEvent.setup();
     render(<CollectorSchedule connectionId="c1" canEdit />, { wrapper });
-    const usage = (await screen.findByText("Usage")).closest("tr") as HTMLElement;
+    const usage = (await screen.findByText("Usage")).closest("[role=\"row\"]") as HTMLElement;
     await user.click(within(usage).getByRole("combobox", { name: "Usage state" }));
     await user.click(await screen.findByRole("option", { name: "Paused" }));
     expect(within(usage).getByText(/Paused: its Data pages stop updating/)).toBeTruthy();
@@ -97,7 +97,7 @@ describe("CollectorSchedule", () => {
   it("summarizes overrides across connections in the defaults", async () => {
     server.use(http.get("/api/observe/collectors/schedule", () => HttpResponse.json({ success: true, data: view([row({ override: null, status: null, overriddenOn: 1, pausedOn: 2, projectedBytesPerDay: 3 * 1024 * MIB })]) })));
     render(<CollectorSchedule connectionId={null} canEdit />, { wrapper });
-    const usage = (await screen.findByText("Usage")).closest("tr") as HTMLElement;
+    const usage = (await screen.findByText("Usage")).closest("[role=\"row\"]") as HTMLElement;
     expect(within(usage).getByText("Own setting on 1 connection")).toBeTruthy();
     expect(within(usage).getByText("Paused on 2")).toBeTruthy();
     expect(within(usage).getByText("3.0 GiB/day")).toBeTruthy();

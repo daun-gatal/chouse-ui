@@ -67,3 +67,23 @@ export function schedulePayload(drafts: Record<string, CollectorScheduleSetting>
 export function initialDrafts(rows: CollectorScheduleRow[], scope: ScheduleScope): Record<string, CollectorScheduleSetting> {
   return Object.fromEntries(rows.map((row) => [row.name, { ...storedSetting(row, scope) }]));
 }
+
+export interface ScheduleSummary {
+  /** Collectors this connection sets something for. */
+  ownSettings: number;
+  /** Collectors that are paused here (by default or by this connection). */
+  paused: number;
+  /** What every collector reads per day here; null before any run was measured. */
+  bytesPerDay: number | null;
+}
+
+/** One line about a connection's schedule, for the connection dialog. */
+export function scheduleSummary(rows: CollectorScheduleRow[]): ScheduleSummary {
+  let bytesPerDay: number | null = null;
+  for (const row of rows) if (row.projectedBytesPerDay !== null) bytesPerDay = (bytesPerDay ?? 0) + row.projectedBytesPerDay;
+  return {
+    ownSettings: rows.filter((row) => row.override && (row.override.intervalSeconds != null || row.override.paused != null)).length,
+    paused: rows.filter((row) => row.effective.paused).length,
+    bytesPerDay,
+  };
+}

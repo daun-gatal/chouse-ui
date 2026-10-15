@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CollectorScheduleRow } from "@/api/observe";
-import { inheritedInterval, inheritedPaused, initialDrafts, intervalChoices, runsPerDay, scheduleDirty, schedulePayload } from "./schedule";
+import { inheritedInterval, inheritedPaused, initialDrafts, intervalChoices, runsPerDay, scheduleDirty, schedulePayload, scheduleSummary } from "./schedule";
 
 function row(overrides: Partial<CollectorScheduleRow> = {}): CollectorScheduleRow {
   return {
@@ -49,5 +49,16 @@ describe("collection schedule helpers", () => {
   it("sends only what is set", () => {
     expect(schedulePayload({ usage: { intervalSeconds: 600, paused: null }, catalog: { intervalSeconds: null, paused: null }, profiles: { paused: false } }))
       .toEqual({ usage: { intervalSeconds: 600 }, profiles: { paused: false } });
+  });
+
+  it("summarizes a connection's schedule in one line", () => {
+    const paused = { intervalSeconds: 900, intervalSource: "built-in" as const, paused: true, pausedSource: "connection" as const };
+    expect(scheduleSummary([
+      row({ override: { intervalSeconds: 3600 }, projectedBytesPerDay: 1000 }),
+      row({ name: "profiles", override: { paused: true }, effective: paused, projectedBytesPerDay: 0 }),
+      row({ name: "catalog", override: {}, projectedBytesPerDay: null }),
+      row({ name: "fleet", override: null, projectedBytesPerDay: null }),
+    ])).toEqual({ ownSettings: 2, paused: 1, bytesPerDay: 1000 });
+    expect(scheduleSummary([row({ projectedBytesPerDay: null })])).toEqual({ ownSettings: 0, paused: 0, bytesPerDay: null });
   });
 });
