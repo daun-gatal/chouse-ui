@@ -6,7 +6,7 @@
 import { api } from "./client";
 
 export type ToolContextKind = "session" | "fleet" | "userApi";
-export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat";
+export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat" | "governance";
 export type AgentKind = "router" | "agent";
 export type SkillLinkMode = "progressive" | "pinned";
 
@@ -140,6 +140,71 @@ export interface AiRegistry {
   contexts: ToolContextKind[];
   limits: TuningLimits;
   problems: RegistryProblem[];
+  /** Whether Draft with AI can run for each kind (a model is configured and the drafter is bound). */
+  drafting: Record<DraftKind, boolean>;
+}
+
+// ============================================
+// Draft with AI
+// ============================================
+
+export type DraftKind = "agent" | "harness" | "skill";
+export type DraftMode = "draft" | "refine" | "redraft";
+export type SectionState = "drafted" | "empty" | "attention";
+
+export interface RationaleItem {
+  subject: string;
+  why: string;
+}
+
+export interface DraftMeta {
+  reasons: Record<string, string | null>;
+  rationale: Record<string, RationaleItem[]>;
+}
+
+export interface SectionStatus {
+  state: SectionState;
+  /** Why the section is empty on purpose. */
+  reason: string | null;
+  problems: string[];
+  rationale: RationaleItem[];
+}
+
+export interface DraftResult<T> {
+  kind: DraftKind;
+  mode: DraftMode;
+  input: T;
+  sections: Record<string, SectionStatus>;
+  meta: DraftMeta;
+  summary: string;
+  /** What the server changed so the draft fits the registry. */
+  fixes: string[];
+  /** Registry problems the draft would still introduce if saved. */
+  problems: string[];
+  suggestedSkills: string[];
+  rounds: number;
+}
+
+export interface AgentHints {
+  /** The AI feature the agent will serve; null for a chat agent or subagent. */
+  featureId: string | null;
+  delegate: "yes" | "no" | "auto";
+}
+
+export interface DraftRequest<T> {
+  goal?: string;
+  /** Skills: pasted reference material. */
+  reference?: string;
+  agentHints?: AgentHints;
+  /** Refine: what to change. */
+  instruction?: string;
+  current?: T;
+  currentMeta?: DraftMeta;
+  /** Refining a stored custom entity. */
+  entityId?: string | null;
+  /** Redraft only these sections. */
+  sections?: string[];
+  feedback?: Record<string, string[]>;
 }
 
 export interface RegistryRevision {
@@ -267,6 +332,11 @@ export function bindFeature(featureId: string, agentId: string): Promise<{ featu
 
 export function runAgentTest(request: TestRequest): Promise<TestResult> {
   return api.post<TestResult>(`${BASE}/test`, request);
+}
+
+/** Draft, refine or redraft an entity with AI. Nothing is saved; the result opens in the editor. */
+export function draftEntity<T>(kind: DraftKind, request: DraftRequest<T>): Promise<DraftResult<T>> {
+  return api.post<DraftResult<T>>(`${BASE}/draft/${kind}`, request);
 }
 
 /** The editable fields of a stored agent, for the editor. */

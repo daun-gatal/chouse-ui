@@ -49,9 +49,9 @@ The header shows four counters: the number of **AI features**, **Agents** (and h
 | Tab | What it shows |
 | --- | --- |
 | **Features** | Every AI feature, grouped by where it appears, with the contexts its tools may use and its agent. Pick another agent to rebind it — see [Rebinding a feature](#rebinding-a-feature) |
-| **Agents** | A tree of routers and top-level agents with their subagents below. **New agent**, and **Edit** or **View** on each row |
-| **Harnesses** | The built-in and custom harnesses |
-| **Skills** | Every skill with its files |
+| **Agents** | A tree of routers and top-level agents with their subagents below. **New agent**, **Draft with AI**, and **Edit** or **View** on each row |
+| **Harnesses** | The built-in and custom harnesses. **New harness** and **Draft with AI** |
+| **Skills** | Every skill with its files. **New skill** and **Draft with AI** |
 | **Tools** | The read-only tool catalog: what each tool does, the context it needs, the permissions it needs and which agents use it |
 | **Test console** | Run any feature or chat agent as you, on your active connection |
 
@@ -84,6 +84,7 @@ The per-model runtime parameters set in AI models — *recursion limit* and *run
 - [Harnesses](/docs/ai-harnesses/) — how an agent is run, and the three built-in harnesses
 - [Skills](/docs/ai-skills/) — on-demand and pinned instructions, and writing your own
 - [Chat agents](/docs/ai-chat-agents/) — the agent picker, the router and CHouse Admin
+- [Draft with AI](/docs/ai-draft-with-ai/) — describe an agent, harness or skill and review a complete draft
 - [Test console](/docs/ai-test-console/) — try a feature, an agent or an unsaved draft
 - [Versions, upgrades & audit](/docs/ai-versions/) — history, restore, built-in updates and the audit trail
 - Reference: [AI feature catalog](/docs/ai-features/) and [AI tool catalog](/docs/ai-tools/)

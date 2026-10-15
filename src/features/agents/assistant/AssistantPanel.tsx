@@ -65,7 +65,7 @@ export function AssistantPanel(): ReactElement {
       </Tabs>
       {editing && (
         <AgentEditor
-          key={`${editing.agent?.id ?? "new"}:${editing.agent?.version ?? 0}:${editing.initial.slug}`}
+          key={`${editing.agent?.id ?? "new"}:${editing.agent?.version ?? 0}:${editing.initial.slug}:${editing.aiDraft ? "ai" : "manual"}`}
           registry={data}
           target={editing}
           canManage={canManage}

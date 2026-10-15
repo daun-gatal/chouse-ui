@@ -9,7 +9,7 @@ import { useMemo, useRef, useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { Copy, Eye, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 
-import type { AgentInput, AgentSkillLink, AiAgent, AiRegistry, PromptPreview } from "@/api/aiAgents";
+import type { AgentInput, AgentSkillLink, AiAgent, AiRegistry, DraftResult, PromptPreview } from "@/api/aiAgents";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { Mono, StatusPill } from "@/features/observe/ui";
+import { AiDraftBanner, RefineWithAi, SaveWarning, SectionMark, SectionReview, useAiDraftSession, useSaveGuard, type DraftOrigin } from "./DraftWithAi";
 import { useAssistantMutations, useModelOptions, usePromptPreview } from "./hooks";
 import { agentSubtree, duplicateAgent, featuresBoundTo, groupTools, insertAt, problemsFor, variablesFor } from "./lib";
 import { RevisionHistory } from "./RevisionHistory";
@@ -35,7 +36,13 @@ export interface AgentEditorTarget {
   initial: AgentInput;
   /** Feature the editor was opened from (preview + test default). */
   featureId?: string;
+  /** A Draft with AI result under review. */
+  aiDraft?: DraftResult<AgentInput>;
+  /** What the AI draft was started from (kept for redrafts and refinements). */
+  origin?: DraftOrigin;
 }
+
+const DRAFT_TABS = new Set(["prompt", "tools", "skills", "subagents", "settings"]);
 
 function numberOrNull(text: string): number | null {
   if (!text.trim()) return null;
@@ -102,6 +109,20 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
   const { saveAgent, deleteAgent, resetAgent } = useAssistantMutations();
   const readOnly = !canManage;
   const dirty = JSON.stringify(draft) !== JSON.stringify(target.initial);
+  const session = useAiDraftSession<AgentInput>("agent", target.aiDraft ?? null, target.origin ?? {}, stored?.id ?? null);
+  const guard = useSaveGuard(session.result);
+  const drafting = canManage && registry.drafting.agent;
+  const canRefine = drafting && (session.result !== null || (stored !== null && !stored.isSystem));
+  const take = (next: AgentInput | null): boolean => {
+    if (!next) return false;
+    setDraft(next);
+    setPreview(null);
+    return true;
+  };
+  const review = (section: string): ReactElement | null => (
+    <SectionReview kind="agent" section={section} status={session.result?.sections[section]} pending={session.pending}
+      onRedraft={drafting ? () => void session.redraft(section, draft).then(take) : undefined} />
+  );
 
   const set = <K extends keyof AgentInput>(key: K, value: AgentInput[K]): void => {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -149,6 +170,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
   };
 
   const save = async (): Promise<void> => {
+    if (!guard.check()) return;
     try {
       const saved = await saveAgent.mutateAsync({ id: stored?.id ?? null, input: draft, version: stored?.version ?? null });
       toast.success(stored ? `Saved ${saved.name}` : `Created ${saved.name}`);
@@ -197,6 +219,9 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
 
         <div className="mt-4 space-y-4">
           <ProblemList problems={serverProblems} />
+          {session.result && <AiDraftBanner result={session.result} />}
+          {canRefine && <RefineWithAi kind="agent" pending={session.pending} onRefine={async (instruction) => take(await session.refine(instruction, draft))} />}
+          {review("identity")}
           <div className="grid gap-3 md:grid-cols-3">
             <Field label="Name" htmlFor="agent-name">
               <Input id="agent-name" className={INPUT_CLASS} value={draft.name} onChange={(e) => set("name", e.target.value)} disabled={readOnly} />
@@ -212,11 +237,14 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
           <Tabs defaultValue="prompt">
             <TabsList className="h-9 rounded-xs bg-ink-200/40">
               {["prompt", "tools", "skills", "subagents", "settings", "test", "history"].map((t) => (
-                <TabsTrigger key={t} value={t} className={TAB_CLASS} disabled={(t === "history" && !stored)}>{t}</TabsTrigger>
+                <TabsTrigger key={t} value={t} className={TAB_CLASS} disabled={(t === "history" && !stored)}>
+                  {t}{DRAFT_TABS.has(t) && <SectionMark status={session.result?.sections[t]} />}
+                </TabsTrigger>
               ))}
             </TabsList>
 
             <TabsContent value="prompt" className="mt-4 space-y-4">
+              {review("prompt")}
               <TemplateEditor
                 label="System prompt"
                 hint={draft.taskTemplate === null
@@ -259,6 +287,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             </TabsContent>
 
             <TabsContent value="tools" className="mt-4 space-y-3">
+              {review("tools")}
               <p className="text-[12px] text-paper-muted">Only read-only tools exist. Tools run in a context the feature must provide; CHouse tools also respect the chatting user's permissions.</p>
               <div className="relative max-w-sm">
                 <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-paper-faint" />
@@ -285,6 +314,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             </TabsContent>
 
             <TabsContent value="skills" className="mt-4 space-y-2">
+              {review("skills")}
               <p className="text-[12px] text-paper-muted">On demand: listed in the prompt, read when needed. Pinned: the chosen file is inlined at the end of the system prompt.</p>
               {registry.skills.map((skill) => (
                 <div key={skill.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xs border border-ink-500 px-3 py-2">
@@ -310,6 +340,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             </TabsContent>
 
             <TabsContent value="subagents" className="mt-4 space-y-2">
+              {review("subagents")}
               {hidesTask && <p role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-2 text-[12px] text-amber-500">The {harness?.name} harness hides the task tool. Pick a delegating harness in Settings to use subagents.</p>}
               <p className="text-[12px] text-paper-muted">The agent delegates to these with the task tool, choosing by their description. Subagents don't see the conversation, only the task the parent writes.</p>
               {subagentOptions.map((option) => (
@@ -329,6 +360,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             </TabsContent>
 
             <TabsContent value="settings" className="mt-4 space-y-4">
+              {review("settings")}
               <Field label="Description" hint="Parent agents and the router choose subagents by this text — say what it answers.">
                 <Textarea className={TEXTAREA_CLASS} value={draft.description} onChange={(e) => set("description", e.target.value)} disabled={readOnly} />
               </Field>
@@ -385,6 +417,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             )}
           </Tabs>
 
+          {guard.confirming && <SaveWarning warnings={guard.warnings} onCancel={guard.cancel} />}
           {canManage && (
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-500 pt-4">
               <div className="flex flex-wrap gap-2">
@@ -404,8 +437,8 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
                   </Button>
                 )}
               </div>
-              <Button className={DH_PRIMARY} disabled={saveAgent.isPending || (stored !== null && !dirty)} onClick={() => void save()}>
-                <Save className="mr-1.5 h-3.5 w-3.5" /> {saveAgent.isPending ? "Saving…" : stored ? "Save" : "Create"}
+              <Button className={DH_PRIMARY} disabled={saveAgent.isPending || session.pending || (stored !== null && !dirty)} onClick={() => void save()}>
+                <Save className="mr-1.5 h-3.5 w-3.5" /> {saveAgent.isPending ? "Saving…" : guard.confirming ? "Save anyway" : stored ? "Save" : "Create"}
               </Button>
             </div>
           )}

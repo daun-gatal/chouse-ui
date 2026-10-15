@@ -39,6 +39,9 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Explain an incident](#explain-an-incident) | Observability | `ai:optimize` | Evidence only | [Incident Explainer](#incident-explainer) |
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
+| [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
+| [Draft an agent](#draft-an-agent) | AI Governance | `ai:optimize` | Evidence only | [Agent Author](#agent-author) |
+| [Draft a harness](#draft-a-harness) | AI Governance | `ai:optimize` | Evidence only | [Harness Author](#harness-author) |
 
 ## Chat features
 
@@ -337,9 +340,47 @@ Context › Draft with AI: drafts a table's curated context from metadata and an
 | --- | --- | --- |
 | `ctx.evidence` | json | The evidence object the feature assembled (JSON). |
 
+## AI Governance features
+
+### Draft a skill
+
+ID `draft-ai-skill` · needs `ai:optimize` · structured answer (JSON contract)
+
+AI Governance › Assistant › Skills › Draft with AI: drafts or refines a custom skill (SKILL.md and reference files) for review.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Skill Author](#skill-author).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The request and the live registry facts the draft may use (JSON). |
+
+### Draft an agent
+
+ID `draft-ai-agent` · needs `ai:optimize` · structured answer (JSON contract)
+
+AI Governance › Assistant › Agents › Draft with AI: drafts or refines a custom agent — prompt, tools, skills, subagents and settings — for review.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Agent Author](#agent-author).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The request and the live registry facts the draft may use (JSON). |
+
+### Draft a harness
+
+ID `draft-ai-harness` · needs `ai:optimize` · structured answer (JSON contract)
+
+AI Governance › Assistant › Harnesses › Draft with AI: drafts or refines a custom harness — a decision for every built-in tool — for review.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Harness Author](#harness-author).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The request and the live registry facts the draft may use (JSON). |
+
 ## Built-in agents
 
-The 27 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 30 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -632,6 +673,48 @@ Drafts a table's curated context from metadata and an aggregate-only profile.
 | Used by | [Draft table context](#draft-table-context) |
 | Harness | Focused |
 | Tuning | 3 steps · 2,500 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
+### Skill Author
+
+Drafts and refines custom skills (SKILL.md and reference files) from a goal or pasted runbook.
+
+| Setting | Value |
+| --- | --- |
+| Slug | `skill-author` |
+| Kind | Feature agent |
+| Used by | [Draft a skill](#draft-a-skill) |
+| Harness | Focused |
+| Tuning | 3 steps · 12,000 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
+### Agent Author
+
+Drafts and refines custom agents — prompt, tools, skills, subagents, harness and tuning — from a goal.
+
+| Setting | Value |
+| --- | --- |
+| Slug | `agent-author` |
+| Kind | Feature agent |
+| Used by | [Draft an agent](#draft-an-agent) |
+| Harness | Focused |
+| Tuning | 3 steps · 12,000 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
+### Harness Author
+
+Drafts and refines custom harnesses with a decision for every built-in tool.
+
+| Setting | Value |
+| --- | --- |
+| Slug | `harness-author` |
+| Kind | Feature agent |
+| Used by | [Draft a harness](#draft-a-harness) |
+| Harness | Focused |
+| Tuning | 3 steps · 6,000 output tokens |
 | Tools | none |
 | Skills | all built-in skills on demand |
 

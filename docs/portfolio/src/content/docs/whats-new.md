@@ -1,8 +1,14 @@
 # What's new in 3.15
 
-3.15 makes data observability much cheaper to run on busy clusters, and lets you decide how often it reads each one.
+3.15 makes the AI agent registry easy to start from, and makes data observability much cheaper to run on busy clusters. Describe an agent, harness or skill and review a complete draft that only uses what exists in your registry; and decide how often observability reads each cluster, with what that costs in front of you.
 
 ## Highlights
+
+**Draft with AI** — **New agent**, **New harness** and **New skill** in **AI Governance › Assistant** get a **Draft with AI** button. Describe the goal in plain language, and Chouse AI fills in every section of the editor — prompt, tools, skills, subagents, harness and tuning for an agent; a decision for every built-in tool for a harness — each pick with a reason. A section left empty says why, and one that still needs work is flagged instead of left blank. Unknown tools and skills are dropped, slugs made unique and permissions worked out from the tools before the draft reaches you. Nothing is saved until you press **Create**. → [Draft with AI](/docs/ai-draft-with-ai/)
+
+**Skills from a runbook** — Paste a runbook or doc into a skill draft, and it comes back as a `SKILL.md` that says when to use it, with a step-by-step procedure, examples and pitfalls, and long material split into linked reference files. → [Starting a draft](/docs/ai-draft-with-ai/#starting-a-draft)
+
+**Redraft and refine** — Redraft any single section, or refine a draft — or any custom agent, harness or skill — with an instruction such as "make it stricter about DDL". You review the result before saving, as always. → [Refine with AI](/docs/ai-draft-with-ai/#refine-with-ai)
 
 **Collection schedule** — **Admin › Connections › Collection schedule** sets how often each observability collector runs, for every connection, and a connection's **Edit** dialog can set its own. Pause a collector you don't need; a paused one is named on the Data page so its stale pages are no surprise. Each collector shows what its last run read and what that adds up to per day at the interval you pick, so you can see where the load comes from before changing anything. Changes apply within seconds on every server. → [Collection schedule](/docs/connections/#collection-schedule)
 
@@ -14,6 +20,7 @@ Migrations run on start; nothing to run by hand. Check these:
 
 | What changed | What to do |
 | --- | --- |
+| Three built-in drafter agents (*Agent Author*, *Harness Author*, *Skill Author*) and their features are installed on start | Nothing to do. Drafting needs `ai_agents:manage` and `ai:optimize`; Admin and Super Admin have both |
 | Usage rebuilds its 30 days of query shapes from the newest days back, 3 days per run | Nothing to do. Filter columns and query patterns come back on the first run and are complete after about 2½ hours |
 | `OBSERVE_FLEET_INTERVAL` now sets only the built-in fleet interval | Nothing to do; an interval set in **Collection schedule** wins over it |
 

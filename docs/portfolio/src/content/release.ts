@@ -30,10 +30,12 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.15",
   kind: "minor",
-  summary: "Set how often data observability reads each cluster, and see what it costs.",
+  summary: "Draft AI agents and skills from a goal, and set how often data observability reads each cluster.",
   highlights: [
+    { label: "Draft with AI", href: "/docs/ai-draft-with-ai/" },
+    { label: "Skills from a runbook", href: "/docs/ai-draft-with-ai/#starting-a-draft" },
+    { label: "Refine with AI", href: "/docs/ai-draft-with-ai/#refine-with-ai" },
     { label: "Collection schedule", href: "/docs/connections/#collection-schedule" },
-    { label: "Collector cost per day", href: "/docs/connections/#collection-schedule" },
     { label: "Lighter collection", href: "/docs/data-observability/#how-often-it-runs" },
   ],
 };
