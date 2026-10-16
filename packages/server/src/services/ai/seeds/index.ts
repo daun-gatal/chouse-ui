@@ -294,7 +294,7 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin",
-    description: "Answers read-only questions about CHouse itself: users, roles, permissions, data access, connections, scheduled jobs, data health, alerts, incidents, Doctor reports, AI models, external agents and the audit log.",
+    description: "Answers read-only questions about CHouse itself: users, roles, permissions, data access, connections, scheduled jobs, data health, alerts, incidents, fixes, Doctor reports, performance, capacity, upgrades, collectors, AI models, AI agents and usage, external agents and the audit log.",
     kind: "agent", systemPrompt: CHOUSE_ADMIN_PROMPT, taskTemplate: null, harness: "delegating", tuning: { stepBudget: 10 },
     requiredPermissions: [], tools: ["whoami"], skills: [], subagents: ["access-auditor", "operations-analyst", "platform-auditor"],
   },
@@ -307,17 +307,21 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-operations-analyst", slug: "operations-analyst", name: "Operations Analyst",
-    description: "Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, Doctor reports and fleet health.",
+    description: "Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, remediation actions and investigation notebooks, Doctor reports, fleet health, query regressions, capacity, upgrade readiness and the observability collectors.",
     kind: "agent", systemPrompt: OPERATIONS_ANALYST_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 8 },
     requiredPermissions: [], skills: [], subagents: [],
-    tools: ["list_scheduled_jobs", "get_scheduled_job", "list_scheduled_runs", "list_health_checks", "get_health_check", "list_health_incidents", "list_alerting", "list_observe_incidents", "list_doctor_reports", "fleet_snapshots"],
+    tools: [
+      "list_scheduled_jobs", "get_scheduled_job", "list_scheduled_runs", "list_health_checks", "get_health_check", "list_health_incidents", "list_alerting",
+      "list_observe_incidents", "list_remediation_actions", "get_investigation_notebook", "list_doctor_reports", "fleet_snapshots",
+      "get_query_regressions", "get_capacity", "list_upgrade_assessments", "get_upgrade_rollout", "get_collector_status", "get_collector_schedule",
+    ],
   },
   {
     id: "builtin-agent-platform-auditor", slug: "platform-auditor", name: "Platform Auditor",
-    description: "Connections, AI models, external agents and MCP settings, and the audit log.",
+    description: "Connections, AI models, CHouse's AI agents and their usage, cost and data sent to providers, external agents and MCP settings, and the audit log.",
     kind: "agent", systemPrompt: PLATFORM_AUDITOR_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 8 },
     requiredPermissions: [], skills: [], subagents: [],
-    tools: ["whoami", "list_connections", "list_ai_models", "list_agent_sessions", "get_agent_governance", "audit_log"],
+    tools: ["whoami", "list_connections", "list_ai_models", "list_ai_agents", "get_ai_usage", "list_ai_requests", "get_ai_request", "list_agent_sessions", "get_agent_governance", "audit_log"],
   },
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",
