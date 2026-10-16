@@ -33,6 +33,7 @@ export const CONFIG_SECTIONS = [
   "First-run admin",
   "Single sign-on",
   "Data observability",
+  "AI usage",
   "Fleet & alerts",
   "Remediation & Slack",
   "Doctor",
@@ -104,6 +105,9 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "OBSERVE_INCIDENT_HOLD_SECONDS", section: "Data observability", default: "300", description: "Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample." },
   { name: "OBSERVE_CAPACITY_THRESHOLD", section: "Data observability", default: "0.85", description: "Disk fill ratio that capacity forecasts warn about (0–1)." },
   { name: "OBSERVE_SCRATCH_DATABASE", section: "Data observability", default: "chouse_scratch", description: "Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`." },
+
+  // AI usage (ADR 0020)
+  { name: "AI_USAGE_RETENTION_DAYS", section: "AI usage", default: "30", description: "Days of AI usage kept for **AI Governance › AI activity**: requests, tokens, cost, ClickHouse queries and data sent to providers (1–365). Older requests are deleted hourly." },
 
   // Fleet
   { name: "FLEET_POLL_INTERVAL_SECONDS", section: "Fleet & alerts", default: "30", description: "Fleet sample interval, kept for compatibility. `OBSERVE_FLEET_INTERVAL` wins when both are set." },

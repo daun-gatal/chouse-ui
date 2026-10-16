@@ -111,7 +111,8 @@ export async function writeUsageRun(run: UsageRun): Promise<void> {
       "id", "request_id", "step_id", "started_at", "user_id", "connection_id", "provider_type", "model_id",
       "kind", "source", "columns", "row_count", "bytes",
     ], run.egress.map((e) => [
-      v(e.id), v(run.id), v(e.stepId), v(run.startedAt), v(run.meta.userId), v(e.connectionId ?? run.meta.connectionId),
+      // CHouse records come from the RBAC database, not a ClickHouse connection.
+      v(e.id), v(run.id), v(e.stepId), v(run.startedAt), v(run.meta.userId), v(e.kind === "chouse" ? null : e.connectionId ?? run.meta.connectionId),
       v(e.providerType), v(e.modelId), v(e.kind), v(e.source), v(JSON.stringify(e.columns)), v(e.rows), v(e.bytes),
     ]));
   }

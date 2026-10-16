@@ -23,6 +23,7 @@ import contextRoute from "./context";
 import upgrades from "./upgrades";
 import agents from "./agents";
 import aiAgents from "./ai-agents";
+import aiUsage from "./ai-usage";
 import integrations from "./integrations";
 
 const api = new Hono();
@@ -115,6 +116,7 @@ api.route("/context", contextRoute);
 api.route("/upgrades", upgrades);
 api.route("/agents", agents);
 api.route("/ai-agents", aiAgents);
+api.route("/ai-usage", aiUsage);
 api.route("/integrations", integrations);
 
 // RBAC routes (Role-Based Access Control)

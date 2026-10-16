@@ -21,6 +21,7 @@ import {
     validateAiModelParams,
     type AiModelParams,
 } from '../constants/aiModelParams';
+import { aiModelPricingSchema } from '../constants/aiModelPricing';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
@@ -57,12 +58,16 @@ const createModelSchema = z.object({
     name: z.string().min(1).max(255),
     modelId: z.string().min(1).max(255),
     params: aiModelParamsSchema.nullable().optional(),
+    // USD per 1M tokens (ADR 0020); null or absent = no price.
+    pricing: aiModelPricingSchema.nullable().optional(),
 });
 
 const updateModelSchema = z.object({
     name: z.string().min(1).max(255).optional(),
     modelId: z.string().min(1).max(255).optional(),
     params: aiModelParamsSchema.nullable().optional(),
+    // Whole-object replace like params: null clears, absent keeps the stored price.
+    pricing: aiModelPricingSchema.nullable().optional(),
 });
 
 function invalidParamsResponse(errors: string[]): { success: false; error: { code: string; message: string } } {
@@ -132,7 +137,7 @@ aiModelsRoutes.post(
             await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_MODEL_CREATE, user.sub, {
                 resourceType: 'ai_base_model',
                 resourceId: model.id,
-                details: { operation: 'create', name: model.name, modelId: model.modelId, ...paramsAuditDetails(input.params) },
+                details: { operation: 'create', name: model.name, modelId: model.modelId, ...paramsAuditDetails(input.params), priced: Boolean(input.pricing) },
                 ipAddress: getClientIp(c),
             });
             return c.json({ success: true, data: model }, 201);

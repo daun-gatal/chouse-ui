@@ -211,3 +211,50 @@ describe("RBAC AI Models Routes · params", () => {
         });
     });
 });
+
+describe("RBAC AI Models Routes · pricing (ADR 0020)", () => {
+    let app: Hono;
+
+    beforeEach(() => {
+        app = new Hono();
+        app.onError(errorHandler);
+        app.route("/ai-base-models", aiModelsRoutes);
+        mockCreateAiModel.mockClear();
+        mockUpdateAiModel.mockClear();
+        mockGetAiProviderById.mockImplementation(async () => openaiProvider);
+        mockCreateAiModel.mockResolvedValue(storedModel);
+        mockUpdateAiModel.mockResolvedValue(storedModel);
+        mockGetAiModelById.mockResolvedValue(storedModel);
+    });
+
+    it("stores a price on create", async () => {
+        const pricing = { input: 2.5, output: 10, cacheRead: 1.25 };
+        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt", pricing });
+        expect(res.status).toBe(201);
+        expect(mockCreateAiModel).toHaveBeenCalledWith(expect.objectContaining({ pricing }));
+    });
+
+    it("accepts a model without a price", async () => {
+        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt" });
+        expect(res.status).toBe(201);
+    });
+
+    it.each([
+        ["negative", { input: -1, output: 1 }],
+        ["missing output", { input: 1 }],
+        ["absurd", { input: 1_000_000, output: 1 }],
+        ["unknown key", { input: 1, output: 1, perRequest: 2 }],
+        ["string", { input: "3", output: 1 }],
+    ])("rejects a %s price", async (_label, pricing) => {
+        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt", pricing });
+        expect(res.status).toBe(400);
+        expect(mockCreateAiModel).not.toHaveBeenCalled();
+    });
+
+    it("sets and clears the price on update", async () => {
+        expect((await patch(app, "model-1", { pricing: { input: 0, output: 0 } })).status).toBe(200);
+        expect(mockUpdateAiModel).toHaveBeenLastCalledWith("model-1", expect.objectContaining({ pricing: { input: 0, output: 0 } }));
+        expect((await patch(app, "model-1", { pricing: null })).status).toBe(200);
+        expect(mockUpdateAiModel).toHaveBeenLastCalledWith("model-1", expect.objectContaining({ pricing: null }));
+    });
+});
