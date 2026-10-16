@@ -376,6 +376,14 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("viewer", "ai_usage:view")).toBe(false);
   },
   "1.59.0": async () => expect(await h.columnExists("ai_usage_requests", "thread_id")).toBe(true),
+  "1.60.0": async () => {
+    // ADR 0020: who started an AI request (UI, MCP agent or token caller).
+    for (const c of ["origin", "pat_id", "client_name"]) {
+      expect(await h.columnExists("ai_usage_requests", c)).toBe(true);
+      expect(await h.columnIsNullable("ai_usage_requests", c)).toBe(true);
+    }
+    expect(await h.indexExists("ai_usage_requests_pat_idx")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1108,41 @@ for (const dialect of DIALECTS) {
       const { getDatabase } = await import("./index");
       await migration.up(getDatabase());
       expect(await h.rowCount("ai_usage_requests")).toBe(2);
+    });
+  });
+
+  describe(`migrations · 1.60.0 AI request origin [${dialect}]`, () => {
+    // Requests recorded before 1.60.0 have no origin: they keep NULL, and new
+    // rows store the origin, token and client.
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.59.0" });
+      await h.rawRun(sql`INSERT INTO ai_usage_requests (id, started_at, feature_id, source, status) VALUES ('before', ${Date.now()}, 'chat', 'chat', 'ok')`);
+      expect(await h.columnExists("ai_usage_requests", "origin")).toBe(false);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("adds the columns and keeps existing requests without an origin", async () => {
+      const rows = await h.rawAll(sql`SELECT origin, pat_id, client_name FROM ai_usage_requests WHERE id = 'before'`);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].origin).toBeNull();
+      expect(rows[0].pat_id).toBeNull();
+      expect(rows[0].client_name).toBeNull();
+    });
+
+    it("stores the origin of new requests", async () => {
+      await h.rawRun(sql`INSERT INTO ai_usage_requests (id, started_at, feature_id, source, status, origin, pat_id, client_name)
+        VALUES ('after', ${Date.now()}, 'optimize-query', 'feature', 'ok', 'mcp', 'pat-1', 'Claude Code')`);
+      const rows = await h.rawAll(sql`SELECT origin, pat_id, client_name FROM ai_usage_requests WHERE id = 'after'`);
+      expect(rows[0]).toEqual({ origin: "mcp", pat_id: "pat-1", client_name: "Claude Code" });
+    });
+
+    it("is a no-op when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.60.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("ai_usage_requests")).toBe(2);
+      expect((await runMigrations()).migrationsApplied).toEqual([]);
     });
   });
 }

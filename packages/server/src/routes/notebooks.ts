@@ -2,7 +2,8 @@
  * `/api/notebooks` — investigation notebooks (ADR 0016 §7).
  *
  * Permission map:
- *   read / export        view permission of what the notebook is attached to:
+ *   read / export /      view permission of what the notebook is attached to:
+ *   find by attachment
  *                        Data Health incident → data_health:view, Observe incident →
  *                        observe:view, Doctor report → doctor:view (plus connection and
  *                        table access for incidents)
@@ -76,6 +77,18 @@ notebooksRoute.post(
     return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
   },
 );
+
+/** The notebook of an incident or Doctor report, without creating one (CLI, MCP, the assistant). */
+notebooksRoute.get("/attached/:kind/:ref", async (c) => {
+  const raw = requireParam(c, "kind");
+  const kind = ATTACHMENTS.find((a) => a === raw);
+  if (!kind) throw AppError.badRequest(`kind must be one of: ${ATTACHMENTS.join(", ")}`);
+  const ref = requireParam(c, "ref");
+  await guardAttachment(c, kind, ref);
+  const notebook = await notebooks.findByAttachment(kind, ref);
+  if (!notebook) throw AppError.notFound("This incident or report has no notebook yet");
+  return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
+});
 
 notebooksRoute.get("/:id", async (c) => {
   const notebook = await guardNotebook(c, requireParam(c, "id"));

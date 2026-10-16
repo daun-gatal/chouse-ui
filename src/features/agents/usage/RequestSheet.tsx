@@ -29,6 +29,7 @@ import {
   REQUEST_STATUS,
   requestCost,
   plural,
+  requestCaller,
   requestOrigin,
   requestTokens,
   STEP_STATUS,
@@ -212,7 +213,7 @@ export function RequestSheet({ requestId, onClose }: { requestId: string | null;
           <SheetTitle>{r ? r.agentName ?? featureLabel(r.featureId) : "AI request"}</SheetTitle>
           <SheetDescription>
             {r
-              ? [r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user"), requestOrigin(r.source, r.featureId), new Date(r.startedAt).toLocaleString(), `${(r.durationMs / 1000).toFixed(1)} s`].join(" · ")
+              ? [r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user"), requestOrigin(r.source, r.featureId), requestCaller(r), new Date(r.startedAt).toLocaleString(), `${(r.durationMs / 1000).toFixed(1)} s`].filter(Boolean).join(" · ")
               : "Loading…"}
           </SheetDescription>
         </SheetHeader>

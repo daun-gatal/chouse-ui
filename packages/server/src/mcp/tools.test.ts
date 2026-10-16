@@ -190,6 +190,23 @@ const DEFAULT_TOOL_NAMES = [
   "get_metric",
   "get_pipeline_status",
   "list_incidents",
+  "list_remediation_actions",
+  "get_remediation_action",
+  "get_investigation_notebook",
+  "get_query_regressions",
+  "get_query_shape_history",
+  "get_capacity",
+  "list_upgrade_assessments",
+  "get_upgrade_assessment",
+  "get_canary_replay",
+  "get_upgrade_rollout",
+  "get_collector_status",
+  "get_collector_schedule",
+  "get_ai_usage",
+  "get_ai_data_egress",
+  "list_ai_requests",
+  "get_ai_request",
+  "list_ai_agents",
 ];
 
 const WRITE_TOOLS = [
@@ -492,5 +509,162 @@ describe("data observability tools (ADR 0016)", () => {
     expect(seen[0]?.["x-chouse-agent-source"]).toBe("mcp");
     expect(seen[0]?.["x-chouse-agent-tool"]).toBe("get_pipeline_status");
     await harness.close();
+  });
+});
+
+/** Path and query string of each projected subrequest. */
+function makeUrlProxy(response: unknown): { proxy: Hono; urls: string[]; headers: Array<Record<string, string>> } {
+  const urls: string[] = [];
+  const headers: Array<Record<string, string>> = [];
+  const proxy = new Hono();
+  proxy.all("*", (c) => {
+    const url = new URL(c.req.url);
+    urls.push(`${c.req.method} ${url.pathname}${url.search}`);
+    headers.push(c.req.header());
+    return c.json({ success: true, data: response });
+  });
+  return { proxy, urls, headers };
+}
+
+describe("performance, capacity and upgrade tools", () => {
+  it("projects onto the observe and upgrades API, pinned to the requested connection", async () => {
+    const { proxy, urls, headers } = makeUrlProxy({ ok: true });
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ["get_query_regressions", { connection_id: "conn-2" }],
+      ["get_query_shape_history", { fingerprint: "ab/12", connection_id: "conn-2" }],
+      ["get_capacity", { connection_id: "conn-2" }],
+      ["list_upgrade_assessments", { connection_id: "conn-2" }],
+      ["get_upgrade_assessment", { id: "as-1" }],
+      ["get_canary_replay", { id: "rp-1" }],
+      ["get_upgrade_rollout", {}],
+      ["get_collector_status", { connection_id: "conn-2" }],
+      ["get_collector_schedule", {}],
+      ["get_collector_schedule", { connection_id: "conn-2" }],
+    ];
+    for (const [name, args] of calls) {
+      const { result } = await harness.request("tools/call", { name, arguments: args }, CTX);
+      expect({ name, isError: result?.isError ?? false }).toEqual({ name, isError: false });
+    }
+    expect(urls).toEqual([
+      "GET /api/observe/performance",
+      "GET /api/observe/performance/fingerprints/ab%2F12",
+      "GET /api/observe/capacity",
+      "GET /api/upgrades/assessments",
+      "GET /api/upgrades/assessments/as-1",
+      "GET /api/upgrades/replays/rp-1",
+      "GET /api/upgrades/rollout",
+      "GET /api/observe/status",
+      "GET /api/observe/collectors/schedule",
+      "GET /api/observe/collectors/schedule/conn-2",
+    ]);
+    // Connection-scoped observe routes read the connection from the header.
+    for (const i of [0, 1, 2, 3, 7]) expect(headers[i]?.["x-connection-id"]).toBe("conn-2");
+    await harness.close();
+  });
+
+  it("lists performance tools only for tokens with their permission", async () => {
+    const { proxy } = makeProxy({});
+    const names = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.CAPACITY_VIEW, PERMISSIONS.UPGRADES_VIEW] }));
+    expect(names.sort()).toEqual(["get_canary_replay", "get_capacity", "get_upgrade_assessment", "get_upgrade_rollout", "list_upgrade_assessments", "whoami"]);
+  });
+});
+
+describe("remediation and notebook read tools", () => {
+  it("lists a connection's remediation actions with status and incident filters", async () => {
+    const { proxy, urls } = makeUrlProxy({ actions: [] });
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    await harness.request("tools/call", { name: "list_remediation_actions", arguments: { connection_id: "conn-1", status: ["proposed", "approved"], incident_id: "inc-9" } }, CTX);
+    await harness.request("tools/call", { name: "get_remediation_action", arguments: { id: "act 1" } }, CTX);
+    expect(urls).toEqual([
+      "GET /api/remediation/actions?connectionId=conn-1&status=proposed%2Capproved&incidentId=inc-9",
+      "GET /api/remediation/actions/act%201",
+    ]);
+    await harness.close();
+  });
+
+  it("needs a connection to list remediation actions and rejects unknown statuses", async () => {
+    const { proxy, urls } = makeUrlProxy({ actions: [] });
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    const missing = await harness.request("tools/call", { name: "list_remediation_actions", arguments: {} }, CTX);
+    expect(missing.result?.isError).toBe(true);
+    expect(resultText(missing.result)).toContain("connection_id is required");
+    const bad = await harness.request("tools/call", { name: "list_remediation_actions", arguments: { connection_id: "conn-1", status: ["done"] } }, CTX);
+    expect(bad.result?.isError ?? Boolean(bad.error)).toBe(true);
+    expect(urls).toEqual([]);
+    await harness.close();
+  });
+
+  it("finds a notebook by the incident or report it belongs to", async () => {
+    const { proxy, urls } = makeUrlProxy({ notebook: { id: "nb-1" }, cells: [] });
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    await harness.request("tools/call", { name: "get_investigation_notebook", arguments: { attached_to: "incident_observe", ref: "inc/1" } }, CTX);
+    const bad = await harness.request("tools/call", { name: "get_investigation_notebook", arguments: { attached_to: "scratch", ref: "x" } }, CTX);
+    expect(bad.result?.isError ?? Boolean(bad.error)).toBe(true);
+    expect(urls).toEqual(["GET /api/notebooks/attached/incident_observe/inc%2F1"]);
+    await harness.close();
+  });
+});
+
+describe("AI governance tools", () => {
+  it("projects AI usage, egress and requests onto /api/ai-usage", async () => {
+    const { proxy, urls } = makeUrlProxy({ models: [{ name: "Sonnet" }], requests: [], total: 0 });
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    const usage = await harness.request("tools/call", { name: "get_ai_usage", arguments: { days: 30 } }, CTX);
+    expect(JSON.parse(resultText(usage.result))).toMatchObject({ summary: { models: [{ name: "Sonnet" }] }, models: [{ name: "Sonnet" }] });
+    await harness.request("tools/call", { name: "get_ai_data_egress", arguments: { q: "orders" } }, CTX);
+    await harness.request("tools/call", { name: "list_ai_requests", arguments: { origin: "mcp", limit: 10, offset: 20, days: 7 } }, CTX);
+    await harness.request("tools/call", { name: "list_ai_requests", arguments: {} }, CTX);
+    await harness.request("tools/call", { name: "get_ai_request", arguments: { id: "req-1" } }, CTX);
+    expect(urls).toEqual([
+      "GET /api/ai-usage/summary?days=30",
+      "GET /api/ai-usage/models?days=30",
+      "GET /api/ai-usage/egress?q=orders",
+      "GET /api/ai-usage/requests?days=7&origin=mcp&limit=10&offset=20",
+      "GET /api/ai-usage/requests",
+      "GET /api/ai-usage/requests/req-1",
+    ]);
+    const bad = await harness.request("tools/call", { name: "list_ai_requests", arguments: { origin: "browser" } }, CTX);
+    expect(bad.result?.isError ?? Boolean(bad.error)).toBe(true);
+    await harness.close();
+  });
+
+  it("summarizes the agent registry without prompts or skill files", async () => {
+    const registry = {
+      version: 4,
+      features: [{ id: "optimize-query", title: "Optimize query", surface: "sql-editor", background: false, agentId: "a-1", variables: { query: {} } }],
+      agents: [{
+        id: "a-1", slug: "sql-optimizer", name: "SQL Optimizer", description: "Optimizes SQL", kind: "agent", systemPrompt: "SECRET PROMPT", taskTemplate: "TASK",
+        modelConfigId: null, harnessId: "h-1", tuning: { stepBudget: 8 }, requiredPermissions: [], tools: ["explain_query"],
+        skills: [{ skillId: "s-1", mode: "listed", pinnedFile: null }], subagents: [], enabled: true, isSystem: true, seedHash: "x",
+        customized: false, version: 2, createdBy: null, createdAt: 1, updatedAt: 2, updateAvailable: false, usedBy: ["feature 'Optimize query'"],
+      }],
+      harnesses: [{ id: "h-1", slug: "focused", name: "Focused", description: "", excludedTools: ["task"], generalPurpose: { enabled: false }, promptSuffix: "SUFFIX", toolDescriptionOverrides: {}, isSystem: true, seedHash: null, customized: false, version: 1, createdBy: null, createdAt: 0, updatedAt: 0, updateAvailable: false, usedBy: [] }],
+      skills: [{ id: "s-1", name: "optimizer", path: "ai-optimizer/optimizer", description: "Rules", skillMd: "SKILL BODY", files: { "a.md": "FILE" }, enabled: true, isSystem: true, seedHash: null, customized: false, version: 1, createdBy: null, createdAt: 0, updatedAt: 0, updateAvailable: false, usedBy: [] }],
+      tools: [{ name: "explain_query" }],
+      problems: [],
+    };
+    const { proxy, urls } = makeUrlProxy(registry);
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    const { result } = await harness.request("tools/call", { name: "list_ai_agents", arguments: {} }, CTX);
+    const text = resultText(result);
+    expect(urls).toEqual(["GET /api/ai-agents/registry"]);
+    for (const hidden of ["SECRET PROMPT", "TASK", "SUFFIX", "SKILL BODY", "FILE"]) expect(text).not.toContain(hidden);
+    expect(JSON.parse(text)).toMatchObject({
+      version: 4,
+      features: [{ id: "optimize-query", agentId: "a-1" }],
+      agents: [{ slug: "sql-optimizer", builtIn: true, harnessId: "h-1", tools: ["explain_query"], skillIds: ["s-1"], subagentIds: [] }],
+      harnesses: [{ slug: "focused", excludedTools: ["task"] }],
+      skills: [{ name: "optimizer", path: "ai-optimizer/optimizer" }],
+    });
+    await harness.close();
+  });
+
+  it("offers usage tools to chat and optimize users, and the registry only with ai_agents:view", async () => {
+    const { proxy } = makeProxy({});
+    const chat = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.AI_CHAT] }));
+    expect(chat.sort()).toEqual(["get_ai_data_egress", "get_ai_request", "get_ai_usage", "list_ai_requests", "whoami"]);
+    const registry = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.AI_AGENTS_VIEW] }));
+    expect(registry.sort()).toEqual(["list_ai_agents", "whoami"]);
   });
 });

@@ -1,7 +1,7 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **Agents › Assistant** is built from that is defined in code: the 47 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 59 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
@@ -61,6 +61,18 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `fleet_snapshots` | Fleet snapshot | Your CHouse access | `fleet:view` | Latest health snapshot of every ClickHouse node (memory, CPU, queries, replication). | 1 |
 | `list_agent_sessions` | Agent sessions | Your CHouse access | `agents:view` | External agents (MCP / access tokens) active in the last N days: queries, bytes read, warnings, blocks. | 1 |
 | `get_agent_governance` | Agent governance | Your CHouse access | `agents:view` | Agent budget policies or the MCP endpoint settings and enabled tools. | 1 |
+| `get_ai_usage` | AI usage | Your CHouse access | `ai_usage:view`, `ai:chat`, `ai:optimize` | CHouse's own AI usage in a window: the summary (requests, tokens, estimated cost, split by origin: UI, MCP agents, tokens, background), usage by model, or the data sent to LLM providers by source. `scope` says whether it covers everyone or only the user's own requests. | 1 |
+| `list_ai_requests` | AI requests | Your CHouse access | `ai_usage:view`, `ai:chat`, `ai:optimize` | Recent AI requests, newest first: user, origin (UI, MCP agent, token, background), token and client, agent, tokens, cost, ClickHouse read, rows sent and status. | 1 |
+| `get_ai_request` | AI request | Your CHouse access | `ai_usage:view`, `ai:chat`, `ai:optimize` | One AI request step by step: each LLM call with tokens and cost, each tool call with its ClickHouse queries and the data it sent to the model. | 1 |
+| `list_ai_agents` | AI agents | Your CHouse access | `ai_agents:view` | How CHouse's AI is set up: which agent each AI feature runs, and each agent's model config, harness, tools, skills, subagents and tuning, whether it is built in or customized and has an update. Prompts and skill files are left out. | 1 |
+| `get_query_regressions` | Query regressions | Your CHouse access | `performance:view` | Query shapes slower or heavier than their own baseline on a connection, with the upgrades, DDL and setting changes around their onset. | 1 |
+| `get_capacity` | Capacity | Your CHouse access | `capacity:view` | Disk forecasts per node (days until the threshold), fastest-growing and cold tables, codec trials, and cost by consumer with cost:view. | 1 |
+| `list_upgrade_assessments` | Upgrade assessments | Your CHouse access | `upgrades:view` | Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays. | 1 |
+| `get_upgrade_rollout` | Upgrade rollout | Your CHouse access | `upgrades:view` | Every connection the user can use with its ClickHouse version and rollout gates (replica lag, open regressions, sick replicas). | 1 |
+| `get_collector_status` | Collector status | Your CHouse access | `observe:view` | Each observability collector of a connection: state, last run and success, last error, missing grants, paused, and what its last run read. | 1 |
+| `get_collector_schedule` | Collection schedule | Your CHouse access | `connections:view` | How often each observability collector runs and whether it is paused: the defaults, or one connection's effective schedule with its overrides and bytes read per day. | 1 |
+| `list_remediation_actions` | Remediation actions | Your CHouse access | `remediation:propose`, `remediation:approve`, `remediation:approve_high` | Proposed and past fixes on a connection: type, parameters, who proposed it and why, approvals, status and incident. | 1 |
+| `get_investigation_notebook` | Investigation notebook | Your CHouse access | `data_health:view`, `observe:view`, `doctor:view` | The notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. | 1 |
 
 ## Built-in DeepAgents tools
 

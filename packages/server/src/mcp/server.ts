@@ -18,7 +18,9 @@ import { registerCoreTools } from "./tools/core";
 import { registerExploreTools } from "./tools/explore";
 import { registerQueryTools } from "./tools/query";
 import { registerObserveTools } from "./tools/observe";
-import { registerDataObservabilityTools, registerRemediationProposalTool } from "./tools/dataObservability";
+import { registerDataObservabilityTools, registerRemediationProposalTool, registerRemediationReadTools } from "./tools/dataObservability";
+import { registerPerformanceTools } from "./tools/performance";
+import { registerAiGovernanceTools } from "./tools/aiGovernance";
 import { registerWriteTools } from "./tools/writes";
 import { registerDestructiveTools } from "./tools/destructive";
 import { registerAiTools } from "./tools/ai";
@@ -51,10 +53,13 @@ export function collectTools(deps: McpDeps): ChouseToolRegistration[] {
   registerQueryTools(sink, deps);
   registerObserveTools(sink, deps);
   registerDataObservabilityTools(sink, deps);
+  registerRemediationReadTools(sink, deps);
+  registerPerformanceTools(sink, deps);
   registerWriteTools(sink, deps);
   registerRemediationProposalTool(sink, deps);
   registerDestructiveTools(sink, deps);
   registerAiTools(sink, deps);
+  registerAiGovernanceTools(sink, deps);
   return tools;
 }
 

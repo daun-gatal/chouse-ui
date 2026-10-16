@@ -78,6 +78,7 @@ function cases(): Case[] {
     { method: "GET", path: "/agents/mcp", permissions: ["agents:view"] },
     { method: "PUT", path: "/agents/mcp", permissions: ["agents:manage"], body: { enabled: false } },
     { method: "POST", path: "/notebooks/ensure", permissions: ["doctor:view"], body: { kind: "doctor_report", ref: "missing" } },
+    { method: "GET", path: "/notebooks/attached/doctor_report/missing", permissions: ["doctor:view"] },
   ];
 }
 
@@ -149,6 +150,26 @@ describe("ADR 0016 RBAC gates", () => {
       body: "{}",
     });
     expect(res.status).toBe(403);
+  });
+
+  it("finds a notebook by what it is attached to, without creating one", async () => {
+    const doctor = { headers: { Authorization: `Bearer ${await token(["doctor:view"])}` } };
+    const none = await app.request("/notebooks/attached/doctor_report/report-nb", doctor);
+    expect(none.status).toBe(404);
+    await rawRun(sql`INSERT INTO notebooks (id, title, owner_id, attached_kind, attached_ref, connection_id, created_at, updated_at)
+      VALUES ('nb-1', 'Doctor report', NULL, 'doctor_report', 'report-nb', NULL, 1, 1)`);
+    await rawRun(sql`INSERT INTO notebook_cells (id, notebook_id, position, kind, author_kind, author_id, content, created_at, updated_at)
+      VALUES ('cell-1', 'nb-1', 0, 'note', 'user', NULL, ${JSON.stringify({ text: "replica lag after deploy" })}, 1, 1)`);
+    const found = await app.request("/notebooks/attached/doctor_report/report-nb", doctor);
+    expect(found.status).toBe(200);
+    const body = (await found.json()) as { data: { notebook: { id: string }; cells: Array<{ id: string }> } };
+    expect(body.data.notebook.id).toBe("nb-1");
+    expect(body.data.cells.map((c) => c.id)).toEqual(["cell-1"]);
+    expect((await app.request("/notebooks/attached/scratch/report-nb", doctor)).status).toBe(400);
+    // An incident notebook needs that incident's view permission, and the incident itself.
+    expect((await app.request("/notebooks/attached/incident_observe/x", doctor)).status).toBe(403);
+    const observeView = { headers: { Authorization: `Bearer ${await token(["observe:view"])}` } };
+    expect((await app.request("/notebooks/attached/incident_observe/missing", observeView)).status).toBe(404);
   });
 
   it("enforces connection access", async () => {

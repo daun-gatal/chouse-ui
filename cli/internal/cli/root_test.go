@@ -13,8 +13,8 @@ func TestCommandTreeComplete(t *testing.T) {
 	want := []string{
 		"status", "auth", "config", "connection", "version",
 		"query", "table", "saved", "upload",
-		"metrics", "logs", "live", "fleet", "scheduled", "alert", "audit",
-		"health", "lineage", "incidents", "remediation",
+		"metrics", "logs", "live", "fleet", "perf", "capacity", "upgrades", "collectors", "scheduled", "alert", "audit",
+		"health", "lineage", "incidents", "remediation", "context", "notebook",
 		"ai", "doctor", "agents", "mcp",
 	}
 	seen := map[string]bool{}

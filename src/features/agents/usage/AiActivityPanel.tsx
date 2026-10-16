@@ -9,7 +9,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Activity, AlertTriangle, Search } from "lucide-react";
 
-import type { AiEgressSource, AiModelUsage, AiUsageRequest, AiUsageSummary } from "@/api/aiUsage";
+import { AI_REQUEST_ORIGINS, type AiEgressSource, type AiModelUsage, type AiRequestOrigin, type AiUsageRequest, type AiUsageSummary } from "@/api/aiUsage";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,10 +23,12 @@ import {
   featureLabel,
   formatTokens,
   formatUsd,
+  ORIGIN_LABEL,
   providerLabel,
   REQUEST_STATUS,
   requestCost,
   plural,
+  requestCaller,
   requestOrigin,
   requestTokens,
   USAGE_WINDOWS,
@@ -70,6 +72,29 @@ function Kpis({ summary }: { summary: AiUsageSummary }): ReactElement {
       <Kpi label="Sent to providers" value={plural(summary.egressRows, "row", formatCount(summary.egressRows))} meta={`${plural(summary.egressSources, "source")} · ${formatBytes(summary.egressBytes)}`} />
     </div>
   );
+}
+
+/** Requests by who started them: the UI, MCP agents, access tokens or the background. */
+function OriginBreakdown({ summary }: { summary: AiUsageSummary }): ReactElement | null {
+  if (summary.byOrigin.length === 0) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-paper-muted" aria-label="Requests by origin">
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">By origin</span>
+      {summary.byOrigin.map((o) => (
+        <span key={o.origin} className="whitespace-nowrap">
+          <span className="text-paper">{ORIGIN_LABEL[o.origin]}</span>{" "}
+          {plural(o.requests, "request", formatCount(o.requests))} · {formatTokens(o.inputTokens + o.outputTokens)} tokens · {formatUsd(o.costUsd)}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** "all" or one origin, for the request list filter. */
+const ALL_ORIGINS = "all";
+
+function isRequestOrigin(value: string): value is AiRequestOrigin {
+  return (AI_REQUEST_ORIGINS as readonly string[]).includes(value);
 }
 
 function ColumnList({ columns }: { columns: string[] }): ReactElement {
@@ -163,12 +188,14 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
   const [search, setSearch] = useState("");
   const q = useDebounce(search.trim(), 300);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
-  // The page belongs to one search, window and page size; a new one starts from the first page.
-  const pageKey = `${days}|${q}|${pageSize}`;
+  const [origin, setOrigin] = useState<AiRequestOrigin | null>(null);
+  // The page belongs to one search, origin, window and page size; a new one starts from the first page.
+  const pageKey = `${days}|${q}|${origin ?? ALL_ORIGINS}|${pageSize}`;
   const [paging, setPaging] = useState({ key: pageKey, page: 0 });
   const pageIndex = paging.key === pageKey ? paging.page : 0;
   const setPageIndex = (next: number): void => setPaging({ key: pageKey, page: next });
-  const result = useAiUsageRequests(days, q, pageIndex * pageSize, pageSize);
+  const result = useAiUsageRequests(days, q, origin, pageIndex * pageSize, pageSize);
+  const filtered = Boolean(q) || origin !== null;
   const total = result.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rows = result.data?.requests ?? [];
@@ -178,16 +205,25 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
       title={own ? "Your recent AI requests" : "Recent AI requests"}
       meta={result.data ? `Newest first · ${formatCount(total)} in this window` : "Newest first"}
       actions={
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-faint" aria-hidden />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={own ? "Agent, feature or table" : "User, agent, feature or table"} aria-label="Search AI requests" className="h-8 w-60 rounded-xs pl-7 text-[12px]" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={origin ?? ALL_ORIGINS} onValueChange={(v) => setOrigin(isRequestOrigin(v) ? v : null)}>
+            <SelectTrigger className="h-8 w-36 rounded-xs text-[11px]" aria-label="Origin"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_ORIGINS}>All origins</SelectItem>
+              {AI_REQUEST_ORIGINS.map((o) => <SelectItem key={o} value={o}>{ORIGIN_LABEL[o]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-faint" aria-hidden />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={own ? "Agent, feature, table or token" : "User, agent, feature, table or token"} aria-label="Search AI requests" className="h-8 w-60 rounded-xs pl-7 text-[12px]" />
+          </div>
         </div>
       }
     >
       {result.isLoading ? <LoadingGrid count={2} /> : result.isError || !result.data ? (
         <ErrorState title="AI requests could not be loaded." error={result.error} />
       ) : rows.length === 0 ? (
-        <EmptyState icon={Activity} title={q ? "No requests match" : "No AI requests yet"} body={q ? "Try another user, agent, feature or table." : "Requests appear here once the chat or an AI feature runs."} />
+        <EmptyState icon={Activity} title={filtered ? "No requests match" : "No AI requests yet"} body={filtered ? "Try another origin, user, agent, feature, table or token." : "Requests appear here once the chat or an AI feature runs."} />
       ) : (
         <div className="overflow-hidden rounded-xs border border-ink-500">
           <DataTable label="AI requests, newest first" scrollClassName={REQUESTS_TABLE_SCROLL} head={own ? ["When ↓", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"] : ["When ↓", "User", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"]}>
@@ -195,7 +231,7 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
               <tr key={r.id} className="cursor-pointer hover:bg-ink-200/50" onClick={() => onOpen(r.id)}>
                 <td className="whitespace-nowrap text-paper-muted" title={new Date(r.startedAt).toLocaleString()}>
                   {formatAgo(r.startedAt)}
-                  {pageIndex === 0 && i === 0 && !q && <StatusPill tone="brand" dot={false} className="ml-2">Latest</StatusPill>}
+                  {pageIndex === 0 && i === 0 && !filtered && <StatusPill tone="brand" dot={false} className="ml-2">Latest</StatusPill>}
                 </td>
                 {!own && <td className="text-[12px] text-paper">{r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user")}</td>}
                 <td>
@@ -203,6 +239,7 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
                     {r.agentName ?? featureLabel(r.featureId)}
                   </button>
                   <span className="block text-[10px] text-paper-faint">{requestOrigin(r.source, r.featureId)}</span>
+                  {requestCaller(r) && <span className="block text-[10px] text-paper-faint">{requestCaller(r)}</span>}
                 </td>
                 <td className="whitespace-nowrap tabular-nums">{requestTokens(r)}</td>
                 <td className="whitespace-nowrap tabular-nums">{requestCost(r)}</td>
@@ -279,6 +316,7 @@ export function AiActivityPanel(): ReactElement {
             </Banner>
           )}
           <Kpis summary={summary.data} />
+          <OriginBreakdown summary={summary.data} />
         </>
       )}
 

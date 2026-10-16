@@ -355,7 +355,7 @@ function mcpToolsPage(): string {
   return page(
     "the MCP tool registry in packages/server/src/mcp",
     `
-All ${counts.total} tools the [MCP server](/docs/mcp/) offers. ${counts.on} are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **Agents › MCP**, one tool or one category at a time.
+All ${counts.total} tools the [MCP server](/docs/mcp/) offers. ${counts.on} are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in \`tools/list\` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -610,7 +610,7 @@ function aiFeaturesPage(): string {
   return page(
     "packages/server/src/services/ai (feature contracts and seeds)",
     `
-Every AI feature in CHouse UI, where it appears, what it needs, the template variables it hands its agent, and the agent it runs on after a fresh install. Rebind a feature or edit its agent in **Agents › Assistant** — see [AI agents](/docs/ai-agents/).
+Every AI feature in CHouse UI, where it appears, what it needs, the template variables it hands its agent, and the agent it runs on after a fresh install. Rebind a feature or edit its agent in **AI Governance › Assistant** — see [AI agents](/docs/ai-agents/).
 
 **Needs** is the permission a user must hold to use the feature; the route checks it before any agent runs. **Tools may use** is the run context the feature gives its agent's tools — an agent bound to a feature can only use tools whose context the feature provides:
 
@@ -679,7 +679,7 @@ function aiToolsPage(): string {
   return page(
     "packages/server/src/services/ai/registry (catalog, harness) and seeds",
     `
-Everything an agent in **Agents › Assistant** is built from that is defined in code: the ${catalog.length} catalog tools, the built-in DeepAgents tools a harness can hide, and the ${SEED_SKILLS.length} skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the ${catalog.length} catalog tools, the built-in DeepAgents tools a harness can hide, and the ${SEED_SKILLS.length} skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 

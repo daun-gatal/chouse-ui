@@ -3,7 +3,7 @@
  */
 
 import { formatProviderType, PROVIDER_TYPES, type ProviderType } from "@/constants/aiProviders";
-import type { AiRequestStatus, AiStepStatus, AiUsageRequest, AiUsageStep } from "@/api/aiUsage";
+import type { AiOriginUsage, AiRequestStatus, AiStepStatus, AiUsageRequest, AiUsageStep } from "@/api/aiUsage";
 
 /** The windows the tab offers; the server clamps to its retention. */
 export const USAGE_WINDOWS = [
@@ -70,6 +70,26 @@ export function requestOrigin(source: keyof typeof SOURCE_LABEL | string, featur
   const label = source in SOURCE_LABEL ? SOURCE_LABEL[source as keyof typeof SOURCE_LABEL] : source;
   const feature = featureLabel(featureId);
   return feature === label ? label : `${label} · ${feature}`;
+}
+
+/** Who started a request, as the filter and the breakdown name it. */
+export const ORIGIN_LABEL: Record<AiOriginUsage["origin"], string> = {
+  ui: "CHouse UI",
+  mcp: "MCP agents",
+  token: "Access tokens",
+  background: "Background",
+  unknown: "Not recorded",
+};
+
+/**
+ * The agent or token behind an MCP or token request ("MCP · Claude Code · token
+ * ci-agent"); null for the UI, background and unrecorded requests, which the
+ * user and feature already describe.
+ */
+export function requestCaller(request: Pick<AiUsageRequest, "origin" | "patId" | "patName" | "clientName">): string | null {
+  if (request.origin !== "mcp" && request.origin !== "token") return null;
+  const token = request.patName ? `token ${request.patName}` : request.patId ? "a deleted token" : null;
+  return [request.origin === "mcp" ? "MCP" : "Access token", request.clientName, token].filter(Boolean).join(" · ");
 }
 
 export const REQUEST_STATUS: Record<AiRequestStatus, { label: string; tone: "ok" | "warn" | "bad" }> = {

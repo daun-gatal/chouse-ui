@@ -18,6 +18,8 @@ import { createAgentTool, type AgentTool, type AgentToolSet } from "../langchain
 import type { AgentRunContext } from "../types";
 import { InProcessApiClient } from "./inProcessApi";
 import { recordChouseSource } from "../usage";
+import { ACTION_STATUSES } from "../../remediation/store";
+import { summarizeRegistry, type RegistryPayload } from "./summary";
 import type { ToolContextKind } from "./types";
 
 export type ToolDomain = "clickhouse" | "chouse";
@@ -230,17 +232,20 @@ function rowsOf(data: unknown): unknown {
   return { ...Object.fromEntries(entries.filter(([k]) => k !== key)), rows };
 }
 
-interface ApiToolSpec {
+interface ApiToolSpec<T> {
   name: string;
   title: string;
   category: string;
   permissions: Permission[];
   description: string;
   schema?: z.ZodObject<z.ZodRawShape>;
-  request: (args: Record<string, unknown>) => { path: string; query?: Record<string, string | undefined> };
+  /** The GET to make; `connectionId` is the chat's active connection. Throws to refuse the call. */
+  request: (args: Record<string, unknown>, run: { connectionId?: string }) => { path: string; query?: Record<string, string | undefined> };
+  /** Reshape the route's payload before caps (e.g. drop fields an agent does not need). */
+  project?: (data: T) => unknown;
 }
 
-function apiTool(spec: ApiToolSpec): CatalogTool {
+function apiTool<T = unknown>(spec: ApiToolSpec<T>): CatalogTool {
   const schema = spec.schema ?? z.object({});
   return {
     name: spec.name,
@@ -259,8 +264,9 @@ function apiTool(spec: ApiToolSpec): CatalogTool {
         inputSchema: schema,
         execute: async (args: Record<string, unknown>) => {
           try {
-            const { path, query } = spec.request(args);
-            const { data, truncated } = applyCaps(rowsOf(await client.get(path, query)), MANAGEMENT_RESULT_CAPS);
+            const { path, query } = spec.request(args, { connectionId: runtime.ctx.connectionId });
+            const payload = await client.get<T>(path, query);
+            const { data, truncated } = applyCaps(rowsOf(spec.project ? spec.project(payload) : payload), MANAGEMENT_RESULT_CAPS);
             recordChouseSource(spec.title, data);
             return truncated ? { truncated: true, data } : data;
           } catch (error: unknown) {
@@ -274,6 +280,11 @@ function apiTool(spec: ApiToolSpec): CatalogTool {
 
 const str = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 const int = (value: unknown, fallback: number, max: number): string => String(Math.min(max, Math.max(1, typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback)));
+const optionalInt = (value: unknown): string | undefined => (typeof value === "number" && Number.isFinite(value) ? String(Math.round(value)) : undefined);
+
+const AI_USAGE_PERMISSIONS = [PERMISSIONS.AI_USAGE_VIEW, PERMISSIONS.AI_CHAT, PERMISSIONS.AI_OPTIMIZE];
+const NOTEBOOK_ATTACHMENTS = ["incident_data_health", "incident_observe", "doctor_report"] as const;
+const CONNECTION_SCHEMA = z.object({ connectionId: z.string().optional().describe("Connection id (defaults to the active connection)") });
 
 const managementTools: CatalogTool[] = [
   apiTool({
@@ -428,6 +439,110 @@ const managementTools: CatalogTool[] = [
     schema: z.object({ part: z.enum(["policies", "mcp"]).describe("policies or mcp") }),
     request: (a) => ({ path: a.part === "mcp" ? "/api/agents/mcp" : "/api/agents/policies" }),
   }),
+  apiTool({
+    name: "get_ai_usage", title: "AI usage", category: "ai", permissions: AI_USAGE_PERMISSIONS,
+    description:
+      "CHouse's own AI usage in a window: the summary (requests, tokens, estimated cost, split by origin: UI, MCP agents, tokens, background), " +
+      "usage by model, or the data sent to LLM providers by source. `scope` says whether it covers everyone or only the user's own requests.",
+    schema: z.object({
+      part: z.enum(["summary", "models", "egress"]).describe("summary, models or egress (data sent to providers)"),
+      days: z.number().int().min(1).max(365).optional().describe("Window in days (default 7; capped at retention)"),
+      q: z.string().optional().describe("egress only: sources whose name contains this text"),
+    }),
+    request: (a) => ({ path: `/api/ai-usage/${segment(String(a.part))}`, query: { days: optionalInt(a.days), q: a.part === "egress" ? str(a.q) : undefined } }),
+  }),
+  apiTool({
+    name: "list_ai_requests", title: "AI requests", category: "ai", permissions: AI_USAGE_PERMISSIONS,
+    description: "Recent AI requests, newest first: user, origin (UI, MCP agent, token, background), token and client, agent, tokens, cost, ClickHouse read, rows sent and status.",
+    schema: z.object({
+      days: z.number().int().min(1).max(365).optional().describe("Window in days (default 7)"),
+      q: z.string().optional().describe("Match on user, agent, feature, client, token name or a table sent to the model"),
+      origin: z.enum(["ui", "mcp", "token", "background"]).optional().describe("Only requests with this origin"),
+      limit: z.number().int().min(1).max(100).optional().describe("Rows to return (default 50)"),
+    }),
+    request: (a) => ({ path: "/api/ai-usage/requests", query: { days: optionalInt(a.days), q: str(a.q), origin: str(a.origin), limit: int(a.limit, 50, 100) } }),
+  }),
+  apiTool({
+    name: "get_ai_request", title: "AI request", category: "ai", permissions: AI_USAGE_PERMISSIONS,
+    description: "One AI request step by step: each LLM call with tokens and cost, each tool call with its ClickHouse queries and the data it sent to the model.",
+    schema: z.object({ id: z.string().min(1).describe("AI request id") }),
+    request: (a) => ({ path: `/api/ai-usage/requests/${segment(String(a.id))}` }),
+  }),
+  apiTool<RegistryPayload>({
+    name: "list_ai_agents", title: "AI agents", category: "ai", permissions: [PERMISSIONS.AI_AGENTS_VIEW],
+    description:
+      "How CHouse's AI is set up: which agent each AI feature runs, and each agent's model config, harness, tools, skills, subagents and tuning, " +
+      "whether it is built in or customized and has an update. Prompts and skill files are left out.",
+    request: () => ({ path: "/api/ai-agents/registry" }),
+    project: summarizeRegistry,
+  }),
+];
+
+/** Operations tools for performance, capacity, upgrades, collectors, fixes and notebooks (ADR 0016). */
+const operationsTools: CatalogTool[] = [
+  apiTool({
+    name: "get_query_regressions", title: "Query regressions", category: "operations", permissions: [PERMISSIONS.PERFORMANCE_VIEW],
+    description: "Query shapes slower or heavier than their own baseline on a connection, with the upgrades, DDL and setting changes around their onset.",
+    schema: CONNECTION_SCHEMA,
+    request: (a) => ({ path: "/api/observe/performance", query: { connectionId: str(a.connectionId) } }),
+  }),
+  apiTool({
+    name: "get_capacity", title: "Capacity", category: "operations", permissions: [PERMISSIONS.CAPACITY_VIEW],
+    description: "Disk forecasts per node (days until the threshold), fastest-growing and cold tables, codec trials, and cost by consumer with cost:view.",
+    schema: CONNECTION_SCHEMA,
+    request: (a) => ({ path: "/api/observe/capacity", query: { connectionId: str(a.connectionId) } }),
+  }),
+  apiTool({
+    name: "list_upgrade_assessments", title: "Upgrade assessments", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
+    description: "Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.",
+    schema: CONNECTION_SCHEMA,
+    request: (a) => ({ path: "/api/upgrades/assessments", query: { connectionId: str(a.connectionId) } }),
+  }),
+  apiTool({
+    name: "get_upgrade_rollout", title: "Upgrade rollout", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
+    description: "Every connection the user can use with its ClickHouse version and rollout gates (replica lag, open regressions, sick replicas).",
+    request: () => ({ path: "/api/upgrades/rollout" }),
+  }),
+  apiTool({
+    name: "get_collector_status", title: "Collector status", category: "operations", permissions: [PERMISSIONS.OBSERVE_VIEW],
+    description: "Each observability collector of a connection: state, last run and success, last error, missing grants, paused, and what its last run read.",
+    schema: CONNECTION_SCHEMA,
+    request: (a) => ({ path: "/api/observe/status", query: { connectionId: str(a.connectionId) } }),
+  }),
+  apiTool({
+    name: "get_collector_schedule", title: "Collection schedule", category: "operations", permissions: [PERMISSIONS.CONNECTIONS_VIEW],
+    description: "How often each observability collector runs and whether it is paused: the defaults, or one connection's effective schedule with its overrides and bytes read per day.",
+    schema: z.object({ connectionId: z.string().optional().describe("A connection's schedule; omit for the defaults") }),
+    request: (a) => {
+      const connectionId = str(a.connectionId);
+      return { path: connectionId ? `/api/observe/collectors/schedule/${segment(connectionId)}` : "/api/observe/collectors/schedule" };
+    },
+  }),
+  apiTool({
+    name: "list_remediation_actions", title: "Remediation actions", category: "operations",
+    permissions: [PERMISSIONS.REMEDIATION_PROPOSE, PERMISSIONS.REMEDIATION_APPROVE, PERMISSIONS.REMEDIATION_APPROVE_HIGH],
+    description: "Proposed and past fixes on a connection: type, parameters, who proposed it and why, approvals, status and incident.",
+    schema: z.object({
+      connectionId: z.string().optional().describe("Connection id (defaults to the active connection)"),
+      status: z.array(z.enum(ACTION_STATUSES)).optional().describe("Only actions in these statuses"),
+    }),
+    request: (a, run) => {
+      const connectionId = str(a.connectionId) ?? run.connectionId;
+      if (!connectionId) throw new Error("No connection: pass connectionId");
+      const statuses = Array.isArray(a.status) ? a.status.filter((s): s is string => typeof s === "string") : [];
+      return { path: "/api/remediation/actions", query: { connectionId, status: statuses.length > 0 ? statuses.join(",") : undefined } };
+    },
+  }),
+  apiTool({
+    name: "get_investigation_notebook", title: "Investigation notebook", category: "operations",
+    permissions: [PERMISSIONS.DATA_HEALTH_VIEW, PERMISSIONS.OBSERVE_VIEW, PERMISSIONS.DOCTOR_VIEW],
+    description: "The notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order.",
+    schema: z.object({
+      attachedTo: z.enum(NOTEBOOK_ATTACHMENTS).describe("incident_data_health, incident_observe or doctor_report"),
+      ref: z.string().min(1).describe("The incident or Doctor report id"),
+    }),
+    request: (a) => ({ path: `/api/notebooks/attached/${segment(String(a.attachedTo))}/${segment(String(a.ref))}` }),
+  }),
 ];
 
 // ============================================
@@ -441,6 +556,7 @@ export const TOOL_CATALOG: readonly CatalogTool[] = [
   boundedAggregateTool,
   queryNode,
   ...managementTools,
+  ...operationsTools,
 ];
 
 const BY_NAME = new Map(TOOL_CATALOG.map((entry) => [entry.name, entry]));

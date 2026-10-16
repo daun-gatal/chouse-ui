@@ -1,13 +1,14 @@
 /**
  * Data observability tools (ADR 0016 §10): dataset health, lineage, curated
- * context, metrics, pipeline status and incidents (read-only), plus
- * `propose_remediation` (a write tool, off by default), which only files a
- * proposal. Approval and execution stay with humans in the UI, CLI or Slack;
+ * context, metrics, pipeline status, incidents, remediation actions and
+ * investigation notebooks (read-only), plus `propose_remediation` (a write
+ * tool, off by default), which only files a proposal. Approval and execution stay with humans in the UI, CLI or Slack;
  * an MCP proposal is never self-approved.
  */
 
 import { z } from "zod";
 import { PERMISSIONS } from "../../rbac/schema/base";
+import { ACTION_STATUSES } from "../../services/remediation/store";
 import type { McpDeps } from "../types";
 import { apiFor, argEnum, argOptionalString, argString, registerChouseTool, type McpToolSink, runApiTool, toolContext } from "./helpers";
 
@@ -51,6 +52,23 @@ const proposeSchema: Record<string, z.ZodTypeAny> = {
   incident_id: z.string().max(64).optional().describe("Incident id this fixes"),
   connection_id: connectionArg,
 };
+
+const actionsSchema: Record<string, z.ZodTypeAny> = {
+  status: z.array(z.enum(ACTION_STATUSES)).min(1).optional().describe("Only actions in these statuses (e.g. proposed, approved, failed)"),
+  incident_id: z.string().min(1).max(64).optional().describe("Only actions proposed for this incident"),
+  connection_id: connectionArg,
+};
+
+const actionSchema: Record<string, z.ZodTypeAny> = { id: z.string().min(1).describe("Remediation action id") };
+
+const NOTEBOOK_ATTACHMENTS = ["incident_data_health", "incident_observe", "doctor_report"] as const;
+
+const notebookSchema: Record<string, z.ZodTypeAny> = {
+  attached_to: z.enum(NOTEBOOK_ATTACHMENTS).describe("What the notebook belongs to: a Data Health incident, an observability incident or a Doctor report"),
+  ref: z.string().min(1).max(100).describe("The incident id (from list_incidents) or Doctor report id"),
+};
+
+const ANY_REMEDIATION = [PERMISSIONS.REMEDIATION_PROPOSE, PERMISSIONS.REMEDIATION_APPROVE, PERMISSIONS.REMEDIATION_APPROVE_HIGH];
 
 function connectionOf(args: Record<string, unknown>, fallback: string | undefined): string | undefined {
   return argOptionalString(args, "connection_id") ?? fallback;
@@ -173,6 +191,71 @@ export function registerDataObservabilityTools(sink: McpToolSink, deps: McpDeps)
       const query: Record<string, string> = { status: argEnum(args, "status", ["active", "all"]) ?? "active" };
       if (connectionId) query.connectionId = connectionId;
       return runApiTool(ctx, api, "list_incidents", connectionId, () => api.request("GET", "/api/observe/incidents", { query }));
+    },
+  });
+}
+
+export function registerRemediationReadTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
+    name: "list_remediation_actions",
+    title: "Remediation actions",
+    category: "data_observability",
+    access: "read",
+    permissions: ANY_REMEDIATION,
+    description:
+      "Proposed and past fixes on a connection: action type and parameters, who proposed it and why, approvals needed and given, status and the incident it addresses.",
+    inputSchema: actionsSchema,
+    handler: async (args, extra) => {
+      const ctx = toolContext(extra);
+      const api = deps.clientFor(ctx);
+      const connectionId = connectionOf(args, ctx.connectionId);
+      const statuses = Array.isArray(args.status) ? args.status.filter((s): s is string => typeof s === "string") : [];
+      const incidentId = argOptionalString(args, "incident_id");
+      return runApiTool(ctx, api, "list_remediation_actions", connectionId, async () => {
+        if (!connectionId) throw new Error("connection_id is required (or pin a connection with X-Connection-Id)");
+        const query: Record<string, string> = { connectionId };
+        if (statuses.length > 0) query.status = statuses.join(",");
+        if (incidentId) query.incidentId = incidentId;
+        return api.request("GET", "/api/remediation/actions", { query });
+      });
+    },
+  });
+
+  registerChouseTool(sink, {
+    name: "get_remediation_action",
+    title: "Remediation action",
+    category: "data_observability",
+    access: "read",
+    permissions: ANY_REMEDIATION,
+    description: "One remediation action with its approvals and every execution: the statements run, verification and rollback.",
+    inputSchema: actionSchema,
+    handler: async (args, extra) => {
+      const ctx = toolContext(extra);
+      const api = deps.clientFor(ctx);
+      const id = argString(args, "id");
+      return runApiTool(ctx, api, "get_remediation_action", id, () => api.request("GET", `/api/remediation/actions/${segment(id)}`));
+    },
+  });
+
+  registerChouseTool(sink, {
+    name: "get_investigation_notebook",
+    title: "Investigation notebook",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.DATA_HEALTH_VIEW, PERMISSIONS.OBSERVE_VIEW, PERMISSIONS.DOCTOR_VIEW],
+    description:
+      "The investigation notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. " +
+      "Needs the view permission of what it belongs to.",
+    inputSchema: notebookSchema,
+    handler: async (args, extra) => {
+      const ctx = toolContext(extra);
+      const api = deps.clientFor(ctx);
+      const kind = argEnum(args, "attached_to", NOTEBOOK_ATTACHMENTS);
+      const ref = argString(args, "ref");
+      return runApiTool(ctx, api, "get_investigation_notebook", `${kind}:${ref}`, async () => {
+        if (!kind) throw new Error(`attached_to must be one of: ${NOTEBOOK_ATTACHMENTS.join(", ")}`);
+        return api.request("GET", `/api/notebooks/attached/${kind}/${segment(ref)}`);
+      });
     },
   });
 }

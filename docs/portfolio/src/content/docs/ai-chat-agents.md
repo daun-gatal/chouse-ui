@@ -14,7 +14,7 @@ The **Chat agent** menu next to the model picker lists every chat agent you may 
 | --- | --- |
 | **Auto · CHouse Assistant** | Routes each question: ClickHouse questions to ClickHouse Data, questions about CHouse to CHouse Admin, and both for questions that span them, combining the answers |
 | **ClickHouse Data** *(default)* | Databases, tables, columns, SQL, query performance, running and slow queries, server info and charts — on your active connection |
-| **CHouse Admin** | Read-only questions about CHouse: who can do what, what failed overnight, what changed this week |
+| **CHouse Admin** | Read-only questions about CHouse: who can do what, what failed overnight, what changed this week, what the AI cost |
 
 Routers come first, marked *Auto*. The default is the agent bound to the **Chat** feature; an administrator can bind another one.
 
@@ -29,8 +29,8 @@ It delegates to three specialists, each with its own [CHouse tools](/docs/ai-too
 | Subagent | Covers |
 | --- | --- |
 | **Access Auditor** | Users, roles and permissions, data access policies, your personal access tokens (never the secret), SSO, ClickHouse users and roles |
-| **Operations Analyst** | Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, Doctor reports, the fleet snapshot |
-| **Platform Auditor** | Connections, AI models, external agents and MCP settings, the audit log |
+| **Operations Analyst** | Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents with their proposed fixes and investigation notebooks, Doctor reports, the fleet snapshot, query regressions, capacity, upgrade readiness and rollout, observability collectors and their schedule |
+| **Platform Auditor** | Connections, AI models, CHouse's AI agents and which feature runs which, [AI activity](/docs/ai-usage/) (usage, estimated cost, data sent to providers), external agents and MCP settings, the audit log |
 
 Things to ask:
 
@@ -38,6 +38,9 @@ Things to ask:
 - *What failed overnight?* — failed scheduled runs and open incidents, with when they happened.
 - *What changed in roles this week?* — audit log entries filtered by action and date.
 - *Which AI model is the default, and who used MCP today?*
+- *Which queries got slower after the upgrade, and which disk fills first?*
+- *Why is Data showing stale numbers for prod?* — collector status (last error, missing grants, paused) and the schedule.
+- *What did MCP agents spend on AI this week, and which tables went to the provider?*
 
 A specialist only gets the tools for which you hold a permission. Ask about users without `users:view` and the answer says you lack access to that area — the agent doesn't try to work around it. Results are capped (100 rows) and secrets such as SSO client secrets, channel webhooks and API keys are redacted before the model sees them.
 

@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 43 tools the [MCP server](/docs/mcp/) offers. 31 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **Agents › MCP**, one tool or one category at a time.
+All 60 tools the [MCP server](/docs/mcp/) offers. 48 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -36,17 +36,29 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`get_metric`](#get_metric) | Read | Yes | `observe:view` |
 | [`get_pipeline_status`](#get_pipeline_status) | Read | Yes | `observe:view` |
 | [`list_incidents`](#list_incidents) | Read | Yes | `observe:view`, `data_health:view` |
+| [`list_remediation_actions`](#list_remediation_actions) | Read | Yes | `remediation:propose`, `remediation:approve`, `remediation:approve_high` |
+| [`get_remediation_action`](#get_remediation_action) | Read | Yes | `remediation:propose`, `remediation:approve`, `remediation:approve_high` |
+| [`get_investigation_notebook`](#get_investigation_notebook) | Read | Yes | `data_health:view`, `observe:view`, `doctor:view` |
 | [`propose_remediation`](#propose_remediation) | Write | No | `remediation:propose` |
 | [`list_health_checks`](#list_health_checks) | Read | Yes | `data_health:view` |
 | [`get_health_check`](#get_health_check) | Read | Yes | `data_health:view` |
 | [`health_timeline`](#health_timeline) | Read | Yes | `data_health:view` |
 | [`run_health_check`](#run_health_check) | Write | No | `data_health:run` |
 | [`acknowledge_incident`](#acknowledge_incident) | Write | No | `data_health:edit` |
+| [`get_query_regressions`](#get_query_regressions) | Read | Yes | `performance:view` |
+| [`get_query_shape_history`](#get_query_shape_history) | Read | Yes | `performance:view` |
+| [`get_capacity`](#get_capacity) | Read | Yes | `capacity:view` |
+| [`list_upgrade_assessments`](#list_upgrade_assessments) | Read | Yes | `upgrades:view` |
+| [`get_upgrade_assessment`](#get_upgrade_assessment) | Read | Yes | `upgrades:view` |
+| [`get_canary_replay`](#get_canary_replay) | Read | Yes | `upgrades:view` |
+| [`get_upgrade_rollout`](#get_upgrade_rollout) | Read | Yes | `upgrades:view` |
 | [`metrics_overview`](#metrics_overview) | Read | Yes | `metrics:view` |
 | [`live_queries`](#live_queries) | Read | Yes | `live_queries:view` |
 | [`fleet_snapshots`](#fleet_snapshots) | Read | Yes | `fleet:view` |
 | [`list_alerts`](#list_alerts) | Read | Yes | `alerting:view` |
 | [`audit_list`](#audit_list) | Read | Yes | `audit:view` |
+| [`get_collector_status`](#get_collector_status) | Read | Yes | `observe:view` |
+| [`get_collector_schedule`](#get_collector_schedule) | Read | Yes | `connections:view` |
 | [`test_alert_channel`](#test_alert_channel) | Write | No | `alerting:edit` |
 | [`kill_query`](#kill_query) | Destructive | No | `live_queries:kill`, `live_queries:kill_all` |
 | [`list_scheduled_jobs`](#list_scheduled_jobs) | Read | Yes | `scheduled_queries:view` |
@@ -58,6 +70,11 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`doctor_scan`](#doctor_scan) | Write · LLM | No | `doctor:run` |
 | [`doctor_reports`](#doctor_reports) | Read | Yes | `doctor:view` |
 | [`get_doctor_report`](#get_doctor_report) | Read | Yes | `doctor:view` |
+| [`get_ai_usage`](#get_ai_usage) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
+| [`get_ai_data_egress`](#get_ai_data_egress) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
+| [`list_ai_requests`](#list_ai_requests) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
+| [`get_ai_request`](#get_ai_request) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
+| [`list_ai_agents`](#list_ai_agents) | Read | Yes | `ai_agents:view` |
 
 ## Identity & connections
 
@@ -294,6 +311,39 @@ Data and pipeline incidents with severity, subject and the deterministic root-ca
 | `status` | `active | all` | No | Active incidents only, or include recovered |
 | `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
 
+### list_remediation_actions
+
+*Remediation actions* — **Read** · on by default · needs any of `remediation:propose`, `remediation:approve`, `remediation:approve_high`
+
+Proposed and past fixes on a connection: action type and parameters, who proposed it and why, approvals needed and given, status and the incident it addresses.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `status` | `array` | No | Only actions in these statuses (e.g. proposed, approved, failed) |
+| `incident_id` | `string` | No | Only actions proposed for this incident |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### get_remediation_action
+
+*Remediation action* — **Read** · on by default · needs any of `remediation:propose`, `remediation:approve`, `remediation:approve_high`
+
+One remediation action with its approvals and every execution: the statements run, verification and rollback.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Remediation action id |
+
+### get_investigation_notebook
+
+*Investigation notebook* — **Read** · on by default · needs any of `data_health:view`, `observe:view`, `doctor:view`
+
+The investigation notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. Needs the view permission of what it belongs to.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `attached_to` | `incident_data_health | incident_observe | doctor_report` | Yes | What the notebook belongs to: a Data Health incident, an observability incident or a Doctor report |
+| `ref` | `string` | Yes | The incident id (from list_incidents) or Doctor report id |
+
 ### propose_remediation
 
 *Propose a fix* — **Write** · off by default · needs any of `remediation:propose`
@@ -359,6 +409,77 @@ Acknowledge an open data-health incident.
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Resource id |
 
+## Performance, capacity & upgrades
+
+### get_query_regressions
+
+*Query regressions* — **Read** · on by default · needs any of `performance:view`
+
+Query shapes that got slower or heavier than their own baseline, with the upgrades, DDL and setting changes around their onset, plus hourly totals. Sample query text is included only with query:history:view:all.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### get_query_shape_history
+
+*Query shape history* — **Read** · on by default · needs any of `performance:view`
+
+Hourly runs, errors, p50/p95 latency, bytes read and server version of one query shape, per replica.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `fingerprint` | `string` | Yes | Query shape fingerprint from get_query_regressions |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### get_capacity
+
+*Capacity and cost* — **Read** · on by default · needs any of `capacity:view`
+
+Disk forecasts per node (days until the threshold), the fastest-growing tables, cold tables, measured codec savings, and cost by consumer when the token also has cost:view.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### list_upgrade_assessments
+
+*Upgrade assessments* — **Read** · on by default · needs any of `upgrades:view`
+
+Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### get_upgrade_assessment
+
+*Upgrade assessment* — **Read** · on by default · needs any of `upgrades:view`
+
+One upgrade readiness assessment: every rule checked against the real workload, with the evidence behind each finding.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Assessment id |
+
+### get_canary_replay
+
+*Canary replay* — **Read** · on by default · needs any of `upgrades:view`
+
+One workload replay on a canary connection: queries replayed, skipped and missing on the canary, and the most serious result or latency differences. Replayed query text is included only with query:history:view:all.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Replay id |
+
+### get_upgrade_rollout
+
+*Upgrade rollout* — **Read** · on by default · needs any of `upgrades:view`
+
+Every connection the token can use with its ClickHouse version and rollout gates: replica lag, open regressions and sick replicas.
+
+No parameters.
+
 ## Monitoring
 
 ### metrics_overview
@@ -404,6 +525,26 @@ List the caller's audit trail (global entries require audit:view).
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `limit` | `number` | No | Entries to return |
+
+### get_collector_status
+
+*Collector status* — **Read** · on by default · needs any of `observe:view`
+
+Each observability collector of a connection: state, last run and last success, last error, missing grants, whether it is paused, and what its last run read from ClickHouse. Use it when observability data looks stale or missing.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
+
+### get_collector_schedule
+
+*Collection schedule* — **Read** · on by default · needs any of `connections:view`
+
+How often each observability collector runs and whether it is paused: the defaults, or one connection's effective schedule with its overrides, each collector's last run, and the bytes it reads from ClickHouse per day at that interval.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | A connection's effective schedule; omit for the defaults every connection inherits |
 
 ### test_alert_channel
 
@@ -516,3 +657,58 @@ Get one AI doctor report by id.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Doctor report id |
+
+## AI governance
+
+### get_ai_usage
+
+*AI usage* — **Read** · on by default · needs any of `ai_usage:view`, `ai:chat`, `ai:optimize`
+
+What CHouse's AI chat and features used in a window: requests, tokens, estimated cost (priced models only), ClickHouse read by AI tools, rows sent to providers, the split by origin (UI, MCP agents, tokens, background) and usage by model. `scope` says whether it covers everyone (ai_usage:view) or only the token owner's own requests.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `days` | `number` | No | Window in days (default 7; capped at the server's retention) |
+
+### get_ai_data_egress
+
+*Data sent to AI providers* — **Read** · on by default · needs any of `ai_usage:view`, `ai:chat`, `ai:optimize`
+
+Tables, columns and CHouse record types that AI tools returned to an LLM provider, most rows first: rows, bytes, users, requests and providers per source.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `days` | `number` | No | Window in days (default 7; capped at the server's retention) |
+| `q` | `string` | No | Only sources whose name contains this text (a table or CHouse record type) |
+
+### list_ai_requests
+
+*AI requests* — **Read** · on by default · needs any of `ai_usage:view`, `ai:chat`, `ai:optimize`
+
+Recent AI requests, newest first: who and what started each (origin, token, client), the agent, tokens, cost, ClickHouse read, rows sent and status. Prompt and response text are never stored.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `days` | `number` | No | Window in days (default 7; capped at the server's retention) |
+| `q` | `string` | No | Match on user, agent, feature, client, token name or a table sent to the model |
+| `origin` | `ui | mcp | token | background` | No | Only requests started from the UI, by MCP agents, by token callers (CLI, scripts) or in the background |
+| `limit` | `number` | No | Rows to return (default 50) |
+| `offset` | `number` | No | Rows to skip, for paging |
+
+### get_ai_request
+
+*AI request* — **Read** · on by default · needs any of `ai_usage:view`, `ai:chat`, `ai:optimize`
+
+One AI request step by step: each LLM call with tokens and cost, each tool call with the ClickHouse queries it ran and the data it sent to the model.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | AI request id from list_ai_requests |
+
+### list_ai_agents
+
+*AI agents* — **Read** · on by default · needs any of `ai_agents:view`
+
+How CHouse's AI is set up: which agent each AI feature runs, and each agent's model, harness, tools, skills, subagents and tuning, whether it is built in or customized and has an update. Prompt templates and skill files are left out.
+
+No parameters.

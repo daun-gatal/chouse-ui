@@ -4,7 +4,7 @@
  *   GET /summary        totals, cost and unpriced models for the window
  *   GET /models         usage by model
  *   GET /egress         data sent to providers, by source (top 100, search, total)
- *   GET /requests       recent AI requests (search, paging)
+ *   GET /requests       recent AI requests (search, origin filter, paging)
  *   GET /requests/:id   one request with its steps and egress
  *
  * `ai_usage:view` reads everyone's requests. Users with `ai:chat` or
@@ -17,7 +17,7 @@ import { Hono, type Context } from "hono";
 import { getRbacUser, rbacAuthMiddleware, requireAnyPermission } from "../rbac/middleware/rbacAuth";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { userHasPermission } from "../rbac/services/rbac";
-import { egressBySource, listUsageRequests, MAX_EGRESS_SOURCES, usageByModel, usageRequestDetail, usageSummary, type UsageScope } from "../services/ai/usage/queries";
+import { egressBySource, listUsageRequests, MAX_EGRESS_SOURCES, REQUEST_ORIGINS, usageByModel, usageRequestDetail, usageSummary, type RequestOrigin, type UsageScope } from "../services/ai/usage/queries";
 import { usageRetentionDays } from "../services/ai/usage/store";
 import { AppError, requireParam } from "../types";
 
@@ -44,6 +44,14 @@ export function windowDays(raw: string | undefined, retentionDays: number = usag
   const parsed = Number(raw ?? 7);
   if (!Number.isFinite(parsed)) throw AppError.badRequest("Query parameter 'days' must be a number");
   return Math.min(retentionDays, Math.max(1, Math.floor(parsed)));
+}
+
+/** `origin` from the query: one of REQUEST_ORIGINS, or absent for every origin. */
+export function originParam(raw: string | undefined): RequestOrigin | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const origin = REQUEST_ORIGINS.find((o) => o === raw);
+  if (!origin) throw AppError.badRequest(`Query parameter 'origin' must be one of: ${REQUEST_ORIGINS.join(", ")}`);
+  return origin;
 }
 
 async function scopeOf(c: Context): Promise<{ scope: UsageScope; label: "all" | "own"; days: number }> {
@@ -78,7 +86,8 @@ aiUsage.get("/requests", async (c) => {
   const offset = Number(c.req.query("offset") ?? 0);
   if (!Number.isFinite(limit) || !Number.isFinite(offset)) throw AppError.badRequest("limit and offset must be numbers");
   const q = c.req.query("q")?.slice(0, 200);
-  return ok(c, { scope: label, days, ...(await listUsageRequests(scope, { q, limit, offset })) });
+  const origin = originParam(c.req.query("origin"));
+  return ok(c, { scope: label, days, ...(await listUsageRequests(scope, { q, origin, limit, offset })) });
 });
 
 aiUsage.get("/requests/:id", async (c) => {

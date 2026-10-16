@@ -46,6 +46,12 @@ mock.module("./model", () => ({ resolveDeepAgentModel: resolveModelMock }));
 let snapshot: RegistrySnapshot;
 mock.module("./registry/cache", () => ({ getRegistrySnapshot: async () => snapshot, resetRegistryCache: () => {} }));
 
+// Finished usage runs are collected instead of written to the RBAC database.
+const realUsage = await import("./usage");
+const finishedRuns: Array<InstanceType<typeof realUsage.UsageRun>> = [];
+mock.module("./usage", () => ({ ...realUsage, persistUsageRun: (run: InstanceType<typeof realUsage.UsageRun>) => { finishedRuns.push(run); } }));
+const { runAsCaller } = await import("./usage/origin");
+
 const { invokeChat, runStructuredCapability, runFeature } = await import("./engine");
 
 // ============================================
@@ -382,5 +388,26 @@ describe("runtime overrides", () => {
       fallbackWithStructuredOutput = undefined;
       fallbackModelResult = { content: "still not json" };
     }
+  });
+});
+
+// ============================================
+// Usage attribution (ADR 0020)
+// ============================================
+
+describe("usage attribution", () => {
+  it("records who started a run: the request's caller, or none in the background", async () => {
+    invokeResult = { messages: [{ content: '{"foo":"x"}' }] };
+    finishedRuns.length = 0;
+    const caller = { origin: "mcp" as const, patId: "pat-1", clientName: "Claude Code" };
+    await runAsCaller(() => caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "a" }, { userId: "u1" }));
+    // A scheduler run has no user; even inside a request it is not the caller's.
+    await runAsCaller(() => caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "b" }, {}));
+    await runStructuredCapability(fakeStructuredCapability(), { q: "c" }, { userId: "u1" });
+    expect(finishedRuns.map((r) => [r.meta.source, r.meta.caller])).toEqual([
+      ["feature", caller],
+      ["background", null],
+      ["feature", null],
+    ]);
   });
 });

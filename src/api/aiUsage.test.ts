@@ -30,6 +30,7 @@ describe("AI usage API", () => {
     await getAiEgress(30, " crm ");
     expect(await listAiUsageRequests({ days: 1, q: "  orders ", limit: 25, offset: 50 })).toMatchObject({ total: 0 });
     await listAiUsageRequests({ days: 1, q: "   " });
+    await listAiUsageRequests({ days: 30, origin: "mcp" });
     expect((await getAiUsageRequest("r 1")).request.id).toBe("r 1");
 
     expect(seen).toEqual([
@@ -39,6 +40,7 @@ describe("AI usage API", () => {
       { path: "/api/ai-usage/egress", query: { days: "30", q: "crm" } },
       { path: "/api/ai-usage/requests", query: { days: "1", q: "orders", limit: "25", offset: "50" } },
       { path: "/api/ai-usage/requests", query: { days: "1" } },
+      { path: "/api/ai-usage/requests", query: { days: "30", origin: "mcp" } },
       { path: "/api/ai-usage/requests/r%201", query: {} },
     ]);
   });

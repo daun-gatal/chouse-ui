@@ -69,4 +69,46 @@ describe("management tools through the real API", () => {
     const refused = (await forced[0].invoke({})) as { error?: string };
     expect(refused.error).toMatch(/permission/i);
   });
+
+  it("answers operations and AI governance questions from the real routes", async () => {
+    await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
+      VALUES ('conn-ip', 'in-process', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
+    const permissions = [
+      "performance:view", "capacity:view", "upgrades:view", "observe:view", "connections:view", "remediation:approve",
+      "doctor:view", "ai_usage:view", "ai_agents:view",
+    ];
+    const bearerToken = await token(["super_admin"], permissions);
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ["get_query_regressions", {}],
+      ["get_capacity", {}],
+      ["list_upgrade_assessments", {}],
+      ["get_upgrade_rollout", {}],
+      ["get_collector_status", {}],
+      ["get_collector_schedule", {}],
+      ["get_collector_schedule", { connectionId: "conn-ip" }],
+      ["list_remediation_actions", { status: ["proposed"] }],
+      ["get_ai_usage", { part: "summary", days: 30 }],
+      ["get_ai_usage", { part: "models" }],
+      ["get_ai_usage", { part: "egress", q: "orders" }],
+      ["list_ai_requests", { origin: "mcp" }],
+      ["list_ai_agents", {}],
+    ];
+    for (const [name, args] of calls) {
+      const [tool] = buildGrantedTools([name], { ctx: { bearerToken, permissions, connectionId: "conn-ip" } });
+      const result = (await tool.invoke(args)) as Record<string, unknown>;
+      expect({ name, args, error: result.error }).toEqual({ name, args, error: undefined });
+    }
+    const [summary] = buildGrantedTools(["get_ai_usage"], { ctx: { bearerToken, permissions, connectionId: "conn-ip" } });
+    expect(await summary.invoke({ part: "summary" })).toMatchObject({ scope: "all", requests: 0, byOrigin: [] });
+    const [agents] = buildGrantedTools(["list_ai_agents"], { ctx: { bearerToken, permissions } });
+    const registry = (await agents.invoke({})) as Record<string, unknown>;
+    expect(Object.keys(registry).sort()).toEqual(["agents", "features", "harnesses", "problems", "skills", "version"]);
+    // A route's own refusals come back as tool errors, never as made-up data.
+    const [notebook] = buildGrantedTools(["get_investigation_notebook"], { ctx: { bearerToken, permissions } });
+    expect(await notebook.invoke({ attachedTo: "doctor_report", ref: "missing" })).toEqual({ error: "This incident or report has no notebook yet" });
+    const [request] = buildGrantedTools(["get_ai_request"], { ctx: { bearerToken, permissions } });
+    expect(await request.invoke({ id: "missing" })).toEqual({ error: "AI request not found" });
+    const [actions] = buildGrantedTools(["list_remediation_actions"], { ctx: { bearerToken, permissions } });
+    expect(await actions.invoke({})).toEqual({ error: "No connection: pass connectionId" });
+  });
 });

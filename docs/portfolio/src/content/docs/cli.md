@@ -69,6 +69,18 @@ chouse scheduled list && chouse health incidents
 chouse alert rules && chouse audit list --limit 20
 ```
 
+[Performance, capacity and upgrades](/docs/monitoring-performance/) — read-only; assessments, replays and the collection schedule are changed in the UI:
+
+```bash
+chouse perf regressions -c prod              # query shapes slower than their own baseline
+chouse perf shape <fingerprint> -c prod      # one shape's hourly history
+chouse capacity -c prod --view growth        # also: forecasts (default), cold, trials
+chouse upgrades list -c prod && chouse upgrades rollout
+chouse upgrades get <assessmentId> -o yaml   # every rule and its evidence
+chouse collectors status -c prod             # last run, last error, missing grants
+chouse collectors schedule -c prod           # how often each collector runs, bytes read per day
+```
+
 [Data observability](/docs/data-observability/):
 
 ```bash
@@ -78,6 +90,10 @@ chouse lineage shop.orders --impact          # what a schema change would break
 chouse incidents --all --limit 20            # data + pipeline incidents with root cause
 chouse remediation list -c prod --status proposed
 chouse remediation approve <actionId> --comment "reviewed" --yes
+chouse context get shop.orders -c prod       # curated description, owner, grain, caveats
+chouse context metrics gmv -c prod           # a defined business metric
+chouse notebook show observe <incidentId>    # kinds: data-health, observe, doctor
+chouse notebook export doctor <reportId> > postmortem.md
 ```
 
 Approval rules are enforced server-side: a person may approve their own low-risk fix, high-risk fixes need two approvers other than the proposer, and a fix proposed by Chouse AI or an agent always needs someone else. The CLI never runs an action directly — the server runs it once approved (inside the maintenance window for window-only actions).
@@ -93,6 +109,17 @@ chouse mcp settings -o yaml           # AI Governance › MCP settings and every
 chouse agents summary && chouse agents sessions --days 7
 chouse agents session <sessionId>     # replay one session's tool calls
 chouse agents policies
+```
+
+CHouse's own AI ([AI activity](/docs/ai-usage/), [AI agents](/docs/ai-agents/)) — read-only:
+
+```bash
+chouse ai usage --days 30 --by origin        # UI, MCP agents, tokens, background
+chouse ai usage --by model
+chouse ai egress --search customers          # tables and records sent to LLM providers
+chouse ai requests --origin mcp --limit 20
+chouse ai request <requestId> -o yaml        # every LLM and tool call
+chouse ai agents                             # which agent each AI feature runs
 ```
 
 `mcp config` prints the raw snippet; every snippet reads the token from `CH_HOUSE_PAT` or a secret prompt, never inline.

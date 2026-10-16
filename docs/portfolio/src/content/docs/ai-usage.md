@@ -5,7 +5,7 @@ permissions: ai_usage:view, ai:chat, ai:optimize
 ---
 # AI activity
 
-**AI Governance › AI activity** (`/ai/usage`) shows what CHouse's own AI costs and what data it sends out: every request of the chat and of the AI features, with its tokens, estimated cost, the ClickHouse queries it ran and the data that went to the LLM provider. Agents that connect over [MCP](/docs/mcp/) or a token are under [Sessions](/docs/agents/) instead.
+**AI Governance › AI activity** (`/ai/usage`) shows what CHouse's own AI costs and what data it sends out: every request of the chat and of the AI features, with its tokens, estimated cost, the ClickHouse queries it ran and the data that went to the LLM provider. That includes AI features an [MCP](/docs/mcp/) agent or the [`chouse` CLI](/docs/cli/) starts with a token (`ai_optimize`, `doctor_scan`, `chouse ai optimize`): each request says where it came from. What those agents do outside CHouse's AI is under [Sessions](/docs/agents/).
 
 Prompt and response text are **not** stored. The chat keeps the question and the final answer in its thread, as before.
 
@@ -21,11 +21,24 @@ Prompt and response text are **not** stored. The chat keeps the question and the
 | Section | What it shows |
 | --- | --- |
 | Tiles | Requests, tokens (in and out), estimated cost, bytes ClickHouse read for the AI, and rows sent to providers |
+| By origin | Requests, tokens and cost split by where they came from (see below) |
 | Data sent to providers | Each ClickHouse table, or CHouse record type (users, audit log, tokens…), that reached a model: columns, rows, users and providers. Most rows first; the top 100 are listed, with *Top 100 of N* when there are more, and the search finds any of them |
 | Usage by model | Requests, tokens, the share of input served from the provider's cache, and cost per model |
-| Recent AI requests | Newest first, 25, 50 or 100 per page. Each request with its user, agent, tokens, cost, ClickHouse read, rows sent and status. Search by user, agent, feature or table |
+| Recent AI requests | Newest first, 25, 50 or 100 per page. Each request with its user, agent, tokens, cost, ClickHouse read, rows sent and status; an MCP or token request also names its client and token. Filter by origin, and search by user, agent, feature, table, client or token name |
 
 Pick **Today**, **7 days** or **30 days** at the top. The two top panels keep the same size and scroll inside; so does a long page of requests.
+
+## Where a request came from
+
+| Origin | Started by |
+| --- | --- |
+| CHouse UI | Someone signed in to the UI: the chat, or an AI button such as Optimize |
+| MCP agents | An agent over [MCP](/docs/mcp/), with a personal access token. The request names the agent (Claude Code, Cursor, …) and the token |
+| Access tokens | A direct token caller such as the [`chouse` CLI](/docs/cli/) or a script, named by its client and token |
+| Background | CHouse itself: scheduled Doctor scans and automatic diagnoses |
+| Not recorded | Requests recorded before origins were tracked |
+
+A token that was deleted afterwards shows as *a deleted token*; its requests keep their origin.
 
 ## Reading a request
 
@@ -49,6 +62,14 @@ Click a request to open it. Its steps read from **Start** at the top to **Finish
 - **Tokens** are what the provider reports for each call. A call that times out, is stopped, or gets no usage from the provider counts no tokens; the request then shows `≥` and a note says the totals are a lower bound.
 - **ClickHouse cost** comes from each query's own statistics as it finishes, so it needs no access to `system.query_log`. Every query the AI runs gets a `query_id` starting `chouse-ai-` and an `ai_request_id` in its `log_comment`, so `system.query_log` ties it to the request too.
 - **Data sent** is everything a tool returned to the model, counted once per tool call. Sending the growing conversation back on later turns is already in the input tokens.
+
+## From agents, the CLI and the chat
+
+The same data is available outside the tab, with the same permissions:
+
+- **MCP:** `get_ai_usage`, `get_ai_data_egress`, `list_ai_requests` and `get_ai_request` (see [MCP tools](/docs/mcp-tools/#ai-governance)).
+- **CLI:** `chouse ai usage [--by origin|model]`, `chouse ai egress`, `chouse ai requests [--origin …]` and `chouse ai request <id>` (see [CLI reference](/docs/cli-reference/)).
+- **Chat:** ask *CHouse Admin*, for example "what did MCP agents spend on AI this week?".
 
 ## Prices
 

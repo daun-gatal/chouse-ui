@@ -182,7 +182,9 @@ export const MCP_TOOL_CATEGORIES = [
   "scheduling",
   "data_health",
   "data_observability",
+  "performance",
   "ai",
+  "ai_governance",
 ] as const;
 export type McpToolCategory = (typeof MCP_TOOL_CATEGORIES)[number];
 

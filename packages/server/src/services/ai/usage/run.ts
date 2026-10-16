@@ -13,6 +13,7 @@ import type { AiModelPricing } from "../../../rbac/constants/aiModelPricing";
 import { jsonSize, type ObservedQuery, type QueryObserver } from "../../queryObserver";
 import { costOf, ZERO_USAGE, type TokenUsage } from "./pricing";
 import { tablesOf } from "./tables";
+import type { UsageCaller } from "./origin";
 
 export type UsageSource = "chat" | "feature" | "background";
 export type RunStatus = "ok" | "error" | "timeout";
@@ -90,6 +91,8 @@ export interface UsageRunMeta {
   connectionId: string | null;
   /** The chat thread the request belongs to. */
   threadId?: string | null;
+  /** Who started the request; null for runs outside a request (schedulers). */
+  caller?: UsageCaller | null;
 }
 
 export interface UsageAgent {
