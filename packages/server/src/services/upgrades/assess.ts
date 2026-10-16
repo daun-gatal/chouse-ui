@@ -12,7 +12,7 @@ import { z } from "zod";
 
 import { logger } from "../../utils/logger";
 import { all, json, num, numOrNull, one, run, sql, str, strOrNull } from "../observe/db";
-import { selectRows, NOT_OBSERVE } from "../observe/clickhouse";
+import { selectRows, stripFormat, NOT_OBSERVE } from "../observe/clickhouse";
 import { clientForConnection } from "../scheduledQueries/chClient";
 import rulesPack from "./rules/clickhouse.json";
 
@@ -194,10 +194,6 @@ export function replayable(query: string): boolean {
   return true;
 }
 
-/** HTTP clients append `FORMAT …`; the comparison wraps the query, so the clause goes. */
-export function stripFormat(query: string): string {
-  return query.replace(/;\s*$/, "").replace(/\s+FORMAT\s+\w+\s*;?\s*$/i, "");
-}
 
 export function replayQuery(query: string): string {
   return `SELECT count() AS c, sum(cityHash64(*)) AS h FROM (${stripFormat(query)})`;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import { compareVersions, isMissingObject, matchRules, replayable, replayQuery, replayShape, RULES, stripFormat } from "./assess";
+import { compareVersions, isMissingObject, matchRules, replayable, replayQuery, replayShape, RULES } from "./assess";
+import { stripFormat } from "../observe/clickhouse";
 
 const facts = {
   columnTypes: [{ table: "events.raw", column: "payload", type: "Object('json')" }],
@@ -92,5 +93,12 @@ describe("replay outcomes", () => {
 
   it("displays the replayed text without the logged FORMAT clause", () => {
     expect(stripFormat("SELECT * FROM public.test_2 LIMIT 100 FORMAT JSON")).toBe("SELECT * FROM public.test_2 LIMIT 100");
+  });
+
+  it("strips the client's multi-line FORMAT clause so EXPLAIN can wrap the sample", () => {
+    const logged = "SELECT query, type\n    FROM system.query_log\n    WHERE type IN ('QueryFinish')\n\nFORMAT JSONEachRow";
+    expect(stripFormat(logged)).toBe("SELECT query, type\n    FROM system.query_log\n    WHERE type IN ('QueryFinish')");
+    expect(stripFormat("SELECT 1 FORMAT JSONEachRow;")).toBe("SELECT 1");
+    expect(stripFormat("SELECT 'FORMAT JSON' AS f")).toBe("SELECT 'FORMAT JSON' AS f");
   });
 });
