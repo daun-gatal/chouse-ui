@@ -14,6 +14,7 @@ import { logger, requestLogger } from "./utils/logger";
 import { createMcpApp } from "./mcp";
 import { buildMcpDeps, MCP_PATH } from "./mcp/server";
 import { registerInProcessApi } from "./services/ai/registry/inProcessApi";
+import { flushUsageWrites, pruneAiUsage } from "./services/ai/usage";
 import { legacyMcpEnvKeys } from "./mcp/settings";
 
 // Configuration
@@ -22,6 +23,7 @@ const STATIC_PATH = process.env.STATIC_PATH || "./dist";
 const NODE_ENV = process.env.NODE_ENV || "development";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const SESSION_CLEANUP_INTERVAL = 60000; // 1 minute
+const AI_USAGE_PRUNE_INTERVAL = 60 * 60 * 1000; // 1 hour
 const SESSION_MAX_AGE = 3600000; // 1 hour
 
 // ============================================
@@ -390,6 +392,14 @@ const cleanupInterval = setInterval(async () => {
   await cleanupExpiredRateLimits();
 }, SESSION_CLEANUP_INTERVAL);
 
+// ADR 0020: drop AI usage rows past AI_USAGE_RETENTION_DAYS. Every replica runs
+// it; the DELETE is idempotent, so no lease is needed.
+const aiUsagePruneInterval = setInterval(() => {
+  pruneAiUsage().catch((error: unknown) => {
+    logger.warn({ module: "AIUsage", err: error instanceof Error ? error.message : String(error) }, "AI usage prune failed");
+  });
+}, AI_USAGE_PRUNE_INTERVAL);
+
 // Start server - bind app.fetch to preserve context
 const server = serve({
   port: PORT,
@@ -406,7 +416,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.info({ phase: "shutdown" }, "Server stopped accepting new connections");
 
     clearInterval(cleanupInterval);
+    clearInterval(aiUsagePruneInterval);
     logger.info({ phase: "shutdown" }, "Cleanup interval cleared");
+
+    // Write AI usage of requests that just finished; bounded so shutdown never hangs.
+    await Promise.race([flushUsageWrites(), new Promise((resolve) => setTimeout(resolve, 5000))]);
 
     // Stop the collectors — waits briefly for in-flight runs, then releases leases.
     try {

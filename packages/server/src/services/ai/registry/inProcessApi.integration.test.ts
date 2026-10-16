@@ -16,6 +16,7 @@ import { errorHandler } from "../../../middleware/error";
 import api from "../../../routes";
 import { buildGrantedTools } from "./catalog";
 import { registerInProcessApi } from "./inProcessApi";
+import { runInToolStep, UsageRun } from "../usage";
 
 const USER = "in-process-user";
 
@@ -56,6 +57,14 @@ describe("management tools through the real API", () => {
 
     // The catalog would not even offer the tool; force-build it the way an admin
     // (who sees every tool) would, but call with a token lacking the permission.
+    // ADR 0020: inside a usage run the rows the tool returns are recorded as CHouse data sent to the model.
+    const run = new UsageRun({ featureId: "chat", source: "chat", userId: USER, connectionId: null });
+    const step = run.beginTool("list_users", "chouse-admin", { model: null, connectionId: null, defaultDatabase: null });
+    const again = (await runInToolStep(step, () => allowed[0].invoke({}))) as { rows?: unknown[] };
+    expect(run.egress).toHaveLength(1);
+    expect(run.egress[0]).toMatchObject({ kind: "chouse", source: "List users", rows: again.rows?.length });
+    expect(run.egress[0].columns).toContain("username");
+
     const forced = buildGrantedTools(["list_users"], { ctx: { bearerToken: await token(["custom"], []), isAdmin: true } });
     const refused = (await forced[0].invoke({})) as { error?: string };
     expect(refused.error).toMatch(/permission/i);

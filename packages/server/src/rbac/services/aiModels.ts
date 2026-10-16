@@ -10,6 +10,7 @@ import { getDatabase, getSchema } from '../db';
 import { encryptPassword, decryptPassword } from './connections';
 import { ProviderType, PROVIDER_TYPES, isValidProviderType } from '../constants/aiProviders';
 import type { AiModelParams } from '../constants/aiModelParams';
+import type { AiModelPricing } from '../constants/aiModelPricing';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,6 +42,8 @@ export interface AiModelResponse {
     name: string;
     modelId: string;
     params: AiModelParams | null;
+    /** USD per 1M tokens; NULL means no price, so cost shows as unknown (ADR 0020). */
+    pricing: AiModelPricing | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -215,7 +218,7 @@ export async function listAiProviders(): Promise<AiProviderResponse[]> {
 // ============================================
 
 export async function createAiModel(
-    input: { providerId: string; name: string; modelId: string; params?: AiModelParams | null }
+    input: { providerId: string; name: string; modelId: string; params?: AiModelParams | null; pricing?: AiModelPricing | null }
 ): Promise<AiModelResponse> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -228,6 +231,7 @@ export async function createAiModel(
         name: input.name,
         modelId: input.modelId,
         params: input.params ?? null,
+        pricing: input.pricing ?? null,
         createdAt: now,
         updatedAt: now,
     });
@@ -255,6 +259,7 @@ export async function getAiModelById(id: string): Promise<AiModelResponse | null
         name: m.name,
         modelId: m.modelId,
         params: m.params ?? null,
+        pricing: m.pricing ?? null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
     };
@@ -262,7 +267,7 @@ export async function getAiModelById(id: string): Promise<AiModelResponse | null
 
 export async function updateAiModel(
     id: string,
-    input: { name?: string; modelId?: string; params?: AiModelParams | null }
+    input: { name?: string; modelId?: string; params?: AiModelParams | null; pricing?: AiModelPricing | null }
 ): Promise<AiModelResponse | null> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -273,6 +278,7 @@ export async function updateAiModel(
     if (input.modelId !== undefined) updateData.modelId = input.modelId;
     // Whole-object replace: null clears, absent leaves the stored params untouched.
     if (input.params !== undefined) updateData.params = input.params;
+    if (input.pricing !== undefined) updateData.pricing = input.pricing;
 
     await db.update(schema.aiModels).set(updateData).where(eq(schema.aiModels.id, id));
     return getAiModelById(id);
@@ -308,6 +314,7 @@ export async function listAiModels(providerId?: string): Promise<AiModelResponse
         name: m.name,
         modelId: m.modelId,
         params: m.params ?? null,
+        pricing: m.pricing ?? null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
     }));
@@ -519,6 +526,7 @@ export async function listAiConfigs(options?: {
             name: row.model.name,
             modelId: row.model.modelId,
             params: row.model.params ?? null,
+            pricing: row.model.pricing ?? null,
             createdAt: row.model.createdAt,
             updatedAt: row.model.updatedAt,
         },
@@ -584,6 +592,7 @@ export async function getAiConfigWithKey(id: string): Promise<AiConfigWithKey | 
             name: row.model.name,
             modelId: row.model.modelId,
             params: row.model.params ?? null,
+            pricing: row.model.pricing ?? null,
             createdAt: row.model.createdAt,
             updatedAt: row.model.updatedAt,
         },

@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { AppError } from "../types";
 import { logger } from "../utils/logger";
+import { activeQueryObserver, jsonSize, reportQuery } from "./queryObserver";
 
 // ============================================
 // Types for ClickHouse JSON Response
@@ -102,6 +103,12 @@ export class ClickHouseService {
     return JSON.stringify({ rbac_user_id: this.rbacUserId, ...this.tags });
   }
 
+  /** Per-query log_comment: the service's own tags plus any extra ones; undefined when there is nothing to tag. */
+  private logCommentFor(extra: Record<string, string> | undefined): string | undefined {
+    if (!extra || Object.keys(extra).length === 0) return this.rbacUserId ? this.logCommentJson : undefined;
+    return JSON.stringify({ rbac_user_id: this.rbacUserId, ...this.tags, ...extra });
+  }
+
   private get client(): ClickHouseClient {
     // Tag every query this service runs with the RBAC user so query_log
     // attributes them to the app user, not just the bare ClickHouse user.
@@ -179,6 +186,12 @@ export class ClickHouseService {
     queryId?: string,
     maxResultRows?: number
   ): Promise<QueryResult<T>> {
+    // An AI usage run observing this call (ADR 0020) names the query and tags
+    // its log_comment per query, so query_log ties it to the AI request.
+    const observer = activeQueryObserver();
+    const effectiveQueryId = queryId ?? observer?.nextQueryId();
+    const logComment = this.logCommentFor(observer?.logTags());
+    const startedAt = performance.now();
     try {
       const trimmedQuery = query.trim();
 
@@ -186,13 +199,13 @@ export class ClickHouseService {
       if (this.isCommand(trimmedQuery)) {
         const commandParams: any = {
           query: trimmedQuery,
-          query_id: queryId,
+          query_id: effectiveQueryId,
         };
 
         // Inject RBAC User ID into log_comment if present
-        if (this.rbacUserId) {
+        if (logComment) {
           commandParams.clickhouse_settings = {
-            log_comment: this.logCommentJson,
+            log_comment: logComment,
           };
         }
 
@@ -227,17 +240,17 @@ export class ClickHouseService {
       }
 
       // Inject RBAC User ID into log_comment if present
-      if (this.rbacUserId) {
+      if (logComment) {
         // Tag format: {"rbac_user_id":"UUID"}
         // This allows us to track which RBAC user executed the query regardless of the DB user
-        clickhouse_settings.log_comment = this.logCommentJson;
+        clickhouse_settings.log_comment = logComment;
       }
 
       const result = await this.client.query({
         query: trimmedQuery,
         format: format as "JSON" | "JSONEachRow",
         clickhouse_settings,
-        query_id: queryId,
+        query_id: effectiveQueryId,
       });
 
       const jsonResult = await result.json() as {
@@ -258,15 +271,42 @@ export class ClickHouseService {
         rows = data.length;
       }
 
+      const statistics = jsonResult.statistics || { elapsed: 0, rows_read: 0, bytes_read: 0 };
+      if (observer) {
+        reportQuery(observer, {
+          queryId: result.query_id || effectiveQueryId || "",
+          sql: trimmedQuery,
+          elapsedMs: Math.round((statistics.elapsed || 0) * 1000),
+          readRows: Number(statistics.rows_read) || 0,
+          readBytes: Number(statistics.bytes_read) || 0,
+          resultRows: data.length,
+          resultBytes: jsonSize(data),
+          columns: (jsonResult.meta || []).map((m) => m.name),
+        });
+      }
+
       return {
         meta: jsonResult.meta || [],
         data,
-        statistics: jsonResult.statistics || { elapsed: 0, rows_read: 0, bytes_read: 0 },
+        statistics,
         rows,
         queryId: result.query_id,
         error: null,
       };
     } catch (error) {
+      if (observer && effectiveQueryId) {
+        reportQuery(observer, {
+          queryId: effectiveQueryId,
+          sql: query.trim(),
+          elapsedMs: Math.round(performance.now() - startedAt),
+          readRows: 0,
+          readBytes: 0,
+          resultRows: 0,
+          resultBytes: 0,
+          columns: [],
+          error: error instanceof Error ? error.message.slice(0, 300) : "Query failed",
+        });
+      }
       throw this.handleError(error, "Query execution failed");
     }
   }

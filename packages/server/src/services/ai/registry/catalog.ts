@@ -17,6 +17,7 @@ import { queryNodeTool, type FleetNode } from "../capabilities/fleetShared";
 import { createAgentTool, type AgentTool, type AgentToolSet } from "../langchainTools";
 import type { AgentRunContext } from "../types";
 import { InProcessApiClient } from "./inProcessApi";
+import { recordChouseSource } from "../usage";
 import type { ToolContextKind } from "./types";
 
 export type ToolDomain = "clickhouse" | "chouse";
@@ -260,6 +261,7 @@ function apiTool(spec: ApiToolSpec): CatalogTool {
           try {
             const { path, query } = spec.request(args);
             const { data, truncated } = applyCaps(rowsOf(await client.get(path, query)), MANAGEMENT_RESULT_CAPS);
+            recordChouseSource(spec.title, data);
             return truncated ? { truncated: true, data } : data;
           } catch (error: unknown) {
             return { error: error instanceof Error ? error.message : "Request failed" };
