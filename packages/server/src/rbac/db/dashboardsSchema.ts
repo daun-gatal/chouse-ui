@@ -54,8 +54,28 @@ const DASHBOARD_TABLES: string[] = [
     PRIMARY KEY (user_id, dashboard_id)
   )`,
   `CREATE INDEX IF NOT EXISTS dashboard_pins_dashboard_idx ON dashboard_pins (dashboard_id)`,
+  `CREATE TABLE IF NOT EXISTS dashboard_alerts (
+    id             TEXT PRIMARY KEY NOT NULL,
+    dashboard_id   TEXT NOT NULL,
+    panel_id       TEXT NOT NULL,
+    name           TEXT NOT NULL,
+    owner_id       TEXT NOT NULL,
+    connection_id  TEXT NOT NULL,
+    severity       TEXT NOT NULL,
+    config         TEXT NOT NULL,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     {BIGINT} NOT NULL,
+    updated_at     {BIGINT} NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS dashboard_alerts_dashboard_idx ON dashboard_alerts (dashboard_id, panel_id)`,
+  `CREATE TABLE IF NOT EXISTS dashboard_alert_channels (
+    alert_id    TEXT NOT NULL,
+    channel_id  TEXT NOT NULL,
+    PRIMARY KEY (alert_id, channel_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS dashboard_alert_channels_channel_idx ON dashboard_alert_channels (channel_id)`,
   `CREATE TABLE IF NOT EXISTS dashboard_alert_state (
-    rule_id       TEXT PRIMARY KEY NOT NULL,
+    alert_id      TEXT PRIMARY KEY NOT NULL,
     state         TEXT NOT NULL,
     breaches      {BIGINT} NOT NULL DEFAULT 0,
     since         {BIGINT} NOT NULL,

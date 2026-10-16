@@ -642,6 +642,7 @@ export const AUDIT_ACTIONS = {
   DASHBOARD_SHARE: 'dashboard.share',
   DASHBOARD_IMPORT: 'dashboard.import',
   PANEL_ALERT_CREATE: 'panel_alert.create',
+  PANEL_ALERT_UPDATE: 'panel_alert.update',
   PANEL_ALERT_DELETE: 'panel_alert.delete',
 } as const;
 

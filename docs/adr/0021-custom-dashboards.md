@@ -63,7 +63,9 @@ fresh, stepwise and skip-version installs):
 | `dashboard_panels` | panels, ordered by `position` |
 | `dashboard_shares` | `(dashboard_id, role_id, can_edit)` |
 | `dashboard_pins` | `(user_id, dashboard_id)`: pinned to the user's Home |
-| `dashboard_alert_state` | per panel alert rule: state, since, last value, last error |
+| `dashboard_alerts` | panel threshold alerts (§7) |
+| `dashboard_alert_channels` | `(alert_id, channel_id)`: where an alert delivers |
+| `dashboard_alert_state` | per alert: state, since, last value, last error |
 
 A save replaces the dashboard with its panels as a whole and must carry the
 `version` it was loaded at. A stale version answers **409** and nothing is
@@ -174,15 +176,21 @@ shows its error in the legend, and the others still render.
 
 ### 7. Panel alerts
 
-A panel can carry threshold rules: a new alert source type `panel_threshold`
-with:
+A panel can carry threshold alerts, with:
 
 - `column`, `reduce`, `op` (`>`, `>=`, `<`, `<=`) and `value`;
 - `forEvaluations` (consecutive breaches before firing) and `everyMinutes`;
 - the connection and the rule's owner.
 
-Creating one needs `alerting:edit`. Delivery uses the existing channels,
-`sendChannelMessage` and `alert_events`.
+Creating one needs `alerting:edit` and edit access to the dashboard. Delivery
+uses the existing notification channels, `sendChannelMessage` and
+`alert_events`, and a channel in use by a panel alert cannot be deleted.
+
+Panel alerts live in their own tables (`dashboard_alerts`,
+`dashboard_alert_channels`), **not** as a new `alert_rules` source type. Every
+server reads `alert_rules` through the fleet alerter, which maps a source type
+it does not know to a fleet rule. During a rolling upgrade, a server from before
+this change would evaluate a panel rule as a fleet threshold.
 
 The **evaluator** works like this:
 
@@ -289,7 +297,7 @@ take, which makes dashboards reviewable in git.
     Queries and notebook cells do; the boundary is CHouse's data-access rules.
   - Alerts run with their owner's access, re-checked on every evaluation.
   - Templates are code, so changing one needs a release.
-- **Migration.** 1.61.0 adds five tables, five permissions and their role
+- **Migration.** 1.61.0 adds seven tables, five permissions and their role
   grants. Nothing existing changes.
 
 ## Alternatives considered

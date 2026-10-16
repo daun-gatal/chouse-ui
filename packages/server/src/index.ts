@@ -359,6 +359,11 @@ initializeRbac().then(async () => {
     }
     const { ScheduledQueryScheduler } = await import("./services/scheduledQueries/scheduler");
     ScheduledQueryScheduler.getInstance().start();
+    // Dashboard panel alerts (ADR 0021 §7) run with the scheduler, so a
+    // dedicated scheduler Deployment evaluates them too. Each alert is claimed
+    // with a row lease, so redundant ticks across pods are harmless.
+    const { DashboardAlertEvaluator } = await import("./services/dashboards/alerts");
+    DashboardAlertEvaluator.getInstance().start();
   }
   // Warm the SSO config so the provider summary (or a config error) is logged
   // at boot rather than lazily on the first login request. Isolated so an SSO
@@ -437,6 +442,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
       ScheduledQueryScheduler.getInstance().stop();
     } catch (error) {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Scheduled-query scheduler stop failed");
+    }
+
+    try {
+      const { DashboardAlertEvaluator } = await import("./services/dashboards/alerts");
+      DashboardAlertEvaluator.getInstance().stop();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Panel alert evaluator stop failed");
     }
 
     try {

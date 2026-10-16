@@ -43,15 +43,17 @@ const { generateAccessToken } = await import("../rbac/services/jwt");
 const { errorHandler } = await import("../middleware/error");
 const { clearPanelCache } = await import("../services/dashboards/runner");
 const { default: dashboards } = await import("./dashboards");
+const { createChannel } = await import("../services/alerting/store");
+const { ChannelType } = await import("../services/alerting/types");
 
-const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select"];
+const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select", "alerting:view", "alerting:edit", "alerting:delete"];
 const USERS = {
   owner: { id: "u-owner", roles: ["team-a"], permissions: ALL },
   peer: { id: "u-peer", roles: ["team-b"], permissions: ["dashboards:view", "dashboards:edit", "query:execute", "table:select"] },
   outsider: { id: "u-out", roles: ["team-c"], permissions: ["dashboards:view", "query:execute", "table:select"] },
   manager: { id: "u-mgr", roles: ["team-a"], permissions: [...ALL, "dashboards:manage"] },
-  nobody: { id: "u-none", roles: ["team-a"], permissions: ["metrics:view"] },
-  viewOnly: { id: "u-view", roles: ["team-a"], permissions: ["dashboards:view"] },
+  nobody: { id: "u-none", roles: ["team-d"], permissions: ["metrics:view"] },
+  viewOnly: { id: "u-view", roles: ["team-d"], permissions: ["dashboards:view"] },
 };
 type UserKey = keyof typeof USERS;
 
@@ -97,10 +99,10 @@ beforeAll(async () => {
   for (const u of Object.values(USERS)) {
     await rawRun(sql`INSERT INTO rbac_users (id, email, username, password_hash, is_active, created_at, updated_at) VALUES (${u.id}, ${`${u.id}@test.local`}, ${u.id}, 'x', 1, unixepoch(), unixepoch())`);
   }
-  for (const [id, name] of [["role-a", "team-a"], ["role-b", "team-b"], ["role-c", "team-c"]]) {
+  for (const [id, name] of [["role-a", "team-a"], ["role-b", "team-b"], ["role-c", "team-c"], ["role-d", "team-d"]]) {
     await rawRun(sql`INSERT INTO rbac_roles (id, name, display_name, is_system, is_default, priority, created_at, updated_at) VALUES (${id}, ${name}, ${name}, 0, 0, 1, unixepoch(), unixepoch())`);
   }
-  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-a"], ["u-view", "role-a"]];
+  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-d"], ["u-view", "role-d"]];
   for (const [user, role] of membership) {
     await rawRun(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${`${user}-${role}`}, ${user}, ${role}, unixepoch())`);
   }
@@ -113,6 +115,11 @@ beforeAll(async () => {
   for (const conn of ["conn-1", "conn-2"]) {
     await rawRun(sql`INSERT INTO rbac_data_access_policy_rules (id, policy_id, connection_id, database_pattern, table_pattern, is_allowed, priority, created_at, updated_at)
       VALUES (${`rule-${conn}`}, 'pol-shop', ${conn}, 'shop', '*', 1, 0, unixepoch(), unixepoch())`);
+  }
+  // Alerts evaluate as their owner from the database, not from a token.
+  for (const permission of ["dashboards:view", "query:execute", "table:select"]) {
+    await rawRun(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+      SELECT ${`rp-a-${permission}`}, 'role-a', id, unixepoch() FROM rbac_permissions WHERE name = ${permission}`);
   }
   for (const role of ["role-a", "role-b"]) {
     await rawRun(sql`INSERT INTO rbac_role_data_access_policies (id, role_id, policy_id, created_at) VALUES (${`rdp-${role}`}, ${role}, 'pol-shop', unixepoch())`);
@@ -394,5 +401,76 @@ describe("running panels", () => {
     expect(res.json.data.lint.map((f: { code: string }) => f.code)).toEqual(["cumulative_counter", "missing_unit"]);
     const lint = await call("owner", "POST", "/dashboards/lint", { sql: body.sql, viz: body.viz });
     expect(lint.json.data.findings).toHaveLength(2);
+  });
+});
+
+describe("panel alerts", () => {
+  let channelId = "";
+  beforeAll(async () => {
+    channelId = await createChannel({ name: "ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/ops" }, enabled: true });
+  });
+
+  const alertBody = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    name: "Orders spike",
+    severity: "warning",
+    connectionId: "conn-1",
+    channelIds: [channelId],
+    enabled: true,
+    config: { column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
+    ...overrides,
+  });
+
+  it("creates, lists, checks and deletes an alert on a panel", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    const made = await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody());
+    expect(made.status).toBe(201);
+    expect(made.json.data).toMatchObject({ name: "Orders spike", ownerId: "u-owner", channelIds: [channelId] });
+    const list = await call("owner", "GET", `/dashboards/${id}/alerts`);
+    expect(list.json.data).toHaveLength(1);
+    expect(list.json.data[0].status.state).toBe("ok");
+    const all = await call("owner", "GET", "/dashboards/alerts");
+    expect(all.json.data.find((a: { id: string }) => a.id === made.json.data.id).dashboardTitle).toBe("Shop");
+    const check = await call("owner", "POST", `/dashboards/${id}/alerts/${made.json.data.id}/check`);
+    expect(check.json.data).toEqual({ kind: "value", value: 7 });
+    expect((await call("owner", "DELETE", `/dashboards/${id}/alerts/${made.json.data.id}`)).status).toBe(200);
+    expect((await call("owner", "GET", `/dashboards/${id}/alerts`)).json.data).toEqual([]);
+  });
+
+  it("refuses alerts that could never evaluate", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    const notY = await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ config: { ...(alertBody().config as object), column: "t" } }));
+    expect(notY.status).toBe(400);
+    expect(notY.json.error.message).toContain("y columns: v");
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ channelIds: ["nope"] }))).status).toBe(400);
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ config: { ...(alertBody().config as object), values: { db: "x" } } }))).status).toBe(400);
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ connectionId: "conn-x" }))).status).toBe(403);
+    const fleet = await create("owner", { panels: [panel({ fleet: true })] });
+    const onFleet = await call("owner", "POST", `/dashboards/${fleet.dashboard.id}/panels/${fleet.panels[0].id}/alerts`, alertBody());
+    expect(onFleet.status).toBe(400);
+    expect(onFleet.json.error.message).toContain("across the fleet");
+  });
+
+  it("needs alerting permissions and edit access", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const path = `/dashboards/${id}/panels/${created.panels[0].id}/alerts`;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
+    expect((await call("peer", "POST", path, alertBody())).status).toBe(403);
+    expect((await call("peer", "GET", `/dashboards/${id}/alerts`)).status).toBe(403);
+    expect((await call("viewOnly", "GET", "/dashboards/alerts")).status).toBe(403);
+  });
+
+  it("goes with its panel when a save removes the panel", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const made = await call("owner", "POST", `/dashboards/${id}/panels/${created.panels[0].id}/alerts`, alertBody());
+    expect(made.status).toBe(201);
+    const saved = await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ panels: [panel({ title: "Replacement" })] }) });
+    expect(saved.status).toBe(200);
+    expect((await call("owner", "GET", `/dashboards/${id}/alerts`)).json.data).toEqual([]);
   });
 });

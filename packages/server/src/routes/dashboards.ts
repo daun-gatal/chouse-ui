@@ -11,6 +11,8 @@
  *                               caller's own connection and table access (services/dashboards/runner.ts)
  *   preview / lint              dashboards:edit (+ query:execute to run)
  *   templates                   list: dashboards:view; use one: dashboards:edit
+ *   panel alerts                list: alerting:view (+ view access); create / update / check: alerting:edit
+ *                               + edit access; delete: alerting:delete + edit access
  *
  * A dashboard the caller may not view answers 404, the same as one that does not exist.
  */
@@ -22,10 +24,13 @@ import { zValidator } from "@hono/zod-validator";
 import { rbacAuthMiddleware, getRbacUser, requirePermission } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext, listRoles } from "../rbac/services/rbac";
+import { getChannel } from "../services/alerting/store";
 import { AGENT_RECORDED_HEADER, agentContextFor } from "../services/agents/governance";
+import * as alertStore from "../services/dashboards/alertStore";
+import { evaluate } from "../services/dashboards/alerts";
 import { dashboardAccess, has, type DashboardAccess, type Viewer } from "../services/dashboards/access";
 import { lintPanel, type LintFinding } from "../services/dashboards/lint";
-import { runFleet, runOptions, runPanel, viewerConnection, type AgentFor, type PanelQuery } from "../services/dashboards/runner";
+import { resolveValues, runFleet, runOptions, runPanel, viewerConnection, type AgentFor, type PanelQuery } from "../services/dashboards/runner";
 import {
   DASHBOARD_EXPORT_FORMAT,
   dashboardExportSchema,
@@ -137,6 +142,14 @@ dashboards.get("/share-targets", requirePermission(PERMISSIONS.DASHBOARDS_SHARE)
   return ok(c, roles.map((r) => ({ id: r.id, name: r.name, displayName: r.displayName })));
 });
 
+/** Every panel alert with its state, for Admin › Alerting. */
+dashboards.get("/alerts", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const alerts = await alertStore.listAlerts();
+  const statuses = await alertStore.getStatuses(alerts.map((a) => a.id));
+  const titles = new Map((await store.listDashboards()).map((d) => [d.id, d.title]));
+  return ok(c, alerts.map((a) => ({ ...a, status: statuses.get(a.id) ?? null, dashboardTitle: titles.get(a.dashboardId) ?? null })));
+});
+
 dashboards.get("/templates", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
   return ok(c, TEMPLATES);
 });
@@ -195,7 +208,7 @@ dashboards.put("/:id", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidato
   assertValid(input);
   await assertConnection(c, input.connectionId);
   const result = await store.updateDashboard(id, version, input).catch(saveConflict);
-  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length } });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
   return ok(c, await detailResponse(c, id));
 });
 
@@ -211,11 +224,11 @@ dashboards.delete("/:id", requirePermission(PERMISSIONS.DASHBOARDS_DELETE), asyn
   const id = requireParam(c, "id");
   const { detail, access } = await visible(c, id);
   if (!access.delete) throw AppError.forbidden("Only the owner or a dashboard manager can delete this dashboard");
-  await store.deleteDashboard(id).catch((error: unknown) => {
+  const removedAlerts = await store.deleteDashboard(id).catch((error: unknown) => {
     if (error instanceof store.SaveConflictError) throw AppError.notFound("Dashboard not found");
     throw error;
   });
-  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_DELETE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: detail.dashboard.title } });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_DELETE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: detail.dashboard.title, removedAlerts: removedAlerts.length } });
   return ok(c, { deleted: id });
 });
 
@@ -338,6 +351,88 @@ dashboards.post("/variable-options", requirePermission(PERMISSIONS.DASHBOARDS_ED
   const { sql, connectionId } = c.req.valid("json");
   markAgentRecorded(c);
   return ok(c, { values: await runOptions(viewerOf(c), connectionId, sql, agentFor(c)) });
+});
+
+// ============================================
+// Panel alerts (ADR 0021 §7)
+// ============================================
+
+async function editableForAlerts(c: Context, id: string): Promise<store.DashboardDetail> {
+  const { detail, access } = await visible(c, id);
+  if (!access.edit) throw AppError.forbidden("Alerts on a dashboard need edit access to it");
+  return detail;
+}
+
+/** Refuse an alert that could never evaluate, before it is saved. */
+async function assertAlertValid(c: Context, detail: store.DashboardDetail, panelId: string, input: alertStore.AlertInput): Promise<void> {
+  const panel = detail.panels.find((p) => p.id === panelId);
+  if (!panel) throw AppError.notFound("Panel not found");
+  if (panel.fleet) throw AppError.badRequest("Alerts need a panel for one connection; this one runs across the fleet");
+  if (!panel.viz.y.includes(input.config.column)) {
+    throw AppError.badRequest(panel.viz.y.length === 0
+      ? "Alerts need a chart panel with a y column"
+      : `Alert on one of the panel's y columns: ${panel.viz.y.join(", ")}`);
+  }
+  resolveValues(detail.dashboard.variables, input.config.values);
+  await viewerConnection(viewerOf(c), input.connectionId);
+  for (const channelId of input.channelIds) {
+    if (!(await getChannel(channelId))) throw AppError.badRequest(`Unknown notification channel: ${channelId}`);
+  }
+  if (new Set(input.channelIds).size !== input.channelIds.length) throw AppError.badRequest("A channel is listed twice");
+}
+
+dashboards.get("/:id/alerts", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const id = requireParam(c, "id");
+  await visible(c, id);
+  const alerts = await alertStore.listAlerts({ dashboardId: id });
+  const statuses = await alertStore.getStatuses(alerts.map((a) => a.id));
+  return ok(c, alerts.map((a) => ({ ...a, status: statuses.get(a.id) ?? null })));
+});
+
+dashboards.post("/:id/panels/:panelId/alerts", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", alertStore.alertInputSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const panelId = requireParam(c, "panelId");
+  const detail = await editableForAlerts(c, id);
+  const input = c.req.valid("json");
+  await assertAlertValid(c, detail, panelId, input);
+  const alertId = await alertStore.createAlert(id, panelId, viewerOf(c).id, input);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PANEL_ALERT_CREATE, viewerOf(c).id, { resourceType: "dashboard_alert", resourceId: alertId, details: { dashboardId: id, panelId, name: input.name } });
+  return ok(c, await alertStore.getAlert(alertId), 201);
+});
+
+async function alertOf(c: Context, dashboardId: string): Promise<alertStore.PanelAlert> {
+  const alert = await alertStore.getAlert(requireParam(c, "alertId"));
+  if (!alert || alert.dashboardId !== dashboardId) throw AppError.notFound("Alert not found");
+  return alert;
+}
+
+dashboards.put("/:id/alerts/:alertId", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", alertStore.alertInputSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const detail = await editableForAlerts(c, id);
+  const alert = await alertOf(c, id);
+  const input = c.req.valid("json");
+  await assertAlertValid(c, detail, alert.panelId, input);
+  await alertStore.updateAlert(alert.id, viewerOf(c).id, input);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PANEL_ALERT_UPDATE, viewerOf(c).id, { resourceType: "dashboard_alert", resourceId: alert.id, details: { dashboardId: id, name: input.name, enabled: input.enabled } });
+  return ok(c, await alertStore.getAlert(alert.id));
+});
+
+dashboards.delete("/:id/alerts/:alertId", requirePermission(PERMISSIONS.ALERTING_DELETE), async (c) => {
+  const id = requireParam(c, "id");
+  await editableForAlerts(c, id);
+  const alert = await alertOf(c, id);
+  await alertStore.deleteAlert(alert.id);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PANEL_ALERT_DELETE, viewerOf(c).id, { resourceType: "dashboard_alert", resourceId: alert.id, details: { dashboardId: id, name: alert.name } });
+  return ok(c, { deleted: alert.id });
+});
+
+/** Evaluate an alert now without changing its state or notifying anyone. */
+dashboards.post("/:id/alerts/:alertId/check", requirePermission(PERMISSIONS.ALERTING_EDIT), async (c) => {
+  const id = requireParam(c, "id");
+  await editableForAlerts(c, id);
+  const alert = await alertOf(c, id);
+  const { outcome } = await evaluate(alert, Date.now());
+  return ok(c, outcome);
 });
 
 export default dashboards;

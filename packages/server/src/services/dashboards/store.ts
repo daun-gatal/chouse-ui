@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import { getDatabase, getDatabaseType, type PostgresDb, type SqliteDb } from "../../rbac/db";
 import { all, num, one, run, str, strOrNull, type Row } from "../observe/db";
+import { alertIdsForPanels, deleteAlertStatements } from "./alertStore";
 import { PANEL_HEIGHTS, variableSchema, vizSpecSchema, type DashboardInput, type PanelInput, type RelativeRange, type Variable, type VizSpec } from "./spec";
 
 export interface DashboardRecord {
@@ -252,8 +253,10 @@ export async function createDashboard(input: DashboardInput, ownerId: string): P
 
 export interface UpdateResult {
   version: number;
-  /** Panels the save removed (their alert rules go with them). */
+  /** Panels the save removed. */
   removedPanelIds: string[];
+  /** Alerts on those panels, deleted with them. */
+  removedAlertIds: string[];
 }
 
 /**
@@ -266,25 +269,31 @@ export async function updateDashboard(id: string, version: number, input: Dashbo
   const existing = (await all(sql`SELECT id FROM dashboard_panels WHERE dashboard_id = ${id}`)).map((r) => str(r.id));
   const { statements, keptIds } = panelStatements(id, input.panels, new Set(existing), now);
   const removedPanelIds = existing.filter((panelId) => !keptIds.includes(panelId));
-  const removals = removedPanelIds.map((panelId) => sql`DELETE FROM dashboard_panels WHERE id = ${panelId} AND dashboard_id = ${id}`);
+  const removedAlertIds = await alertIdsForPanels(removedPanelIds);
+  const removals = [
+    ...removedPanelIds.map((panelId) => sql`DELETE FROM dashboard_panels WHERE id = ${panelId} AND dashboard_id = ${id}`),
+    ...deleteAlertStatements(removedAlertIds),
+  ];
   await atomic(sql`
     UPDATE dashboards SET title = ${input.title}, description = ${input.description}, connection_id = ${input.connectionId},
       time_range = ${input.timeRange}, refresh_seconds = ${input.refreshSeconds}, variables = ${JSON.stringify(input.variables)},
       version = ${version + 1}, updated_at = ${now}
     WHERE id = ${id} AND version = ${version}
     RETURNING id`, [...removals, ...statements]);
-  return { version: version + 1, removedPanelIds };
+  return { version: version + 1, removedPanelIds, removedAlertIds };
 }
 
-/** Delete a dashboard with its panels, shares and pins. Returns the panel ids it had. */
+/** Delete a dashboard with its panels, shares, pins and panel alerts. Returns the alert ids it removed. */
 export async function deleteDashboard(id: string): Promise<string[]> {
   const panelIds = (await all(sql`SELECT id FROM dashboard_panels WHERE dashboard_id = ${id}`)).map((r) => str(r.id));
+  const alertIds = await alertIdsForPanels(panelIds);
   await atomic(sql`DELETE FROM dashboards WHERE id = ${id} RETURNING id`, [
     sql`DELETE FROM dashboard_panels WHERE dashboard_id = ${id}`,
     sql`DELETE FROM dashboard_shares WHERE dashboard_id = ${id}`,
     sql`DELETE FROM dashboard_pins WHERE dashboard_id = ${id}`,
+    ...deleteAlertStatements(alertIds),
   ]);
-  return panelIds;
+  return alertIds;
 }
 
 export interface ShareInput {

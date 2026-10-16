@@ -1206,14 +1206,17 @@ for (const dialect of DIALECTS) {
       expect(await grantsOf("viewer")).toEqual([...viewerBefore, "dashboards:view"].sort());
     });
 
-    it("stores a dashboard with panels, a share, a pin and alert state", async () => {
+    it("stores a dashboard with panels, a share, a pin and a panel alert", async () => {
       const at = Date.now();
       await h.rawRun(sql`INSERT INTO dashboards (id, title, owner_id, time_range, created_at, updated_at) VALUES ('d1', 'Orders', 'u1', '6h', ${at}, ${at})`);
       await h.rawRun(sql`INSERT INTO dashboard_panels (id, dashboard_id, position, title, sql, viz, width, height, created_at, updated_at)
         VALUES ('p1', 'd1', 0, 'Rows', 'SELECT 1', '{}', 6, 'm', ${at}, ${at})`);
       await h.rawRun(sql`INSERT INTO dashboard_shares (dashboard_id, role_id, can_edit, created_at) VALUES ('d1', 'r1', 1, ${at})`);
       await h.rawRun(sql`INSERT INTO dashboard_pins (user_id, dashboard_id, created_at) VALUES ('u1', 'd1', ${at})`);
-      await h.rawRun(sql`INSERT INTO dashboard_alert_state (rule_id, state, since, last_value) VALUES ('a1', 'ok', ${at}, ${1.5})`);
+      await h.rawRun(sql`INSERT INTO dashboard_alerts (id, dashboard_id, panel_id, name, owner_id, connection_id, severity, config, created_at, updated_at)
+        VALUES ('a1', 'd1', 'p1', 'Too many rows', 'u1', 'c1', 'warning', '{}', ${at}, ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_alert_channels (alert_id, channel_id) VALUES ('a1', 'ch1')`);
+      await h.rawRun(sql`INSERT INTO dashboard_alert_state (alert_id, state, since, last_value) VALUES ('a1', 'ok', ${at}, ${1.5})`);
       const rows = await h.rawAll(sql`SELECT description, refresh_seconds, variables, version FROM dashboards WHERE id = 'd1'`);
       expect(rows[0].description).toBe("");
       expect(Number(rows[0].refresh_seconds)).toBe(0);
@@ -1221,7 +1224,9 @@ for (const dialect of DIALECTS) {
       expect(Number(rows[0].version)).toBe(1);
       const panels = await h.rawAll(sql`SELECT fleet FROM dashboard_panels WHERE id = 'p1'`);
       expect(Number(panels[0].fleet)).toBe(0);
-      const state = await h.rawAll(sql`SELECT breaches, last_value, last_error FROM dashboard_alert_state WHERE rule_id = 'a1'`);
+      const alert = await h.rawAll(sql`SELECT enabled FROM dashboard_alerts WHERE id = 'a1'`);
+      expect(Number(alert[0].enabled)).toBe(1);
+      const state = await h.rawAll(sql`SELECT breaches, last_value, last_error FROM dashboard_alert_state WHERE alert_id = 'a1'`);
       expect(Number(state[0].breaches)).toBe(0);
       expect(Number(state[0].last_value)).toBe(1.5);
       expect(state[0].last_error).toBeNull();

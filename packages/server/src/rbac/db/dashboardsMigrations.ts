@@ -54,7 +54,7 @@ export const DASHBOARDS_MIGRATIONS: Migration[] = [
   {
     version: '1.61.0',
     name: 'custom_dashboards',
-    description: 'ADR 0021 — custom dashboards: dashboards, dashboard_panels, dashboard_shares, dashboard_pins and dashboard_alert_state; the dashboards:view|edit|delete|share|manage permissions granted to the system roles that hold them by default (Viewer view; Analyst view, edit, delete; Developer also share; Admin and Super Admin all).',
+    description: 'ADR 0021 — custom dashboards: dashboards, dashboard_panels, dashboard_shares, dashboard_pins, and panel threshold alerts (dashboard_alerts, dashboard_alert_channels, dashboard_alert_state); the dashboards:view|edit|delete|share|manage permissions granted to the system roles that hold them by default (Viewer view; Analyst view, edit, delete; Developer also share; Admin and Super Admin all).',
     up: async (db) => {
       const dialect = getDatabaseType() === 'sqlite' ? 'sqlite' : 'postgres';
       for (const statement of dashboardsSchemaStatements(dialect)) {
