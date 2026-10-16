@@ -35,6 +35,14 @@ import { RequestSheet } from "./RequestSheet";
 
 const PAGE_SIZE = 25;
 const SHOWN_COLUMNS = 4;
+/**
+ * The two side-by-side panels keep one fixed body height whatever they hold,
+ * so they always line up; a longer list scrolls inside with its header pinned.
+ */
+const SIDE_PANEL_BODY = "h-80";
+const SIDE_TABLE_SCROLL = "h-full overflow-y-auto";
+/** The request list scrolls inside the panel past about 15 rows. */
+const REQUESTS_TABLE_SCROLL = "max-h-[560px] overflow-y-auto";
 
 function Banner({ tone, children }: { tone: "warn" | "muted"; children: ReactNode }): ReactElement {
   return (
@@ -77,13 +85,13 @@ function ColumnList({ columns }: { columns: string[] }): ReactElement {
 function EgressPanel({ days, own }: { days: number; own: boolean }): ReactElement {
   const egress = useAiEgress(days);
   return (
-    <Panel title="Data sent to providers" meta="Each tool result counted once">
+    <Panel title="Data sent to providers" meta="Each tool result counted once" bodyClassName={SIDE_PANEL_BODY}>
       {egress.isLoading ? <LoadingGrid count={2} /> : egress.isError || !egress.data ? (
         <ErrorState title="Data sent to providers could not be loaded." error={egress.error} />
       ) : egress.data.length === 0 ? (
         <EmptyState title="No data sent yet" body="Tables, columns and CHouse records appear here when an AI tool returns them to a model." />
       ) : (
-        <DataTable label="Data sent to providers" head={own ? ["Source", "Columns", "Rows", "Provider"] : ["Source", "Columns", "Rows", "Users", "Provider"]}>
+        <DataTable label="Data sent to providers" scrollClassName={SIDE_TABLE_SCROLL} head={own ? ["Source", "Columns", "Rows", "Provider"] : ["Source", "Columns", "Rows", "Users", "Provider"]}>
           {egress.data.map((s: AiEgressSource) => (
             <tr key={`${s.kind}|${s.source}`}>
               <td className="max-w-[240px]">
@@ -107,13 +115,13 @@ function EgressPanel({ days, own }: { days: number; own: boolean }): ReactElemen
 function ModelsPanel({ days }: { days: number }): ReactElement {
   const models = useAiUsageByModel(days);
   return (
-    <Panel title="Usage by model">
+    <Panel title="Usage by model" meta="Most tokens first" bodyClassName={SIDE_PANEL_BODY}>
       {models.isLoading ? <LoadingGrid count={2} /> : models.isError || !models.data ? (
         <ErrorState title="Usage by model could not be loaded." error={models.error} />
       ) : models.data.length === 0 ? (
         <EmptyState title="No model calls yet" />
       ) : (
-        <DataTable label="Usage by model" head={["Model", "Requests", "Tokens", "Cached", "Cost"]}>
+        <DataTable label="Usage by model" scrollClassName={SIDE_TABLE_SCROLL} head={["Model", "Requests", "Tokens", "Cached", "Cost"]}>
           {models.data.map((m: AiModelUsage) => {
             const cached = cachedShare(m.inputTokens, m.cacheReadTokens);
             return (
@@ -164,7 +172,7 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
         <EmptyState icon={Activity} title={q ? "No requests match" : "No AI requests yet"} body={q ? "Try another user, agent, feature or table." : "Requests appear here once the chat or an AI feature runs."} />
       ) : (
         <>
-          <DataTable label="AI requests" head={own ? ["When", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"] : ["When", "User", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"]}>
+          <DataTable label="AI requests" scrollClassName={REQUESTS_TABLE_SCROLL} head={own ? ["When", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"] : ["When", "User", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"]}>
             {page.data.requests.map((r: AiUsageRequest) => (
               <tr key={r.id} className="cursor-pointer hover:bg-ink-200/50" onClick={() => onOpen(r.id)}>
                 <td className="whitespace-nowrap text-paper-muted" title={new Date(r.startedAt).toLocaleString()}>{formatAgo(r.startedAt)}</td>
@@ -237,7 +245,7 @@ export function AiActivityPanel(): ReactElement {
         </>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <EgressPanel days={days} own={own} />
         <ModelsPanel days={days} />
       </div>
