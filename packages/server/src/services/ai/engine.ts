@@ -26,7 +26,7 @@ import {
   type InvokedToolCall,
 } from "./registry/builder";
 import { registerHarnessBaseline } from "./registry/harness";
-import { persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
+import { currentCaller, persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
 import { userMayUseAgent, chatAgentCandidates } from "./registry/chatAgents";
 import type { AgentDef, RegistrySnapshot } from "./registry/types";
 import type {
@@ -150,7 +150,13 @@ function modelLabel(resolved: ResolvedModel): { model: ResolvedModel["model"]; l
 
 /** Who and what a usage run is attributed to (ADR 0020). */
 function usageMeta(featureId: string, ctx: AgentRunContext, source: UsageRunMeta["source"]): UsageRunMeta {
-  return { featureId, source, userId: ctx.userId ?? null, connectionId: ctx.connectionId ?? null };
+  return {
+    featureId,
+    source,
+    userId: ctx.userId ?? null,
+    connectionId: ctx.connectionId ?? null,
+    caller: source === "background" ? null : currentCaller(),
+  };
 }
 
 async function buildContext(

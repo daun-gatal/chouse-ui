@@ -16,6 +16,22 @@ export interface UnpricedModel {
   calls: number;
 }
 
+/**
+ * Who started a request: the CHouse UI, an MCP agent, a personal access token
+ * caller (the `chouse` CLI, scripts), or CHouse itself in the background.
+ * `unknown` marks requests recorded before origins were tracked.
+ */
+export const AI_REQUEST_ORIGINS = ["ui", "mcp", "token", "background"] as const;
+export type AiRequestOrigin = (typeof AI_REQUEST_ORIGINS)[number];
+
+export interface AiOriginUsage {
+  origin: AiRequestOrigin | "unknown";
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+}
+
 export interface AiUsageSummary {
   scope: UsageScope;
   days: number;
@@ -41,6 +57,8 @@ export interface AiUsageSummary {
   egressBytes: number;
   egressSources: number;
   unpricedModels: UnpricedModel[];
+  /** Requests by who started them, most requests first. */
+  byOrigin: AiOriginUsage[];
 }
 
 export interface AiModelUsage {
@@ -85,6 +103,13 @@ export interface AiUsageRequest {
   connectionId: string | null;
   /** The chat thread, for chat requests. */
   threadId: string | null;
+  origin: AiRequestOrigin | "unknown";
+  /** The personal access token an MCP or token request used. */
+  patId: string | null;
+  /** That token's name; null once it is deleted. */
+  patName: string | null;
+  /** The agent or client (Claude Code, chouse CLI, …) when known. */
+  clientName: string | null;
   featureId: string;
   agentId: string | null;
   agentSlug: string | null;
@@ -201,10 +226,10 @@ export async function getAiEgress(days: number, q?: string): Promise<AiEgressPag
   return { sources: res.sources, total: res.total, limit: res.limit };
 }
 
-export function listAiUsageRequests(options: { days: number; q?: string; limit?: number; offset?: number }): Promise<AiUsageRequestPage> {
+export function listAiUsageRequests(options: { days: number; q?: string; origin?: AiRequestOrigin; limit?: number; offset?: number }): Promise<AiUsageRequestPage> {
   const q = options.q?.trim();
   return api.get<AiUsageRequestPage>("/ai-usage/requests", {
-    params: { days: options.days, limit: options.limit, offset: options.offset, q: q ? q : undefined },
+    params: { days: options.days, limit: options.limit, offset: options.offset, q: q ? q : undefined, origin: options.origin },
   });
 }
 

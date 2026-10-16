@@ -11,7 +11,8 @@ export const aiUsageKeys = {
   summary: (days: number) => [...aiUsageKeys.all, "summary", days] as const,
   models: (days: number) => [...aiUsageKeys.all, "models", days] as const,
   egress: (days: number, q: string) => [...aiUsageKeys.all, "egress", days, q] as const,
-  requests: (days: number, q: string, offset: number, limit: number) => [...aiUsageKeys.all, "requests", days, q, offset, limit] as const,
+  requests: (days: number, q: string, origin: usage.AiRequestOrigin | null, offset: number, limit: number) =>
+    [...aiUsageKeys.all, "requests", days, q, origin, offset, limit] as const,
   request: (id: string) => [...aiUsageKeys.all, "request", id] as const,
 };
 
@@ -32,10 +33,16 @@ export function useAiEgress(days: number, q: string): UseQueryResult<usage.AiEgr
   });
 }
 
-export function useAiUsageRequests(days: number, q: string, offset: number, limit: number): UseQueryResult<usage.AiUsageRequestPage> {
+export function useAiUsageRequests(
+  days: number,
+  q: string,
+  origin: usage.AiRequestOrigin | null,
+  offset: number,
+  limit: number,
+): UseQueryResult<usage.AiUsageRequestPage> {
   return useQuery({
-    queryKey: aiUsageKeys.requests(days, q, offset, limit),
-    queryFn: () => usage.listAiUsageRequests({ days, q, offset, limit }),
+    queryKey: aiUsageKeys.requests(days, q, origin, offset, limit),
+    queryFn: () => usage.listAiUsageRequests({ days, q, origin: origin ?? undefined, offset, limit }),
     refetchInterval: REFRESH_MS,
     // Keep the current page on screen while the next search or page loads.
     placeholderData: keepPreviousData,

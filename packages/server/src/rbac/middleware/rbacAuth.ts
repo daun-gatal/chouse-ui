@@ -22,6 +22,7 @@ import {
 } from '../services/rbac';
 import { AUDIT_ACTIONS, type Permission } from '../schema/base';
 import { AppError } from '../../types';
+import { callerOf, runAsCaller } from '../../services/ai/usage/origin';
 
 // ============================================
 // Context Types
@@ -72,7 +73,11 @@ export async function rbacAuthMiddleware(c: Context, next: Next) {
       c.set('patId', identity.patId);
     }
 
-    await next();
+    // AI usage records who started a request (UI, MCP agent or token caller).
+    await runAsCaller(
+      callerOf({ authMethod: identity.authMethod, patId: identity.patId ?? null, header: (name) => c.req.header(name) }),
+      next,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication failed';
     

@@ -7,6 +7,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { rawAll, toNumber } from "../../../rbac/db/raw";
+import { USAGE_ORIGINS, type UsageOrigin } from "./origin";
 
 export interface UsageScope {
   /** Only this user's requests; null for everyone's. */
@@ -37,6 +38,24 @@ export interface UsageSummary {
   egressSources: number;
   /** Models used in the window that have no price now. */
   unpricedModels: Array<{ modelConfigId: string | null; name: string; providerType: string | null; calls: number }>;
+  /** Requests by who started them, most requests first. */
+  byOrigin: OriginUsage[];
+}
+
+/**
+ * Who started a request: the UI, an MCP agent, a token caller (CLI, scripts),
+ * or CHouse itself in the background. `unknown` is a request recorded before
+ * origins were tracked.
+ */
+export const REQUEST_ORIGINS = [...USAGE_ORIGINS, "background"] as const;
+export type RequestOrigin = (typeof REQUEST_ORIGINS)[number];
+
+export interface OriginUsage {
+  origin: RequestOrigin | "unknown";
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
 }
 
 export interface ModelUsage {
@@ -77,6 +96,13 @@ export interface UsageRequestRow {
   connectionId: string | null;
   /** The chat thread the request belongs to, for chat requests. */
   threadId: string | null;
+  origin: RequestOrigin | "unknown";
+  /** The personal access token an MCP or token request used. */
+  patId: string | null;
+  /** That token's name; null when it was deleted. */
+  patName: string | null;
+  /** The agent or client (Claude Code, chouse CLI, …) when known. */
+  clientName: string | null;
   featureId: string;
   agentId: string | null;
   agentSlug: string | null;
@@ -188,6 +214,23 @@ function jsonObject(value: unknown): Record<string, unknown> {
   }
 }
 
+function isUsageOrigin(value: unknown): value is UsageOrigin {
+  return typeof value === "string" && (USAGE_ORIGINS as readonly string[]).includes(value);
+}
+
+/** A request's origin from its stored `origin` and `source`. */
+function originOf(origin: unknown, source: unknown): RequestOrigin | "unknown" {
+  if (source === "background") return "background";
+  return isUsageOrigin(origin) ? origin : "unknown";
+}
+
+/** `AND <origin matches>` for a list filter. */
+function originFilter(origin: RequestOrigin | undefined): SQL {
+  if (!origin) return sql``;
+  if (origin === "background") return sql` AND r.source = 'background'`;
+  return sql` AND r.origin = ${origin} AND r.source <> 'background'`;
+}
+
 function egressKind(value: unknown): "clickhouse" | "chouse" {
   return value === "chouse" ? "chouse" : "clickhouse";
 }
@@ -225,6 +268,22 @@ export async function usageSummary(scope: UsageScope): Promise<UsageSummary> {
       AND s.kind = 'llm' AND s.usage_reported = 1 AND s.cost_usd IS NULL AND m.pricing IS NULL
     GROUP BY s.model_config_id
     ORDER BY COUNT(*) DESC`);
+  const origins = await rawAll(sql`
+    SELECT origin, CASE WHEN source = 'background' THEN 'background' ELSE '' END AS bg, COUNT(*) AS requests,
+      SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost
+    FROM ai_usage_requests WHERE started_at >= ${scope.since}${userFilter(scope, "user_id")}
+    GROUP BY origin, CASE WHEN source = 'background' THEN 'background' ELSE '' END`);
+  const byOrigin = new Map<OriginUsage["origin"], OriginUsage>();
+  for (const r of origins) {
+    const origin = originOf(r.origin, r.bg === "background" ? "background" : null);
+    const entry = byOrigin.get(origin) ?? { origin, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: null };
+    const cost = numOrNull(r.cost);
+    entry.requests += toNumber(r.requests);
+    entry.inputTokens += toNumber(r.input_tokens);
+    entry.outputTokens += toNumber(r.output_tokens);
+    if (cost !== null) entry.costUsd = (entry.costUsd ?? 0) + cost;
+    byOrigin.set(origin, entry);
+  }
   return {
     requests: toNumber(totals?.requests),
     failedRequests: toNumber(totals?.failed),
@@ -250,6 +309,7 @@ export async function usageSummary(scope: UsageScope): Promise<UsageSummary> {
       providerType: strOrNull(r.provider_type),
       calls: toNumber(r.calls),
     })),
+    byOrigin: [...byOrigin.values()].sort((a, b) => b.requests - a.requests),
   };
 }
 
@@ -337,6 +397,10 @@ function requestRow(r: Record<string, unknown>): UsageRequestRow {
     userName: strOrNull(r.display_name) ?? strOrNull(r.username),
     connectionId: strOrNull(r.connection_id),
     threadId: strOrNull(r.thread_id),
+    origin: originOf(r.origin, r.source),
+    patId: strOrNull(r.pat_id),
+    patName: strOrNull(r.pat_name),
+    clientName: strOrNull(r.client_name),
     featureId: str(r.feature_id),
     agentId: strOrNull(r.agent_id),
     agentSlug: strOrNull(r.agent_slug),
@@ -363,7 +427,7 @@ function requestRow(r: Record<string, unknown>): UsageRequestRow {
 
 export async function listUsageRequests(
   scope: UsageScope,
-  options: { q?: string; limit?: number; offset?: number } = {},
+  options: { q?: string; origin?: RequestOrigin; limit?: number; offset?: number } = {},
 ): Promise<{ requests: UsageRequestRow[]; total: number }> {
   const limit = Math.min(MAX_LIST, Math.max(1, Math.floor(options.limit ?? 50)));
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
@@ -373,25 +437,32 @@ export async function listUsageRequests(
         OR LOWER(COALESCE(u.display_name, '')) LIKE ${likePattern(q)} ESCAPE '\\'
         OR LOWER(COALESCE(r.agent_name, '')) LIKE ${likePattern(q)} ESCAPE '\\'
         OR LOWER(r.feature_id) LIKE ${likePattern(q)} ESCAPE '\\'
+        OR LOWER(COALESCE(r.client_name, '')) LIKE ${likePattern(q)} ESCAPE '\\'
+        OR LOWER(COALESCE(k.name, '')) LIKE ${likePattern(q)} ESCAPE '\\'
         OR r.id IN (SELECT e.request_id FROM ai_usage_egress e WHERE e.started_at >= ${scope.since} AND LOWER(e.source) LIKE ${likePattern(q)} ESCAPE '\\'))`
     : sql``;
-  const where = sql`WHERE r.started_at >= ${scope.since}${userFilter(scope, "r.user_id")}${search}`;
+  const where = sql`WHERE r.started_at >= ${scope.since}${userFilter(scope, "r.user_id")}${originFilter(options.origin)}${search}`;
   const rows = await rawAll(sql`
-    SELECT r.*, u.username, u.display_name FROM ai_usage_requests r
+    SELECT r.*, u.username, u.display_name, k.name AS pat_name FROM ai_usage_requests r
     LEFT JOIN rbac_users u ON u.id = r.user_id
+    LEFT JOIN rbac_api_keys k ON k.id = r.pat_id
     ${where}
     ORDER BY r.started_at DESC, r.id
     LIMIT ${limit} OFFSET ${offset}`);
   const [count] = await rawAll(sql`
-    SELECT COUNT(*) AS n FROM ai_usage_requests r LEFT JOIN rbac_users u ON u.id = r.user_id ${where}`);
+    SELECT COUNT(*) AS n FROM ai_usage_requests r
+    LEFT JOIN rbac_users u ON u.id = r.user_id
+    LEFT JOIN rbac_api_keys k ON k.id = r.pat_id
+    ${where}`);
   return { requests: rows.map(requestRow), total: toNumber(count?.n) };
 }
 
 /** One request with its steps and egress, or null when it does not exist or is outside the scope's user. */
 export async function usageRequestDetail(id: string, userId: string | null): Promise<UsageRequestDetail | null> {
   const [row] = await rawAll(sql`
-    SELECT r.*, u.username, u.display_name FROM ai_usage_requests r
+    SELECT r.*, u.username, u.display_name, k.name AS pat_name FROM ai_usage_requests r
     LEFT JOIN rbac_users u ON u.id = r.user_id
+    LEFT JOIN rbac_api_keys k ON k.id = r.pat_id
     WHERE r.id = ${id}${userId === null ? sql`` : sql` AND r.user_id = ${userId}`}`);
   if (!row) return null;
   const stepRows = await rawAll(sql`SELECT * FROM ai_usage_steps WHERE request_id = ${id} ORDER BY seq`);

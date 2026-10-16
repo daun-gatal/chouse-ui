@@ -13,8 +13,8 @@ import { runMigrations } from "../rbac/db/migrations";
 import * as h from "../rbac/db/migrationTestHarness";
 import { generateAccessToken } from "../rbac/services/jwt";
 import { errorHandler } from "../middleware/error";
-import { UsageRun, writeUsageRun, type ModelRef } from "../services/ai/usage";
-import aiUsage, { windowDays } from "./ai-usage";
+import { UsageRun, writeUsageRun, type ModelRef, type UsageCaller } from "../services/ai/usage";
+import aiUsage, { originParam, windowDays } from "./ai-usage";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 const ADMIN = "usage-admin";
@@ -65,9 +65,14 @@ async function seedRun(options: {
   rows?: number;
   status?: "ok" | "error";
   chouse?: string;
+  source?: "chat" | "feature" | "background";
+  caller?: UsageCaller | null;
 }): Promise<string> {
   let t = options.startedAt;
-  const run = new UsageRun({ featureId: "chat", source: "chat", userId: options.userId, connectionId: "conn-1", threadId: `thread-${options.userId}` }, () => t);
+  const run = new UsageRun({
+    featureId: "chat", source: options.source ?? "chat", userId: options.userId, connectionId: "conn-1",
+    threadId: `thread-${options.userId}`, caller: options.caller,
+  }, () => t);
   run.setAgent({ id: `agent-${options.agent}`, slug: options.agent, name: `Agent ${options.agent}` });
   const llm = run.beginLlm(options.model, options.agent);
   t += 100;
@@ -98,6 +103,9 @@ for (const dialect of DIALECTS) {
     let nobodyToken = "";
     let aliceRequest = "";
     let bobRequest = "";
+    let mcpRequest = "";
+    let tokenRequest = "";
+    let backgroundRequest = "";
 
     beforeAll(async () => {
       process.env.RBAC_ENCRYPTION_KEY ||= "e2e0000000000000000000000000000000000000000000000000000000000000";
@@ -120,6 +128,18 @@ for (const dialect of DIALECTS) {
       bobRequest = await seedRun({ userId: BOB, model: UNPRICED, agent: "ai-sre", startedAt: now() - 7_200_000, input: 2_000, output: 300, table: "sales.orders", rows: 7, chouse: "Audit log", status: "error" });
       // Outside a 1-day window, inside 7 days.
       await seedRun({ userId: ALICE, model: PRICED, agent: "sql-assistant", startedAt: now() - 3 * 86_400_000, input: 10, output: 10 });
+      // Outside 7 days: requests an MCP agent, a token caller and a scheduler started.
+      await h.rawRun(sql`INSERT INTO rbac_api_keys (id, user_id, name, key_hash, key_prefix, scopes, created_at)
+        VALUES ('pat-ci', ${BOB}, 'ci-agent', 'hash-ci', 'ch_pat_ci', ${sql.raw("'[]'")}, ${ts})`);
+      mcpRequest = await seedRun({
+        userId: BOB, model: PRICED, agent: "sql-optimizer", source: "feature", startedAt: now() - 10 * 86_400_000, input: 1_000_000, output: 0,
+        caller: { origin: "mcp", patId: "pat-ci", clientName: "Claude Code" },
+      });
+      tokenRequest = await seedRun({
+        userId: BOB, model: UNPRICED, agent: "sql-optimizer", source: "feature", startedAt: now() - 11 * 86_400_000, input: 100, output: 10,
+        caller: { origin: "token", patId: "pat-deleted", clientName: "chouse CLI" },
+      });
+      backgroundRequest = await seedRun({ userId: ADMIN, model: UNPRICED, agent: "doctor", source: "background", startedAt: now() - 12 * 86_400_000, input: 5, output: 5, caller: null });
 
       adminToken = await token(ADMIN, ["ai_usage:view"]);
       aliceToken = await token(ALICE, ["ai:chat"]);
@@ -220,6 +240,40 @@ for (const dialect of DIALECTS) {
       expect(data.egress).toHaveLength(2);
       expect(data.connections).toEqual({ "conn-1": "prod-eu" });
       expect((await get("/ai-usage/requests/missing", adminToken)).status).toBe(404);
+    });
+
+    it("breaks usage down by who started it", async () => {
+      const { data } = await get<{ byOrigin: Array<Record<string, unknown>> }>("/ai-usage/summary?days=30", adminToken);
+      const byOrigin = Object.fromEntries(data.byOrigin.map((o) => [o.origin, o]));
+      // Requests recorded without a caller (the first three) predate origin tracking.
+      expect(byOrigin.unknown).toMatchObject({ requests: 3 });
+      expect(byOrigin.mcp).toMatchObject({ requests: 1, inputTokens: 1_000_000 });
+      expect(byOrigin.mcp.costUsd as number).toBeCloseTo(3, 6);
+      expect(byOrigin.token).toMatchObject({ requests: 1, costUsd: null });
+      expect(byOrigin.background).toMatchObject({ requests: 1 });
+      expect(data.byOrigin[0].origin).toBe("unknown");
+    });
+
+    it("lists the origin, token and client of each request, and filters by origin", async () => {
+      const list = async (query: string): Promise<Array<Record<string, unknown>>> =>
+        (await get<{ requests: Array<Record<string, unknown>> }>(`/ai-usage/requests?days=30&${query}`, adminToken)).data.requests;
+      const mcp = await list("origin=mcp");
+      expect(mcp.map((r) => r.id)).toEqual([mcpRequest]);
+      expect(mcp[0]).toMatchObject({ origin: "mcp", patId: "pat-ci", patName: "ci-agent", clientName: "Claude Code" });
+      const token = await list("origin=token");
+      expect(token.map((r) => r.id)).toEqual([tokenRequest]);
+      // The token was deleted: its id stays, its name is gone.
+      expect(token[0]).toMatchObject({ origin: "token", patId: "pat-deleted", patName: null, clientName: "chouse CLI" });
+      expect((await list("origin=background")).map((r) => r.id)).toEqual([backgroundRequest]);
+      expect(await list("origin=ui")).toEqual([]);
+      expect((await list("q=ci-agent")).map((r) => r.id)).toEqual([mcpRequest]);
+      expect((await list("q=chouse%20cli")).map((r) => r.id)).toEqual([tokenRequest]);
+      const detail = await get<{ request: Record<string, unknown> }>(`/ai-usage/requests/${mcpRequest}`, adminToken);
+      expect(detail.data.request).toMatchObject({ origin: "mcp", patName: "ci-agent" });
+      expect((await get(`/ai-usage/requests?origin=browser`, adminToken)).status).toBe(400);
+      expect(originParam(undefined)).toBeUndefined();
+      expect(originParam("")).toBeUndefined();
+      expect(originParam("token")).toBe("token");
     });
 
     it("clamps the window to retention and rejects nonsense", async () => {

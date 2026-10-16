@@ -8,6 +8,7 @@ import {
     optionalRbacAuthMiddleware
 } from "./rbacAuth";
 import { AppError } from "../../types";
+import { currentCaller } from "../../services/ai/usage/origin";
 
 // Mock Services
 const mockVerifyAccessToken = mock(async () => ({
@@ -72,6 +73,14 @@ describe("RBAC Auth Middleware", () => {
     });
 
     describe("rbacAuthMiddleware", () => {
+        it("runs the rest of the request as a UI caller for AI usage", async () => {
+            mockContext.req.header.mockReturnValue("Bearer valid");
+            let seen: unknown = undefined;
+            await rbacAuthMiddleware(mockContext as any, async () => { seen = currentCaller(); });
+            expect(seen).toEqual({ origin: "ui", patId: null, clientName: null });
+            expect(currentCaller()).toBeNull();
+        });
+
         it("should authenticate valid token", async () => {
             // Mock header to return valid token
             mockContext.req.header.mockReturnValue("Bearer valid");

@@ -124,14 +124,15 @@ export async function writeUsageRun(run: UsageRun): Promise<void> {
     "id", "started_at", "duration_ms", "user_id", "connection_id", "thread_id", "feature_id", "agent_id", "agent_slug", "agent_name",
     "source", "status", "error", "llm_calls", "tool_calls", "input_tokens", "output_tokens", "cache_read_tokens",
     "cache_write_tokens", "incomplete_calls", "unpriced_calls", "cost_usd", "ch_queries", "ch_read_rows", "ch_read_bytes",
-    "egress_rows", "egress_bytes",
+    "egress_rows", "egress_bytes", "origin", "pat_id", "client_name",
   ], [[
     v(run.id), v(run.startedAt), v(run.durationMs), v(run.meta.userId), v(run.meta.connectionId), v(run.meta.threadId ?? null), v(run.meta.featureId),
     v(run.agent?.id ?? null), v(run.agent?.slug ?? null), v(run.agent?.name ?? null), v(run.meta.source), v(run.status),
     v(run.error), v(totals.llmCalls), v(totals.toolCalls), v(totals.inputTokens), v(totals.outputTokens),
     v(totals.cacheReadTokens), v(totals.cacheWriteTokens), v(totals.incompleteCalls), v(totals.unpricedCalls),
     v(priced ? totals.costUsd : null), v(run.chQueries), v(run.chReadRows), v(run.chReadBytes),
-    v(totals.egressRows), v(totals.egressBytes),
+    v(totals.egressRows), v(totals.egressBytes), v(run.meta.caller?.origin ?? null), v(run.meta.caller?.patId ?? null),
+    v(run.meta.caller?.clientName ?? null),
   ]]);
 }
 

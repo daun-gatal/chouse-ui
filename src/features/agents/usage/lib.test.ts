@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AiUsageStep } from "@/api/aiUsage";
 
-import { buildTimeline, cachedShare, featureLabel, formatOffset, OPEN_CHAT_THREAD_EVENT, openChatThread, plural, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
+import { buildTimeline, cachedShare, featureLabel, formatOffset, OPEN_CHAT_THREAD_EVENT, openChatThread, plural, requestCaller, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
 
 describe("formatUsd", () => {
   it("shows unknown cost as a dash, never $0", () => {
@@ -92,6 +92,20 @@ describe("plural / requestOrigin", () => {
     expect(requestOrigin("chat", "chat")).toBe("Chat");
     expect(requestOrigin("feature", "optimize-query")).toBe("Feature · Optimize query");
     expect(requestOrigin("background", "doctor-scan")).toBe("Background · Doctor scan");
+  });
+});
+
+describe("requestCaller", () => {
+  it("names the agent and token behind MCP and token requests", () => {
+    expect(requestCaller({ origin: "mcp", patId: "p1", patName: "ci-agent", clientName: "Claude Code" })).toBe("MCP · Claude Code · token ci-agent");
+    expect(requestCaller({ origin: "token", patId: "p2", patName: null, clientName: "chouse CLI" })).toBe("Access token · chouse CLI · a deleted token");
+    expect(requestCaller({ origin: "token", patId: null, patName: null, clientName: null })).toBe("Access token");
+  });
+
+  it("adds nothing for the UI, background or unrecorded requests", () => {
+    for (const origin of ["ui", "background", "unknown"] as const) {
+      expect(requestCaller({ origin, patId: null, patName: null, clientName: null })).toBeNull();
+    }
   });
 });
 

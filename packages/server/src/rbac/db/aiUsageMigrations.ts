@@ -1,9 +1,10 @@
 /**
  * ADR 0020 migrations: 1.58.0 adds AI usage and data egress tracking; 1.59.0
- * adds the request's chat thread to databases that ran 1.58.0 before it had one.
+ * adds the request's chat thread to databases that ran 1.58.0 before it had one;
+ * 1.60.0 records who started each request (UI, MCP agent or token caller).
  *
  * Schema plus one permission grant, all idempotent: `IF NOT EXISTS` tables and
- * indexes, a guarded column add, and a grant that skips an existing row. It
+ * indexes, guarded column adds, and a grant that skips an existing row. It
  * applies cleanly on fresh, stepwise and skip-version installs. The engine
  * fills the tables itself; there is no data to move.
  */
@@ -89,6 +90,22 @@ export const AI_USAGE_MIGRATIONS: Migration[] = [
       } else {
         logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.59.0] ai_usage_requests.thread_id already present (${dialect})`);
       }
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.60.0',
+    name: 'ai_usage_request_origin',
+    description: 'ADR 0020 — who started an AI request: ai_usage_requests.origin (ui, mcp or token), pat_id (the personal access token used) and client_name (Claude Code, the chouse CLI, …), plus an index for a token\'s requests. Guarded column adds and IF NOT EXISTS index; existing rows keep NULL (recorded before origins were tracked).',
+    up: async (db) => {
+      const dialect = getDatabaseType() === 'sqlite' ? 'sqlite' : 'postgres';
+      for (const column of ['origin', 'pat_id', 'client_name']) {
+        if (!(await columnExists(db, 'ai_usage_requests', column))) {
+          await exec(db, sql.raw(`ALTER TABLE ai_usage_requests ADD COLUMN ${column} TEXT`));
+        }
+      }
+      await exec(db, sql.raw('CREATE INDEX IF NOT EXISTS ai_usage_requests_pat_idx ON ai_usage_requests (pat_id, started_at)'));
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.60.0] Added AI request origin columns (${dialect})`);
     },
     down: async () => { /* forward-only */ },
   },
