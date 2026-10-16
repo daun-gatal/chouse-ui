@@ -400,9 +400,9 @@ describe("usage attribution", () => {
     invokeResult = { messages: [{ content: '{"foo":"x"}' }] };
     finishedRuns.length = 0;
     const caller = { origin: "mcp" as const, patId: "pat-1", clientName: "Claude Code" };
-    await runAsCaller(caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "a" }, { userId: "u1" }));
+    await runAsCaller(() => caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "a" }, { userId: "u1" }));
     // A scheduler run has no user; even inside a request it is not the caller's.
-    await runAsCaller(caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "b" }, {}));
+    await runAsCaller(() => caller, () => runStructuredCapability(fakeStructuredCapability(), { q: "b" }, {}));
     await runStructuredCapability(fakeStructuredCapability(), { q: "c" }, { userId: "u1" });
     expect(finishedRuns.map((r) => [r.meta.source, r.meta.caller])).toEqual([
       ["feature", caller],

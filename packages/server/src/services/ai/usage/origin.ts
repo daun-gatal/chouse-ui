@@ -2,13 +2,16 @@
  * Who started an AI request (ADR 0020): the browser UI, an MCP agent, or a
  * direct personal-access-token caller such as the `chouse` CLI.
  *
- * AI features start from many routes and services, so the caller is not
- * threaded through each of them: `rbacAuthMiddleware` runs the rest of the
- * request inside `runAsCaller`, and the usage run reads it when it starts.
- * Runs outside a request (schedulers, alerters) have no caller.
+ * AI features start from many routes, and those routes authenticate through
+ * different middlewares (`rbacAuthMiddleware`, `connectionContextMiddleware`).
+ * So the caller is not threaded through each of them: `requestCallerMiddleware`
+ * runs every `/api` request inside a scope that reads the request's auth
+ * context when a usage run starts — after whichever middleware authenticated
+ * it. Runs outside a request (schedulers, alerters) have no caller.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { Context, Next } from "hono";
 
 import { AGENT_CLIENT_HEADER, describeAgentClient } from "../../agents/clients";
 
@@ -23,14 +26,17 @@ export interface UsageCaller {
   clientName: string | null;
 }
 
-const callerStore = new AsyncLocalStorage<UsageCaller>();
+/** Resolves the current request's caller; null while it is not authenticated. */
+type CallerResolver = () => UsageCaller | null;
 
-export function runAsCaller<T>(caller: UsageCaller, fn: () => Promise<T>): Promise<T> {
-  return callerStore.run(caller, fn);
+const callerStore = new AsyncLocalStorage<CallerResolver>();
+
+export function runAsCaller<T>(resolve: CallerResolver, fn: () => Promise<T>): Promise<T> {
+  return callerStore.run(resolve, fn);
 }
 
 export function currentCaller(): UsageCaller | null {
-  return callerStore.getStore() ?? null;
+  return callerStore.getStore()?.() ?? null;
 }
 
 interface CallerRequest {
@@ -52,4 +58,13 @@ export function callerOf(request: CallerRequest): UsageCaller {
     patId: request.patId,
     clientName: describeAgentClient(request.header(AGENT_CLIENT_HEADER)) ?? describeAgentClient(request.header("User-Agent")),
   };
+}
+
+/** Mounted on the `/api` router: AI usage runs started by the request record its caller. */
+export async function requestCallerMiddleware(c: Context, next: Next): Promise<void> {
+  await runAsCaller(() => {
+    const authMethod = c.get("authMethod");
+    if (!authMethod) return null;
+    return callerOf({ authMethod, patId: c.get("patId") ?? null, header: (name) => c.req.header(name) });
+  }, next);
 }

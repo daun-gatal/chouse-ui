@@ -25,6 +25,7 @@ import agents from "./agents";
 import aiAgents from "./ai-agents";
 import aiUsage from "./ai-usage";
 import integrations from "./integrations";
+import { requestCallerMiddleware } from "../services/ai/usage/origin";
 
 const api = new Hono();
 
@@ -89,6 +90,8 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
 
 // Apply API protection to all routes
 api.use("*", apiProtectionMiddleware);
+// AI usage records who started each request, whichever middleware authenticates it.
+api.use("*", requestCallerMiddleware);
 
 // Public routes (no auth required)
 api.route("/config", config);
