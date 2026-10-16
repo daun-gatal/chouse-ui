@@ -375,6 +375,7 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("developer", "ai_usage:view")).toBe(false);
     expect(await h.roleHasPermission("viewer", "ai_usage:view")).toBe(false);
   },
+  "1.59.0": async () => expect(await h.columnExists("ai_usage_requests", "thread_id")).toBe(true),
 };
 
 // ---------------------------------------------------------------------------
@@ -1070,6 +1071,35 @@ for (const dialect of DIALECTS) {
         WHERE r.name = 'admin' AND p.name = 'ai_usage:view'`);
       expect(Number(grants[0].c)).toBe(1);
       expect((await runMigrations()).migrationsApplied).toEqual([]);
+    });
+  });
+
+  describe(`migrations · 1.59.0 thread_id on an earlier 1.58.0 [${dialect}]`, () => {
+    // An install that ran 1.58.0 before it created thread_id: every usage write
+    // failed. 1.59.0 must add the column, keep existing rows, and be a no-op
+    // where 1.58.0 already created it.
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.58.0" });
+      await h.rawRun(sql`ALTER TABLE ai_usage_requests DROP COLUMN thread_id`);
+      await h.rawRun(sql`INSERT INTO ai_usage_requests (id, started_at, feature_id, source, status) VALUES ('old', ${Date.now()}, 'chat', 'chat', 'ok')`);
+      expect(await h.columnExists("ai_usage_requests", "thread_id")).toBe(false);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("adds the column and keeps existing requests", async () => {
+      expect(await h.columnExists("ai_usage_requests", "thread_id")).toBe(true);
+      const rows = await h.rawAll(sql`SELECT thread_id FROM ai_usage_requests WHERE id = 'old'`);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].thread_id).toBeNull();
+      await h.rawRun(sql`INSERT INTO ai_usage_requests (id, started_at, thread_id, feature_id, source, status) VALUES ('new', ${Date.now()}, 't1', 'chat', 'chat', 'ok')`);
+    });
+
+    it("is a no-op when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.59.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("ai_usage_requests")).toBe(2);
     });
   });
 }

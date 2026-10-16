@@ -1,5 +1,6 @@
 /**
- * ADR 0020 migrations: 1.58.0 adds AI usage and data egress tracking.
+ * ADR 0020 migrations: 1.58.0 adds AI usage and data egress tracking; 1.59.0
+ * adds the request's chat thread to databases that ran 1.58.0 before it had one.
  *
  * Schema plus one permission grant, all idempotent: `IF NOT EXISTS` tables and
  * indexes, a guarded column add, and a grant that skips an existing row. It
@@ -73,6 +74,21 @@ export const AI_USAGE_MIGRATIONS: Migration[] = [
         await grantToRole(db, role, PERMISSIONS.AI_USAGE_VIEW);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.58.0] Created AI usage tracking tables (${dialect})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.59.0',
+    name: 'ai_usage_thread_id',
+    description: 'ADR 0020 — the chat thread of an AI request (ai_usage_requests.thread_id). 1.58.0 creates it on new databases; this adds it to databases that ran an earlier 1.58.0 without it, where every usage write failed. Guarded: a no-op when the column exists.',
+    up: async (db) => {
+      const dialect = getDatabaseType() === 'sqlite' ? 'sqlite' : 'postgres';
+      if (!(await columnExists(db, 'ai_usage_requests', 'thread_id'))) {
+        await exec(db, sql.raw('ALTER TABLE ai_usage_requests ADD COLUMN thread_id TEXT'));
+        logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.59.0] Added ai_usage_requests.thread_id (${dialect})`);
+      } else {
+        logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.59.0] ai_usage_requests.thread_id already present (${dialect})`);
+      }
     },
     down: async () => { /* forward-only */ },
   },
