@@ -80,13 +80,17 @@ deliveries. test sends a real notification, so it asks first (or needs
 func (a *App) newAICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ai",
-		Short: "Chouse AI on SQL: optimize and diagnose (LLM cost)",
+		Short: "Chouse AI: optimize SQL (LLM cost), usage, cost and agents",
 		Long: `Ask Chouse AI to optimize or diagnose SQL. Advisory only — it never
 runs anything — but it calls the AI model (LLM cost), so it asks first (or
-needs --yes). Listing capabilities and models is free.`,
+needs --yes). Listing capabilities and models is free, and so are the
+governance reads: usage and estimated cost, data sent to providers, recent
+requests, and how CHouse's AI agents are set up.`,
 		Example: `  chouse ai optimize -f slow.sql --yes
   chouse ai optimize --capability debug-query "SELECT …" --yes
-  chouse ai models`,
+  chouse ai models
+  chouse ai usage --by origin --days 30
+  chouse ai requests --origin mcp`,
 	}
 	var file, model, capability string
 	var stdin bool
@@ -137,5 +141,6 @@ needs --yes). Listing capabilities and models is free.`,
 		}
 	}
 	cmd.AddCommand(optimize, list("capabilities", "What Chouse AI can do for your token", "/api/ai/capabilities"), list("models", "Active AI models", "/api/ai/models"))
+	cmd.AddCommand(a.newAIUsageCmds()...)
 	return cmd
 }

@@ -150,10 +150,18 @@
     {
       "path": "chouse ai",
       "use": "chouse ai",
-      "short": "Chouse AI on SQL: optimize and diagnose (LLM cost)",
-      "long": "Ask Chouse AI to optimize or diagnose SQL. Advisory only — it never\nruns anything — but it calls the AI model (LLM cost), so it asks first (or\nneeds --yes). Listing capabilities and models is free.",
-      "example": "  chouse ai optimize -f slow.sql --yes\n  chouse ai optimize --capability debug-query \"SELECT …\" --yes\n  chouse ai models",
+      "short": "Chouse AI: optimize SQL (LLM cost), usage, cost and agents",
+      "long": "Ask Chouse AI to optimize or diagnose SQL. Advisory only — it never\nruns anything — but it calls the AI model (LLM cost), so it asks first (or\nneeds --yes). Listing capabilities and models is free, and so are the\ngovernance reads: usage and estimated cost, data sent to providers, recent\nrequests, and how CHouse's AI agents are set up.",
+      "example": "  chouse ai optimize -f slow.sql --yes\n  chouse ai optimize --capability debug-query \"SELECT …\" --yes\n  chouse ai models\n  chouse ai usage --by origin --days 30\n  chouse ai requests --origin mcp",
       "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai agents",
+      "use": "chouse ai agents",
+      "short": "CHouse's AI agents: what each feature runs, models, tools (ai_agents:view)",
+      "long": "The AI agents CHouse runs (AI Governance › Assistant): each agent with\nits model config, harness, tools, skills and subagents, whether it is built\nin or customized and has an update, and which agent each AI feature is bound\nto (-o json for features, harnesses and skills). Read-only; agents are edited\nin the UI.",
+      "example": "  chouse ai agents\n  chouse ai agents -o json | jq '.features'",
       "runnable": true
     },
     {
@@ -162,6 +170,27 @@
       "short": "What Chouse AI can do for your token",
       "example": "  chouse ai capabilities",
       "runnable": true
+    },
+    {
+      "path": "chouse ai egress",
+      "use": "chouse ai egress [flags]",
+      "short": "Tables, columns and records AI tools sent to LLM providers",
+      "long": "Data CHouse's AI tools returned to an LLM provider in the last --days,\nby source (a table or a CHouse record type), most rows first: columns, rows,\nbytes, users, requests and providers. --search narrows the sources on the\nserver.",
+      "example": "  chouse ai egress --days 30\n  chouse ai egress --search customers",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "days",
+          "type": "int",
+          "default": "7",
+          "usage": "window in days (capped at the server's retention)"
+        },
+        {
+          "name": "search",
+          "type": "string",
+          "usage": "only sources whose name contains this text"
+        }
+      ]
     },
     {
       "path": "chouse ai models",
@@ -198,6 +227,72 @@
           "name": "stdin",
           "type": "bool",
           "usage": "read SQL from stdin"
+        }
+      ]
+    },
+    {
+      "path": "chouse ai request",
+      "use": "chouse ai request <requestId>",
+      "short": "One AI request step by step: LLM calls, tool calls, queries, data sent",
+      "example": "  chouse ai request 0c5f… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai requests",
+      "use": "chouse ai requests [flags]",
+      "short": "Recent AI requests: who started them, tokens, cost, status",
+      "long": "AI requests of the last --days, newest first: the user, where it came\nfrom (--origin ui, mcp, token or background), the token and client of MCP\nand token requests, the agent, tokens, estimated cost, ClickHouse read and\nstatus. Prompt and response text are never stored.",
+      "example": "  chouse ai requests --origin mcp\n  chouse ai requests --search ci-agent --limit 20\n  chouse ai requests --days 30 -o json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "days",
+          "type": "int",
+          "default": "7",
+          "usage": "window in days (capped at the server's retention)"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "rows to return (1-200)"
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "default": "0",
+          "usage": "rows to skip, for paging"
+        },
+        {
+          "name": "origin",
+          "type": "string",
+          "usage": "only requests started from ui, mcp, token or background"
+        },
+        {
+          "name": "search",
+          "type": "string",
+          "usage": "match on user, agent, feature, client, token name or a table sent to the model"
+        }
+      ]
+    },
+    {
+      "path": "chouse ai usage",
+      "use": "chouse ai usage [flags]",
+      "short": "What CHouse's AI used and cost (tokens, est. cost, data sent)",
+      "long": "CHouse's own AI (the chat and every AI feature) in the last --days:\nrequests, tokens, estimated cost over priced models, ClickHouse read by AI\ntools and rows sent to LLM providers. --by origin splits it by who started\nthe requests (the UI, MCP agents, access tokens, background); --by model\nshows usage per model. With ai_usage:view it covers everyone, otherwise only\nyour own requests (the \"scope\" field says which).",
+      "example": "  chouse ai usage --days 30\n  chouse ai usage --by origin\n  chouse ai usage --by model -o json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "by",
+          "type": "string",
+          "usage": "origin or model"
+        },
+        {
+          "name": "days",
+          "type": "int",
+          "default": "7",
+          "usage": "window in days (capped at the server's retention)"
         }
       ]
     },
@@ -365,6 +460,46 @@
       "runnable": true
     },
     {
+      "path": "chouse capacity",
+      "use": "chouse capacity [flags]",
+      "short": "Disk forecasts, table growth, cold tables and codec trials",
+      "long": "Capacity of the -c connection (Monitoring › Capacity): days until each\nnode's disk reaches its threshold (--view forecasts), the fastest-growing\ntables (growth), tables nobody read in 7 days (cold) and codec trials\n(trials). -o json shows everything, with cost by consumer when you have\ncost:view.",
+      "example": "  chouse capacity -c prod\n  chouse capacity -c prod --view growth\n  chouse capacity -c prod -o json",
+      "group": "ops",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "view",
+          "type": "string",
+          "default": "forecasts",
+          "usage": "table to show: forecasts, growth, cold or trials"
+        }
+      ]
+    },
+    {
+      "path": "chouse collectors",
+      "use": "chouse collectors",
+      "short": "Observability collectors: last runs, errors and schedule",
+      "long": "The collectors that feed Data, Monitoring and alerting from\nClickHouse system tables. status shows each collector's last run, last\nerror, missing grants and what it read on the -c connection; schedule shows\nhow often each runs (the defaults, or the -c connection's own schedule with\nits bytes read per day). Read-only; the schedule is edited in Admin ›\nConnections.",
+      "example": "  chouse collectors status -c prod\n  chouse collectors schedule\n  chouse collectors schedule -c prod",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse collectors schedule",
+      "use": "chouse collectors schedule",
+      "short": "How often each collector runs (defaults, or the -c connection's)",
+      "example": "  chouse collectors schedule -c prod -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse collectors status",
+      "use": "chouse collectors status",
+      "short": "Each collector's state, last run and last error",
+      "example": "  chouse collectors status -c prod",
+      "runnable": true
+    },
+    {
       "path": "chouse config",
       "use": "chouse config",
       "short": "Profiles and their settings",
@@ -480,6 +615,29 @@
       "short": "Check that a connection is reachable",
       "long": "Dial a saved connection and report reachability and the server\nversion. Nothing is stored or changed. Testing ad-hoc credentials stays in\nthe UI.",
       "example": "  chouse connection test prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse context",
+      "use": "chouse context",
+      "short": "Curated table context and metric definitions",
+      "long": "What people wrote down about the data on the -c connection (Data ›\nContext): a table's description, owner, grain, column notes and caveats,\nand the defined business metrics. Read-only; context is edited in the UI.",
+      "example": "  chouse context get shop.orders -c prod\n  chouse context metrics -c prod\n  chouse context metrics gmv -c prod -o json",
+      "group": "observe",
+      "runnable": true
+    },
+    {
+      "path": "chouse context get",
+      "use": "chouse context get <database.table>",
+      "short": "One table's curated context",
+      "example": "  chouse context get shop.orders -c prod -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse context metrics",
+      "use": "chouse context metrics [name]",
+      "short": "Metric definitions (all, or one by name)",
+      "example": "  chouse context metrics gmv -c prod",
       "runnable": true
     },
     {
@@ -854,6 +1012,53 @@
       "runnable": true
     },
     {
+      "path": "chouse notebook",
+      "use": "chouse notebook",
+      "short": "Investigation notebooks of incidents and Doctor reports",
+      "long": "The investigation notebook of an incident or Doctor report: Chouse AI\nfindings, query snapshots, notes and actions. <kind> is data-health (a Data\nHealth incident), observe (an observability incident, see chouse incidents)\nor doctor (a Doctor report). export writes it as a Markdown postmortem to\nstdout. Read-only; notebooks are written in the UI.",
+      "example": "  chouse notebook show observe 4b2e…\n  chouse notebook export doctor 91fa… > postmortem.md",
+      "group": "observe",
+      "runnable": true
+    },
+    {
+      "path": "chouse notebook export",
+      "use": "chouse notebook export <kind> <ref>",
+      "short": "Write a notebook as a Markdown postmortem to stdout",
+      "long": "Write the notebook as Markdown to stdout (always Markdown; -o does not apply).",
+      "example": "  chouse notebook export observe 4b2e… > postmortem.md",
+      "runnable": true
+    },
+    {
+      "path": "chouse notebook show",
+      "use": "chouse notebook show <kind> <ref>",
+      "short": "A notebook's cells in order",
+      "example": "  chouse notebook show data-health 12 -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse perf",
+      "use": "chouse perf",
+      "short": "Query regressions against their own baseline",
+      "long": "Query shapes on the -c connection that got slower or heavier than\ntheir own baseline, lined up with the upgrades, DDL and setting changes\naround their onset (Monitoring › Performance). Sample query text needs\nquery:history:view:all.",
+      "example": "  chouse perf regressions -c prod\n  chouse perf shape 9f2c41d0a1b2 -c prod",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse perf regressions",
+      "use": "chouse perf regressions",
+      "short": "Open regressions, worst first",
+      "example": "  chouse perf regressions -c prod -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse perf shape",
+      "use": "chouse perf shape <fingerprint>",
+      "short": "Hourly history of one query shape",
+      "example": "  chouse perf shape 9f2c41d0a1b2 -c prod",
+      "runnable": true
+    },
+    {
       "path": "chouse query",
       "use": "chouse query [sql] [flags]",
       "short": "Run SQL: read-only by default, writes with --raw",
@@ -1191,6 +1396,43 @@
       "use": "chouse table schema <db.table | db table>",
       "short": "Show a table's engine, columns and CREATE statement",
       "example": "  chouse table schema analytics.events\n  chouse table schema analytics.events -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse upgrades",
+      "use": "chouse upgrades",
+      "short": "Upgrade readiness, canary replays and rollout gates",
+      "long": "Upgrade readiness (Monitoring › Upgrades): assessments of a target\nversion against your real workload, workload replays on a canary, and the\nrollout gates of every connection. Read-only; assessments and replays are\nstarted in the UI.",
+      "example": "  chouse upgrades list -c prod\n  chouse upgrades get 3d1e… -o yaml\n  chouse upgrades replay 7a90…\n  chouse upgrades rollout",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse upgrades get",
+      "use": "chouse upgrades get <assessmentId>",
+      "short": "One assessment: every rule and its evidence",
+      "example": "  chouse upgrades get 3d1e… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse upgrades list",
+      "use": "chouse upgrades list",
+      "short": "Assessments and replays of the -c connection",
+      "example": "  chouse upgrades list -c prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse upgrades replay",
+      "use": "chouse upgrades replay <replayId>",
+      "short": "One canary replay: replayed, skipped, missing and differing queries",
+      "example": "  chouse upgrades replay 7a90…",
+      "runnable": true
+    },
+    {
+      "path": "chouse upgrades rollout",
+      "use": "chouse upgrades rollout",
+      "short": "Every connection's version and rollout gates",
+      "example": "  chouse upgrades rollout",
       "runnable": true
     },
     {
