@@ -715,6 +715,75 @@ chouse audit list [flags]
 chouse audit list --limit 20
 ```
 
+### chouse capacity
+
+Disk forecasts, table growth, cold tables and codec trials.
+
+Capacity of the -c connection (Monitoring › Capacity): days until each
+node's disk reaches its threshold (--view forecasts), the fastest-growing
+tables (growth), tables nobody read in 7 days (cold) and codec trials
+(trials). -o json shows everything, with cost by consumer when you have
+cost:view.
+
+```bash
+chouse capacity [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--view` | `string` | `forecasts` | table to show: forecasts, growth, cold or trials |
+
+```bash
+chouse capacity -c prod
+chouse capacity -c prod --view growth
+chouse capacity -c prod -o json
+```
+
+### chouse collectors
+
+Observability collectors: last runs, errors and schedule.
+
+The collectors that feed Data, Monitoring and alerting from
+ClickHouse system tables. status shows each collector's last run, last
+error, missing grants and what it read on the -c connection; schedule shows
+how often each runs (the defaults, or the -c connection's own schedule with
+its bytes read per day). Read-only; the schedule is edited in Admin ›
+Connections.
+
+```bash
+chouse collectors
+```
+
+```bash
+chouse collectors status -c prod
+chouse collectors schedule
+chouse collectors schedule -c prod
+```
+
+#### chouse collectors schedule
+
+How often each collector runs (defaults, or the -c connection's).
+
+```bash
+chouse collectors schedule
+```
+
+```bash
+chouse collectors schedule -c prod -o json
+```
+
+#### chouse collectors status
+
+Each collector's state, last run and last error.
+
+```bash
+chouse collectors status
+```
+
+```bash
+chouse collectors status -c prod
+```
+
 ### chouse fleet
 
 Every connection at once: health snapshots and history.
@@ -931,6 +1000,48 @@ chouse metrics top-tables
 chouse metrics top-tables --limit 5
 ```
 
+### chouse perf
+
+Query regressions against their own baseline.
+
+Query shapes on the -c connection that got slower or heavier than
+their own baseline, lined up with the upgrades, DDL and setting changes
+around their onset (Monitoring › Performance). Sample query text needs
+query:history:view:all.
+
+```bash
+chouse perf
+```
+
+```bash
+chouse perf regressions -c prod
+chouse perf shape 9f2c41d0a1b2 -c prod
+```
+
+#### chouse perf regressions
+
+Open regressions, worst first.
+
+```bash
+chouse perf regressions
+```
+
+```bash
+chouse perf regressions -c prod -o json
+```
+
+#### chouse perf shape
+
+Hourly history of one query shape.
+
+```bash
+chouse perf shape <fingerprint>
+```
+
+```bash
+chouse perf shape 9f2c41d0a1b2 -c prod
+```
+
 ### chouse scheduled
 
 Scheduled queries: jobs, runs, run now.
@@ -1033,7 +1144,117 @@ chouse scheduled runs <id> [flags]
 chouse scheduled runs 4d2e… --limit 5
 ```
 
+### chouse upgrades
+
+Upgrade readiness, canary replays and rollout gates.
+
+Upgrade readiness (Monitoring › Upgrades): assessments of a target
+version against your real workload, workload replays on a canary, and the
+rollout gates of every connection. Read-only; assessments and replays are
+started in the UI.
+
+```bash
+chouse upgrades
+```
+
+```bash
+chouse upgrades list -c prod
+chouse upgrades get 3d1e… -o yaml
+chouse upgrades replay 7a90…
+chouse upgrades rollout
+```
+
+#### chouse upgrades get
+
+One assessment: every rule and its evidence.
+
+```bash
+chouse upgrades get <assessmentId>
+```
+
+```bash
+chouse upgrades get 3d1e… -o yaml
+```
+
+#### chouse upgrades list
+
+Assessments and replays of the -c connection.
+
+```bash
+chouse upgrades list
+```
+
+```bash
+chouse upgrades list -c prod
+```
+
+#### chouse upgrades replay
+
+One canary replay: replayed, skipped, missing and differing queries.
+
+```bash
+chouse upgrades replay <replayId>
+```
+
+```bash
+chouse upgrades replay 7a90…
+```
+
+#### chouse upgrades rollout
+
+Every connection's version and rollout gates.
+
+```bash
+chouse upgrades rollout
+```
+
+```bash
+chouse upgrades rollout
+```
+
 ## Data observability
+
+### chouse context
+
+Curated table context and metric definitions.
+
+What people wrote down about the data on the -c connection (Data ›
+Context): a table's description, owner, grain, column notes and caveats,
+and the defined business metrics. Read-only; context is edited in the UI.
+
+```bash
+chouse context
+```
+
+```bash
+chouse context get shop.orders -c prod
+chouse context metrics -c prod
+chouse context metrics gmv -c prod -o json
+```
+
+#### chouse context get
+
+One table's curated context.
+
+```bash
+chouse context get <database.table>
+```
+
+```bash
+chouse context get shop.orders -c prod -o yaml
+```
+
+#### chouse context metrics
+
+Metric definitions (all, or one by name).
+
+```bash
+chouse context metrics [name]
+```
+
+```bash
+chouse context metrics gmv -c prod
+```
 
 ### chouse health
 
@@ -1181,6 +1402,51 @@ chouse lineage <database.table> [flags]
 chouse lineage shop.orders -c prod
 chouse lineage shop.orders --direction up --depth 2
 chouse lineage shop.orders --impact
+```
+
+### chouse notebook
+
+Investigation notebooks of incidents and Doctor reports.
+
+The investigation notebook of an incident or Doctor report: Chouse AI
+findings, query snapshots, notes and actions. <kind> is data-health (a Data
+Health incident), observe (an observability incident, see chouse incidents)
+or doctor (a Doctor report). export writes it as a Markdown postmortem to
+stdout. Read-only; notebooks are written in the UI.
+
+```bash
+chouse notebook
+```
+
+```bash
+chouse notebook show observe 4b2e…
+chouse notebook export doctor 91fa… > postmortem.md
+```
+
+#### chouse notebook export
+
+Write a notebook as a Markdown postmortem to stdout.
+
+Write the notebook as Markdown to stdout (always Markdown; -o does not apply).
+
+```bash
+chouse notebook export <kind> <ref>
+```
+
+```bash
+chouse notebook export observe 4b2e… > postmortem.md
+```
+
+#### chouse notebook show
+
+A notebook's cells in order.
+
+```bash
+chouse notebook show <kind> <ref>
+```
+
+```bash
+chouse notebook show data-health 12 -o yaml
 ```
 
 ### chouse remediation
@@ -1366,11 +1632,13 @@ chouse agents summary
 
 ### chouse ai
 
-Chouse AI on SQL: optimize and diagnose (LLM cost).
+Chouse AI: optimize SQL (LLM cost), usage, cost and agents.
 
 Ask Chouse AI to optimize or diagnose SQL. Advisory only — it never
 runs anything — but it calls the AI model (LLM cost), so it asks first (or
-needs --yes). Listing capabilities and models is free.
+needs --yes). Listing capabilities and models is free, and so are the
+governance reads: usage and estimated cost, data sent to providers, recent
+requests, and how CHouse's AI agents are set up.
 
 ```bash
 chouse ai
@@ -1380,6 +1648,27 @@ chouse ai
 chouse ai optimize -f slow.sql --yes
 chouse ai optimize --capability debug-query "SELECT …" --yes
 chouse ai models
+chouse ai usage --by origin --days 30
+chouse ai requests --origin mcp
+```
+
+#### chouse ai agents
+
+CHouse's AI agents: what each feature runs, models, tools (ai_agents:view).
+
+The AI agents CHouse runs (AI Governance › Assistant): each agent with
+its model config, harness, tools, skills and subagents, whether it is built
+in or customized and has an update, and which agent each AI feature is bound
+to (-o json for features, harnesses and skills). Read-only; agents are edited
+in the UI.
+
+```bash
+chouse ai agents
+```
+
+```bash
+chouse ai agents
+chouse ai agents -o json | jq '.features'
 ```
 
 #### chouse ai capabilities
@@ -1392,6 +1681,29 @@ chouse ai capabilities
 
 ```bash
 chouse ai capabilities
+```
+
+#### chouse ai egress
+
+Tables, columns and records AI tools sent to LLM providers.
+
+Data CHouse's AI tools returned to an LLM provider in the last --days,
+by source (a table or a CHouse record type), most rows first: columns, rows,
+bytes, users, requests and providers. --search narrows the sources on the
+server.
+
+```bash
+chouse ai egress [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--days` | `int` | `7` | window in days (capped at the server's retention) |
+| `--search` | `string` |   | only sources whose name contains this text |
+
+```bash
+chouse ai egress --days 30
+chouse ai egress --search customers
 ```
 
 #### chouse ai models
@@ -1423,6 +1735,71 @@ chouse ai optimize [sql] [flags]
 
 ```bash
 chouse ai optimize -f slow.sql --yes -o json
+```
+
+#### chouse ai request
+
+One AI request step by step: LLM calls, tool calls, queries, data sent.
+
+```bash
+chouse ai request <requestId>
+```
+
+```bash
+chouse ai request 0c5f… -o yaml
+```
+
+#### chouse ai requests
+
+Recent AI requests: who started them, tokens, cost, status.
+
+AI requests of the last --days, newest first: the user, where it came
+from (--origin ui, mcp, token or background), the token and client of MCP
+and token requests, the agent, tokens, estimated cost, ClickHouse read and
+status. Prompt and response text are never stored.
+
+```bash
+chouse ai requests [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--days` | `int` | `7` | window in days (capped at the server's retention) |
+| `--limit` | `int` | `50` | rows to return (1-200) |
+| `--offset` | `int` | `0` | rows to skip, for paging |
+| `--origin` | `string` |   | only requests started from ui, mcp, token or background |
+| `--search` | `string` |   | match on user, agent, feature, client, token name or a table sent to the model |
+
+```bash
+chouse ai requests --origin mcp
+chouse ai requests --search ci-agent --limit 20
+chouse ai requests --days 30 -o json
+```
+
+#### chouse ai usage
+
+What CHouse's AI used and cost (tokens, est. cost, data sent).
+
+CHouse's own AI (the chat and every AI feature) in the last --days:
+requests, tokens, estimated cost over priced models, ClickHouse read by AI
+tools and rows sent to LLM providers. --by origin splits it by who started
+the requests (the UI, MCP agents, access tokens, background); --by model
+shows usage per model. With ai_usage:view it covers everyone, otherwise only
+your own requests (the "scope" field says which).
+
+```bash
+chouse ai usage [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--by` | `string` |   | origin or model |
+| `--days` | `int` | `7` | window in days (capped at the server's retention) |
+
+```bash
+chouse ai usage --days 30
+chouse ai usage --by origin
+chouse ai usage --by model -o json
 ```
 
 ### chouse doctor
