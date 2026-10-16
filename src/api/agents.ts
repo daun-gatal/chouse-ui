@@ -136,7 +136,9 @@ export type McpToolCategory =
   | "scheduling"
   | "data_health"
   | "data_observability"
-  | "ai";
+  | "performance"
+  | "ai"
+  | "ai_governance";
 
 export interface McpToolParameter {
   name: string;
