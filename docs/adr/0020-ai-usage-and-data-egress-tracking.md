@@ -158,9 +158,11 @@ ClickHouse read by AI, data sent to providers), an *unpriced models* banner,
 requests** with a detail sheet that lists the steps: LLM calls with tokens and
 cost; tool calls with their sources, rows and ClickHouse queries. A query on
 the active connection links to `/monitoring/logs?q=<query_id>&at=<ms>` (`at`
-opens Query logs on a window around the query, since its default 6-hour window
-would miss older ones); a query on another connection names that connection
-instead of linking to a search that cannot find it. The model form in
+widens Query logs' default 6-hour window to the last N hours that cover the
+query; a relative window, because ClickHouse evaluates it on its own clock
+while a from/to range would be read in the server's time zone); a query on
+another connection names that connection instead of linking to a search that
+cannot find it. The model form in
 Admin › AI Models gets four optional price fields.
 
 ## Consequences

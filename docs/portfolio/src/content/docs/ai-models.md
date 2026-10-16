@@ -34,6 +34,10 @@ Credentials are stored encrypted and never returned to the browser; to rotate th
 
 **Provider models › Add base model**: pick the provider and enter the **provider model ID** exactly as the provider expects it (e.g. `gpt-4o`). Optional **runtime parameters** — stop sequences, API version, Gemini safety settings, extra request parameters as JSON — apply to every deployment that uses the model; empty fields keep the defaults.
 
+### Prices
+
+Each provider model can have a **price** in USD per 1M tokens: **Input**, **Output**, and optionally **Cached input** and **Cache write** (they default to the input price). [AI activity](/docs/ai-usage/) uses it to estimate cost. Leave every price empty to show tokens only; enter `0` for a free, self-hosted model. A new price applies to requests from then on. The **Price per 1M** column shows input / output.
+
 ## 3. Create a deployment
 
 **Deployments › Add configuration**: a friendly **deployment name** people will see, and the provider model it uses. Mark it **Active**, and **Set as default** for the deployment used when nobody picks one.
