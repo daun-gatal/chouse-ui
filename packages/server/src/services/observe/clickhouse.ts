@@ -47,4 +47,9 @@ export async function selectRows<T = Record<string, unknown>>(
 }
 
 /** Exclude CHouse's own observe traffic from query_log reads. */
+/** HTTP clients append `FORMAT …` to what query_log records; wrapping that text (EXPLAIN, subquery) needs it gone. */
+export function stripFormat(query: string): string {
+  return query.replace(/;\s*$/, "").replace(/\s+FORMAT\s+\w+\s*;?\s*$/i, "");
+}
+
 export const NOT_OBSERVE = `JSONExtractString(log_comment, 'source') NOT IN ('observe', 'remediation_preflight')`;
