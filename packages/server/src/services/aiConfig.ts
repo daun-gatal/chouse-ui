@@ -17,6 +17,7 @@ import { ChatDeepSeek } from "@langchain/deepseek";
 import { ChatCerebras } from "@langchain/cerebras";
 import { ChatBedrockConverse } from "@langchain/aws";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { AppError } from "../types";
 import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
 import type { AiConfigWithKey } from "../rbac/services/aiModels";
@@ -132,10 +133,20 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
 /**
  * Provider initialization function type
  */
-type ProviderInitializer = (
-    config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
-    modelName: string,
-) => BaseChatModel;
+interface ProviderInitConfig {
+    apiKey?: string;
+    baseUrl?: string;
+    params?: AiModelParams;
+    /**
+     * Run-scoped callbacks (AI usage tracking, ADR 0020). Passed to the
+     * constructor, not set afterwards: some models (ChatOpenAI) rebuild
+     * themselves from their constructor fields in `bindTools`/`withConfig`,
+     * which drops anything attached later.
+     */
+    callbacks?: Callbacks;
+}
+
+type ProviderInitializer = (config: ProviderInitConfig, modelName: string) => BaseChatModel;
 
 /**
  * Hosted OpenAI-compatible endpoints exposed as first-class provider types.
@@ -194,12 +205,10 @@ function requireBaseUrl(config: { baseUrl?: string }, providerType: ProviderType
     return config.baseUrl;
 }
 
-function buildOpenAiModel(
-    config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
-    modelName: string,
-): BaseChatModel {
+function buildOpenAiModel(config: ProviderInitConfig, modelName: string): BaseChatModel {
     const p = config.params ?? {};
     return new ChatOpenAI({
+        callbacks: config.callbacks,
         model: modelName,
         apiKey: config.apiKey || undefined,
         configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
@@ -242,6 +251,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
             ? { type: 'enabled' as const, budget_tokens: p.thinkingBudgetTokens }
             : undefined;
         return new ChatAnthropic({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             clientOptions,
@@ -263,6 +273,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'google': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatGoogleGenerativeAI({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseUrl: config.baseUrl || undefined,
@@ -289,6 +300,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'azure-openai': (config, modelName) => {
         const p = config.params ?? {};
         return new AzureChatOpenAI({
+            callbacks: config.callbacks,
             // The model ID doubles as the Azure deployment name.
             model: modelName,
             azureOpenAIApiDeploymentName: modelName,
@@ -311,6 +323,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'groq': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatGroq({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseUrl: config.baseUrl || undefined,
@@ -325,6 +338,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'mistral': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatMistralAI({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             serverURL: config.baseUrl || undefined,
@@ -337,6 +351,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'cohere': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatCohere({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             temperature: p.temperature ?? 0,
@@ -346,6 +361,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'ollama': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatOllama({
+            callbacks: config.callbacks,
             model: modelName,
             baseUrl: requireBaseUrl(config, 'ollama'),
             temperature: p.temperature ?? 0,
@@ -359,6 +375,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'xai': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatXAI({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseURL: config.baseUrl || undefined,
@@ -371,6 +388,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'deepseek': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatDeepSeek({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
@@ -388,6 +406,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'cerebras': (config, modelName) => {
         const p = config.params ?? {};
         return new ChatCerebras({
+            callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             temperature: p.temperature ?? 0,
@@ -401,6 +420,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
         const p = config.params ?? {};
         const credentials = parseBedrockCredentials(config.apiKey);
         return new ChatBedrockConverse({
+            callbacks: config.callbacks,
             model: modelName,
             region: credentials.region,
             credentials: {
@@ -424,7 +444,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
 /**
  * Initialize a DeepAgents/LangChain chat model based on provider configuration.
  */
-export function initializeDeepAgentModel(config: AiConfigWithKey): BaseChatModel {
+export function initializeDeepAgentModel(config: AiConfigWithKey, options: { callbacks?: Callbacks } = {}): BaseChatModel {
     const modelName = config.model.modelId;
 
     if (!modelName) {
@@ -457,6 +477,7 @@ export function initializeDeepAgentModel(config: AiConfigWithKey): BaseChatModel
             apiKey: config.provider.apiKey || undefined,
             baseUrl: config.provider.baseUrl || undefined,
             params: config.model.params ?? undefined,
+            callbacks: options.callbacks,
         },
         modelName
     );

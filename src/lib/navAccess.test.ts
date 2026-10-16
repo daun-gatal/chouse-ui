@@ -64,7 +64,13 @@ describe("navAccess — data observability (ADR 0016)", () => {
     );
   });
 
-  it("agents page opens for external-agent or built-in AI agent viewers", () => {
-    expect(AGENTS_ACCESS_PERMISSIONS).toEqual([RBAC_PERMISSIONS.AGENTS_VIEW, RBAC_PERMISSIONS.AI_AGENTS_VIEW]);
+  it("AI Governance opens for external-agent and AI agent viewers, and for AI activity users", () => {
+    expect(AGENTS_ACCESS_PERMISSIONS).toEqual([
+      RBAC_PERMISSIONS.AGENTS_VIEW,
+      RBAC_PERMISSIONS.AI_AGENTS_VIEW,
+      RBAC_PERMISSIONS.AI_USAGE_VIEW,
+      RBAC_PERMISSIONS.AI_CHAT,
+      RBAC_PERMISSIONS.AI_OPTIMIZE,
+    ]);
   });
 });

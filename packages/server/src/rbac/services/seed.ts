@@ -135,6 +135,7 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
   'AI Agents': [
     PERMISSIONS.AI_AGENTS_VIEW,
     PERMISSIONS.AI_AGENTS_MANAGE,
+    PERMISSIONS.AI_USAGE_VIEW,
   ],
   'SSO Management': [
     PERMISSIONS.SSO_VIEW,
@@ -257,6 +258,7 @@ export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.AI_MODELS_DELETE]: 'Delete AI Models',
   [PERMISSIONS.AI_AGENTS_VIEW]: 'View AI Agents',
   [PERMISSIONS.AI_AGENTS_MANAGE]: 'Manage AI Agents, Harnesses and Skills',
+  [PERMISSIONS.AI_USAGE_VIEW]: 'View AI Usage, Cost and Data Egress',
   [PERMISSIONS.SSO_VIEW]: 'View SSO Configuration',
   [PERMISSIONS.SSO_EDIT]: 'Edit SSO Configuration',
   [PERMISSIONS.SSO_DELETE]: 'Delete SSO Providers',

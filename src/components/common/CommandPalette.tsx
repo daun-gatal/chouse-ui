@@ -86,6 +86,7 @@ const OBSERVABILITY_PAGES: Array<{ value: string; label: string; to: string; ico
   { value: "ai governance agents mcp sessions budgets policies tokens", label: "AI Governance", to: "/ai/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
   { value: "mcp server tools agents connect", label: "MCP server & tools", to: "/ai/mcp", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
   { value: "assistant ai agents prompts skills harness subagents deepagents", label: "AI Governance · Assistant", to: "/ai/assistant", icon: Bot, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
+  { value: "ai activity usage tokens cost spend data egress sent to providers llm", label: "AI Governance · AI activity", to: "/ai/usage", icon: Bot, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
 ];
 
 export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {

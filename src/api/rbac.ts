@@ -114,12 +114,22 @@ export interface UpdateAiProviderInput {
   awsSecretAccessKey?: string;
 }
 
+/** Token prices in USD per 1M tokens (ADR 0020); cache prices fall back to `input`. */
+export interface AiModelPricing {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
 export interface AiBaseModel {
   id: string;
   providerId: string;
   name: string;
   modelId: string;
   params: AiModelParams | null;
+  /** Null when no price is set: AI activity then shows tokens without cost. */
+  pricing: AiModelPricing | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +139,7 @@ export interface CreateAiBaseModelInput {
   name: string;
   modelId: string;
   params?: AiModelParams | null;
+  pricing?: AiModelPricing | null;
 }
 
 export interface UpdateAiBaseModelInput {
@@ -136,6 +147,8 @@ export interface UpdateAiBaseModelInput {
   modelId?: string;
   /** Whole-object replace; null clears all runtime params. */
   params?: AiModelParams | null;
+  /** Whole-object replace; null clears the price. */
+  pricing?: AiModelPricing | null;
 }
 
 export interface AiConfig {

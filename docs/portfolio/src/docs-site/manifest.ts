@@ -55,7 +55,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "quick-start", title: "Quick start", description: "Run CHouse UI with Docker Compose in under five minutes — UI on port 5521, ClickHouse on 8123, default admin login." },
           { slug: "first-login", title: "First login", description: "Sign in with the seeded admin account, rotate the password, and take the first-run tour." },
           { slug: "concepts", title: "Core concepts", description: "The six ideas behind everything else: own users and roles, connections, the server proxy, metadata-based observation, approved fixes and governed agents." },
-          { slug: "whats-new", title: `What's new in ${RELEASE.version}`, description: "Draft agents, harnesses and skills with AI, a collection schedule with per-day cost, and far lighter observability collection — and what to change when you upgrade." },
+          { slug: "whats-new", title: `What's new in ${RELEASE.version}`, description: "Draft agents, harnesses and skills with AI, AI cost and data egress per request, a collection schedule with per-day cost, and far lighter observability collection — and what to change when you upgrade." },
         ],
       },
     ],
@@ -194,6 +194,7 @@ export const DOC_SECTIONS: DocSection[] = [
         label: "Agents",
         pages: [
           { slug: "agents", title: "AI Governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
+          { slug: "ai-usage", title: "AI activity", description: "What CHouse's own AI costs and sends out: tokens, estimated cost, ClickHouse queries and the data sent to LLM providers, per request." },
         ],
       },
       {

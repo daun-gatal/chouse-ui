@@ -3,13 +3,14 @@
  * personal access token — what it read, what it cost, whether the data was
  * healthy — plus budget policies, the pause switch, and the MCP endpoint
  * with its tool switches. The Assistant tab (ADR 0019) manages CHouse's own
- * AI agents: the chat and every AI feature.
+ * AI agents: the chat and every AI feature; AI activity (ADR 0020) shows what
+ * they cost and the data they sent to providers.
  */
 
 import { useState, type ReactElement } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Bot, ListChecks, Pause, Play, Plug, Shield, Sparkles } from "lucide-react";
+import { Activity, Bot, ListChecks, Pause, Play, Plug, Shield, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
 import { NavPill, PageHeader } from "@/components/common/PageShell";
@@ -18,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
+import { AiActivityPanel } from "@/features/agents/usage/AiActivityPanel";
 import { McpPanel } from "@/features/agents/McpPanel";
 import { PoliciesPanel } from "@/features/agents/PoliciesPanel";
 import { budgetShare } from "@/features/agents/policyForm";
@@ -27,14 +29,22 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp" | "assistant";
-/** External agents (MCP / tokens) need agents:view; the built-in AI agents need ai_agents:view. */
-const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permission: string }> = [
-  { key: "sessions", label: "Sessions", icon: ListChecks, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
-  { key: "policies", label: "Policies", icon: Shield, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
-  { key: "mcp", label: "MCP", icon: Plug, permission: RBAC_PERMISSIONS.AGENTS_VIEW },
-  { key: "assistant", label: "Assistant", icon: Sparkles, permission: RBAC_PERMISSIONS.AI_AGENTS_VIEW },
+type Tab = "sessions" | "policies" | "mcp" | "assistant" | "usage";
+/**
+ * External agents (MCP / tokens) need agents:view; the built-in AI agents need
+ * ai_agents:view. AI activity (ADR 0020) shows everyone's usage with
+ * ai_usage:view, and a chat or SQL-assistant user their own.
+ */
+const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permissions: string[] }> = [
+  { key: "sessions", label: "Sessions", icon: ListChecks, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { key: "policies", label: "Policies", icon: Shield, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { key: "mcp", label: "MCP", icon: Plug, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { key: "assistant", label: "Assistant", icon: Sparkles, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
+  { key: "usage", label: "AI activity", icon: Activity, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
 ];
+
+/** Tabs about external agents, which share the agent KPIs and the pause switch. */
+const EXTERNAL_TABS: ReadonlySet<Tab> = new Set<Tab>(["sessions", "policies", "mcp"]);
 
 /** Earlier builds linked to /agents/tools (now /ai/tools via the legacy redirect). */
 const TAB_ALIASES: Record<string, Tab> = { tools: "mcp" };
@@ -153,7 +163,7 @@ export default function Agents(): ReactElement {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
   const hasPermission = useRbacStore((s) => s.hasPermission);
-  const tabs = TABS.filter((t) => hasPermission(t.permission));
+  const tabs = TABS.filter((t) => t.permissions.some((p) => hasPermission(p)));
   const requested = TABS.find((t) => t.key === tab)?.key ?? (tab ? TAB_ALIASES[tab] : undefined);
   const active: Tab = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key ?? "sessions";
   const canManage = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AGENTS_MANAGE));
@@ -185,7 +195,7 @@ export default function Agents(): ReactElement {
         nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink />)}
         actions={
           <>
-            {canManage && active !== "assistant" && summary.data && (summary.data.paused ? (
+            {canManage && EXTERNAL_TABS.has(active) && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (
               <Button variant="outline" className="h-9 rounded-xs border-brand/40 text-brand hover:bg-brand/10 hover:text-brand" onClick={() => setConfirmPause(true)}><Pause className="mr-1.5 h-3.5 w-3.5" /> Pause all agent access</Button>
@@ -195,8 +205,8 @@ export default function Agents(): ReactElement {
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="space-y-4">
-          {active !== "assistant" && summary.data?.paused && <div role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
-          {active !== "assistant" && canSeeExternal && (summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.data && (
+          {EXTERNAL_TABS.has(active) && summary.data?.paused && <div role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-500">Agent access is paused. MCP tool calls and agent queries are refused until it is resumed.</div>}
+          {EXTERNAL_TABS.has(active) && canSeeExternal && (summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.data && (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               <Kpi label="Active agents · 24h" value={summary.data.activeAgents} meta={`${summary.data.sessions} sessions`} />
               <Kpi label="Queries · 24h" value={formatCount(summary.data.queries)} meta={`${formatBytes(summary.data.readBytes)} read`} />
@@ -209,6 +219,7 @@ export default function Agents(): ReactElement {
           {active === "policies" && <PoliciesPanel />}
           {active === "mcp" && <McpPanel />}
           {active === "assistant" && <AssistantPanel />}
+          {active === "usage" && <AiActivityPanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

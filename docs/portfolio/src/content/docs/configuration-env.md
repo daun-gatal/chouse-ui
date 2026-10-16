@@ -89,6 +89,12 @@ Every setting the server reads, with its default. Set them as environment variab
 | `OBSERVE_CAPACITY_THRESHOLD` | `0.85` | Disk fill ratio that capacity forecasts warn about (0–1). |
 | `OBSERVE_SCRATCH_DATABASE` | `chouse_scratch` | Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`. YAML: `observe.scratch_database`. |
 
+## AI usage
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AI_USAGE_RETENTION_DAYS` | `30` | Days of AI usage kept for **AI Governance › AI activity**: requests, tokens, cost, ClickHouse queries and data sent to providers (1–365). Older requests are deleted hourly. YAML: `ai_usage.retention_days`. |
+
 ## Fleet & alerts
 
 | Variable | Default | Description |

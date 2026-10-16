@@ -6,7 +6,7 @@ screenshot: agents-sessions
 ---
 # AI Governance
 
-**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy.
+**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy. CHouse's own AI — the chat and the AI features — has its own tab, [AI activity](/docs/ai-usage/) (`/ai/usage`): tokens, cost and the data sent to LLM providers.
 
 ## Sessions
 

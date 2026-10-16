@@ -116,6 +116,22 @@ describe("AiChatBubble", () => {
     });
   });
 
+  it("opens a thread when AI activity asks for it", async () => {
+    mocks.getThread.mockResolvedValue({ id: "thread-9", title: "Orders", agentId: null, messages: [{ id: "m1", role: "user", content: "How many orders?", createdAt: new Date().toISOString() }] });
+    render(<AiChatBubble />);
+    await screen.findByRole("button", { name: /open ai chat/i });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("chouse:open-chat-thread", { detail: { threadId: "thread-9" } }));
+      window.dispatchEvent(new CustomEvent("chouse:open-chat-thread", { detail: { nope: 1 } }));
+    });
+
+    await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-9"));
+    expect(mocks.getThread).toHaveBeenCalledTimes(1);
+    // The bubble opened on its own: its close control is showing.
+    expect(await screen.findByRole("button", { name: "Close chat" })).toBeTruthy();
+  });
+
   it("clears the active chat when the connection changes while closed", async () => {
     mocks.createThread.mockResolvedValueOnce({
       id: "thread-a",

@@ -15,6 +15,7 @@ import { AppError } from "../../../types";
 import { logger } from "../../../utils/logger";
 import { buildFleetConfig } from "../../fleetMetrics";
 import { ClientManager } from "../../clientManager";
+import { activeQueryObserver, jsonSize, reportQuery } from "../../queryObserver";
 import { listConnections } from "../../../rbac/services/connections";
 
 const zodSchema = <T>(schema: T): T => schema;
@@ -78,23 +79,51 @@ export function queryNodeTool(connections: FleetNode[]) {
         } catch (e) {
           return { error: e instanceof Error ? e.message : "Rejected query" };
         }
+        const observer = activeQueryObserver();
+        const queryId = observer?.nextQueryId();
         try {
           const config = await buildFleetConfig(connectionId);
           const client = ClientManager.getInstance().getClient(config);
+          // An AI usage run (ADR 0020) names the query and tags it, per query.
+          const tags = observer?.logTags();
           const result = await client.query({
             query: safe,
             format: "JSON",
+            query_id: queryId,
             clickhouse_settings: {
               readonly: "1",
               max_execution_time: 8,
               max_result_rows: "200",
               result_overflow_mode: "break",
+              ...(tags && Object.keys(tags).length > 0 ? { log_comment: JSON.stringify(tags) } : {}),
             },
           });
-          const json = (await result.json()) as { data?: Record<string, unknown>[] };
-          return { node: nameById.get(connectionId), rows: (json.data ?? []).slice(0, 100) };
+          const json = (await result.json()) as {
+            data?: Record<string, unknown>[];
+            meta?: { name: string }[];
+            statistics?: { elapsed?: number; rows_read?: number; bytes_read?: number };
+          };
+          const rows = (json.data ?? []).slice(0, 100);
+          reportQuery(observer, {
+            queryId: result.query_id || queryId || "",
+            connectionId,
+            sql: safe,
+            elapsedMs: Math.round((json.statistics?.elapsed ?? 0) * 1000),
+            readRows: Number(json.statistics?.rows_read) || 0,
+            readBytes: Number(json.statistics?.bytes_read) || 0,
+            resultRows: rows.length,
+            resultBytes: jsonSize(rows),
+            columns: (json.meta ?? []).map((m) => m.name),
+          });
+          return { node: nameById.get(connectionId), rows };
         } catch (e) {
-          return { error: e instanceof Error ? e.message.slice(0, 300) : "Query failed" };
+          const message = e instanceof Error ? e.message.slice(0, 300) : "Query failed";
+          if (queryId) {
+            reportQuery(observer, {
+              queryId, connectionId, sql: safe, elapsedMs: 0, readRows: 0, readBytes: 0, resultRows: 0, resultBytes: 0, columns: [], error: message,
+            });
+          }
+          return { error: message };
         }
       },
     }),
