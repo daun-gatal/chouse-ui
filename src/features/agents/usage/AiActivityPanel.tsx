@@ -26,8 +26,9 @@ import {
   providerLabel,
   REQUEST_STATUS,
   requestCost,
+  plural,
+  requestOrigin,
   requestTokens,
-  SOURCE_LABEL,
   USAGE_WINDOWS,
 } from "./lib";
 import { RequestSheet } from "./RequestSheet";
@@ -53,11 +54,11 @@ function Kpis({ summary }: { summary: AiUsageSummary }): ReactElement {
   const own = summary.scope === "own";
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Kpi label={own ? "Your AI requests" : "AI requests"} value={formatCount(summary.requests)} meta={own ? `${summary.failedRequests} failed` : `${summary.users} users · ${summary.agents} agents`} />
+      <Kpi label={own ? "Your AI requests" : "AI requests"} value={formatCount(summary.requests)} meta={own ? `${summary.failedRequests} failed` : `${plural(summary.users, "user")} · ${plural(summary.agents, "agent")}`} />
       <Kpi label="Tokens" value={`${summary.incompleteCalls > 0 ? "≥ " : ""}${formatTokens(summary.inputTokens + summary.outputTokens)}`} meta={`${formatTokens(summary.inputTokens)} in · ${formatTokens(summary.outputTokens)} out`} />
       <Kpi label="Est. cost" value={formatUsd(summary.costUsd)} meta={costMeta(summary)} tone={summary.costUsd !== null && summary.unpricedCalls > 0 ? "warn" : undefined} />
       <Kpi label="ClickHouse read by AI" value={formatBytes(summary.chReadBytes)} meta={`${formatCount(summary.chQueries)} queries`} />
-      <Kpi label="Sent to providers" value={`${formatCount(summary.egressRows)} rows`} meta={`${summary.egressSources} sources · ${formatBytes(summary.egressBytes)}`} />
+      <Kpi label="Sent to providers" value={plural(summary.egressRows, "row", formatCount(summary.egressRows))} meta={`${plural(summary.egressSources, "source")} · ${formatBytes(summary.egressBytes)}`} />
     </div>
   );
 }
@@ -172,12 +173,12 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
                   <button type="button" className="text-left text-[12px] text-paper hover:text-brand focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand" onClick={(e) => { e.stopPropagation(); onOpen(r.id); }}>
                     {r.agentName ?? featureLabel(r.featureId)}
                   </button>
-                  <span className="block text-[10px] text-paper-faint">{SOURCE_LABEL[r.source] ?? r.source} · {featureLabel(r.featureId)}</span>
+                  <span className="block text-[10px] text-paper-faint">{requestOrigin(r.source, r.featureId)}</span>
                 </td>
                 <td className="whitespace-nowrap tabular-nums">{requestTokens(r)}</td>
                 <td className="whitespace-nowrap tabular-nums">{requestCost(r)}</td>
                 <td className="whitespace-nowrap tabular-nums text-paper-muted">{formatBytes(r.chReadBytes)}</td>
-                <td className="whitespace-nowrap tabular-nums text-paper-muted">{formatCount(r.egressRows)} rows</td>
+                <td className="whitespace-nowrap tabular-nums text-paper-muted">{plural(r.egressRows, "row", formatCount(r.egressRows))}</td>
                 <td><StatusPill tone={(REQUEST_STATUS[r.status] ?? REQUEST_STATUS.error).tone}>{(REQUEST_STATUS[r.status] ?? REQUEST_STATUS.error).label}</StatusPill></td>
               </tr>
             ))}

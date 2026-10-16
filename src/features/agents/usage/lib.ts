@@ -60,6 +60,18 @@ export function featureLabel(featureId: string): string {
 
 export const SOURCE_LABEL = { chat: "Chat", feature: "Feature", background: "Background" } as const;
 
+/** "1 row", "3 rows". */
+export function plural(n: number, word: string, formatted: string = String(n)): string {
+  return `${formatted} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Where a request came from: "Chat", or "Feature · Optimize query" (the feature only when it adds something). */
+export function requestOrigin(source: keyof typeof SOURCE_LABEL | string, featureId: string): string {
+  const label = source in SOURCE_LABEL ? SOURCE_LABEL[source as keyof typeof SOURCE_LABEL] : source;
+  const feature = featureLabel(featureId);
+  return feature === label ? label : `${label} · ${feature}`;
+}
+
 export const REQUEST_STATUS: Record<AiRequestStatus, { label: string; tone: "ok" | "warn" | "bad" }> = {
   ok: { label: "OK", tone: "ok" },
   timeout: { label: "Timed out", tone: "warn" },

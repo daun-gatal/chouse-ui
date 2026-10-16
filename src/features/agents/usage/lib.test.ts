@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cachedShare, featureLabel, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
+import { cachedShare, featureLabel, plural, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
 
 describe("formatUsd", () => {
   it("shows unknown cost as a dash, never $0", () => {
@@ -76,5 +76,19 @@ describe("cachedShare", () => {
   it("is the cached percent of input, or null with no input", () => {
     expect(cachedShare(1_000, 380)).toBe(38);
     expect(cachedShare(0, 0)).toBeNull();
+  });
+});
+
+describe("plural / requestOrigin", () => {
+  it("pluralizes counts", () => {
+    expect(plural(1, "row")).toBe("1 row");
+    expect(plural(3, "row")).toBe("3 rows");
+    expect(plural(12_000, "row", "12k")).toBe("12k rows");
+  });
+
+  it("names the feature only when it adds something", () => {
+    expect(requestOrigin("chat", "chat")).toBe("Chat");
+    expect(requestOrigin("feature", "optimize-query")).toBe("Feature · Optimize query");
+    expect(requestOrigin("background", "doctor-scan")).toBe("Background · Doctor scan");
   });
 });

@@ -23,8 +23,9 @@ import {
   queryLogsLink,
   REQUEST_STATUS,
   requestCost,
+  plural,
+  requestOrigin,
   requestTokens,
-  SOURCE_LABEL,
   STEP_STATUS,
 } from "./lib";
 
@@ -92,7 +93,7 @@ function StepItem({ step, egress, connections }: { step: AiUsageStep; egress: Ai
               <span className="text-paper-faint">Sent</span>
               {e.kind === "chouse" && <StatusPill tone="muted" dot={false}>CHouse</StatusPill>}
               <Mono className="text-paper">{e.source}</Mono>
-              <span className="text-paper-muted">{formatCount(e.rows)} rows</span>
+              <span className="text-paper-muted">{plural(e.rows, "row", formatCount(e.rows))}</span>
               {e.columns.length > 0 && <Mono className="min-w-0 truncate text-paper-faint">{e.columns.join(", ")}</Mono>}
             </li>
           ))}
@@ -118,7 +119,7 @@ function Detail({ data }: { data: AiUsageRequestDetail }): ReactElement {
       <div className="flex flex-wrap gap-1.5">
         <Tag>{`${requestTokens(r)} tokens · ${requestCost(r)}`}</Tag>
         <Tag>{`${formatCount(r.chQueries)} queries · ${formatBytes(r.chReadBytes)} read`}</Tag>
-        <Tag>{`${formatCount(r.egressRows)} rows sent`}</Tag>
+        <Tag>{`${plural(r.egressRows, "row", formatCount(r.egressRows))} sent`}</Tag>
         {r.status !== "ok" && <StatusPill tone={status.tone}>{status.label}</StatusPill>}
       </div>
       {r.error && <p className="text-[11px] text-red-500">{r.error}</p>}
@@ -144,7 +145,7 @@ export function RequestSheet({ requestId, onClose }: { requestId: string | null;
           <SheetTitle>{r ? r.agentName ?? featureLabel(r.featureId) : "AI request"}</SheetTitle>
           <SheetDescription>
             {r
-              ? [r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user"), SOURCE_LABEL[r.source] ?? r.source, featureLabel(r.featureId), new Date(r.startedAt).toLocaleString(), `${(r.durationMs / 1000).toFixed(1)} s`].join(" · ")
+              ? [r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user"), requestOrigin(r.source, r.featureId), new Date(r.startedAt).toLocaleString(), `${(r.durationMs / 1000).toFixed(1)} s`].join(" · ")
               : "Loading…"}
           </SheetDescription>
         </SheetHeader>
