@@ -146,6 +146,10 @@ export const PERMISSIONS = {
   AI_AGENTS_VIEW: 'ai_agents:view',
   AI_AGENTS_MANAGE: 'ai_agents:manage',
 
+  // AI usage and data egress (ADR 0020): everyone's AI requests, tokens, cost
+  // and the data sent to providers. Without it a user sees only their own.
+  AI_USAGE_VIEW: 'ai_usage:view',
+
   // SSO Management
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
@@ -286,6 +290,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_MODELS_DELETE,
     PERMISSIONS.AI_AGENTS_VIEW,
     PERMISSIONS.AI_AGENTS_MANAGE,
+    PERMISSIONS.AI_USAGE_VIEW,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,

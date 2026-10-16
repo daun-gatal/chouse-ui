@@ -18,6 +18,7 @@ import { logger } from '../../utils/logger';
 import { OBSERVE_MIGRATIONS } from './observeMigrations';
 import { COLLECTOR_LOAD_MIGRATIONS } from './collectorLoadMigrations';
 import { AI_REGISTRY_MIGRATIONS } from './aiRegistryMigrations';
+import { AI_USAGE_MIGRATIONS } from './aiUsageMigrations';
 
 // ============================================
 // Types
@@ -48,7 +49,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.57.0';
+export const APP_VERSION = '1.58.0';
 
 // ============================================
 // Error Helpers
@@ -4731,6 +4732,7 @@ export const MIGRATIONS: Migration[] = [
   ...OBSERVE_MIGRATIONS,
   ...AI_REGISTRY_MIGRATIONS,
   ...COLLECTOR_LOAD_MIGRATIONS,
+  ...AI_USAGE_MIGRATIONS,
 ];
 
 // ============================================

@@ -19,6 +19,7 @@ import { runMigrations, MIGRATIONS, APP_VERSION } from "./migrations";
 import * as h from "./migrationTestHarness";
 import { OBSERVE_TABLE_NAMES } from "./observeSchema";
 import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
+import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -360,6 +361,18 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.tableExists("obs_query_shape_days")).toBe(true);
     expect(await h.tableExists("obs_table_write_times")).toBe(true);
     for (const c of ["read_rows", "read_bytes", "query_count"]) expect(await h.columnExists("obs_collector_status", c)).toBe(true);
+  },
+  "1.58.0": async () => {
+    // ADR 0020: AI usage tables, model pricing and the ai_usage:view permission.
+    for (const t of AI_USAGE_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_USAGE_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    expect(await h.columnExists("rbac_ai_models", "pricing")).toBe(true);
+    expect(await h.columnIsNullable("rbac_ai_models", "pricing")).toBe(true);
+    expect(await h.permissionExists("ai_usage:view")).toBe(true);
+    expect(await h.roleHasPermission("super_admin", "ai_usage:view")).toBe(true);
+    expect(await h.roleHasPermission("admin", "ai_usage:view")).toBe(true);
+    expect(await h.roleHasPermission("developer", "ai_usage:view")).toBe(false);
+    expect(await h.roleHasPermission("viewer", "ai_usage:view")).toBe(false);
   },
 };
 
@@ -977,6 +990,85 @@ for (const dialect of DIALECTS) {
         JOIN rbac_roles r ON r.id = rp.role_id
         WHERE r.name = 'admin' AND p.name = 'ai_agents:manage'`);
       expect(Number(grants[0].c)).toBe(1);
+    });
+  });
+
+  describe(`migrations · ADR 0020 AI usage upgrade [${dialect}]`, () => {
+    // 1.58.0 adds the usage tables and a nullable pricing column on
+    // rbac_ai_models. An existing model must keep its params and get no price
+    // (cost shows as unknown, never 0), a price must round-trip as JSON, the
+    // new tables must accept a request with NULL cost, and re-running the
+    // migration must change nothing.
+    const providerId = randomUUID();
+    const modelId = randomUUID();
+    const params = { temperature: 0.2, maxTokens: 4096 };
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ through: "1.57.0" });
+      await h.rawRun(sql`INSERT INTO rbac_ai_providers
+        (id, name, provider_type, is_active, created_at, updated_at)
+        VALUES (${providerId}, 'Acme Anthropic', 'anthropic', ${b(true)}, ${now()}, ${now()})`);
+      await h.rawRun(sql`INSERT INTO rbac_ai_models
+        (id, provider_id, name, model_id, params, created_at, updated_at)
+        VALUES (${modelId}, ${providerId}, 'Sonnet', 'claude-sonnet', ${JSON.stringify(params)}, ${now()}, ${now()})`);
+      expect(await h.columnExists("rbac_ai_models", "pricing")).toBe(false);
+      // 1.0.0 seeds roles from today's defaults, so drop the permission to look
+      // like an install that predates it.
+      await h.rawRun(sql`DELETE FROM rbac_role_permissions WHERE permission_id IN (SELECT id FROM rbac_permissions WHERE name = 'ai_usage:view')`);
+      await h.rawRun(sql`DELETE FROM rbac_permissions WHERE name = 'ai_usage:view'`);
+      expect(await h.permissionExists("ai_usage:view")).toBe(false);
+      await runMigrations();
+    }, 60_000);
+
+    it("keeps the existing model and its params, with no price", async () => {
+      const rows = await h.rawAll(sql`SELECT model_id, params, pricing FROM rbac_ai_models WHERE id = ${modelId}`);
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].model_id)).toBe("claude-sonnet");
+      const stored = typeof rows[0].params === "string" ? JSON.parse(String(rows[0].params)) : rows[0].params;
+      expect(stored).toEqual(params);
+      expect(rows[0].pricing).toBeNull();
+    });
+
+    it("round-trips a price through the new column", async () => {
+      const pricing = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+      await h.rawRun(sql`UPDATE rbac_ai_models SET pricing = ${JSON.stringify(pricing)} WHERE id = ${modelId}`);
+      const rows = await h.rawAll(sql`SELECT pricing FROM rbac_ai_models WHERE id = ${modelId}`);
+      const stored = typeof rows[0].pricing === "string" ? JSON.parse(String(rows[0].pricing)) : rows[0].pricing;
+      expect(stored).toEqual(pricing);
+    });
+
+    it("grants ai_usage:view to admin on upgrade", async () => {
+      expect(await h.roleHasPermission("admin", "ai_usage:view")).toBe(true);
+      expect(await h.roleHasPermission("super_admin", "ai_usage:view")).toBe(true);
+    });
+
+    it("stores a request with unknown cost and large counters", async () => {
+      const id = randomUUID();
+      const big = 5_000_000_000_000;
+      await h.rawRun(sql`INSERT INTO ai_usage_requests
+        (id, started_at, feature_id, source, status, ch_read_bytes, cost_usd)
+        VALUES (${id}, ${Date.now()}, 'chat', 'chat', 'ok', ${big}, ${null})`);
+      const rows = await h.rawAll(sql`SELECT ch_read_bytes, cost_usd, input_tokens FROM ai_usage_requests WHERE id = ${id}`);
+      expect(Number(rows[0].ch_read_bytes)).toBe(big);
+      expect(rows[0].cost_usd).toBeNull();
+      expect(Number(rows[0].input_tokens)).toBe(0);
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.58.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("ai_usage_requests")).toBe(1);
+      const rows = await h.rawAll(sql`SELECT pricing FROM rbac_ai_models WHERE id = ${modelId}`);
+      expect(rows[0].pricing).not.toBeNull();
+      const grants = await h.rawAll(sql`
+        SELECT COUNT(*) AS c FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON p.id = rp.permission_id
+        JOIN rbac_roles r ON r.id = rp.role_id
+        WHERE r.name = 'admin' AND p.name = 'ai_usage:view'`);
+      expect(Number(grants[0].c)).toBe(1);
+      expect((await runMigrations()).migrationsApplied).toEqual([]);
     });
   });
 }
