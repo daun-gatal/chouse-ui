@@ -11,7 +11,10 @@
  * - every call is recorded on the agent's session.
  */
 
+import type { Context } from "hono";
+
 import { decideBudget, type BudgetDecision, type TableEstimate, type TableHealth } from "./budget";
+import { AGENT_CLIENT_HEADER, describeAgentClient } from "./clients";
 import * as store from "./store";
 import { num, one, sql, str } from "../observe/db";
 import { logger } from "../../utils/logger";
@@ -37,6 +40,21 @@ export interface GovernanceResult {
 
 /** Set on responses whose query was already recorded on the agent's session. */
 export const AGENT_RECORDED_HEADER = "X-Chouse-Agent-Recorded";
+
+/** Agent identity for PAT-authenticated (CLI / MCP) requests; null for browser sessions. */
+export function agentContextFor(c: Context, connectionId: string | undefined, defaultTool: string): AgentContext | null {
+  if (c.get("authMethod") !== "pat" || !connectionId) return null;
+  return {
+    patId: c.get("patId") ?? null,
+    userId: c.get("rbacUserId") ?? "",
+    roles: c.get("rbacRoles") ?? [],
+    source: c.req.header("X-Chouse-Agent-Source") === "mcp" ? "mcp" : "pat",
+    // MCP subrequests forward the real client; direct PAT callers (CLI, scripts) are named by their User-Agent.
+    clientName: describeAgentClient(c.req.header(AGENT_CLIENT_HEADER)) ?? describeAgentClient(c.req.header("User-Agent")),
+    tool: c.req.header("X-Chouse-Agent-Tool") ?? defaultTool,
+    connectionId,
+  };
+}
 
 const READ_STATEMENT = /^\s*(with|select)\b/i;
 

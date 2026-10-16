@@ -200,10 +200,15 @@ export const dashboardUpdateSchema = z.object({
   dashboard: dashboardInputSchema,
 }).strict();
 
-/** Exported / imported dashboards: the document plus a format marker. */
+/**
+ * Exported dashboards: the document plus a format marker and the id it was
+ * exported from. Import always creates a new dashboard (new panel ids); the
+ * CLI's `apply` uses `id` to update the one it came from.
+ */
 export const DASHBOARD_EXPORT_FORMAT = "chouse.dashboard/v1";
 export const dashboardExportSchema = z.object({
   format: z.literal(DASHBOARD_EXPORT_FORMAT),
+  id: z.string().min(1).nullable(),
   dashboard: dashboardInputSchema,
 }).strict();
 export type DashboardExport = z.infer<typeof dashboardExportSchema>;
