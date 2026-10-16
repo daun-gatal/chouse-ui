@@ -10,7 +10,7 @@ export const aiUsageKeys = {
   all: ["ai-usage"] as const,
   summary: (days: number) => [...aiUsageKeys.all, "summary", days] as const,
   models: (days: number) => [...aiUsageKeys.all, "models", days] as const,
-  egress: (days: number) => [...aiUsageKeys.all, "egress", days] as const,
+  egress: (days: number, q: string) => [...aiUsageKeys.all, "egress", days, q] as const,
   requests: (days: number, q: string, offset: number, limit: number) => [...aiUsageKeys.all, "requests", days, q, offset, limit] as const,
   request: (id: string) => [...aiUsageKeys.all, "request", id] as const,
 };
@@ -23,8 +23,13 @@ export function useAiUsageByModel(days: number): UseQueryResult<usage.AiModelUsa
   return useQuery({ queryKey: aiUsageKeys.models(days), queryFn: () => usage.getAiUsageByModel(days), refetchInterval: REFRESH_MS });
 }
 
-export function useAiEgress(days: number): UseQueryResult<usage.AiEgressSource[]> {
-  return useQuery({ queryKey: aiUsageKeys.egress(days), queryFn: () => usage.getAiEgress(days), refetchInterval: REFRESH_MS });
+export function useAiEgress(days: number, q: string): UseQueryResult<usage.AiEgressPage> {
+  return useQuery({
+    queryKey: aiUsageKeys.egress(days, q),
+    queryFn: () => usage.getAiEgress(days, q),
+    refetchInterval: REFRESH_MS,
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function useAiUsageRequests(days: number, q: string, offset: number, limit: number): UseQueryResult<usage.AiUsageRequestPage> {

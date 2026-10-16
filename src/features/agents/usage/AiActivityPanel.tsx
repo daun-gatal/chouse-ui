@@ -7,10 +7,10 @@
 
 import { useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Activity, AlertTriangle, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Activity, AlertTriangle, Search } from "lucide-react";
 
 import type { AiEgressSource, AiModelUsage, AiUsageRequest, AiUsageSummary } from "@/api/aiUsage";
-import { Button } from "@/components/ui/button";
+import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatAgo, formatBytes, formatCount } from "@/features/observe/lib";
@@ -33,14 +33,15 @@ import {
 } from "./lib";
 import { RequestSheet } from "./RequestSheet";
 
-const PAGE_SIZE = 25;
+/** Rows per page of the request list; the first is the default. */
+const PAGE_SIZES = [25, 50, 100] as const;
 const SHOWN_COLUMNS = 4;
 /**
  * The two side-by-side panels keep one fixed body height whatever they hold,
  * so they always line up; a longer list scrolls inside with its header pinned.
  */
-const SIDE_PANEL_BODY = "h-80";
-const SIDE_TABLE_SCROLL = "h-full overflow-y-auto";
+const SIDE_PANEL_BODY = "flex h-80 flex-col gap-2";
+const SIDE_TABLE_SCROLL = "min-h-0 flex-1 overflow-y-auto";
 /** The request list scrolls inside the panel past about 15 rows. */
 const REQUESTS_TABLE_SCROLL = "max-h-[560px] overflow-y-auto";
 
@@ -83,16 +84,30 @@ function ColumnList({ columns }: { columns: string[] }): ReactElement {
 }
 
 function EgressPanel({ days, own }: { days: number; own: boolean }): ReactElement {
-  const egress = useAiEgress(days);
+  const [search, setSearch] = useState("");
+  const q = useDebounce(search.trim(), 300);
+  const egress = useAiEgress(days, q);
+  const page = egress.data;
   return (
-    <Panel title="Data sent to providers" meta="Each tool result counted once" bodyClassName={SIDE_PANEL_BODY}>
-      {egress.isLoading ? <LoadingGrid count={2} /> : egress.isError || !egress.data ? (
+    <Panel title="Data sent to providers" meta="Most rows first · each tool result counted once" bodyClassName={SIDE_PANEL_BODY}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-faint" aria-hidden />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a table or record type" aria-label="Search data sent to providers" className="h-7 w-56 rounded-xs pl-7 text-[11px]" />
+        </div>
+        {page && page.total > page.sources.length && (
+          <span className="text-[11px] text-paper-muted" role="status">
+            Top {formatCount(page.sources.length)} of {formatCount(page.total)} sources{q ? "" : " · search to find any other"}
+          </span>
+        )}
+      </div>
+      {egress.isLoading ? <LoadingGrid count={2} /> : egress.isError || !page ? (
         <ErrorState title="Data sent to providers could not be loaded." error={egress.error} />
-      ) : egress.data.length === 0 ? (
-        <EmptyState title="No data sent yet" body="Tables, columns and CHouse records appear here when an AI tool returns them to a model." />
+      ) : page.sources.length === 0 ? (
+        <EmptyState title={q ? "No source matches" : "No data sent yet"} body={q ? "Try another table or record type." : "Tables, columns and CHouse records appear here when an AI tool returns them to a model."} />
       ) : (
         <DataTable label="Data sent to providers" scrollClassName={SIDE_TABLE_SCROLL} head={own ? ["Source", "Columns", "Rows", "Provider"] : ["Source", "Columns", "Rows", "Users", "Provider"]}>
-          {egress.data.map((s: AiEgressSource) => (
+          {page.sources.map((s: AiEgressSource) => (
             <tr key={`${s.kind}|${s.source}`}>
               <td className="max-w-[240px]">
                 <span className="flex min-w-0 items-center gap-2">
@@ -147,18 +162,21 @@ function ModelsPanel({ days }: { days: number }): ReactElement {
 function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOpen: (id: string) => void }): ReactElement {
   const [search, setSearch] = useState("");
   const q = useDebounce(search.trim(), 300);
-  // The page belongs to one search and window; a new one starts from the first page.
-  const pageKey = `${days}|${q}`;
-  const [paging, setPaging] = useState({ key: pageKey, offset: 0 });
-  const offset = paging.key === pageKey ? paging.offset : 0;
-  const setOffset = (next: number): void => setPaging({ key: pageKey, offset: next });
-  const page = useAiUsageRequests(days, q, offset, PAGE_SIZE);
-  const total = page.data?.total ?? 0;
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  // The page belongs to one search, window and page size; a new one starts from the first page.
+  const pageKey = `${days}|${q}|${pageSize}`;
+  const [paging, setPaging] = useState({ key: pageKey, page: 0 });
+  const pageIndex = paging.key === pageKey ? paging.page : 0;
+  const setPageIndex = (next: number): void => setPaging({ key: pageKey, page: next });
+  const result = useAiUsageRequests(days, q, pageIndex * pageSize, pageSize);
+  const total = result.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rows = result.data?.requests ?? [];
 
   return (
     <Panel
       title={own ? "Your recent AI requests" : "Recent AI requests"}
-      meta={page.data ? `${formatCount(total)} in this window` : undefined}
+      meta={result.data ? `Newest first · ${formatCount(total)} in this window` : "Newest first"}
       actions={
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-faint" aria-hidden />
@@ -166,16 +184,19 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
         </div>
       }
     >
-      {page.isLoading ? <LoadingGrid count={2} /> : page.isError || !page.data ? (
-        <ErrorState title="AI requests could not be loaded." error={page.error} />
-      ) : page.data.requests.length === 0 ? (
+      {result.isLoading ? <LoadingGrid count={2} /> : result.isError || !result.data ? (
+        <ErrorState title="AI requests could not be loaded." error={result.error} />
+      ) : rows.length === 0 ? (
         <EmptyState icon={Activity} title={q ? "No requests match" : "No AI requests yet"} body={q ? "Try another user, agent, feature or table." : "Requests appear here once the chat or an AI feature runs."} />
       ) : (
-        <>
-          <DataTable label="AI requests" scrollClassName={REQUESTS_TABLE_SCROLL} head={own ? ["When", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"] : ["When", "User", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"]}>
-            {page.data.requests.map((r: AiUsageRequest) => (
+        <div className="overflow-hidden rounded-xs border border-ink-500">
+          <DataTable label="AI requests, newest first" scrollClassName={REQUESTS_TABLE_SCROLL} head={own ? ["When ↓", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"] : ["When ↓", "User", "Agent", "Tokens", "Cost", "CH read", "Sent", "Status"]}>
+            {rows.map((r: AiUsageRequest, i) => (
               <tr key={r.id} className="cursor-pointer hover:bg-ink-200/50" onClick={() => onOpen(r.id)}>
-                <td className="whitespace-nowrap text-paper-muted" title={new Date(r.startedAt).toLocaleString()}>{formatAgo(r.startedAt)}</td>
+                <td className="whitespace-nowrap text-paper-muted" title={new Date(r.startedAt).toLocaleString()}>
+                  {formatAgo(r.startedAt)}
+                  {pageIndex === 0 && i === 0 && !q && <StatusPill tone="brand" dot={false} className="ml-2">Latest</StatusPill>}
+                </td>
                 {!own && <td className="text-[12px] text-paper">{r.userName ?? (r.source === "background" ? "CHouse (background)" : "Deleted user")}</td>}
                 <td>
                   <button type="button" className="text-left text-[12px] text-paper hover:text-brand focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand" onClick={(e) => { e.stopPropagation(); onOpen(r.id); }}>
@@ -191,14 +212,30 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
               </tr>
             ))}
           </DataTable>
-          {total > PAGE_SIZE && (
-            <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-paper-muted">
-              <span>{offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {formatCount(total)}</span>
-              <Button variant="outline" size="sm" className="h-7 rounded-xs" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></Button>
-              <Button variant="outline" size="sm" className="h-7 rounded-xs" disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)} aria-label="Next page"><ChevronRight className="h-3.5 w-3.5" /></Button>
+          <div className="flex flex-wrap items-center border-t border-ink-500 bg-ink-200/50">
+            <label className="flex items-center gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              Rows
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <SelectTrigger className="h-7 w-20 rounded-xs text-[11px]" aria-label="Rows per page"><SelectValue /></SelectTrigger>
+                <SelectContent>{PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <div className="min-w-0 flex-1 [&>div]:border-t-0 [&>div]:bg-transparent">
+              <PaginationBar
+                page={pageIndex}
+                totalPages={totalPages}
+                startIndex={pageIndex * pageSize}
+                endIndex={pageIndex * pageSize + rows.length}
+                totalRows={total}
+                rowLabel={total === 1 ? "request" : "requests"}
+                onPrev={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                onNext={() => setPageIndex(Math.min(totalPages - 1, pageIndex + 1))}
+                onFirst={() => setPageIndex(0)}
+                onLast={() => setPageIndex(totalPages - 1)}
+              />
             </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
     </Panel>
   );

@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { cachedShare, featureLabel, plural, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
+import type { AiUsageStep } from "@/api/aiUsage";
+
+import { buildTimeline, cachedShare, featureLabel, formatOffset, OPEN_CHAT_THREAD_EVENT, openChatThread, plural, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
 
 describe("formatUsd", () => {
   it("shows unknown cost as a dash, never $0", () => {
@@ -90,5 +92,74 @@ describe("plural / requestOrigin", () => {
     expect(requestOrigin("chat", "chat")).toBe("Chat");
     expect(requestOrigin("feature", "optimize-query")).toBe("Feature · Optimize query");
     expect(requestOrigin("background", "doctor-scan")).toBe("Background · Doctor scan");
+  });
+});
+
+function step(seq: number, kind: "llm" | "tool", agentPath: string | null, calls: AiUsageStep["calls"], startedAt = 1_000 + seq * 100): AiUsageStep {
+  return {
+    id: `s${seq}`, seq, kind, agentPath, name: kind === "llm" ? "m" : "list_users", modelConfigId: null, providerType: null, modelId: null,
+    startedAt, durationMs: 10, status: "ok", usageReported: true, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    costUsd: null, chQueries: 0, chReadRows: 0, chReadBytes: 0, resultBytes: 0, queries: [], calls, error: null,
+  };
+}
+
+describe("buildTimeline", () => {
+  const A = "chouse-assistant";
+  const B = `${A} › chouse-admin`;
+  const C = `${B} › access-auditor`;
+
+  it("numbers steps in start order, nests subagents and tools, and marks hand-offs, answers and the final answer", () => {
+    const steps = [
+      step(6, "llm", A, []),
+      step(0, "llm", A, [{ tool: "task", agent: "chouse-admin" }]),
+      step(1, "llm", B, [{ tool: "task", agent: "access-auditor" }]),
+      step(2, "llm", C, [{ tool: "list_users" }]),
+      step(3, "tool", C, null),
+      step(4, "llm", C, []),
+      step(5, "llm", B, []),
+    ];
+    const t = buildTimeline(steps, 1_000);
+    expect(t.map((x) => [x.number, x.step.seq, x.depth, x.offsetMs])).toEqual([
+      [1, 0, 0, 0], [2, 1, 1, 100], [3, 2, 2, 200], [4, 3, 3, 300], [5, 4, 2, 400], [6, 5, 1, 500], [7, 6, 0, 600],
+    ]);
+    expect(t.map((x) => x.flow)).toEqual([
+      { kind: "handoff", agents: ["chouse-admin"] },
+      { kind: "handoff", agents: ["access-auditor"] },
+      { kind: "tools", tools: ["list_users"] },
+      null,
+      { kind: "answer", to: "chouse-admin" },
+      { kind: "answer", to: "chouse-assistant" },
+      { kind: "final" },
+    ]);
+  });
+
+  it("leaves the flow out when calls weren't recorded, and caps indentation", () => {
+    const deep = "a › b › c › d › e › f";
+    const t = buildTimeline([step(0, "llm", "a", null), step(1, "llm", deep, [])], 1_000);
+    expect(t[0].flow).toBeNull();
+    expect(t[1].depth).toBe(4);
+  });
+
+  it("only marks the root agent's last call as the final answer", () => {
+    const t = buildTimeline([step(0, "llm", "root", []), step(1, "tool", "root", null), step(2, "llm", "root", [])], 1_000);
+    expect(t.map((x) => x.flow)).toEqual([null, null, { kind: "final" }]);
+  });
+});
+
+describe("formatOffset", () => {
+  it("shows seconds, then minutes", () => {
+    expect(formatOffset(0)).toBe("+0.0s");
+    expect(formatOffset(12_340)).toBe("+12.3s");
+    expect(formatOffset(125_000)).toBe("+2m 05s");
+  });
+});
+
+describe("openChatThread", () => {
+  it("asks the chat bubble to open a thread", () => {
+    const listener = vi.fn();
+    window.addEventListener(OPEN_CHAT_THREAD_EVENT, listener);
+    openChatThread("t-1");
+    window.removeEventListener(OPEN_CHAT_THREAD_EVENT, listener);
+    expect((listener.mock.calls[0][0] as CustomEvent<{ threadId: string }>).detail).toEqual({ threadId: "t-1" });
   });
 });

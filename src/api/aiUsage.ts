@@ -83,6 +83,8 @@ export interface AiUsageRequest {
   userId: string | null;
   userName: string | null;
   connectionId: string | null;
+  /** The chat thread, for chat requests. */
+  threadId: string | null;
   featureId: string;
   agentId: string | null;
   agentSlug: string | null;
@@ -144,6 +146,8 @@ export interface AiUsageStep {
   chReadBytes: number;
   resultBytes: number;
   queries: AiStepQuery[];
+  /** Tools an LLM call asked for; `agent` names the subagent of a hand-off. Null when not recorded. */
+  calls: Array<{ tool: string; agent?: string }> | null;
   error: string | null;
 }
 
@@ -183,9 +187,18 @@ export async function getAiUsageByModel(days: number): Promise<AiModelUsage[]> {
   return res.models;
 }
 
-export async function getAiEgress(days: number): Promise<AiEgressSource[]> {
-  const res = await api.get<{ sources: AiEgressSource[] }>("/ai-usage/egress", { params: { days } });
-  return res.sources;
+export interface AiEgressPage {
+  /** The top `limit` sources by rows, after the search. */
+  sources: AiEgressSource[];
+  /** How many sources match in all. */
+  total: number;
+  limit: number;
+}
+
+export async function getAiEgress(days: number, q?: string): Promise<AiEgressPage> {
+  const search = q?.trim();
+  const res = await api.get<AiEgressPage>("/ai-usage/egress", { params: { days, q: search ? search : undefined } });
+  return { sources: res.sources, total: res.total, limit: res.limit };
 }
 
 export function listAiUsageRequests(options: { days: number; q?: string; limit?: number; offset?: number }): Promise<AiUsageRequestPage> {

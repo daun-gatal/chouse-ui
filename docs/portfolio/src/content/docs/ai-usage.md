@@ -21,11 +21,28 @@ Prompt and response text are **not** stored. The chat keeps the question and the
 | Section | What it shows |
 | --- | --- |
 | Tiles | Requests, tokens (in and out), estimated cost, bytes ClickHouse read for the AI, and rows sent to providers |
-| Data sent to providers | Each ClickHouse table, or CHouse record type (users, audit log, tokens…), that reached a model: columns, rows, users and providers |
+| Data sent to providers | Each ClickHouse table, or CHouse record type (users, audit log, tokens…), that reached a model: columns, rows, users and providers. Most rows first; the top 100 are listed, with *Top 100 of N* when there are more, and the search finds any of them |
 | Usage by model | Requests, tokens, the share of input served from the provider's cache, and cost per model |
-| Recent AI requests | Each request with its user, agent, tokens, cost, ClickHouse read, rows sent and status. Search by user, agent, feature or table |
+| Recent AI requests | Newest first, 25, 50 or 100 per page. Each request with its user, agent, tokens, cost, ClickHouse read, rows sent and status. Search by user, agent, feature or table |
 
-Pick **Today**, **7 days** or **30 days** at the top. Open a request to see it step by step: every LLM call with its agent, tokens and cost, and every tool call with the data it returned to the model and the ClickHouse queries it ran, read bytes and time. **Query logs** opens the query in [Query logs](/docs/monitoring-query-logs/); a query on another connection names that connection instead, because Query logs reads the active one.
+Pick **Today**, **7 days** or **30 days** at the top. The two top panels keep the same size and scroll inside; so does a long page of requests.
+
+## Reading a request
+
+Click a request to open it. Its steps read from **Start** at the top to **Finished** (or *Timed out*, *Failed*) at the bottom, in the order they began:
+
+| Part | Meaning |
+| --- | --- |
+| `#3` · `+1.1s` | The step's place in the order, and how long after the start it began |
+| Indentation | Who works for whom: a subagent's steps sit one level in from the agent that handed it the work, and a tool one level in from the agent that called it |
+| ✨ LLM call | One call to the model, by the agent named on it, with its tokens and cost |
+| 🔧 Tool | One tool call, with the data it returned to the model (**Sent …**) and the ClickHouse queries it ran |
+| Hands to … | The agent passed the work to a subagent |
+| Calls … | The agent asked for a tool |
+| Answers … | A subagent finished and passed its answer back up |
+| Final answer | The step that produced the reply |
+
+**Query logs** on a query opens it in [Query logs](/docs/monitoring-query-logs/); a query on another connection names that connection instead, because Query logs reads the active one. For your own chat requests, **Open in chat** opens the conversation it came from.
 
 ### How it is measured
 

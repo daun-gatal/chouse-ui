@@ -47,6 +47,7 @@ import { log } from '@/lib/log';
 import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
 import { useOnboardingGuideActive } from '@/features/onboarding';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
+import { OPEN_CHAT_THREAD_EVENT } from '@/features/agents/usage/lib';
 import {
     MessageSquare,
     X,
@@ -1440,6 +1441,19 @@ export default function AiChatBubble() {
             log.error('[AiChat] Failed to load thread:', err);
         }
     }, [activeConnectionId, updateThreadMessages]);
+
+    // AI activity's "Open in chat" (ADR 0020): open the bubble on one of the viewer's threads.
+    useEffect(() => {
+        const handler = (event: Event): void => {
+            if (!(event instanceof CustomEvent)) return;
+            const detail: unknown = event.detail;
+            if (!detail || typeof detail !== 'object' || !('threadId' in detail) || typeof detail.threadId !== 'string') return;
+            setIsOpen(true);
+            void loadThread(detail.threadId);
+        };
+        window.addEventListener(OPEN_CHAT_THREAD_EVENT, handler);
+        return () => window.removeEventListener(OPEN_CHAT_THREAD_EVENT, handler);
+    }, [loadThread]);
 
     // An overlaid history covers the chat, so close it once the user picks where to go.
     const handleSelectThread = useCallback((threadId: string): void => {

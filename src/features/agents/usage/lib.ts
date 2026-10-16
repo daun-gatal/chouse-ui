@@ -3,7 +3,7 @@
  */
 
 import { formatProviderType, PROVIDER_TYPES, type ProviderType } from "@/constants/aiProviders";
-import type { AiRequestStatus, AiStepStatus, AiUsageRequest } from "@/api/aiUsage";
+import type { AiRequestStatus, AiStepStatus, AiUsageRequest, AiUsageStep } from "@/api/aiUsage";
 
 /** The windows the tab offers; the server clamps to its retention. */
 export const USAGE_WINDOWS = [
@@ -113,4 +113,74 @@ export function logsHoursCovering(at: string | null, now: number = Date.now()): 
 export function cachedShare(inputTokens: number, cacheReadTokens: number): number | null {
   if (inputTokens <= 0) return null;
   return Math.round((cacheReadTokens / inputTokens) * 100);
+}
+
+/** Separator in a recorded agent path ("chouse-assistant › chouse-admin"). */
+const PATH_SEPARATOR = " › ";
+/** Deeper steps stop indenting past this level so the panel stays readable. */
+export const MAX_TIMELINE_DEPTH = 4;
+
+/** What a step says about the flow: whom it hands to, which tools it calls, or whom it answers. */
+export type StepFlow =
+  | { kind: "handoff"; agents: string[] }
+  | { kind: "tools"; tools: string[] }
+  | { kind: "answer"; to: string }
+  | { kind: "final" };
+
+export interface TimelineStep {
+  step: AiUsageStep;
+  /** 1-based position in start order. */
+  number: number;
+  /** Milliseconds after the request started. */
+  offsetMs: number;
+  /** Nesting level: 0 for the request's own agent, +1 per subagent, tools one below their agent. */
+  depth: number;
+  /** Null when the step's tool calls weren't recorded (older requests, tool steps, failed calls). */
+  flow: StepFlow | null;
+}
+
+function pathParts(path: string | null): string[] {
+  return path ? path.split(PATH_SEPARATOR).filter(Boolean) : [];
+}
+
+function flowOf(step: AiUsageStep, isLastRootCall: boolean): StepFlow | null {
+  if (step.kind !== "llm" || step.calls === null) return null;
+  const handoffs = step.calls.filter((c) => c.tool === "task").map((c) => c.agent ?? "a subagent");
+  if (handoffs.length > 0) return { kind: "handoff", agents: handoffs };
+  const tools = step.calls.filter((c) => c.tool !== "task").map((c) => c.tool);
+  if (tools.length > 0) return { kind: "tools", tools };
+  const parts = pathParts(step.agentPath);
+  if (parts.length > 1) return { kind: "answer", to: parts[parts.length - 2] };
+  return isLastRootCall ? { kind: "final" } : null;
+}
+
+/** Steps in start order with their number, time from the start, depth in the agent tree and what they did next. */
+export function buildTimeline(steps: AiUsageStep[], requestStartedAt: number): TimelineStep[] {
+  const ordered = [...steps].sort((a, b) => a.seq - b.seq);
+  const lastRootCall = [...ordered].reverse().find((s) => s.kind === "llm" && pathParts(s.agentPath).length <= 1);
+  return ordered.map((step, i) => {
+    const agentDepth = Math.max(0, pathParts(step.agentPath).length - 1);
+    return {
+      step,
+      number: i + 1,
+      offsetMs: Math.max(0, step.startedAt - requestStartedAt),
+      depth: Math.min(MAX_TIMELINE_DEPTH, step.kind === "tool" ? agentDepth + 1 : agentDepth),
+      flow: flowOf(step, step === lastRootCall),
+    };
+  });
+}
+
+/** "+0.0s", "+12.3s", "+2m 05s". */
+export function formatOffset(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `+${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `+${minutes}m ${String(Math.floor(seconds % 60)).padStart(2, "0")}s`;
+}
+
+/** Window event the chat bubble listens for to open one of the viewer's threads. */
+export const OPEN_CHAT_THREAD_EVENT = "chouse:open-chat-thread";
+
+export function openChatThread(threadId: string): void {
+  window.dispatchEvent(new CustomEvent<{ threadId: string }>(OPEN_CHAT_THREAD_EVENT, { detail: { threadId } }));
 }

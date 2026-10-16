@@ -106,8 +106,8 @@ Migration **1.58.0** (idempotent, `IF NOT EXISTS` and guarded column add):
 
 | Table | One row per | Holds |
 |---|---|---|
-| `ai_usage_requests` | AI request | user, connection, feature, agent, source (`chat` / `feature` / `background`), status, duration, token totals, cost, unpriced and incomplete call counts, ClickHouse query/row/byte totals, egress rows/bytes |
-| `ai_usage_steps` | LLM call or tool call | kind, agent path, model or tool name, provider, tokens, cost, price source, `usage_reported`, ClickHouse totals, and a bounded JSON detail (the step's queries) |
+| `ai_usage_requests` | AI request | user, connection, chat thread, feature, agent, source (`chat` / `feature` / `background`), status, duration, token totals, cost, unpriced and incomplete call counts, ClickHouse query/row/byte totals, egress rows/bytes |
+| `ai_usage_steps` | LLM call or tool call | kind, agent path, model or tool name, provider, tokens, cost, price source, `usage_reported`, ClickHouse totals, and a bounded JSON detail (the step's queries, and for an LLM call the tools it asked for, including `task` hand-offs with the subagent) |
 | `ai_usage_egress` | data source in a tool result | request, step, time, user, provider, model, kind, source, columns, rows, bytes |
 
 …plus a nullable `pricing` JSON column on `rbac_ai_models`. Timestamps are unix
@@ -148,15 +148,24 @@ model-ID matching, outbound network calls).
 ### 6. API (`/api/ai-usage`, RBAC-authenticated)
 
 `GET /summary`, `/egress`, `/models`, `/requests`, `/requests/:id`, each with a
-`days` window (1–30, capped at retention). All are scoped as in §5.
+`days` window (1–30, capped at retention). All are scoped as in §5. `/requests`
+pages on the server (newest first); `/egress` returns the top 100 sources by
+rows with the total that match, and searches on the server.
 
 ### 7. UI
 
 AI Governance › **AI activity**: KPI tiles (requests, tokens, estimated cost,
 ClickHouse read by AI, data sent to providers), an *unpriced models* banner,
-**Data sent to providers** by source, **Usage by model**, and **Recent AI
-requests** with a detail sheet that lists the steps: LLM calls with tokens and
-cost; tool calls with their sources, rows and ClickHouse queries. A query on
+**Data sent to providers** by source (searchable, "Top 100 of N" when cut
+off), **Usage by model** (both the same fixed size, scrolling inside), and
+**Recent AI requests** (newest first, paged) with a detail sheet that reads
+from *Start* to *Finished*: numbered steps with their offset from the start,
+indented by depth in the agent tree (an LLM step's agent slug is mapped to its
+path when the tree is built), with "hands to / calls / answers" lines from the
+recorded tool calls and the root agent's last call marked *Final answer*. LLM
+steps show tokens and cost; tool steps their sources, rows and ClickHouse
+queries. A chat request opens its thread for the person who asked (threads are
+private). A query on
 the active connection links to `/monitoring/logs?q=<query_id>&at=<ms>` (`at`
 widens Query logs' default 6-hour window to the last N hours that cover the
 query; a relative window, because ClickHouse evaluates it on its own clock
