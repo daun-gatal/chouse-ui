@@ -283,6 +283,23 @@ describe("delete, pin, duplicate, export and import", () => {
   });
 });
 
+describe("templates", () => {
+  it("lists templates for viewers and copies one for editors", async () => {
+    const list = await call("viewOnly", "GET", "/dashboards/templates");
+    expect(list.status).toBe(200);
+    expect(list.json.data.map((t: { id: string }) => t.id)).toContain("clickhouse-overview");
+    expect((await call("viewOnly", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" })).status).toBe(403);
+    const copy = await call("owner", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" });
+    expect(copy.status).toBe(201);
+    expect(copy.json.data.dashboard.title).toBe("Replication");
+    expect(copy.json.data.dashboard.ownerId).toBe("u-owner");
+    expect(copy.json.data.dashboard.connectionId).toBe("conn-1");
+    expect(copy.json.data.panels.length).toBeGreaterThan(0);
+    expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate", { connectionId: "conn-1" })).status).toBe(404);
+    expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" })).status).toBe(403);
+  });
+});
+
 describe("running panels", () => {
   it("runs read-only with caps, native parameters and a dashboards log_comment", async () => {
     const created = await create();

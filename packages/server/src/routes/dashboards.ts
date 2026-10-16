@@ -10,6 +10,7 @@
  *   run a panel / options       view access + query:execute; each run is checked against the
  *                               caller's own connection and table access (services/dashboards/runner.ts)
  *   preview / lint              dashboards:edit (+ query:execute to run)
+ *   templates                   list: dashboards:view; use one: dashboards:edit
  *
  * A dashboard the caller may not view answers 404, the same as one that does not exist.
  */
@@ -38,6 +39,7 @@ import {
   type DashboardInput,
 } from "../services/dashboards/spec";
 import * as store from "../services/dashboards/store";
+import { findTemplate, TEMPLATES } from "../services/dashboards/templates";
 import { dashboardProblems, panelProblems } from "../services/dashboards/validate";
 import { AppError, requireParam } from "../types";
 
@@ -135,6 +137,10 @@ dashboards.get("/share-targets", requirePermission(PERMISSIONS.DASHBOARDS_SHARE)
   return ok(c, roles.map((r) => ({ id: r.id, name: r.name, displayName: r.displayName })));
 });
 
+dashboards.get("/templates", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
+  return ok(c, TEMPLATES);
+});
+
 dashboards.get("/:id", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
   return ok(c, await detailResponse(c, requireParam(c, "id")));
 });
@@ -164,6 +170,20 @@ dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zVali
   await assertConnection(c, input.connectionId);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_IMPORT, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length } });
+  return ok(c, await detailResponse(c, id), 201);
+});
+
+const instantiateSchema = z.object({ connectionId: z.string().min(1).nullable() }).strict();
+
+dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", instantiateSchema), async (c) => {
+  const template = findTemplate(requireParam(c, "templateId"));
+  if (!template) throw AppError.notFound("Template not found");
+  const { connectionId } = c.req.valid("json");
+  const input: DashboardInput = { ...template.dashboard, connectionId };
+  assertValid(input);
+  await assertConnection(c, connectionId);
+  const id = await store.createDashboard(input, viewerOf(c).id);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, template: template.id } });
   return ok(c, await detailResponse(c, id), 201);
 });
 
