@@ -1,13 +1,14 @@
 /**
  * LangChain callback handler that turns every model call into an `llm` step of
- * the active usage run (ADR 0020 §1). It is attached to each model instance a
- * run creates (`resolveDeepAgentModel`), so it sees the root agent, subagents
- * on their own model, deepagents' summarization calls and the structured
- * output fallback, which runs outside the agent graph.
+ * the active usage run (ADR 0020 §1). `resolveDeepAgentModel` passes it to the
+ * constructor of each model a run creates, so it sees the root agent,
+ * subagents on their own model, deepagents' summarization calls and the
+ * structured output fallback, which runs outside the agent graph. It must be a
+ * constructor field: ChatOpenAI rebuilds itself from those fields in
+ * `bindTools`, dropping callbacks set on the instance afterwards.
  */
 
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Serialized } from "@langchain/core/load/serializable";
 import type { LLMResult } from "@langchain/core/outputs";
@@ -73,13 +74,4 @@ export class UsageCallbackHandler extends BaseCallbackHandler {
     this.open.delete(runId);
     this.run.failLlm(step, error);
   }
-}
-
-/** Attach a recorder for `run` to a freshly created model instance. */
-export function attachUsageRecorder(model: BaseChatModel, run: UsageRun, ref: ModelRef): void {
-  const handler = new UsageCallbackHandler(run, ref);
-  const existing = model.callbacks;
-  if (existing === undefined) model.callbacks = [handler];
-  else if (Array.isArray(existing)) model.callbacks = [...existing, handler];
-  else existing.addHandler(handler, false);
 }

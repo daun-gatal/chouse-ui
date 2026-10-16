@@ -14,6 +14,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type { ChatResult } from "@langchain/core/outputs";
 import { tool } from "@langchain/core/tools";
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 
 process.env.RBAC_DB_TYPE = "sqlite";
 process.env.RBAC_SQLITE_PATH = ":memory:";
@@ -44,23 +45,28 @@ const { runMigrations } = await import("../../../rbac/db/migrations");
 const { rawAll } = await import("../../../rbac/db/raw");
 const { ClickHouseService } = await import("../../clickhouse");
 const { guardDuplicateTools } = await import("../registry/builder");
-const { attachUsageRecorder, flushUsageWrites, persistUsageRun, pruneAiUsage, withUsageRun } = await import("./index");
+const { flushUsageWrites, persistUsageRun, pruneAiUsage, UsageCallbackHandler, withUsageRun } = await import("./index");
+const { initializeDeepAgentModel } = await import("../../aiConfig");
 type ModelRef = import("./run").ModelRef;
 
 const PRICED: ModelRef = { modelConfigId: "m1", providerType: "anthropic", modelId: "claude-sonnet", pricing: { input: 3, output: 15 } };
 
 type Reply = { content?: string; toolCall?: { name: string; args: Record<string, unknown> }; usage?: Record<string, unknown> | null; fail?: string };
 
-/** Answers by who is asking (system prompt marker) and how far the conversation got. */
+/**
+ * Answers by who is asking (system prompt marker) and how far the conversation got.
+ * Like ChatOpenAI, `bindTools` returns a new instance built from the constructor
+ * fields, so only callbacks passed to the constructor survive.
+ */
 class ScriptedModel extends BaseChatModel {
-  constructor(private readonly script: (messages: BaseMessage[]) => Reply) {
-    super({});
+  constructor(private readonly script: (messages: BaseMessage[]) => Reply, private readonly fields: { callbacks?: BaseCallbackHandler[] } = {}) {
+    super(fields);
   }
   _llmType(): string {
     return "scripted";
   }
-  override bindTools(): this {
-    return this;
+  override bindTools(): ScriptedModel {
+    return new ScriptedModel(this.script, this.fields);
   }
   async _generate(messages: BaseMessage[]): Promise<ChatResult> {
     const reply = this.script(messages);
@@ -132,14 +138,13 @@ beforeEach(async () => {
 
 describe("AI usage capture through deepagents", () => {
   it("records every model call, the tool's query and the data sent, then writes the request", async () => {
-    const model = new ScriptedModel(happyScript);
     const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { rbacUserId: "user-1" });
     let requestId = "";
 
     await withUsageRun({ featureId: "chat", source: "chat", userId: "user-1", connectionId: "conn-1" }, persistUsageRun, async (run) => {
       requestId = run.id;
       run.setAgent({ id: "agent-1", slug: "root", name: "Root" });
-      attachUsageRecorder(model, run, PRICED);
+      const model = new ScriptedModel(happyScript, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
       const { root } = buildAgents(model, service);
       await root.invoke({ messages: [{ role: "user", content: "how many orders?" }] }, { recursionLimit: 40 });
       // The structured-output fallback calls the model outside the graph, with no config.
@@ -192,14 +197,14 @@ describe("AI usage capture through deepagents", () => {
 
   it("records a failed call, an unreported call and the error status", async () => {
     let calls = 0;
-    const model = new ScriptedModel(() => {
+    const script = (): Reply => {
       calls += 1;
       return calls === 1 ? { content: "hi", usage: null } : { fail: "Provider overloaded" };
-    });
+    };
     let requestId = "";
     await expect(withUsageRun({ featureId: "optimize-query", source: "feature", userId: "user-2", connectionId: null }, persistUsageRun, async (run) => {
       requestId = run.id;
-      attachUsageRecorder(model, run, { ...PRICED, pricing: null });
+      const model = new ScriptedModel(script, { callbacks: [new UsageCallbackHandler(run, { ...PRICED, pricing: null })] });
       await model.invoke([{ role: "user", content: "a" }]);
       await model.invoke([{ role: "user", content: "b" }]);
     })).rejects.toThrow("Provider overloaded");
@@ -227,11 +232,63 @@ describe("AI usage capture through deepagents", () => {
     expect(JSON.parse(String(queryCalls[0].clickhouse_settings?.log_comment))).toEqual({ rbac_user_id: "user-1" });
   });
 
+  it("captures a real ChatOpenAI built by the provider registry through deepagents", async () => {
+    // ChatOpenAI.bindTools rebuilds the model from its constructor fields: this
+    // is the path that loses callbacks set on the instance afterwards.
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const body = (await req.json()) as { messages: Array<{ role: string }> };
+        const done = body.messages.some((m) => m.role === "tool");
+        return Response.json({
+          id: "x", object: "chat.completion", created: 0, model: "fake",
+          choices: [{
+            index: 0, finish_reason: done ? "stop" : "tool_calls",
+            message: done
+              ? { role: "assistant", content: "two orders" }
+              : { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "run_select_query", arguments: JSON.stringify({ sql: "SELECT id, amount FROM orders" }) } }] },
+          }],
+          usage: { prompt_tokens: 900, completion_tokens: 40, total_tokens: 940, prompt_tokens_details: { cached_tokens: 300 } },
+        });
+      },
+    });
+    try {
+      const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" });
+      let requestId = "";
+      await withUsageRun({ featureId: "chat", source: "chat", userId: "user-9", connectionId: "conn-1" }, persistUsageRun, async (run) => {
+        requestId = run.id;
+        const config = {
+          provider: { providerType: "openai-compatible", apiKey: "test-key", baseUrl: `http://localhost:${server.port}/v1` },
+          model: { modelId: "fake", params: null },
+        } as unknown as Parameters<typeof initializeDeepAgentModel>[0];
+        const model = initializeDeepAgentModel(config, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
+        const calls: Parameters<typeof guardDuplicateTools>[1] = [];
+        const runSelect = tool(async ({ sql: q }: { sql: string }) => JSON.stringify((await service.executeQuery(q)).data), {
+          name: "run_select_query", description: "Run a SELECT", schema: z.object({ sql: z.string() }),
+        });
+        const [guarded] = guardDuplicateTools([runSelect as never], calls, "root", { model: PRICED, connectionId: "conn-1", defaultDatabase: "sales" });
+        const agent = createDeepAgent({ model: model as never, tools: [guarded], systemPrompt: "ROOT", name: "root" });
+        await agent.invoke({ messages: [{ role: "user", content: "orders?" }] }, { recursionLimit: 20 });
+      });
+      await flushUsageWrites();
+      const [req] = await rawAll(sql`SELECT llm_calls, tool_calls, input_tokens, output_tokens, cache_read_tokens, incomplete_calls, cost_usd, ch_queries FROM ai_usage_requests WHERE id = ${requestId}`);
+      expect(Number(req.llm_calls)).toBe(2);
+      expect(Number(req.tool_calls)).toBe(1);
+      expect(Number(req.input_tokens)).toBe(1_800);
+      expect(Number(req.output_tokens)).toBe(80);
+      expect(Number(req.cache_read_tokens)).toBe(600);
+      expect(Number(req.incomplete_calls)).toBe(0);
+      expect(Number(req.ch_queries)).toBe(1);
+      expect(Number(req.cost_usd)).toBeCloseTo((1_800 * 3 + 80 * 15) / 1e6, 10);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   it("prunes requests past retention with their steps, egress and orphans", async () => {
-    const model = new ScriptedModel(happyScript);
     const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" });
     await withUsageRun({ featureId: "chat", source: "chat", userId: "u", connectionId: "c" }, persistUsageRun, async (run) => {
-      attachUsageRecorder(model, run, PRICED);
+      const model = new ScriptedModel(happyScript, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
       await buildAgents(model, service).root.invoke({ messages: [{ role: "user", content: "q" }] }, { recursionLimit: 40 });
     });
     await flushUsageWrites();

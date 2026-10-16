@@ -1,6 +1,6 @@
 /** AI usage and data egress tracking (ADR 0020). */
 
-export { attachUsageRecorder, UsageCallbackHandler } from "./handler";
+export { UsageCallbackHandler } from "./handler";
 export { addUsage, costOf, normalizeUsageMetadata, usageFromResult, type TokenUsage } from "./pricing";
 export {
   currentToolStep,

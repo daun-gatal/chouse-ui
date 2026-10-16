@@ -6,7 +6,7 @@
 
 import { AppError } from "../../types";
 import { getConfiguration, validateConfiguration, initializeDeepAgentModel } from "../aiConfig";
-import { attachUsageRecorder, currentUsageRun, type ModelRef } from "./usage";
+import { currentUsageRun, UsageCallbackHandler, type ModelRef } from "./usage";
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
@@ -57,16 +57,15 @@ export async function resolveDeepAgentModel(modelId?: string): Promise<ResolvedM
   if (!validation.valid) {
     throw AppError.badRequest(validation.error || "AI is not configured");
   }
-  const model = initializeDeepAgentModel(config!);
+  const usage = usageModelRef(config!);
+  // Every run creates its models here, so a recorder given to the model sees
+  // each of its calls, including those made outside the agent graph.
+  const run = currentUsageRun();
+  const model = initializeDeepAgentModel(config!, run ? { callbacks: [new UsageCallbackHandler(run, usage)] } : {});
   if (OPENAI_NAME_HINT_PROVIDERS.has(config!.provider.providerType)) {
     // `name` is a public Runnable property consulted first by getName().
     (model as { name?: string }).name = "ChatOpenAI";
   }
   const label = config!.model?.modelId ?? config!.model?.name ?? "configured model";
-  const usage = usageModelRef(config!);
-  // Every run creates its models here, so a recorder on the instance sees each
-  // of its calls, including those made outside the agent graph.
-  const run = currentUsageRun();
-  if (run) attachUsageRecorder(model, run, usage);
   return { model, config: config!, label, usage };
 }
