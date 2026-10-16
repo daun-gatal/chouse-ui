@@ -193,6 +193,13 @@ export const PERMISSIONS = {
   AGENTS_VIEW: 'agents:view',
   AGENTS_MANAGE: 'agents:manage',
   NOTEBOOKS_EDIT: 'notebooks:edit',
+
+  // Custom dashboards (ADR 0021)
+  DASHBOARDS_VIEW: 'dashboards:view',
+  DASHBOARDS_EDIT: 'dashboards:edit',
+  DASHBOARDS_DELETE: 'dashboards:delete',
+  DASHBOARDS_SHARE: 'dashboards:share',
+  DASHBOARDS_MANAGE: 'dashboards:manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -306,6 +313,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.DATA_HEALTH_RUN,
     PERMISSIONS.DATA_HEALTH_VIEW_ALL,
     ...OBSERVE_PERMISSIONS_ALL,
+    PERMISSIONS.DASHBOARDS_VIEW,
+    PERMISSIONS.DASHBOARDS_EDIT,
+    PERMISSIONS.DASHBOARDS_DELETE,
+    PERMISSIONS.DASHBOARDS_SHARE,
+    PERMISSIONS.DASHBOARDS_MANAGE,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -337,6 +349,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.CONTEXT_EDIT,
     PERMISSIONS.REMEDIATION_PROPOSE,
     PERMISSIONS.NOTEBOOKS_EDIT,
+    PERMISSIONS.DASHBOARDS_VIEW,
+    PERMISSIONS.DASHBOARDS_EDIT,
+    PERMISSIONS.DASHBOARDS_DELETE,
+    PERMISSIONS.DASHBOARDS_SHARE,
   ],
 
   [SYSTEM_ROLES.ANALYST]: [
@@ -359,6 +375,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_CHAT,
     PERMISSIONS.OBSERVE_VIEW,
     PERMISSIONS.PERFORMANCE_VIEW,
+    PERMISSIONS.DASHBOARDS_VIEW,
+    PERMISSIONS.DASHBOARDS_EDIT,
+    PERMISSIONS.DASHBOARDS_DELETE,
   ],
 
   [SYSTEM_ROLES.VIEWER]: [
@@ -371,6 +390,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.OBSERVE_VIEW,
     PERMISSIONS.PERFORMANCE_VIEW,
+    PERMISSIONS.DASHBOARDS_VIEW,
   ],
 
   [SYSTEM_ROLES.GUEST]: [
@@ -614,6 +634,15 @@ export const AUDIT_ACTIONS = {
   AI_BINDING_UPDATE: 'ai_binding.update',
   AI_REGISTRY_RESET: 'ai_registry.reset',
   AI_REGISTRY_ROLLBACK: 'ai_registry.rollback',
+
+  // Custom dashboards (ADR 0021)
+  DASHBOARD_CREATE: 'dashboard.create',
+  DASHBOARD_UPDATE: 'dashboard.update',
+  DASHBOARD_DELETE: 'dashboard.delete',
+  DASHBOARD_SHARE: 'dashboard.share',
+  DASHBOARD_IMPORT: 'dashboard.import',
+  PANEL_ALERT_CREATE: 'panel_alert.create',
+  PANEL_ALERT_DELETE: 'panel_alert.delete',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

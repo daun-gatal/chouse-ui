@@ -559,6 +559,11 @@ export const RBAC_PERMISSIONS = {
   AGENTS_VIEW: 'agents:view',
   AGENTS_MANAGE: 'agents:manage',
   NOTEBOOKS_EDIT: 'notebooks:edit',
+  DASHBOARDS_VIEW: 'dashboards:view',
+  DASHBOARDS_EDIT: 'dashboards:edit',
+  DASHBOARDS_DELETE: 'dashboards:delete',
+  DASHBOARDS_SHARE: 'dashboards:share',
+  DASHBOARDS_MANAGE: 'dashboards:manage',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

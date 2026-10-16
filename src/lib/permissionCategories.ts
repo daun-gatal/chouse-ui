@@ -50,6 +50,7 @@ const CATEGORY_BY_PREFIX: Record<string, string> = {
   remediation: "Remediation",
   agents: "Agents",
   mcp: "Agents",
+  dashboards: "Dashboards",
 };
 
 /** Fallback category for a permission name, by its longest known prefix. */

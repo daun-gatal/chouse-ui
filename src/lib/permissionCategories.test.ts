@@ -21,6 +21,7 @@ describe("permissionCategory", () => {
     expect(permissionCategory("cost:view")).toBe("Performance & Capacity");
     expect(permissionCategory("remediation:approve_high")).toBe("Remediation");
     expect(permissionCategory("agents:manage")).toBe("Agents");
+    expect(permissionCategory("dashboards:manage")).toBe("Dashboards");
   });
 
   it("uses the longest prefix for nested names", () => {

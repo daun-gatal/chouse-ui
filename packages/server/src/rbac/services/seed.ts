@@ -185,6 +185,13 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.AGENTS_VIEW,
     PERMISSIONS.AGENTS_MANAGE,
   ],
+  'Dashboards': [
+    PERMISSIONS.DASHBOARDS_VIEW,
+    PERMISSIONS.DASHBOARDS_EDIT,
+    PERMISSIONS.DASHBOARDS_DELETE,
+    PERMISSIONS.DASHBOARDS_SHARE,
+    PERMISSIONS.DASHBOARDS_MANAGE,
+  ],
 };
 
 // Human-readable permission names
@@ -291,6 +298,11 @@ export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.AGENTS_VIEW]: 'View Agent Activity',
   [PERMISSIONS.AGENTS_MANAGE]: 'Manage Agent Policies',
   [PERMISSIONS.NOTEBOOKS_EDIT]: 'Add Cells to Investigation Notebooks',
+  [PERMISSIONS.DASHBOARDS_VIEW]: 'View Dashboards',
+  [PERMISSIONS.DASHBOARDS_EDIT]: 'Create and Edit Dashboards',
+  [PERMISSIONS.DASHBOARDS_DELETE]: 'Delete Dashboards',
+  [PERMISSIONS.DASHBOARDS_SHARE]: 'Share Dashboards With Roles',
+  [PERMISSIONS.DASHBOARDS_MANAGE]: 'Manage All Dashboards',
 };
 
 // Role display names and descriptions
