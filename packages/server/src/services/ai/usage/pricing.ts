@@ -79,12 +79,3 @@ export function costOf(usage: TokenUsage, pricing: AiModelPricing | null): numbe
     usage.output * pricing.output;
   return micro / 1_000_000;
 }
-
-export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
-  return {
-    input: a.input + b.input,
-    output: a.output + b.output,
-    cacheRead: a.cacheRead + b.cacheRead,
-    cacheWrite: a.cacheWrite + b.cacheWrite,
-  };
-}

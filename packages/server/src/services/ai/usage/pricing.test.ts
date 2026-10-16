@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { addUsage, costOf, normalizeTokenUsage, normalizeUsageMetadata, usageFromResult, ZERO_USAGE } from "./pricing";
+import { costOf, normalizeTokenUsage, normalizeUsageMetadata, usageFromResult, ZERO_USAGE } from "./pricing";
 
 describe("normalizeUsageMetadata", () => {
   it("reads LangChain usage with cache details (Anthropic shape: input includes cache)", () => {
@@ -85,12 +85,5 @@ describe("costOf", () => {
 
   it("is zero for a free (self-hosted) model", () => {
     expect(costOf({ input: 10, output: 10, cacheRead: 0, cacheWrite: 0 }, { input: 0, output: 0 })).toBe(0);
-  });
-});
-
-describe("addUsage", () => {
-  it("adds field by field", () => {
-    expect(addUsage({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }, { input: 10, output: 20, cacheRead: 30, cacheWrite: 40 }))
-      .toEqual({ input: 11, output: 22, cacheRead: 33, cacheWrite: 44 });
   });
 });
