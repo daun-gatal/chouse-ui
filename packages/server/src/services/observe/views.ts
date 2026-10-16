@@ -3,6 +3,7 @@
  * predicate so nothing about a table the user may not read leaves the server.
  */
 
+import { stripFormat } from "./clickhouse";
 import { all, json, num, numOrNull, one, sql, str, strOrNull, type Row } from "./db";
 import { effectiveSchedule, getCollectorSettings } from "./collectorSettings";
 import { downstreamOf, upstreamOf, type ChainStep, type GraphEdge } from "./rca";
@@ -480,7 +481,7 @@ export async function performance(connectionId: string, allowed: Allowed, canSee
     regressions: regressions.filter((r) => fpAllowed(str(r.fingerprint), str(r.replica))).map((r) => ({
       id: str(r.id), fingerprint: str(r.fingerprint), replica: str(r.replica), metric: str(r.metric), baseline: num(r.baseline_value), current: num(r.current_value),
       ratio: num(r.ratio), runs: num(r.runs), onsetAt: num(r.onset_at), linkedChanges: json(r.linked_changes, []),
-      sampleQuery: canSeeQueryText ? strOrNull(r.sample_query) : null,
+      sampleQuery: canSeeQueryText && r.sample_query ? stripFormat(str(r.sample_query)) : null,
     })),
     changes,
   };
