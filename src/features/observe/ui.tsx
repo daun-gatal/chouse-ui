@@ -117,15 +117,19 @@ export function Mono({ children, className }: { children: ReactNode; className?:
   return <span className={cn("font-mono text-[11px]", className)}>{children}</span>;
 }
 
-/** Table scaffold matching the existing data-health tables. */
-export function DataTable({ head, children, label }: { head: string[]; children: ReactNode; label: string }): ReactElement {
+/**
+ * Table scaffold matching the existing data-health tables. `scrollClassName`
+ * bounds the table (e.g. a height with `overflow-y-auto`): it then scrolls on
+ * its own and the header row stays visible.
+ */
+export function DataTable({ head, children, label, scrollClassName }: { head: string[]; children: ReactNode; label: string; scrollClassName?: string }): ReactElement {
   return (
-    <div className="overflow-x-auto">
+    <div className={cn("overflow-x-auto", scrollClassName)}>
       <table className="w-full border-collapse text-[12px]" aria-label={label}>
         <thead>
           <tr>
             {head.map((h) => (
-              <th key={h} scope="col" className="whitespace-nowrap border-b border-ink-500 px-2.5 py-2 text-left font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-paper-faint">
+              <th key={h} scope="col" className={cn("whitespace-nowrap border-b border-ink-500 px-2.5 py-2 text-left font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-paper-faint", scrollClassName && "sticky top-0 z-10 bg-ink-100")}>
                 {h}
               </th>
             ))}

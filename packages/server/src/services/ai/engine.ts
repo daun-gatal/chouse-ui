@@ -26,6 +26,7 @@ import {
   type InvokedToolCall,
 } from "./registry/builder";
 import { registerHarnessBaseline } from "./registry/harness";
+import { persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
 import { userMayUseAgent, chatAgentCandidates } from "./registry/chatAgents";
 import type { AgentDef, RegistrySnapshot } from "./registry/types";
 import type {
@@ -143,8 +144,13 @@ export function boundAgent(snapshot: RegistrySnapshot, featureId: string): Agent
   return agent;
 }
 
-function modelLabel(resolved: ResolvedModel): { model: ResolvedModel["model"]; label: string } {
-  return { model: resolved.model, label: resolved.label };
+function modelLabel(resolved: ResolvedModel): { model: ResolvedModel["model"]; label: string; usage: ResolvedModel["usage"] } {
+  return { model: resolved.model, label: resolved.label, usage: resolved.usage };
+}
+
+/** Who and what a usage run is attributed to (ADR 0020). */
+function usageMeta(featureId: string, ctx: AgentRunContext, source: UsageRunMeta["source"]): UsageRunMeta {
+  return { featureId, source, userId: ctx.userId ?? null, connectionId: ctx.connectionId ?? null };
 }
 
 async function buildContext(
@@ -217,72 +223,75 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
   options: RunOptions = {},
 ): Promise<TOutput> {
   try {
-    const snapshot = options.snapshot ?? await getRegistrySnapshot();
-    const agent = chosenAgent(snapshot, cap.id, options.agentId);
-    const prepared = await cap.prepare(input, ctx);
-    const scope = `${agent.id}@${agent.version}`;
-    const cached = await cap.cachedResult?.(prepared, ctx, scope);
-    if (cached !== undefined) return cached;
+    return await withUsageRun(usageMeta(cap.id, ctx, ctx.userId ? "feature" : "background"), persistUsageRun, async (run) => {
+      const snapshot = options.snapshot ?? await getRegistrySnapshot();
+      const agent = chosenAgent(snapshot, cap.id, options.agentId);
+      run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
+      const prepared = await cap.prepare(input, ctx);
+      const scope = `${agent.id}@${agent.version}`;
+      const cached = await cap.cachedResult?.(prepared, ctx, scope);
+      if (cached !== undefined) return cached;
 
-    const variables = cap.templateVariables(prepared, ctx);
-    const prompts = renderAgentPrompts(agent, variables, snapshot);
-    const task = renderTaskMessage(agent, variables, snapshot);
-    const instructions = structuredInstructions(prompts.system, cap.outputSchema);
+      const variables = cap.templateVariables(prepared, ctx);
+      const prompts = renderAgentPrompts(agent, variables, snapshot);
+      const task = renderTaskMessage(agent, variables, snapshot);
+      const instructions = structuredInstructions(prompts.system, cap.outputSchema);
 
-    const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
-    const { model, config, label } = resolved;
-    const calls: InvokedToolCall[] = [];
-    const build = await buildContext(snapshot, resolved, {
-      runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
-      variables,
-      calls,
+      const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
+      const { model, config, label } = resolved;
+      const calls: InvokedToolCall[] = [];
+      const build = await buildContext(snapshot, resolved, {
+        runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
+        variables,
+        calls,
+      });
+      const deepAgent = await buildAgentTree(agent, instructions, build);
+
+      const overrides = runtimeOverrides(config);
+      const signal = runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS);
+      const raw = await collectStructuredRun(
+        deepAgent,
+        [{ role: "user", content: task }],
+        overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
+        signal,
+      );
+      options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
+      const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
+      const meta = { raw, steps, modelLabel: label };
+
+      const fallbackMessages: AgentMessage[] = cap.fallbackMessages
+        ? cap.fallbackMessages(prepared, ctx, raw, prompts)
+        : [
+            { role: "system", content: instructions },
+            {
+              role: "user",
+              content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
+            },
+          ];
+
+      const parsed = await structuredOutput({
+        model,
+        schema: cap.outputSchema,
+        raw,
+        fallbackMessages,
+        maxOutputTokens: agent.tuning.maxOutputTokens ?? undefined,
+        policy: isStructuredOutputPolicy(config.model.params?.structuredOutputPolicy)
+          ? config.model.params.structuredOutputPolicy
+          : "auto",
+        strategyCacheKey: structuredOutputCacheKey(config),
+        signal,
+        module: `AI:${cap.id}`,
+      });
+
+      if (parsed === null) {
+        if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
+        throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
+      }
+
+      const output = await cap.finalize(parsed, prepared, ctx, meta);
+      await cap.cacheResult?.(output, prepared, ctx, scope);
+      return output;
     });
-    const deepAgent = await buildAgentTree(agent, instructions, build);
-
-    const overrides = runtimeOverrides(config);
-    const signal = runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS);
-    const raw = await collectStructuredRun(
-      deepAgent,
-      [{ role: "user", content: task }],
-      overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
-      signal,
-    );
-    options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
-    const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
-    const meta = { raw, steps, modelLabel: label };
-
-    const fallbackMessages: AgentMessage[] = cap.fallbackMessages
-      ? cap.fallbackMessages(prepared, ctx, raw, prompts)
-      : [
-          { role: "system", content: instructions },
-          {
-            role: "user",
-            content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
-          },
-        ];
-
-    const parsed = await structuredOutput({
-      model,
-      schema: cap.outputSchema,
-      raw,
-      fallbackMessages,
-      maxOutputTokens: agent.tuning.maxOutputTokens ?? undefined,
-      policy: isStructuredOutputPolicy(config.model.params?.structuredOutputPolicy)
-        ? config.model.params.structuredOutputPolicy
-        : "auto",
-      strategyCacheKey: structuredOutputCacheKey(config),
-      signal,
-      module: `AI:${cap.id}`,
-    });
-
-    if (parsed === null) {
-      if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
-      throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
-    }
-
-    const output = await cap.finalize(parsed, prepared, ctx, meta);
-    await cap.cacheResult?.(output, prepared, ctx, scope);
-    return output;
   } catch (error) {
     if (cap.softFail) return cap.softFail(error);
     handleAiError(error, `AI:${cap.id}`);
@@ -311,6 +320,8 @@ export async function invokeChat(
   messages: AgentMessage[],
   options: {
     agentId?: string | null;
+    /** The chat thread, so AI activity can link a request back to it. */
+    threadId?: string;
     signal?: AbortSignal;
     /** Test console: run against a draft registry, and any chat agent (manager-only route). */
     snapshot?: RegistrySnapshot;
@@ -334,25 +345,28 @@ export async function invokeChat(
     if (!userMayUseAgent(agent, ctx)) throw AppError.forbidden(`You do not have access to the chat agent '${agent.name}'.`);
   }
 
-  const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
-  const calls: InvokedToolCall[] = [];
-  const prompts = renderAgentPrompts(agent, {}, snapshot);
-  const build = await buildContext(snapshot, resolved, {
-    runtime: featureRuntime(ctx, cap.contexts),
-    variables: {},
-    calls,
-    includeChild: (child) => userMayUseAgent(child, ctx),
+  return withUsageRun({ ...usageMeta("chat", ctx, "chat"), threadId: options.threadId ?? null }, persistUsageRun, async (run) => {
+    run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
+    const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
+    const calls: InvokedToolCall[] = [];
+    const prompts = renderAgentPrompts(agent, {}, snapshot);
+    const build = await buildContext(snapshot, resolved, {
+      runtime: featureRuntime(ctx, cap.contexts),
+      variables: {},
+      calls,
+      includeChild: (child) => userMayUseAgent(child, ctx),
+    });
+    const deepAgent = await buildAgentTree(agent, prompts.system, build);
+    const overrides = runtimeOverrides(resolved.config);
+    const result = await deepAgent.invoke(
+      { messages: normalizeMessages(messages) },
+      {
+        recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
+        signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
+      },
+    );
+    return { content: finalTextFromState(result), toolCalls: calls, agent: { id: agent.id, slug: agent.slug, name: agent.name } };
   });
-  const deepAgent = await buildAgentTree(agent, prompts.system, build);
-  const overrides = runtimeOverrides(resolved.config);
-  const result = await deepAgent.invoke(
-    { messages: normalizeMessages(messages) },
-    {
-      recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
-      signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
-    },
-  );
-  return { content: finalTextFromState(result), toolCalls: calls, agent: { id: agent.id, slug: agent.slug, name: agent.name } };
 }
 
 /** Type guard: is this feature structured (vs invoked)? */

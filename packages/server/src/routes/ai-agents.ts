@@ -4,9 +4,10 @@
  * Permission map:
  *   registry, revisions, prompt preview                ai_agents:view
  *   agent / harness / skill writes, bindings, reset,
- *   rollback, test console                            ai_agents:manage
+ *   rollback, test console, Draft with AI              ai_agents:manage
  * The test console also needs the tested feature's own permission and runs on
- * the caller's ClickHouse session.
+ * the caller's ClickHouse session. Drafting also needs the drafter's own AI
+ * permission, needs no ClickHouse connection, and never writes to the registry.
  */
 
 import { Hono, type Context } from "hono";
@@ -24,10 +25,13 @@ import { invokeChat, isStructured, runStructuredCapability, type RunTrace } from
 import { renderAgentPrompts, renderTaskMessage } from "../services/ai/registry/builder";
 import { describeCatalog } from "../services/ai/registry/catalog";
 import { BUILTIN_TOOLS } from "../services/ai/registry/harness";
+import { DRAFT_FEATURES, runDraft } from "../services/ai/registry/draftRunner";
 import * as service from "../services/ai/registry/service";
+import { agentSchema, harnessSchema, normalizedAgent, normalizedHarness, skillSchema } from "../services/ai/registry/schemas";
 import { listRevisions, loadSnapshot } from "../services/ai/registry/store";
 import type { TemplateValue } from "../services/ai/registry/template";
-import { TOOL_CONTEXT_KINDS, type AgentDef, type RegistryEntity } from "../services/ai/registry/types";
+import { TOOL_CONTEXT_KINDS, type AgentDef, type RegistryEntity, type RegistrySnapshot } from "../services/ai/registry/types";
+import type { DraftKind } from "../services/ai/registry/drafting";
 import { introducedProblems, TUNING_LIMITS, usagesOf, validateGraph, withChanges } from "../services/ai/registry/validation";
 import type { AnyCapability } from "../services/ai/types";
 import { AppError, requireParam } from "../types";
@@ -63,79 +67,7 @@ async function audit(c: Context, action: AuditAction, resourceType: string, reso
 // Schemas
 // ============================================
 
-const tuningSchema = z.object({
-  stepBudget: z.number().int(),
-  recursionLimit: z.number().int().nullable().optional(),
-  timeoutMs: z.number().int().nullable().optional(),
-  maxOutputTokens: z.number().int().nullable().optional(),
-});
-
-const agentSchema = z.object({
-  slug: z.string().trim().min(1).max(63),
-  name: z.string().trim().min(1).max(100),
-  description: z.string().max(1024),
-  kind: z.enum(["router", "agent"]),
-  systemPrompt: z.string().max(100_000),
-  taskTemplate: z.string().max(100_000).nullable(),
-  modelConfigId: z.string().min(1).nullable(),
-  harnessId: z.string().min(1),
-  tuning: tuningSchema,
-  requiredPermissions: z.array(z.string()).max(50),
-  tools: z.array(z.string()).max(200),
-  skills: z.array(z.object({
-    skillId: z.string().min(1),
-    mode: z.enum(["progressive", "pinned"]),
-    pinnedFile: z.string().nullable(),
-  })).max(100),
-  subagents: z.array(z.string()).max(20),
-  enabled: z.boolean(),
-});
-
-const harnessSchema = z.object({
-  slug: z.string().trim().min(1).max(63),
-  name: z.string().trim().min(1).max(100),
-  description: z.string().max(1024),
-  excludedTools: z.array(z.string()).max(50),
-  generalPurpose: z.object({
-    enabled: z.boolean(),
-    description: z.string().max(1024).nullable().optional(),
-    systemPrompt: z.string().max(100_000).nullable().optional(),
-  }),
-  promptSuffix: z.string().max(4_000).nullable(),
-  toolDescriptionOverrides: z.record(z.string().max(4_000)),
-});
-
-const skillSchema = z.object({
-  path: z.string().trim().min(3).max(130),
-  skillMd: z.string().min(1).max(1024 * 1024),
-  files: z.record(z.string().max(1024 * 1024)),
-  enabled: z.boolean(),
-});
-
 const versionSchema = z.object({ version: z.number().int().min(1) });
-
-function normalizedAgent(body: z.infer<typeof agentSchema>): service.AgentInput {
-  return {
-    ...body,
-    tuning: {
-      stepBudget: body.tuning.stepBudget,
-      recursionLimit: body.tuning.recursionLimit ?? null,
-      timeoutMs: body.tuning.timeoutMs ?? null,
-      maxOutputTokens: body.tuning.maxOutputTokens ?? null,
-    },
-  };
-}
-
-function normalizedHarness(body: z.infer<typeof harnessSchema>): service.HarnessInput {
-  return {
-    ...body,
-    generalPurpose: {
-      enabled: body.generalPurpose.enabled,
-      description: body.generalPurpose.description ?? null,
-      systemPrompt: body.generalPurpose.systemPrompt ?? null,
-    },
-  };
-}
 
 function versionQuery(c: Context): number {
   const version = Number(c.req.query("version"));
@@ -160,6 +92,16 @@ function featureList(snapshotBindings: Map<string, { agentId: string }>): Array<
     background: cap.background ?? false,
     agentId: snapshotBindings.get(cap.id)?.agentId ?? null,
   }));
+}
+
+/** Whether each drafter can run: a model is configured and its feature is bound to an enabled agent. */
+async function draftingAvailability(snapshot: RegistrySnapshot): Promise<Record<DraftKind, boolean>> {
+  const aiEnabled = await isAIEnabled().catch(() => false);
+  const ready = (featureId: string): boolean => {
+    const binding = snapshot.bindings.get(featureId);
+    return aiEnabled && Boolean(binding && snapshot.agents.get(binding.agentId)?.enabled);
+  };
+  return { agent: ready(DRAFT_FEATURES.agent), harness: ready(DRAFT_FEATURES.harness), skill: ready(DRAFT_FEATURES.skill) };
 }
 
 aiAgents.get("/registry", VIEW, async (c) => {
@@ -187,6 +129,7 @@ aiAgents.get("/registry", VIEW, async (c) => {
     contexts: TOOL_CONTEXT_KINDS,
     limits: TUNING_LIMITS,
     problems: validateGraph(snapshot),
+    drafting: await draftingAvailability(snapshot),
   });
 });
 
@@ -350,11 +293,11 @@ const testSchema = z.object({
   modelId: z.string().optional(),
 });
 
-async function requireFeaturePermission(c: Context<{ Variables: Variables }>, permission: Permission): Promise<void> {
+async function requireFeaturePermission(c: Context<{ Variables: Variables }>, permission: Permission, action = "Testing this feature"): Promise<void> {
   if (isAdmin(c)) return;
   if (c.get("rbacPermissions")?.includes(permission)) return;
   if (await userHasPermission(actor(c), permission)) return;
-  throw AppError.forbidden(`Testing this feature needs '${permission}'`);
+  throw AppError.forbidden(`${action} needs '${permission}'`);
 }
 
 aiAgents.post("/test", MANAGE, connectionContextMiddleware, zValidator("json", testSchema), async (c) => {
@@ -405,6 +348,32 @@ aiAgents.post("/test", MANAGE, connectionContextMiddleware, zValidator("json", t
   if (messages.length === 0) throw AppError.badRequest("Add a message to test the chat");
   const result = await invokeChat(ctx, messages, { agentId: agentId ?? null, snapshot: body.agent || agentId ? snapshot : undefined });
   return ok(c, { kind: "chat", content: result.content, agent: result.agent, toolCalls: result.toolCalls, durationMs: Date.now() - startedAt });
+});
+
+// ============================================
+// Draft with AI
+// ============================================
+
+const DRAFT_KINDS: DraftKind[] = ["agent", "harness", "skill"];
+
+aiAgents.post("/draft/:kind", MANAGE, async (c) => {
+  const kind = requireParam(c, "kind") as DraftKind;
+  if (!DRAFT_KINDS.includes(kind)) throw AppError.notFound(`Unknown draft kind '${kind}'`);
+  const cap = getCapability(DRAFT_FEATURES[kind]);
+  if (!cap || !isStructured(cap)) throw AppError.internal(`The ${kind} drafter is not registered`);
+  await requireFeaturePermission(c, cap.permission, "Drafting with AI");
+  if (!(await isAIEnabled().catch(() => false))) throw AppError.badRequest("No AI model is configured.");
+
+  const parsed = cap.inputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw AppError.badRequest(parsed.error.issues.map((i) => i.message).join("; "));
+  const result = await runDraft(kind, parsed.data, {
+    userId: actor(c),
+    isAdmin: isAdmin(c),
+    // MANAGE already verified ai_agents:manage, possibly against the database
+    // rather than the token, so the drafter's own check must agree with it.
+    permissions: [...(c.get("rbacPermissions") ?? []), PERMISSIONS.AI_AGENTS_MANAGE],
+  });
+  return ok(c, result);
 });
 
 export default aiAgents;

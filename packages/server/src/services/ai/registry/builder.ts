@@ -27,6 +27,8 @@ import { buildGrantedTools, type ToolRuntime } from "./catalog";
 import { applyDescriptionOverrides, applyPromptSuffix, generalPurposeSubagent, harnessToolMiddleware } from "./harness";
 import { RegistrySkillsBackend, skillFiles } from "./skillsBackend";
 import { renderTemplate, TemplateError, type TemplateValue } from "./template";
+import { observeQueries } from "../../queryObserver";
+import { currentUsageRun, runInToolStep, type ModelRef, type ToolContext } from "../usage";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 
 /** Maximum agent-tree depth: root → agent → subagent. */
@@ -105,9 +107,16 @@ function recordableInput(input: unknown): Record<string, unknown> {
 
 /**
  * Record every call (with the agent path) and short-circuit exact repeats so a
- * model cannot loop on the same call.
+ * model cannot loop on the same call. Inside a usage run (ADR 0020) each call
+ * is also a tool step, and its ClickHouse queries and returned data are
+ * attributed to it.
  */
-export function guardDuplicateTools(tools: AgentTool[], calls: InvokedToolCall[], agentPath?: string): AgentTool[] {
+export function guardDuplicateTools(
+  tools: AgentTool[],
+  calls: InvokedToolCall[],
+  agentPath?: string,
+  usage: ToolContext = { model: null, connectionId: null, defaultDatabase: null },
+): AgentTool[] {
   const seen = new Set<string>();
   return tools.map((original) => tool(
     // Preserve LangGraph's call context so tracing, cancellation, and
@@ -115,6 +124,7 @@ export function guardDuplicateTools(tools: AgentTool[], calls: InvokedToolCall[]
     async (input: unknown, config: unknown) => {
       const recorded: InvokedToolCall = { name: original.name, args: recordableInput(input), ...(agentPath ? { agent: agentPath } : {}) };
       calls.push(recorded);
+      const step = currentUsageRun()?.beginTool(original.name, agentPath ?? null, usage);
       const signature = `${original.name}:${stableToolInput(input)}`;
       if (seen.has(signature)) {
         const duplicateResult = {
@@ -123,12 +133,20 @@ export function guardDuplicateTools(tools: AgentTool[], calls: InvokedToolCall[]
             "This exact action was already completed with the same inputs. Use the previous result, choose a different next action if needed, or provide the final answer now. Do not call this tool again unless the inputs change.",
         };
         recorded.result = duplicateResult;
+        step?.end({ result: duplicateResult, duplicate: true });
         return duplicateResult;
       }
       seen.add(signature);
-      const result = await original.invoke(input as never, config as never);
-      recorded.result = result;
-      return result;
+      const invoke = (): Promise<unknown> => original.invoke(input as never, config as never);
+      try {
+        const result = step ? await runInToolStep(step, () => observeQueries(step.observer, invoke)) : await invoke();
+        recorded.result = result;
+        step?.end({ result });
+        return result;
+      } catch (error) {
+        step?.end({ error });
+        throw error;
+      }
     },
     {
       name: original.name,
@@ -167,6 +185,8 @@ export function skillSources(agent: AgentDef, snapshot: RegistrySnapshot): { sou
 export interface ResolvedModelRef {
   model: BaseChatModel;
   label: string;
+  /** Attribution and price for usage tracking; absent in tests that build trees by hand. */
+  usage?: ModelRef;
 }
 
 export interface BuildContext {
@@ -200,7 +220,13 @@ interface NodeOptions {
 async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions): Promise<DeepAgent> {
   const { snapshot } = build;
   const harness = harnessFor(agent, snapshot);
-  const tools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools(agent.tools, build.runtime), harness), build.calls, node.path);
+  // LLM calls only carry the agent's slug; the run maps it to its place in the tree.
+  currentUsageRun()?.registerAgentPath(agent.slug, node.path);
+  const tools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools(agent.tools, build.runtime), harness), build.calls, node.path, {
+    model: node.model.usage ?? null,
+    connectionId: build.runtime.ctx.connectionId ?? null,
+    defaultDatabase: build.runtime.ctx.defaultDatabase ?? null,
+  });
   const { sources, skills } = skillSources(agent, snapshot);
 
   const subagents: Array<SubAgent | CompiledSubAgent> = [];

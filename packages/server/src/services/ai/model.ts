@@ -6,6 +6,7 @@
 
 import { AppError } from "../../types";
 import { getConfiguration, validateConfiguration, initializeDeepAgentModel } from "../aiConfig";
+import { currentUsageRun, UsageCallbackHandler, type ModelRef } from "./usage";
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
@@ -14,6 +15,18 @@ export interface ResolvedModel {
   config: AiConfigWithKey;
   /** Human label for reports/audit (model id, falling back to config name). */
   label: string;
+  /** What usage tracking needs to attribute and price this model's calls. */
+  usage: ModelRef;
+}
+
+/** The usage-tracking view of a model config (ADR 0020). */
+export function usageModelRef(config: AiConfigWithKey): ModelRef {
+  return {
+    modelConfigId: config.model?.id ?? null,
+    providerType: config.provider?.providerType ?? null,
+    modelId: config.model?.modelId ?? null,
+    pricing: config.model?.pricing ?? null,
+  };
 }
 
 // deepagents resolves its harness-profile provider from model.getName(), which
@@ -44,11 +57,15 @@ export async function resolveDeepAgentModel(modelId?: string): Promise<ResolvedM
   if (!validation.valid) {
     throw AppError.badRequest(validation.error || "AI is not configured");
   }
-  const model = initializeDeepAgentModel(config!);
+  const usage = usageModelRef(config!);
+  // Every run creates its models here, so a recorder given to the model sees
+  // each of its calls, including those made outside the agent graph.
+  const run = currentUsageRun();
+  const model = initializeDeepAgentModel(config!, run ? { callbacks: [new UsageCallbackHandler(run, usage)] } : {});
   if (OPENAI_NAME_HINT_PROVIDERS.has(config!.provider.providerType)) {
     // `name` is a public Runnable property consulted first by getName().
     (model as { name?: string }).name = "ChatOpenAI";
   }
   const label = config!.model?.modelId ?? config!.model?.name ?? "configured model";
-  return { model, config: config!, label };
+  return { model, config: config!, label, usage };
 }

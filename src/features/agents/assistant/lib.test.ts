@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import type { AiAgent, AiFeature, AiRegistry, CatalogTool } from "@/api/aiAgents";
+import type { AiAgent, AiFeature, AiRegistry, CatalogTool, DraftResult, SectionStatus } from "@/api/aiAgents";
 import {
   agentOrigin,
   agentSubtree,
   agentTree,
+  attentionSections,
   blankAgent,
   compatibleAgents,
+  draftableFeatures,
+  draftWarnings,
   duplicateAgent,
   formatDuration,
   groupFeatures,
   groupTools,
+  SECTION_LABELS,
   insertAt,
   parseJsonInput,
   parseOverrides,
@@ -54,6 +58,7 @@ function registry(agents: AiAgent[], features: AiFeature[] = []): AiRegistry {
     skills: [], tools, builtinTools: [], contexts: ["session", "fleet", "userApi"],
     limits: { stepBudget: { min: 1, max: 100 }, recursionLimit: { min: 8, max: 1000 }, timeoutMs: { min: 5000, max: 1800000 }, maxOutputTokens: { min: 256, max: 200000 } },
     problems: [],
+    drafting: { agent: true, harness: true, skill: true },
   };
 }
 
@@ -154,5 +159,41 @@ describe("assistant lib", () => {
 
   it("parses harness description overrides", () => {
     expect(parseOverrides("ls: List skills.\nbroken line\n read_file :  Open a skill \n:empty")).toEqual({ ls: "List skills.", read_file: "Open a skill" });
+  });
+
+  describe("Draft with AI", () => {
+    const status = (state: SectionStatus["state"], problems: string[] = []): SectionStatus => ({ state, reason: null, problems, rationale: [] });
+    const result = (sections: Record<string, SectionStatus>, problems: string[] = []): DraftResult<unknown> => ({
+      kind: "agent", mode: "draft", input: {}, sections, meta: { reasons: {}, rationale: {} }, summary: "", fixes: [], problems, suggestedSkills: [], rounds: 1,
+    });
+
+    it("labels every section of every kind", () => {
+      expect(Object.keys(SECTION_LABELS.agent)).toEqual(["identity", "prompt", "tools", "skills", "subagents", "settings"]);
+      expect(Object.keys(SECTION_LABELS.harness)).toEqual(["identity", "builtinTools", "generalPurpose", "promptSuffix", "overrides"]);
+      expect(Object.keys(SECTION_LABELS.skill)).toEqual(["path", "skillMd", "files", "enabled"]);
+    });
+
+    it("lists sections that need attention in editor order", () => {
+      const draft = result({ tools: status("attention", ["x"]), identity: status("attention", ["y"]), prompt: status("drafted"), skills: status("empty") });
+      expect(attentionSections(draft)).toEqual(["identity", "tools"]);
+    });
+
+    it("builds the save warning from sections and leftover registry problems", () => {
+      const draft = result(
+        { prompt: status("attention", ["System prompt is too short"]), tools: status("drafted") },
+        ["System prompt is too short", "Harness does not exist"],
+      );
+      expect(draftWarnings(draft)).toEqual(["Prompt: System prompt is too short", "Harness does not exist"]);
+      expect(draftWarnings(result({ prompt: status("drafted") }))).toEqual([]);
+    });
+
+    it("offers only structured, non-drafting features to draft an agent for", () => {
+      const reg = registry([], [
+        feature({ id: "optimize-query", title: "Optimize" }),
+        feature({ id: "chat", title: "Chat", delivery: "invoke", surface: "chat" }),
+        feature({ id: "draft-ai-agent", title: "Draft an agent", surface: "governance" }),
+      ]);
+      expect(draftableFeatures(reg).map((f) => f.id)).toEqual(["optimize-query"]);
+    });
   });
 });

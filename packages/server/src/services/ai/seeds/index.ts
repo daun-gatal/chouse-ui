@@ -278,6 +278,13 @@ export const SEED_AGENTS: SeedAgent[] = [
     { stepBudget: 3, maxOutputTokens: 2500 }),
   evidenceAgent("builtin-agent-table-context-drafter", "table-context-drafter", "Table Context Drafter", "Drafts a table's curated context from metadata and an aggregate-only profile.", "draft-table-context",
     { stepBudget: 3, maxOutputTokens: 2500 }),
+  // --- AI Governance ----------------------------------------------------------------------
+  evidenceAgent("builtin-agent-skill-author", "skill-author", "Skill Author", "Drafts and refines custom skills (SKILL.md and reference files) from a goal or pasted runbook.", "draft-ai-skill",
+    { stepBudget: 3, maxOutputTokens: 12000 }),
+  evidenceAgent("builtin-agent-agent-author", "agent-author", "Agent Author", "Drafts and refines custom agents — prompt, tools, skills, subagents, harness and tuning — from a goal.", "draft-ai-agent",
+    { stepBudget: 3, maxOutputTokens: 12000 }),
+  evidenceAgent("builtin-agent-harness-author", "harness-author", "Harness Author", "Drafts and refines custom harnesses with a decision for every built-in tool.", "draft-ai-harness",
+    { stepBudget: 3, maxOutputTokens: 6000 }),
   // --- Chat -------------------------------------------------------------------------------
   {
     id: "builtin-agent-clickhouse-data", slug: "clickhouse-data", name: "ClickHouse Data",
@@ -347,4 +354,7 @@ export const SEED_BINDINGS: Record<string, string> = {
   "explain-incident": "incident-explainer",
   "compile-watcher": "watcher-compiler",
   "draft-table-context": "table-context-drafter",
+  "draft-ai-skill": "skill-author",
+  "draft-ai-agent": "agent-author",
+  "draft-ai-harness": "harness-author",
 };

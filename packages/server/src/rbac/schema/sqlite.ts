@@ -8,6 +8,7 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import type { AiModelParams } from '../constants/aiModelParams';
+import type { AiModelPricing } from '../constants/aiModelPricing';
 
 // ============================================
 // Users Table
@@ -460,6 +461,7 @@ export const aiModels = sqliteTable('rbac_ai_models', {
   name: text('name').notNull(), // Display name, e.g., "GPT-4o"
   modelId: text('model_id').notNull(), // Provider model ID, e.g., "gpt-4o"
   params: text('params', { mode: 'json' }).$type<AiModelParams>(), // Runtime parameters (NULL = built-in defaults)
+  pricing: text('pricing', { mode: 'json' }).$type<AiModelPricing>(), // USD per 1M tokens (NULL = no price, ADR 0020)
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({

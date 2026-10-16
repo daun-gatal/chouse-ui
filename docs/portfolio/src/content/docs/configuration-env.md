@@ -80,7 +80,7 @@ Every setting the server reads, with its default. Set them as environment variab
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `OBSERVE_FLEET_INTERVAL` | `30` | Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. YAML: `observe.fleet_interval`. |
+| `OBSERVE_FLEET_INTERVAL` | `30` | Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. An interval set in **Admin › Connections › Collection schedule** wins over both; the other collectors are only set there. YAML: `observe.fleet_interval`. |
 | `OBSERVE_RETENTION_DAYS` | `90` | Days an observed lineage edge (one seen in query logs, not declared in DDL) is kept after it was last seen. YAML: `observe.retention_days`. |
 | `OBSERVE_MAX_FINGERPRINTS` | `5000` | Most query shapes tracked per connection for performance baselines. YAML: `observe.max_fingerprints`. |
 | `OBSERVE_MAX_PARALLEL` | `4` | Collector runs a pod executes at once. |
@@ -88,6 +88,12 @@ Every setting the server reads, with its default. Set them as environment variab
 | `OBSERVE_INCIDENT_HOLD_SECONDS` | `300` | Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample. |
 | `OBSERVE_CAPACITY_THRESHOLD` | `0.85` | Disk fill ratio that capacity forecasts warn about (0–1). |
 | `OBSERVE_SCRATCH_DATABASE` | `chouse_scratch` | Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`. YAML: `observe.scratch_database`. |
+
+## AI usage
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AI_USAGE_RETENTION_DAYS` | `30` | Days of AI usage kept for **AI Governance › AI activity**: requests, tokens, cost, ClickHouse queries and data sent to providers (1–365). Older requests are deleted hourly. YAML: `ai_usage.retention_days`. |
 
 ## Fleet & alerts
 

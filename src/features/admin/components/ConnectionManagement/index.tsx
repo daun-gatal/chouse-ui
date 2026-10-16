@@ -28,6 +28,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Timer,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +77,8 @@ import {
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 import { SkeletonRows } from '@/components/common/Skeletons';
 import { ConnectionObservability } from '@/features/observe/ConnectionObservability';
+import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 // ============================================
 // Validation Schema
@@ -494,8 +497,10 @@ export default function ConnectionManagement() {
   const [editingConnection, setEditingConnection] = useState<ClickHouseConnection | undefined>();
   const [deleteConnection, setDeleteConnection] = useState<ClickHouseConnection | null>(null);
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const { hasPermission } = useRbacStore();
+  const canView = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canEdit = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_EDIT);
   const canDelete = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_DELETE);
 
@@ -593,6 +598,17 @@ export default function ConnectionManagement() {
           </div>
         </div>
         <div className="flex gap-2">
+          {canView && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setScheduleOpen(true)}
+              className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
+            >
+              <Timer className="h-3.5 w-3.5" />
+              Collection schedule
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -806,6 +822,20 @@ export default function ConnectionManagement() {
         variant="danger"
       />
 
+      {/* Collection schedule: the defaults for every connection (issue #380) */}
+      <Sheet open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <SheetContent className="w-full overflow-y-auto border-ink-500 bg-ink-100 sm:max-w-4xl">
+          <SheetHeader>
+            <SheetTitle>Collection schedule</SheetTitle>
+            <SheetDescription>
+              How often the observability collectors read every connection, and what they read per day. A connection can set its own schedule in its edit dialog.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            {scheduleOpen && <CollectorSchedule connectionId={null} canEdit={canEdit} />}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

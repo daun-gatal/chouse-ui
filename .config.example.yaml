@@ -95,6 +95,12 @@ fleet:
   alert_config_file: /app/data/alert-config.json
 
 # ============================================
+# AI usage (ADR 0020) — optional, default shown
+# ============================================
+ai_usage:
+  retention_days: 30            # AI requests, tokens, cost and data egress
+
+# ============================================
 # Data Observability Platform (ADR 0016) — optional, defaults shown
 # ============================================
 observe:

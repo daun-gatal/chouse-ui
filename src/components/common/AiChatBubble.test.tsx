@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   breakpoint: "desktop" as "mobile" | "tablet" | "desktop",
   createThread: vi.fn(),
   getPreferences: vi.fn(),
+  getThread: vi.fn(),
   invokeChatMessage: vi.fn(),
   listThreads: vi.fn(),
   viewportWidth: 1440,
@@ -30,7 +31,7 @@ vi.mock("@/api/ai-chat", () => ({
   getAiModels: vi.fn().mockResolvedValue([]),
   getChatAgents: vi.fn().mockResolvedValue([]),
   getChatStatus: vi.fn().mockResolvedValue({ enabled: true }),
-  getThread: vi.fn(),
+  getThread: mocks.getThread,
   invokeChatMessage: mocks.invokeChatMessage,
   listThreads: mocks.listThreads,
   updateThreadTitle: vi.fn(),
@@ -87,6 +88,7 @@ describe("AiChatBubble", () => {
     });
     mocks.getPreferences.mockReset();
     mocks.getPreferences.mockResolvedValue({});
+    mocks.getThread.mockReset();
     mocks.invokeChatMessage.mockReset();
     mocks.invokeChatMessage.mockResolvedValue({
       content: "Assistant response",
@@ -112,6 +114,22 @@ describe("AiChatBubble", () => {
     await waitFor(() => {
       expect(mocks.createThread).toHaveBeenCalledWith(undefined, "connection-b", null);
     });
+  });
+
+  it("opens a thread when AI activity asks for it", async () => {
+    mocks.getThread.mockResolvedValue({ id: "thread-9", title: "Orders", agentId: null, messages: [{ id: "m1", role: "user", content: "How many orders?", createdAt: new Date().toISOString() }] });
+    render(<AiChatBubble />);
+    await screen.findByRole("button", { name: /open ai chat/i });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("chouse:open-chat-thread", { detail: { threadId: "thread-9" } }));
+      window.dispatchEvent(new CustomEvent("chouse:open-chat-thread", { detail: { nope: 1 } }));
+    });
+
+    await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-9"));
+    expect(mocks.getThread).toHaveBeenCalledTimes(1);
+    // The bubble opened on its own: its close control is showing.
+    expect(await screen.findByRole("button", { name: "Close chat" })).toBeTruthy();
   });
 
   it("clears the active chat when the connection changes while closed", async () => {
@@ -299,6 +317,79 @@ describe("AiChatBubble", () => {
 
     await act(async () => {
       resolveFirst({ content: "Slow answer", toolCalls: [], chartSpecs: [] });
+    });
+  });
+
+  describe("thread history", () => {
+    const savedThread = {
+      id: "thread-saved",
+      userId: "user-1",
+      title: "Saved chat",
+      connectionId: "connection-a",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    beforeEach(() => {
+      mocks.listThreads.mockResolvedValue([savedThread]);
+      mocks.getThread.mockResolvedValue({ ...savedThread, messages: [] });
+    });
+
+    const openHistory = async (): Promise<void> => {
+      fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Thread history" }));
+      await screen.findByText("Saved chat");
+    };
+
+    it("closes the full-screen history on a phone once a thread is picked", async () => {
+      mocks.breakpoint = "mobile";
+      mocks.viewportWidth = 390;
+      render(<AiChatBubble />);
+      await openHistory();
+      expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
+
+      fireEvent.click(screen.getByText("Saved chat"));
+
+      await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-saved"));
+      await waitFor(() => expect(screen.queryByTestId("ai-chat-thread-sidebar")).toBeNull());
+      expect(screen.getByRole("button", { name: "Thread history" })).not.toBeNull();
+    });
+
+    it("shows the history over the chat on a tablet-width sheet and closes it on pick", async () => {
+      mocks.breakpoint = "tablet";
+      mocks.viewportWidth = 844;
+      render(<AiChatBubble />);
+      await openHistory();
+      expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
+
+      fireEvent.click(screen.getByText("Saved chat"));
+
+      await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-saved"));
+      await waitFor(() => expect(screen.queryByTestId("ai-chat-thread-sidebar")).toBeNull());
+    });
+
+    it("closes the overlaid history when starting a new chat from the header", async () => {
+      mocks.breakpoint = "tablet";
+      mocks.viewportWidth = 844;
+      render(<AiChatBubble />);
+      await openHistory();
+
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+      await waitFor(() => expect(mocks.createThread).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByTestId("ai-chat-thread-sidebar")).toBeNull());
+    });
+
+    it("keeps the history docked on a wide desktop sheet after picking a thread", async () => {
+      render(<AiChatBubble />);
+      await openHistory();
+      expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("false");
+
+      fireEvent.click(screen.getByText("Saved chat"));
+
+      await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-saved"));
+      expect(screen.getByTestId("ai-chat-thread-sidebar")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Close sidebar" })).not.toBeNull();
     });
   });
 });

@@ -77,6 +77,7 @@ import { SkeletonRows } from "@/components/common/Skeletons";
 import { QueryTimelineChart } from "@/components/monitoring/QueryTimelineChart";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import type { TimelineBucket } from "@/hooks/useMonitoringTimeline";
+import { logsHoursCovering } from "@/features/agents/usage/lib";
 
 interface LogEntry {
   type: string;
@@ -352,16 +353,6 @@ export default function LogsPage({
   const [searchTerm, setSearchTerm] = useState(searchParams.get("q") || logsPrefs.defaultSearchQuery || "");
   const [logType, setLogType] = useState<string>(logsPrefs.defaultLogType || "all");
 
-  // Deep-link: `?q=<query_id>` (e.g. from a Scheduled Query run) seeds the search
-  // and auto-applies, then the param is cleared so refresh/back doesn't re-trigger.
-  useEffect(() => {
-    const q = searchParams.get("q");
-    if (!q) return;
-    setSearchTerm(q);
-    const next = new URLSearchParams(searchParams);
-    next.delete("q");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
   const [internalAutoRefresh, setInternalAutoRefresh] = useState(logsPrefs.autoRefresh || false);
 
   const autoRefresh = embedded ? externalAutoRefresh : internalAutoRefresh;
@@ -374,6 +365,26 @@ export default function LogsPage({
   );
   const [timeRangeHours, setTimeRangeHours] = useState<number>(6);
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date } | null>(null);
+
+  // Deep-link: `?q=<query_id>` (e.g. from a Scheduled Query run) seeds the search
+  // and auto-applies, then the param is cleared so refresh/back doesn't re-trigger.
+  // `&at=<ms>` (AI activity, ADR 0020) widens the window to cover when the
+  // query ran, since the default 6-hour window misses older queries.
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (!q) return;
+    setSearchTerm(q);
+    const hours = logsHoursCovering(searchParams.get("at"));
+    if (hours !== null) {
+      setCustomRange(null);
+      setTimeRangeHours((current) => Math.max(current, hours));
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    next.delete("at");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const [rangePopoverOpen, setRangePopoverOpen] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);

@@ -33,6 +33,7 @@ export const CONFIG_SECTIONS = [
   "First-run admin",
   "Single sign-on",
   "Data observability",
+  "AI usage",
   "Fleet & alerts",
   "Remediation & Slack",
   "Doctor",
@@ -96,7 +97,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "AUTH_SSO_PROVIDERS_<ID>_<FIELD>", section: "Single sign-on", secret: true, description: "One provider per `<ID>`: `TYPE`, `DISPLAY_NAME`, `ISSUER`, `CLIENT_ID`, `CLIENT_SECRET`, `SCOPES`, endpoints, claim and role mapping, and SAML fields. See [SSO](/docs/sso/) for every field." },
 
   // Observability
-  { name: "OBSERVE_FLEET_INTERVAL", section: "Data observability", default: "30", description: "Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`." },
+  { name: "OBSERVE_FLEET_INTERVAL", section: "Data observability", default: "30", description: "Seconds between fleet metric samples. Takes precedence over `FLEET_POLL_INTERVAL_SECONDS`. An interval set in **Admin › Connections › Collection schedule** wins over both; the other collectors are only set there." },
   { name: "OBSERVE_RETENTION_DAYS", section: "Data observability", default: "90", description: "Days an observed lineage edge (one seen in query logs, not declared in DDL) is kept after it was last seen." },
   { name: "OBSERVE_MAX_FINGERPRINTS", section: "Data observability", default: "5000", description: "Most query shapes tracked per connection for performance baselines." },
   { name: "OBSERVE_MAX_PARALLEL", section: "Data observability", default: "4", description: "Collector runs a pod executes at once." },
@@ -104,6 +105,9 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "OBSERVE_INCIDENT_HOLD_SECONDS", section: "Data observability", default: "300", description: "Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample." },
   { name: "OBSERVE_CAPACITY_THRESHOLD", section: "Data observability", default: "0.85", description: "Disk fill ratio that capacity forecasts warn about (0–1)." },
   { name: "OBSERVE_SCRATCH_DATABASE", section: "Data observability", default: "chouse_scratch", description: "Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`." },
+
+  // AI usage (ADR 0020)
+  { name: "AI_USAGE_RETENTION_DAYS", section: "AI usage", default: "30", description: "Days of AI usage kept for **AI Governance › AI activity**: requests, tokens, cost, ClickHouse queries and data sent to providers (1–365). Older requests are deleted hourly." },
 
   // Fleet
   { name: "FLEET_POLL_INTERVAL_SECONDS", section: "Fleet & alerts", default: "30", description: "Fleet sample interval, kept for compatibility. `OBSERVE_FLEET_INTERVAL` wins when both are set." },

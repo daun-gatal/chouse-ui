@@ -11,6 +11,7 @@ import {
   deleteAgent,
   deleteHarness,
   deleteSkill,
+  draftEntity,
   getAiRegistry,
   harnessInputOf,
   listRevisions,
@@ -127,5 +128,29 @@ describe("AI agents API", () => {
 
     const skill: AiSkill = { path: "a/b", skillMd: "md", files: { "r.md": "r" }, enabled: true, name: "b", description: "d", ...meta };
     expect(skillInputOf(skill)).toEqual({ path: "a/b", skillMd: "md", files: { "r.md": "r" }, enabled: true });
+  });
+
+  it("posts Draft with AI requests per kind and returns the reviewed draft", async () => {
+    const seen: Array<{ path: string; body: unknown }> = [];
+    server.use(
+      http.post("/api/ai-agents/draft/:kind", async ({ request, params }) => {
+        seen.push({ path: new URL(request.url).pathname, body: await request.json() });
+        return HttpResponse.json({ success: true, data: { kind: params.kind, mode: "draft", input: { slug: "x" }, sections: {}, meta: { reasons: {}, rationale: {} }, summary: "s", fixes: [], problems: [], suggestedSkills: [], rounds: 1 } });
+      }),
+    );
+    const agent = await draftEntity("agent", { goal: "Explain table sizes", agentHints: { featureId: null, delegate: "auto" } });
+    expect(agent.kind).toBe("agent");
+    await draftEntity("harness", { current: { slug: "h", name: "H", description: "", excludedTools: [], generalPurpose: { enabled: false }, promptSuffix: null, toolDescriptionOverrides: {} }, sections: ["identity"], feedback: { identity: ["Too short"] } });
+    await draftEntity("skill", { goal: "Triage parts", reference: "runbook" });
+    expect(seen.map((s) => s.path)).toEqual(["/api/ai-agents/draft/agent", "/api/ai-agents/draft/harness", "/api/ai-agents/draft/skill"]);
+    expect(seen[0].body).toEqual({ goal: "Explain table sizes", agentHints: { featureId: null, delegate: "auto" } });
+    expect(seen[1].body).toMatchObject({ sections: ["identity"], feedback: { identity: ["Too short"] } });
+  });
+
+  it("surfaces drafting errors", async () => {
+    server.use(
+      http.post("/api/ai-agents/draft/skill", () => HttpResponse.json({ success: false, error: { message: "No AI model is configured.", code: "BAD_REQUEST" } }, { status: 400 })),
+    );
+    await expect(draftEntity("skill", { goal: "Triage parts" })).rejects.toThrow("No AI model is configured");
   });
 });

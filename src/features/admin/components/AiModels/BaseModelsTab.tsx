@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Plus, Pencil, Trash2, Check, Loader2, Bot, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, Loader2, Bot, ChevronDown, SlidersHorizontal, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,6 +37,7 @@ import {
 import type { ProviderType } from '@/constants/aiProviders';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 import { SkeletonRows } from '@/components/common/Skeletons';
+import { buildPricing, EMPTY_PRICING_DRAFT, PRICING_FIELDS, pricingDraftFrom, pricingSummary, type PricingDraft } from './pricing';
 
 const baseModelSchema = z.object({
     providerId: z.string().min(1, 'Provider is required'),
@@ -91,6 +92,9 @@ export default function BaseModelsTab() {
     const [extraJson, setExtraJson] = useState('');
     const [safetyJson, setSafetyJson] = useState('');
     const [paramsError, setParamsError] = useState<string | null>(null);
+    // Token prices (ADR 0020), USD per 1M tokens; all empty = no price.
+    const [pricingDraft, setPricingDraft] = useState<PricingDraft>(EMPTY_PRICING_DRAFT);
+    const [pricingError, setPricingError] = useState<string | null>(null);
 
     const { hasPermission } = useRbacStore();
     const canEdit = hasPermission(RBAC_PERMISSIONS.AI_MODELS_UPDATE) || hasPermission(RBAC_PERMISSIONS.AI_MODELS_CREATE);
@@ -146,6 +150,8 @@ export default function BaseModelsTab() {
             setSafetyJson(params?.safetySettings ? JSON.stringify(params.safetySettings, null, 2) : '');
             setParamsError(null);
             setParamsOpen(hasAnyParams(params));
+            setPricingDraft(pricingDraftFrom(editingItem?.pricing));
+            setPricingError(null);
         }
     }, [isFormOpen, editingItem, form]);
 
@@ -253,6 +259,12 @@ export default function BaseModelsTab() {
             return;
         }
         setParamsError(null);
+        const priced = buildPricing(pricingDraft);
+        if ('error' in priced) {
+            setPricingError(priced.error);
+            return;
+        }
+        setPricingError(null);
 
         setIsSubmitting(true);
         try {
@@ -261,6 +273,7 @@ export default function BaseModelsTab() {
                     name: values.name,
                     modelId: values.modelId,
                     params: params ?? null,
+                    pricing: priced.pricing,
                 };
                 await rbacAiBaseModelsApi.update(editingItem.id, updateData);
                 toast.success('Base Model updated');
@@ -270,6 +283,7 @@ export default function BaseModelsTab() {
                     name: values.name,
                     modelId: values.modelId,
                     ...(params ? { params } : {}),
+                    ...(priced.pricing ? { pricing: priced.pricing } : {}),
                 };
                 await rbacAiBaseModelsApi.create(createData);
                 toast.success('Base Model created');
@@ -336,7 +350,7 @@ export default function BaseModelsTab() {
                 <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
                     <table className="w-full">
                         <tbody>
-                            <SkeletonRows count={5} cols={4} />
+                            <SkeletonRows count={5} cols={5} />
                         </tbody>
                     </table>
                 </div>
@@ -355,6 +369,7 @@ export default function BaseModelsTab() {
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</TableHead>
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider</TableHead>
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider model ID</TableHead>
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Price per 1M</TableHead>
                                     <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -378,6 +393,9 @@ export default function BaseModelsTab() {
                                                     </Tooltip>
                                                 )}
                                             </span>
+                                        </TableCell>
+                                        <TableCell className="font-mono text-[12px] text-paper-muted">
+                                            {pricingSummary(item.pricing) ?? <span className="text-paper-faint" title="AI activity shows tokens without cost for this model">No price</span>}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
@@ -459,6 +477,41 @@ export default function BaseModelsTab() {
                                         <FormMessage />
                                     </FormItem>
                                 )} />
+
+                                <div className="space-y-2.5 rounded-xs border border-ink-500 bg-ink-50/30 px-3 py-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                                            <Coins className="h-3.5 w-3.5" />
+                                            Pricing
+                                        </span>
+                                        <span className="text-[11px] text-paper-faint">USD per 1M tokens</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {PRICING_FIELDS.map(field => (
+                                            <label className="flex flex-col gap-1" key={field.key}>
+                                                <span className={fieldLabelClass}>{field.label}</span>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    step="any"
+                                                    inputMode="decimal"
+                                                    placeholder={field.placeholder}
+                                                    value={pricingDraft[field.key]}
+                                                    onChange={(e) => setPricingDraft(prev => ({ ...prev, [field.key]: e.target.value }))}
+                                                    className={`h-9 ${inputClass} text-right font-mono text-[13px]`}
+                                                    aria-label={`${field.label} price per 1M tokens`}
+                                                />
+                                                <span className="text-[11px] text-paper-faint">{field.hint}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <p className="text-[11px] text-paper-faint">
+                                        Optional. Used to estimate cost in AI Governance › AI activity. Leave empty to show tokens only. A new price applies to new requests; past costs don't change.
+                                    </p>
+                                    {pricingError && (
+                                        <p className="rounded-xs border border-red-900/50 bg-red-950/30 px-2.5 py-2 text-[11px] text-red-400">{pricingError}</p>
+                                    )}
+                                </div>
 
                                 {providerType && (
                                     <Collapsible open={paramsOpen} onOpenChange={setParamsOpen} className="rounded-xs border border-ink-500 bg-ink-50/30">

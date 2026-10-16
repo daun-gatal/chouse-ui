@@ -44,6 +44,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0017](0017-mcp-managed-in-the-ui.md) | MCP Served on the Web Port and Managed in the UI | Accepted |
 | [0018](0018-cli-1-0.md) | CLI 1.0: One Tool for People and Scripts | Accepted |
 | [0019](0019-deepagents-managed-in-the-ui.md) | DeepAgents Managed in the UI: Agent Registry for Every AI Feature, Multi-Agent Chat, Read-Only CHouse Management Agent | Accepted |
+| [0020](0020-ai-usage-and-data-egress-tracking.md) | AI Usage and Data Egress Tracking for CHouse's Own AI Agents | Accepted |
 
 ## Conventions
 

@@ -369,6 +369,11 @@
     "category": "AI Agents",
     "anchor": "ai-agents"
   },
+  "ai_usage:view": {
+    "name": "View AI Usage, Cost and Data Egress",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
   "sso:view": {
     "name": "View SSO Configuration",
     "category": "SSO Management",
