@@ -75,6 +75,8 @@ export interface UsageRequestRow {
   userId: string | null;
   userName: string | null;
   connectionId: string | null;
+  /** The chat thread the request belongs to, for chat requests. */
+  threadId: string | null;
   featureId: string;
   agentId: string | null;
   agentSlug: string | null;
@@ -121,6 +123,8 @@ export interface UsageStepRow {
   chReadBytes: number;
   resultBytes: number;
   queries: Array<Record<string, unknown>>;
+  /** Tools an LLM call asked for (`agent` for a hand-off to a subagent); null when not recorded. */
+  calls: Array<{ tool: string; agent?: string }> | null;
   error: string | null;
 }
 
@@ -144,7 +148,7 @@ export interface UsageRequestDetail {
   connections: Record<string, string>;
 }
 
-const MAX_EGRESS_SOURCES = 100;
+export const MAX_EGRESS_SOURCES = 100;
 const MAX_SOURCE_COLUMNS = 40;
 const MAX_LIST = 200;
 
@@ -278,15 +282,21 @@ export async function usageByModel(scope: UsageScope): Promise<ModelUsage[]> {
   }));
 }
 
-export async function egressBySource(scope: UsageScope): Promise<EgressSource[]> {
+/** Data sent by source, most rows first: the top `MAX_EGRESS_SOURCES`, optionally filtered, and how many match in all. */
+export async function egressBySource(scope: UsageScope, options: { q?: string } = {}): Promise<{ sources: EgressSource[]; total: number }> {
+  const q = options.q?.trim();
+  const search = q ? sql` AND LOWER(source) LIKE ${likePattern(q)} ESCAPE '\\'` : sql``;
+  const where = sql`WHERE started_at >= ${scope.since}${userFilter(scope, "user_id")}${search}`;
+  const [count] = await rawAll(sql`SELECT COUNT(*) AS n FROM (SELECT 1 AS one FROM ai_usage_egress ${where} GROUP BY kind, source) grouped`);
   const totals = await rawAll(sql`
     SELECT kind, source, SUM(row_count) AS row_count, SUM(bytes) AS bytes, COUNT(DISTINCT user_id) AS users,
       COUNT(DISTINCT request_id) AS requests, MAX(started_at) AS last_at
-    FROM ai_usage_egress WHERE started_at >= ${scope.since}${userFilter(scope, "user_id")}
+    FROM ai_usage_egress ${where}
     GROUP BY kind, source
-    ORDER BY SUM(row_count) DESC
+    ORDER BY SUM(row_count) DESC, source
     LIMIT ${MAX_EGRESS_SOURCES}`);
-  if (totals.length === 0) return [];
+  const total = toNumber(count?.n);
+  if (totals.length === 0) return { sources: [], total };
   const sources = totals.map((t) => str(t.source));
   const details = await rawAll(sql`
     SELECT DISTINCT kind, source, columns, provider_type, connection_id FROM ai_usage_egress
@@ -301,7 +311,7 @@ export async function egressBySource(scope: UsageScope): Promise<EgressSource[]>
     if (d.connection_id) entry.connections.add(str(d.connection_id));
     extra.set(key, entry);
   }
-  return totals.map((t) => {
+  return { total, sources: totals.map((t) => {
     const e = extra.get(`${str(t.kind)}|${str(t.source)}`);
     return {
       kind: egressKind(t.kind),
@@ -315,7 +325,7 @@ export async function egressBySource(scope: UsageScope): Promise<EgressSource[]>
       connectionIds: e ? [...e.connections].sort() : [],
       lastAt: toNumber(t.last_at),
     };
-  });
+  }) };
 }
 
 function requestRow(r: Record<string, unknown>): UsageRequestRow {
@@ -326,6 +336,7 @@ function requestRow(r: Record<string, unknown>): UsageRequestRow {
     userId: strOrNull(r.user_id),
     userName: strOrNull(r.display_name) ?? strOrNull(r.username),
     connectionId: strOrNull(r.connection_id),
+    threadId: strOrNull(r.thread_id),
     featureId: str(r.feature_id),
     agentId: strOrNull(r.agent_id),
     agentSlug: strOrNull(r.agent_slug),
@@ -411,6 +422,13 @@ export async function usageRequestDetail(id: string, userId: string | null): Pro
       chReadBytes: toNumber(s.ch_read_bytes),
       resultBytes: toNumber(s.result_bytes),
       queries,
+      calls: Array.isArray(detail.calls)
+        ? detail.calls.flatMap((c): Array<{ tool: string; agent?: string }> => {
+          if (!c || typeof c !== "object" || typeof (c as { tool?: unknown }).tool !== "string") return [];
+          const { tool, agent } = c as { tool: string; agent?: unknown };
+          return [typeof agent === "string" ? { tool, agent } : { tool }];
+        })
+        : null,
       error: typeof detail.error === "string" ? detail.error : null,
     };
   });

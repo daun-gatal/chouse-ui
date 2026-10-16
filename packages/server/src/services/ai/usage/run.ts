@@ -54,6 +54,12 @@ export interface EgressRecord {
   modelId: string | null;
 }
 
+/** A tool the model asked for in one LLM call; `agent` is the subagent a `task` hand-off goes to. */
+export interface StepToolCall {
+  tool: string;
+  agent?: string;
+}
+
 export interface UsageStep {
   id: string;
   seq: number;
@@ -71,6 +77,8 @@ export interface UsageStep {
   costUsd: number | null;
   queries: StepQuery[];
   resultBytes: number;
+  /** Tools an LLM call asked for; null when not known (a tool step, or a call that failed). */
+  calls: StepToolCall[] | null;
   error?: string;
   ended: boolean;
 }
@@ -80,6 +88,8 @@ export interface UsageRunMeta {
   source: UsageSource;
   userId: string | null;
   connectionId: string | null;
+  /** The chat thread the request belongs to. */
+  threadId?: string | null;
 }
 
 export interface UsageAgent {
@@ -122,6 +132,8 @@ export class UsageRun {
   chReadBytes = 0;
   private queryCounter = 0;
   private finished = false;
+  /** Agent slug → its path in the tree ("root › child"), so LLM steps know their depth. */
+  private readonly agentPaths = new Map<string, string>();
 
   constructor(meta: UsageRunMeta, private readonly clock: () => number = Date.now) {
     this.meta = meta;
@@ -131,6 +143,11 @@ export class UsageRun {
   /** The first agent to claim the run is the one it is attributed to (a nested feature run keeps its caller's). */
   setAgent(agent: UsageAgent): void {
     if (!this.agent) this.agent = agent;
+  }
+
+  /** Remember where an agent sits in the tree; the first registration of a slug wins. */
+  registerAgentPath(slug: string, path: string): void {
+    if (!this.agentPaths.has(slug)) this.agentPaths.set(slug, path);
   }
 
   nextQueryId(): string {
@@ -154,6 +171,7 @@ export class UsageRun {
       costUsd: null,
       queries: [],
       resultBytes: 0,
+      calls: null,
       ended: false,
     };
     this.steps.push(step);
@@ -166,12 +184,14 @@ export class UsageRun {
   }
 
   beginLlm(model: ModelRef, agentName: string | null): UsageStep {
-    return this.newStep("llm", model.modelId ?? "model", agentName ?? this.agent?.slug ?? null, model);
+    const slug = agentName ?? this.agent?.slug ?? null;
+    return this.newStep("llm", model.modelId ?? "model", slug === null ? null : this.agentPaths.get(slug) ?? slug, model);
   }
 
-  endLlm(step: UsageStep, usage: TokenUsage | null): void {
+  endLlm(step: UsageStep, usage: TokenUsage | null, calls: StepToolCall[] = []): void {
     if (step.ended) return;
     this.close(step);
+    step.calls = calls;
     if (!usage) return;
     step.usageReported = true;
     step.status = "ok";

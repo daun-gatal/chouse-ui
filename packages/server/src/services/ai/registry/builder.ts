@@ -220,6 +220,8 @@ interface NodeOptions {
 async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions): Promise<DeepAgent> {
   const { snapshot } = build;
   const harness = harnessFor(agent, snapshot);
+  // LLM calls only carry the agent's slug; the run maps it to its place in the tree.
+  currentUsageRun()?.registerAgentPath(agent.slug, node.path);
   const tools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools(agent.tools, build.runtime), harness), build.calls, node.path, {
     model: node.model.usage ?? null,
     connectionId: build.runtime.ctx.connectionId ?? null,

@@ -144,6 +144,8 @@ describe("AI usage capture through deepagents", () => {
     await withUsageRun({ featureId: "chat", source: "chat", userId: "user-1", connectionId: "conn-1" }, persistUsageRun, async (run) => {
       requestId = run.id;
       run.setAgent({ id: "agent-1", slug: "root", name: "Root" });
+      run.registerAgentPath("root", "root");
+      run.registerAgentPath("analyst", "root › analyst");
       const model = new ScriptedModel(happyScript, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
       const { root } = buildAgents(model, service);
       await root.invoke({ messages: [{ role: "user", content: "how many orders?" }] }, { recursionLimit: 40 });
@@ -177,12 +179,15 @@ describe("AI usage capture through deepagents", () => {
     const steps = await rawAll(sql`SELECT kind, name, agent_path, status, usage_reported, ch_queries, detail FROM ai_usage_steps WHERE request_id = ${requestId} ORDER BY seq`);
     expect(steps.map((s) => [s.kind, s.agent_path])).toEqual([
       ["llm", "root"],
-      ["llm", "analyst"],
+      ["llm", "root › analyst"],
       ["tool", "root › analyst"],
-      ["llm", "analyst"],
+      ["llm", "root › analyst"],
       ["llm", "root"],
       ["llm", "root"],
     ]);
+    // Each LLM step keeps the tools it asked for: the hand-off, the query, then answers.
+    const calls = steps.map((s) => (JSON.parse(String(s.detail)) as { calls?: unknown }).calls);
+    expect(calls).toEqual([[{ tool: "task", agent: "analyst" }], [{ tool: "run_select_query" }], undefined, [], [], []]);
     const toolStep = steps[2];
     expect(toolStep).toMatchObject({ name: "run_select_query", status: "ok" });
     const detail = JSON.parse(String(toolStep.detail)) as { queries: Array<Record<string, unknown>> };

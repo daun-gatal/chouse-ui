@@ -3,7 +3,7 @@
  *
  *   GET /summary        totals, cost and unpriced models for the window
  *   GET /models         usage by model
- *   GET /egress         data sent to providers, by source
+ *   GET /egress         data sent to providers, by source (top 100, search, total)
  *   GET /requests       recent AI requests (search, paging)
  *   GET /requests/:id   one request with its steps and egress
  *
@@ -17,7 +17,7 @@ import { Hono, type Context } from "hono";
 import { getRbacUser, rbacAuthMiddleware, requireAnyPermission } from "../rbac/middleware/rbacAuth";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { userHasPermission } from "../rbac/services/rbac";
-import { egressBySource, listUsageRequests, usageByModel, usageRequestDetail, usageSummary, type UsageScope } from "../services/ai/usage/queries";
+import { egressBySource, listUsageRequests, MAX_EGRESS_SOURCES, usageByModel, usageRequestDetail, usageSummary, type UsageScope } from "../services/ai/usage/queries";
 import { usageRetentionDays } from "../services/ai/usage/store";
 import { AppError, requireParam } from "../types";
 
@@ -68,7 +68,8 @@ aiUsage.get("/models", async (c) => {
 
 aiUsage.get("/egress", async (c) => {
   const { scope, label, days } = await scopeOf(c);
-  return ok(c, { scope: label, days, sources: await egressBySource(scope) });
+  const q = c.req.query("q")?.slice(0, 200);
+  return ok(c, { scope: label, days, limit: MAX_EGRESS_SOURCES, ...(await egressBySource(scope, { q })) });
 });
 
 aiUsage.get("/requests", async (c) => {

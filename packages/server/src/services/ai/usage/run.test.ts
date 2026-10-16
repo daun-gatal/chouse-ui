@@ -81,6 +81,22 @@ describe("UsageRun · LLM steps", () => {
     expect(run.beginLlm(PRICED, null).agentPath).toBe("sql-assistant");
   });
 
+  it("places an LLM call at its agent's path in the tree and keeps the tools it asked for", () => {
+    const run = new UsageRun(META);
+    run.registerAgentPath("chouse-assistant", "chouse-assistant");
+    run.registerAgentPath("access-auditor", "chouse-assistant › chouse-admin › access-auditor");
+    run.registerAgentPath("access-auditor", "elsewhere › access-auditor");
+    const step = run.beginLlm(PRICED, "access-auditor");
+    expect(step.agentPath).toBe("chouse-assistant › chouse-admin › access-auditor");
+    expect(step.calls).toBeNull();
+    run.endLlm(step, { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }, [{ tool: "list_users" }]);
+    expect(step.calls).toEqual([{ tool: "list_users" }]);
+    const unknown = run.beginLlm(PRICED, "not-registered");
+    expect(unknown.agentPath).toBe("not-registered");
+    run.endLlm(unknown, null);
+    expect(unknown.calls).toEqual([]);
+  });
+
   it("closes calls still open at finish as incomplete", () => {
     const c = clock();
     const run = new UsageRun(META, c.now);

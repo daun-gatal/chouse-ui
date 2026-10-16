@@ -338,6 +338,7 @@ aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema
     try {
         const result = await invokeChat(runContext, coreMessages, {
             agentId: requestedAgentId,
+            threadId,
             signal: c.req.raw.signal,
         });
         const content = stripScratchpad(result.content);

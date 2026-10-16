@@ -368,6 +368,7 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const i of AI_USAGE_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
     expect(await h.columnExists("rbac_ai_models", "pricing")).toBe(true);
     expect(await h.columnIsNullable("rbac_ai_models", "pricing")).toBe(true);
+    expect(await h.columnExists("ai_usage_requests", "thread_id")).toBe(true);
     expect(await h.permissionExists("ai_usage:view")).toBe(true);
     expect(await h.roleHasPermission("super_admin", "ai_usage:view")).toBe(true);
     expect(await h.roleHasPermission("admin", "ai_usage:view")).toBe(true);

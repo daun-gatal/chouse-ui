@@ -17,6 +17,7 @@ const AI_USAGE_TABLES: string[] = [
     duration_ms         {BIGINT} NOT NULL DEFAULT 0,
     user_id             TEXT,
     connection_id       TEXT,
+    thread_id           TEXT,
     feature_id          TEXT NOT NULL,
     agent_id            TEXT,
     agent_slug          TEXT,

@@ -320,6 +320,8 @@ export async function invokeChat(
   messages: AgentMessage[],
   options: {
     agentId?: string | null;
+    /** The chat thread, so AI activity can link a request back to it. */
+    threadId?: string;
     signal?: AbortSignal;
     /** Test console: run against a draft registry, and any chat agent (manager-only route). */
     snapshot?: RegistrySnapshot;
@@ -343,7 +345,7 @@ export async function invokeChat(
     if (!userMayUseAgent(agent, ctx)) throw AppError.forbidden(`You do not have access to the chat agent '${agent.name}'.`);
   }
 
-  return withUsageRun(usageMeta("chat", ctx, "chat"), persistUsageRun, async (run) => {
+  return withUsageRun({ ...usageMeta("chat", ctx, "chat"), threadId: options.threadId ?? null }, persistUsageRun, async (run) => {
     run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
     const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
     const calls: InvokedToolCall[] = [];

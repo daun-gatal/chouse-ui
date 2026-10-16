@@ -67,7 +67,7 @@ async function seedRun(options: {
   chouse?: string;
 }): Promise<string> {
   let t = options.startedAt;
-  const run = new UsageRun({ featureId: "chat", source: "chat", userId: options.userId, connectionId: "conn-1" }, () => t);
+  const run = new UsageRun({ featureId: "chat", source: "chat", userId: options.userId, connectionId: "conn-1", threadId: `thread-${options.userId}` }, () => t);
   run.setAgent({ id: `agent-${options.agent}`, slug: options.agent, name: `Agent ${options.agent}` });
   const llm = run.beginLlm(options.model, options.agent);
   t += 100;
@@ -185,6 +185,16 @@ for (const dialect of DIALECTS) {
       expect(data.sources[2]).toMatchObject({ columns: ["username"], connectionIds: [] });
     });
 
+    it("searches sources on the server and says how many match", async () => {
+      const all = await get<{ sources: Array<{ source: string }>; total: number; limit: number }>("/ai-usage/egress?days=1", adminToken);
+      expect(all.data).toMatchObject({ total: 3, limit: 100 });
+      const found = await get<{ sources: Array<{ source: string }>; total: number }>("/ai-usage/egress?days=1&q=ORDERS", adminToken);
+      expect(found.data.total).toBe(1);
+      expect(found.data.sources.map((s) => s.source)).toEqual(["sales.orders"]);
+      const none = await get<{ sources: unknown[]; total: number }>("/ai-usage/egress?days=1&q=%25", adminToken);
+      expect(none.data).toMatchObject({ sources: [], total: 0 });
+    });
+
     it("breaks usage down by model", async () => {
       const { data } = await get<{ models: Array<Record<string, unknown>> }>("/ai-usage/models?days=1", adminToken);
       expect(data.models).toHaveLength(2);
@@ -198,7 +208,9 @@ for (const dialect of DIALECTS) {
         VALUES ('conn-1', 'prod-eu', 'ch', 8123, 'u', ${getDatabaseType() === "sqlite" ? sql`unixepoch()` : sql`NOW()`}, ${getDatabaseType() === "sqlite" ? sql`unixepoch()` : sql`NOW()`})`);
       const { status, data } = await get<{ request: Record<string, unknown>; steps: Array<Record<string, unknown>>; egress: Array<Record<string, unknown>>; connections: Record<string, string> }>(`/ai-usage/requests/${bobRequest}`, adminToken);
       expect(status).toBe(200);
-      expect(data.request).toMatchObject({ id: bobRequest, status: "error", unpricedCalls: 1 });
+      expect(data.request).toMatchObject({ id: bobRequest, status: "error", unpricedCalls: 1, threadId: `thread-${BOB}` });
+      expect(data.steps[0].calls).toEqual([]);
+      expect(data.steps[1].calls).toBeNull();
       expect(data.steps.map((s) => [s.kind, s.name, s.status])).toEqual([
         ["llm", "gpt-x", "ok"],
         ["tool", "run_select_query", "ok"],

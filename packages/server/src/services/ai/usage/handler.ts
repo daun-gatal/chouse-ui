@@ -14,7 +14,24 @@ import type { Serialized } from "@langchain/core/load/serializable";
 import type { LLMResult } from "@langchain/core/outputs";
 
 import { usageFromResult } from "./pricing";
-import type { ModelRef, UsageRun, UsageStep } from "./run";
+import type { ModelRef, StepToolCall, UsageRun, UsageStep } from "./run";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The tools the first generation asked for; a deepagents `task` call names the subagent it hands to. */
+export function toolCallsFromResult(result: unknown): StepToolCall[] {
+  if (!isRecord(result) || !Array.isArray(result.generations) || !Array.isArray(result.generations[0])) return [];
+  const first: unknown = result.generations[0][0];
+  const message = isRecord(first) && isRecord(first.message) ? first.message : undefined;
+  const calls = message && Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  return calls.flatMap((call: unknown): StepToolCall[] => {
+    if (!isRecord(call) || typeof call.name !== "string") return [];
+    const args = isRecord(call.args) ? call.args : {};
+    return [call.name === "task" && typeof args.subagent_type === "string" ? { tool: "task", agent: args.subagent_type } : { tool: call.name }];
+  });
+}
 
 export class UsageCallbackHandler extends BaseCallbackHandler {
   name = "chouse_ai_usage";
@@ -65,7 +82,7 @@ export class UsageCallbackHandler extends BaseCallbackHandler {
     const step = this.open.get(runId);
     if (!step) return;
     this.open.delete(runId);
-    this.run.endLlm(step, usageFromResult(output));
+    this.run.endLlm(step, usageFromResult(output), toolCallsFromResult(output));
   }
 
   override handleLLMError(error: unknown, runId: string): void {
