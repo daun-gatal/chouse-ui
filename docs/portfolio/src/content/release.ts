@@ -30,13 +30,13 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.15",
   kind: "minor",
-  summary: "Draft AI agents from a goal, see what your AI costs and sends out, and tune observability load.",
+  summary: "Build your own dashboards or draft them with AI, see what your AI costs and sends out, and tune observability load.",
   highlights: [
+    { label: "Dashboards", href: "/docs/dashboards/" },
     { label: "Draft with AI", href: "/docs/ai-draft-with-ai/" },
     { label: "AI activity", href: "/docs/ai-usage/" },
     { label: "Refine with AI", href: "/docs/ai-draft-with-ai/#refine-with-ai" },
     { label: "Collection schedule", href: "/docs/connections/#collection-schedule" },
-    { label: "Lighter collection", href: "/docs/data-observability/#how-often-it-runs" },
   ],
 };
 

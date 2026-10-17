@@ -42,6 +42,10 @@ Channels are shared: [promises](/docs/data-health/) can also notify them on inci
 
 Only one fleet rule can be active at a time; disable the current one before enabling another.
 
+## Dashboard panel alerts
+
+Alerts on a [dashboard panel](/docs/dashboards/#panel-alerts) are managed from the panel's bell, not here. They use the notification channels above, and their events appear in **Recent alerts**. The **Dashboard panel alerts** list shows each one with its dashboard and state. A channel that a panel alert delivers to cannot be deleted until the alert stops using it.
+
 ## How alerts fire
 
 Rules are checked on every fleet sample (`OBSERVE_FLEET_INTERVAL`, default 30 s). An alert fires once when a condition goes from healthy to breaching, and doesn't repeat while it stays breached; the state survives pod restarts and failover, so a rollout doesn't re-send everything. A parts-pressure alert re-arms only once the projected time climbs well clear of the limit, to avoid flapping.

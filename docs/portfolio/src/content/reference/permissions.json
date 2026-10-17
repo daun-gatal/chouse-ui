@@ -533,5 +533,30 @@
     "name": "Manage Agent Policies",
     "category": "Agents",
     "anchor": "agents"
+  },
+  "dashboards:view": {
+    "name": "View Dashboards",
+    "category": "Dashboards",
+    "anchor": "dashboards"
+  },
+  "dashboards:edit": {
+    "name": "Create and Edit Dashboards",
+    "category": "Dashboards",
+    "anchor": "dashboards"
+  },
+  "dashboards:delete": {
+    "name": "Delete Dashboards",
+    "category": "Dashboards",
+    "anchor": "dashboards"
+  },
+  "dashboards:share": {
+    "name": "Share Dashboards With Roles",
+    "category": "Dashboards",
+    "anchor": "dashboards"
+  },
+  "dashboards:manage": {
+    "name": "Manage All Dashboards",
+    "category": "Dashboards",
+    "anchor": "dashboards"
   }
 }

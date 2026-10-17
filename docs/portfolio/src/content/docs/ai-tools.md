@@ -1,7 +1,7 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 59 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 61 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
@@ -9,10 +9,10 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 
 | Tool | Title | Context | Needs any of | What it does | Built-in agents |
 | --- | --- | --- | --- | --- | --- |
-| `list_databases` | List databases | ClickHouse session | — | List all available database names. Results are filtered by user permissions. | 4 |
-| `list_tables` | List tables | ClickHouse session | — | List all tables in a specific database. Results are filtered by user permissions. | 4 |
-| `get_table_schema` | Table schema | ClickHouse session | — | Get column names and types for a specific table. | 7 |
-| `get_table_ddl` | Table DDL | ClickHouse session | — | Get the CREATE TABLE statement (DDL) for a specific table. Use this to understand table engines, sorting keys, partition keys, and index settings. | 7 |
+| `list_databases` | List databases | ClickHouse session | — | List all available database names. Results are filtered by user permissions. | 5 |
+| `list_tables` | List tables | ClickHouse session | — | List all tables in a specific database. Results are filtered by user permissions. | 5 |
+| `get_table_schema` | Table schema | ClickHouse session | — | Get column names and types for a specific table. | 8 |
+| `get_table_ddl` | Table DDL | ClickHouse session | — | Get the CREATE TABLE statement (DDL) for a specific table. Use this to understand table engines, sorting keys, partition keys, and index settings. | 8 |
 | `get_table_size` | Table size | ClickHouse session | — | Get row count and disk size for a specific table. | 3 |
 | `get_table_sample` | Sample rows | ClickHouse session | — | Get first 5 rows of a table to preview the data. | 3 |
 | `run_select_query` | Run SELECT | ClickHouse session | — | Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. LIMIT 100 is added automatically if the query has no LIMIT. Results limited to 100 rows. NEVER include a FORMAT clause — the application handles formatting internally. | 3 |
@@ -22,7 +22,7 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `get_server_info` | Server info | ClickHouse session | — | Get ClickHouse server version and uptime. | 3 |
 | `search_columns` | Search columns | ClickHouse session | — | Search for columns by name pattern across all accessible tables. | 3 |
 | `analyze_query` | Analyze a query | ClickHouse session | — | Analyze a SQL query for complexity, performance characteristics, and get optimization recommendations. | 6 |
-| `validate_sql` | Validate SQL | ClickHouse session | — | Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running. | 4 |
+| `validate_sql` | Validate SQL | ClickHouse session | — | Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running. | 5 |
 | `export_query_result` | Export a result | ClickHouse session | — | Run a read-only SELECT query and return the result as a CSV or JSON string. Use when the user explicitly asks to export, download, or get data as CSV/JSON. Limited to 1000 rows. NEVER include a FORMAT clause in the sql — the format parameter controls output format instead. | 3 |
 | `get_slow_queries` | Slow queries | ClickHouse session | — | List recently executed queries that were slow (by duration). Useful for troubleshooting and finding heavy queries. Non-admin users see only their own queries. | 3 |
 | `render_chart` | Render a chart | ClickHouse session | — | MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends. Execute a SELECT query and return an interactive chart specification. Available chartType values: bar, horizontal_bar, grouped_bar, stacked_bar, line, multi_line, area, stacked_area, pie, donut, scatter, radar, treemap, funnel, histogram, heatmap. xAxis and yAxis can be omitted — they will be inferred from the query result columns. | 1 |
@@ -73,6 +73,8 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `get_collector_schedule` | Collection schedule | Your CHouse access | `connections:view` | How often each observability collector runs and whether it is paused: the defaults, or one connection's effective schedule with its overrides and bytes read per day. | 1 |
 | `list_remediation_actions` | Remediation actions | Your CHouse access | `remediation:propose`, `remediation:approve`, `remediation:approve_high` | Proposed and past fixes on a connection: type, parameters, who proposed it and why, approvals, status and incident. | 1 |
 | `get_investigation_notebook` | Investigation notebook | Your CHouse access | `data_health:view`, `observe:view`, `doctor:view` | The notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. | 1 |
+| `list_dashboards` | Dashboards | Your CHouse access | `dashboards:view` | Custom dashboards the user may view: title, owner, panel count, the roles it is shared with, and whether the user pinned it. | 1 |
+| `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: its variables, default range and connection, and each panel's title, SQL, chart type and unit. | 1 |
 
 ## Built-in DeepAgents tools
 

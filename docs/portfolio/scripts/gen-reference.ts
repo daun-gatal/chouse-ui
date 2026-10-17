@@ -183,6 +183,8 @@ const AUDIT_AREAS: Record<string, string> = {
   remediation: "Fixes",
   schema: "Schema preflight",
   notebook: "Notebooks",
+  dashboard: "Dashboards",
+  panel_alert: "Dashboards",
   upgrade: "Upgrades",
   agent: "Agents",
   ai_agent: "AI agents",

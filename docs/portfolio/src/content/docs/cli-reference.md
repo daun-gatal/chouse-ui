@@ -784,6 +784,123 @@ chouse collectors status
 chouse collectors status -c prod
 ```
 
+### chouse dashboard
+
+Dashboards: list, show, run a panel, export, apply, delete.
+
+Custom dashboards (ADR 0021) as code. export writes a dashboard as JSON;
+apply creates a dashboard from that JSON, or updates the dashboard its id
+names so it matches the file exactly (panels left out are removed with
+their alerts). run-panel runs one panel's read-only query with your own
+data access. delete asks first (or needs --yes).
+
+```bash
+chouse dashboard
+```
+
+Aliases: `dashboards`
+
+```bash
+chouse dashboard list
+chouse dashboard export 7c1e… > orders.json
+chouse dashboard apply -f orders.json
+chouse dashboard run-panel 7c1e… 2b9d… --range 24h --var db=shop
+```
+
+#### chouse dashboard apply
+
+Create or update a dashboard from an export.
+
+With "id": null in the file, a new dashboard is created (yours, with new
+panel ids). With an id, that dashboard is updated to match the file: panels
+keep their ids, panels missing from the file are removed together with
+their alerts. The server validates every panel; nothing is partly applied.
+
+```bash
+chouse dashboard apply -f FILE [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `-f, --file` | `string` |   | the export to apply (- for stdin) |
+
+```bash
+chouse dashboard apply -f orders.json
+chouse dashboard export 7c1e… | chouse dashboard apply -f -
+```
+
+#### chouse dashboard delete
+
+Delete a dashboard with its panels and alerts.
+
+```bash
+chouse dashboard delete <id>
+```
+
+```bash
+chouse dashboard delete 7c1e… --yes
+```
+
+#### chouse dashboard export
+
+Write a dashboard as JSON (the format apply takes).
+
+```bash
+chouse dashboard export <id> [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--out` | `string` |   | write to this file instead of stdout |
+
+```bash
+chouse dashboard export 7c1e… > orders.json
+chouse dashboard export 7c1e… --out orders.json
+```
+
+#### chouse dashboard get
+
+Show a dashboard's panels (-o json for everything).
+
+```bash
+chouse dashboard get <id>
+```
+
+```bash
+chouse dashboard get 7c1e…
+```
+
+#### chouse dashboard list
+
+List the dashboards you may view.
+
+```bash
+chouse dashboard list
+```
+
+```bash
+chouse dashboard list -o json
+```
+
+#### chouse dashboard run-panel
+
+Run one panel's read-only query.
+
+```bash
+chouse dashboard run-panel <dashboardId> <panelId> [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--connection-id` | `string` |   | run on this connection id instead of the dashboard's |
+| `--range` | `string` | `1h` | how far back: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d |
+| `--var` | `stringArray` |   | a variable value as name=value (repeatable) |
+
+```bash
+chouse dashboard run-panel 7c1e… 2b9d… --range 24h
+chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv
+```
+
 ### chouse fleet
 
 Every connection at once: health snapshots and history.

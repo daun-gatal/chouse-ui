@@ -103,7 +103,8 @@ compiled to **native ClickHouse query parameters** and never concatenated:
 | `{{var.NAME}}` (kind `string`) | `{v_NAME:String}` | the selected value |
 | `{{var.NAME}}` (kind `identifier`) | `{v_NAME:Identifier}` | the selected value, matching `^[A-Za-z_][A-Za-z0-9_]*$` |
 
-- A `connection` variable selects the connection the panels run on and is never
+- The connection panels run on is not a variable: the dashboard has a default
+  connection and the view bar picks another the viewer may use. It is never
   substituted into SQL.
 - Variable options are a static list, or come from a one-column read-only query
   validated like a panel.
@@ -123,7 +124,9 @@ notebook query cells (ADR 0016 §7).
 2. `query:execute` and access to the connection.
 3. A single read-only SELECT (`validateReadOnlySelect`).
 4. The **viewer's** data-access rules (`validateQueryAccess`).
-5. The query runs on the connection's client with:
+5. A token caller (CLI, MCP) passes agent governance (ADR 0016 §10: pause
+   switch, budget, session record), like any `/api/query` call.
+6. The query runs on the connection's client with:
    - `readonly=1`;
    - `max_execution_time=30`;
    - `max_result_rows=10000` with `result_overflow_mode='throw'`;
@@ -144,7 +147,7 @@ query. That makes a **shared result cache** safe:
 - bounded to 500 entries and 64 MB, least recently used first out;
 - at most 4 concurrent panel queries per connection per pod.
 
-Steps 1–4 run **before** the cache is consulted, for every request. This is a
+Steps 1–5 run **before** the cache is consulted, for every request. This is a
 cache, not state, so pod-local is correct under ADR 0010. N pods mean at most N
 executions per TTL.
 

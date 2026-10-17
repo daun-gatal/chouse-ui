@@ -1,7 +1,7 @@
 ---
 generated: charts/chouse-ui/values.yaml (via the chart README)
 ---
-Every value of the `chouse-ui` Helm chart, version **2.0.2**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
+Every value of the `chouse-ui` Helm chart, version **2.0.3**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
 
 The app itself is configured through the free-form `config:` value, which the chart renders to a YAML file loaded via `CHOUSE_CONFIG_PATH` — so every key on [Environment variables](/docs/configuration-env/) can go there. Secrets belong in `secrets.*` or an existing Kubernetes secret, not in `config:`.
 
@@ -80,7 +80,7 @@ The app itself is configured through the free-form `config:` value, which the ch
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `dedicatedScheduler.enabled` | `bool` | `false` | Run the scheduled-queries scheduler on a dedicated single-replica Deployment instead of the web pods. Requires `database.type: postgres`. |
+| `dedicatedScheduler.enabled` | `bool` | `false` | Run the scheduled-queries scheduler and the dashboard panel alert evaluator on a dedicated single-replica Deployment instead of the web pods. Requires `database.type: postgres`. |
 | `dedicatedScheduler.resources` | `object` | `{}` | Resources for the scheduler pod. |
 
 ## extraEnv
@@ -273,7 +273,7 @@ The app itself is configured through the free-form `config:` value, which the ch
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `scheduledQueries.enabled` | `bool` | `true` | Run the in-process scheduled-queries scheduler on the web pods. Redundant ticks across pods are harmless (per-job atomic lease on PostgreSQL). Ignored (forced off on web pods) when `dedicatedScheduler.enabled` is true. |
+| `scheduledQueries.enabled` | `bool` | `true` | Run the in-process scheduled-queries scheduler, and the dashboard panel alert evaluator that runs with it, on the web pods. Redundant ticks across pods are harmless (per-job and per-alert atomic leases on PostgreSQL). Ignored (forced off on web pods) when `dedicatedScheduler.enabled` is true. |
 
 ## secrets
 
