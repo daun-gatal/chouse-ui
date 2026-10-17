@@ -23,6 +23,7 @@ import contextRoute from "./context";
 import upgrades from "./upgrades";
 import agents from "./agents";
 import aiAgents from "./ai-agents";
+import aiGuardrails from "./ai-guardrails";
 import aiUsage from "./ai-usage";
 import integrations from "./integrations";
 import dashboards from "./dashboards";
@@ -120,6 +121,7 @@ api.route("/context", contextRoute);
 api.route("/upgrades", upgrades);
 api.route("/agents", agents);
 api.route("/ai-agents", aiAgents);
+api.route("/ai-guardrails", aiGuardrails);
 api.route("/ai-usage", aiUsage);
 api.route("/integrations", integrations);
 

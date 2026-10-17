@@ -5,8 +5,12 @@
  * way the web server mounts it, with a stubbed verifier, settings and proxy.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { Hono } from "hono";
+
+// Guardrails on MCP results read the registry database, which these tests do
+// not open; ai-guardrails.test.ts covers them against a real database.
+mock.module("./guardrails", () => ({ guardMcpResult: async (_tool: string, result: unknown) => result }));
 import { AppError } from "../types";
 import { createMcpApp } from "./index";
 import { buildMcpDeps, MCP_PATH } from "./server";

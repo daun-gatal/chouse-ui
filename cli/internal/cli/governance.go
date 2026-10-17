@@ -177,10 +177,51 @@ in or customized and has an update, and which agent each AI feature is bound
 to (-o json for features, harnesses and skills). Read-only; agents are edited
 in the UI.`
 
-	for _, c := range []*cobra.Command{usage, egress, requests} {
+	guardrails := a.getCmd("guardrails", "AI guardrails: what every AI run passes through (ai_guardrails:view)", "  chouse ai guardrails\n  chouse ai guardrails -o json | jq '.guardrails[] | select(.enabled)'", cobra.NoArgs,
+		func([]string) string { return "/api/ai-guardrails" },
+		view("guardrails", "ID", "NAME", "KIND", "STAGES", "ACTION", "MODE", "ENABLED", "BUILT IN=isSystem", "CUSTOMIZED", "TRIGGERS 24H=triggers24h.total"))
+	guardrails.Long = `The guardrails CHouse applies to its AI runs and, where enabled, to MCP
+tool results (AI Governance › Guardrails): kind, stages, action, shadow or
+enforce mode, whether it is on, and its triggers in the last 24 hours.
+Read-only; guardrails are edited in the UI or the REST API.`
+
+	var guardrailID string
+	var triggerLimit int
+	triggers := &cobra.Command{
+		Use:   "guardrail-triggers",
+		Short: "Recent guardrail triggers: stage, action, matches, agent and tool",
+		Long: `Guardrail triggers of the last --days, newest first: the guardrail, the
+stage, the action and mode, how many values matched, the agent and tool, and
+the AI request. Matched values are never stored.`,
+		Example: `  chouse ai guardrail-triggers
+  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if triggerLimit < 1 || triggerLimit > 500 {
+				return usagef("--limit must be between 1 and 500")
+			}
+			q, err := windowQuery()
+			if err != nil {
+				return err
+			}
+			q.Set("limit", itoa(triggerLimit))
+			if guardrailID != "" {
+				q.Set("guardrailId", guardrailID)
+			}
+			got, err := s.Client.Get(s.Ctx, "/api/ai-guardrails/events", q)
+			if err != nil {
+				return err
+			}
+			return s.Print(got, view("events", "TIME=createdAt", "GUARDRAIL=guardrailName", "STAGE", "ACTION", "MODE", "MATCHES=matchCount", "SOURCE", "AGENT=agentPath", "TOOL", "REQUEST=requestId"))
+		}),
+	}
+	triggers.Flags().StringVar(&guardrailID, "guardrail", "", "only this guardrail's triggers (id from `chouse ai guardrails`)")
+	triggers.Flags().IntVar(&triggerLimit, "limit", 100, "rows to return (1-500)")
+
+	for _, c := range []*cobra.Command{usage, egress, requests, triggers} {
 		c.Flags().IntVar(&days, "days", 7, "window in days (capped at the server's retention)")
 	}
-	return []*cobra.Command{usage, egress, requests, request, agents}
+	return []*cobra.Command{usage, egress, requests, request, agents, guardrails, triggers}
 }
 
 func (a *App) newPerfCmd() *cobra.Command {

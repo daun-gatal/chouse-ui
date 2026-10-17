@@ -9,6 +9,7 @@
  *  - every call is audited best-effort (never fails the tool).
  */
 
+import { guardMcpResult } from "../guardrails";
 import type {
   CallToolResult,
   ServerNotification,
@@ -270,7 +271,7 @@ export function registerOnServer(mcp: McpServer, tool: ChouseToolRegistration): 
       inputSchema: tool.inputSchema ?? {},
       annotations: toolAnnotations(tool),
     },
-    async (args, extra) => tool.handler(args, extra)
+    async (args, extra) => guardMcpResult(tool.name, await tool.handler(args, extra), toolContext(extra).identity)
   );
 }
 
