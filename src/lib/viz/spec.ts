@@ -36,11 +36,18 @@ export const TIME_SERIES_TYPES: ReadonlySet<ChartType> = new Set<ChartType>(["li
 export const MAX_Y_COLUMNS = 12;
 const columnName = z.string().min(1).max(200);
 
+/** Chart types that draw threshold lines (stat panels color their value instead). */
+export const THRESHOLD_TYPES: ReadonlySet<ChartType> = new Set<ChartType>([
+  "bar", "horizontal_bar", "grouped_bar", "stacked_bar", "line", "multi_line", "area", "stacked_area", "stat",
+]);
+
 export interface VizShape {
   type: ChartType;
   x: string | null;
   y: string[];
   series: string | null;
+  /** How many thresholds the spec sets. */
+  thresholds: number;
   reduce: Reducer | null;
 }
 
@@ -49,6 +56,7 @@ export function vizShapeProblems(spec: VizShape): string[] {
   const problems: string[] = [];
   const { type, x, y, series, reduce } = spec;
   if (type !== "stat" && reduce !== null) problems.push("only a stat panel has a reduce");
+  if (spec.thresholds > 0 && !THRESHOLD_TYPES.has(type)) problems.push("thresholds are drawn on line, area, bar and stat panels only");
   if (new Set(y).size !== y.length) problems.push("y lists a column twice");
   if (x !== null && y.includes(x)) problems.push("x cannot also be a y column");
   if (SERIES_TYPES.has(type)) {
@@ -93,7 +101,7 @@ export const vizSpecSchema = z.object({
   colorScheme: z.enum(COLOR_SCHEMES),
   reduce: z.enum(REDUCERS).nullable(),
 }).strict().superRefine((spec, ctx) => {
-  for (const message of vizShapeProblems(spec)) ctx.addIssue({ code: "custom", message });
+  for (const message of vizShapeProblems({ ...spec, thresholds: spec.thresholds.length })) ctx.addIssue({ code: "custom", message });
 });
 export type VizSpec = z.infer<typeof vizSpecSchema>;
 
