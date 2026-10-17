@@ -51,7 +51,7 @@ $COMPOSE up --build -d
 echo "Seeding and capturing (this takes a few minutes)..."
 # The script is streamed over stdin, not bind-mounted (DinD resolves volume
 # sources on the Docker host); the screenshots come back as a tar on stdout.
-docker run --rm -i --network "$NETWORK" -e SHOTS_WAIT_SECONDS="${SHOTS_WAIT_SECONDS:-150}" "$PLAYWRIGHT_IMAGE" \
+docker run --rm -i --network "$NETWORK" --network-alias fake-llm -e SHOTS_WAIT_SECONDS="${SHOTS_WAIT_SECONDS:-150}" "$PLAYWRIGHT_IMAGE" \
   bash -c 'cat > /tmp/shots.mjs && cd /tmp && npm init -y >/dev/null 2>&1 && npm i --silent playwright-core@1.49.1 >&2 && { node shots.mjs >&2; status=$?; tar -C /out -cf - .; exit $status; }' \
   < scripts/docs-screenshots.mjs > "$TMP_TAR" || {
     status=$?
