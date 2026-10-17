@@ -8,7 +8,7 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileUp, LayoutTemplate, Pin, Plus, Users } from "lucide-react";
+import { FileUp, LayoutTemplate, Pin, Plus, Sparkles, Users } from "lucide-react";
 
 import PermissionGuard from "@/components/common/PermissionGuard";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
 import { dashboardKeys } from "../hooks";
+import { AskAiDialog } from "./AskAiDialog";
 
 function DashboardCard({ dashboard }: { dashboard: DashboardSummary }): React.ReactElement {
   const navigate = useNavigate();
@@ -148,6 +149,8 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
   const dashboards = useQuery({ queryKey: dashboardKeys.list(), queryFn: listDashboards });
   const templates = useQuery({ queryKey: dashboardKeys.templates(), queryFn: listTemplates });
   const [creating, setCreating] = useState<{ template: DashboardTemplate | null } | null>(null);
+  const [askAi, setAskAi] = useState(false);
+  const canAskAi = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onImport = async (file: File): Promise<void> => {
@@ -173,6 +176,7 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
         {toolbar}
         <PermissionGuard requiredPermission={RBAC_PERMISSIONS.DASHBOARDS_EDIT}>
           <div className="flex items-center gap-2" data-onboarding-id="dashboards-create">
+            {canAskAi && <Button size="sm" variant="outline" onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
             <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><FileUp className="mr-1.5 h-3.5 w-3.5" /> Import</Button>
             <Button size="sm" onClick={() => setCreating({ template: null })}><Plus className="mr-1.5 h-3.5 w-3.5" /> New dashboard</Button>
           </div>
@@ -218,6 +222,7 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
           </div>
         </section>
       </div>
+      {askAi && <AskAiDialog open onOpenChange={setAskAi} existing={null} />}
       {creating && <NewDashboardDialog open onOpenChange={(open) => { if (!open) setCreating(null); }} template={creating.template} />}
     </div>
   );

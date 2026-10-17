@@ -5,6 +5,7 @@
 import type { RelativeRange, TimeRange, Variable, VizSpec, PanelWidth, PanelHeight, RefreshSeconds } from "@/lib/viz/spec";
 import type { ResultColumn } from "@/lib/viz/resolve";
 
+import { invokeAI, type InvokeOptions } from "./ai";
 import { api } from "./client";
 
 export interface DashboardRecord {
@@ -241,6 +242,42 @@ export function toInput(detail: Pick<DashboardDetail, "dashboard" | "panels">): 
     variables: dashboard.variables,
     panels: panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet })),
   };
+}
+
+// ============================================
+// Draft with AI (ADR 0021 §10)
+// ============================================
+
+export type DraftPanelStatus = "ok" | "attention" | "blocked";
+
+export interface DraftPanel {
+  status: DraftPanelStatus;
+  /** The panel to save; null when its chart settings or size could not be read. */
+  panel: PanelInput | null;
+  title: string;
+  sql: string;
+  rationale: string;
+  reasons: string[];
+  lint: LintFinding[];
+}
+
+export interface DashboardDraft {
+  title: string;
+  description: string;
+  variables: Variable[];
+  problems: string[];
+  panels: DraftPanel[];
+}
+
+export interface DraftRequest {
+  goal: string;
+  /** The active connection: the drafter reads its schemas. */
+  connectionId: string;
+  existing: { title: string; variables: Variable[]; panels: Array<{ title: string; sql: string }> } | null;
+}
+
+export function draftDashboard(request: DraftRequest, opts?: InvokeOptions): Promise<DashboardDraft> {
+  return invokeAI<DashboardDraft>("draft-dashboard", { ...request }, opts);
 }
 
 // ============================================

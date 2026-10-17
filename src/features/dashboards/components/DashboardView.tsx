@@ -12,7 +12,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Download, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,7 @@ import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
 import { dashboardKeys } from "../hooks";
 import { parseView, writeView, type ViewState } from "../urlState";
+import { AskAiDialog } from "./AskAiDialog";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
 import { PanelCard, WIDTH_CLASSES } from "./PanelCard";
 import { PanelAlertsButton, useDashboardAlerts } from "./PanelAlerts";
@@ -105,6 +106,8 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const canCreate = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_EDIT));
+  const canAskAi = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
+  const [askAi, setAskAi] = useState(false);
   const detail = useQuery({ queryKey: dashboardKeys.detail(id), queryFn: () => getDashboard(id) });
   const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
 
@@ -294,6 +297,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
               {data.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             </Button>
             {data.access.share && <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}><Share2 className="mr-1.5 h-3.5 w-3.5" /> Share</Button>}
+            {data.access.edit && canAskAi && <Button size="sm" variant="outline" onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
             {data.access.edit && <Button size="sm" onClick={() => setDraft(toDraft(data))}><Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit</Button>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -376,6 +380,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {askAi && <AskAiDialog open onOpenChange={setAskAi} existing={data} />}
       {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

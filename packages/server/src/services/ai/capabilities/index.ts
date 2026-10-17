@@ -32,6 +32,7 @@ import {
 } from "./dataOps";
 import { compileWatcherCapability, draftTableContextCapability, explainIncidentCapability } from "./observe";
 import { draftAiAgentCapability, draftAiHarnessCapability, draftAiSkillCapability } from "./authoring";
+import { draftDashboardCapability } from "./dashboards";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -59,6 +60,7 @@ export const CAPABILITIES = {
   "draft-ai-skill": draftAiSkillCapability,
   "draft-ai-agent": draftAiAgentCapability,
   "draft-ai-harness": draftAiHarnessCapability,
+  "draft-dashboard": draftDashboardCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;

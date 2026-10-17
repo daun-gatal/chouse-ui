@@ -250,6 +250,9 @@ export const SEED_AGENTS: SeedAgent[] = [
     taskTemplate: "Current ClickHouse fleet overview (one object per node). Investigation window: last {{ctx.hours}} hours (the `recentHeavyQueries` field covers this window; scope your system.query_log tool queries to it too). Investigate and produce the structured health report.\n\n```json\n{{ctx.overview}}\n```",
     tools: ["query_node"], tuning: { stepBudget: 12, maxOutputTokens: 16000 },
   }),
+  // --- Dashboards (ADR 0021) ---------------------------------------------------------------
+  evidenceAgent("builtin-agent-dashboard-drafter", "dashboard-drafter", "Dashboard Drafter", "Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).", "draft-dashboard",
+    { stepBudget: 8, maxOutputTokens: 8000 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "validate_sql"]),
   // --- DataOps ----------------------------------------------------------------------------
   evidenceAgent("builtin-agent-scheduled-query-drafter", "scheduled-query-drafter", "Scheduled Query Drafter", "Turns an operator's intent into an editable scheduled query draft.", "draft-scheduled-query",
     { stepBudget: 7, maxOutputTokens: 4500 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "analyze_query"]),
@@ -361,4 +364,5 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-ai-skill": "skill-author",
   "draft-ai-agent": "agent-author",
   "draft-ai-harness": "harness-author",
+  "draft-dashboard": "dashboard-drafter",
 };
