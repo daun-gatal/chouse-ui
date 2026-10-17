@@ -1,18 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { ChatOpenAI } from "@langchain/openai";
-import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { HumanMessage } from "@langchain/core/messages";
 import { computeSummarizationDefaults, createDeepAgent } from "deepagents";
 import { createMiddleware, type AgentMiddleware } from "langchain";
 
 import { applyContextWindow, profileContextWindow } from "./modelProfile";
 import { detectProfileContextWindow } from "../aiConfig";
-
-class ToolableFake extends FakeListChatModel {
-  bindTools(): this {
-    return this;
-  }
-}
 
 describe("model context window", () => {
   it("reads LangChain's profile for known models", () => {
@@ -49,20 +42,34 @@ describe("model context window", () => {
   });
 
   // Guard against a DeepAgents/LangChain upgrade that stops handing middleware
-  // the configured instance (the summarizer reads request.model.profile).
-  it("reaches DeepAgents middleware as request.model", async () => {
-    const model = applyContextWindow(new ToolableFake({ responses: ["done"] }), 32_768, "Fake");
-    const seen: Array<number | null> = [];
-    const capture = createMiddleware({
-      name: "CaptureProfile",
-      wrapModelCall: async (request, handler) => {
-        seen.push(profileContextWindow(request.model as object));
-        return handler(request);
-      },
-    }) as AgentMiddleware;
-    const agent = createDeepAgent({ model: model as never, middleware: [capture] });
-    await agent.invoke({ messages: [new HumanMessage("hi")] });
-    expect(seen.length).toBeGreaterThan(0);
-    expect(seen.every((value) => value === 32_768)).toBe(true);
+  // the configured instance (the summarizer reads request.model.profile). A
+  // real ChatOpenAI matters: its bindTools builds a new instance, which a fake
+  // returning `this` would hide.
+  it("reaches DeepAgents middleware as request.model on a real provider model", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({
+        id: "x", object: "chat.completion", created: 0, model: "my-local-llm",
+        choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "done" } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+    });
+    try {
+      const model = applyContextWindow(new ChatOpenAI({ model: "my-local-llm", apiKey: "x", configuration: { baseURL: `http://localhost:${server.port}/v1` } }), 32_768, "Local");
+      const seen: Array<number | null> = [];
+      const capture = createMiddleware({
+        name: "CaptureProfile",
+        wrapModelCall: async (request, handler) => {
+          seen.push(profileContextWindow(request.model as object));
+          return handler(request);
+        },
+      }) as AgentMiddleware;
+      const agent = createDeepAgent({ model: model as never, middleware: [capture] });
+      await agent.invoke({ messages: [new HumanMessage("hi")] });
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((value) => value === 32_768)).toBe(true);
+    } finally {
+      server.stop(true);
+    }
   });
 });
