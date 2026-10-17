@@ -36,6 +36,7 @@ const INSTRUCTION_MAX = 2_000;
 const NO_FEATURE = "__none__";
 
 const NOUN: Record<DraftKind, string> = { agent: "agent", harness: "harness", skill: "skill" };
+const ARTICLE: Record<DraftKind, string> = { agent: "an", harness: "a", skill: "a" };
 
 const GOAL_LABEL: Record<DraftKind, string> = {
   agent: "What should this agent do?",
@@ -99,7 +100,7 @@ export function DraftWithAiDialog<T extends AnyInput>({ kind, registry, onDrafte
     <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
       <DialogContent className="max-w-xl rounded-xs border-ink-500 bg-ink-100 text-paper">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /> Draft a {NOUN[kind]} with AI</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /> Draft {ARTICLE[kind]} {NOUN[kind]} with AI</DialogTitle>
           <DialogDescription>
             The draft opens in the editor for review. Nothing is saved until you create it.
           </DialogDescription>

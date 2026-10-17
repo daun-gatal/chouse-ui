@@ -63,6 +63,7 @@ describe("Draft with AI", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /draft with ai/i }));
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Draft a skill with AI" })).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText(/what should the agent know/i), { target: { value: "Triage TOO_MANY_PARTS errors" } });
     fireEvent.change(within(dialog).getByLabelText("Reference material"), { target: { value: "Runbook text" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Draft" }));
@@ -132,6 +133,7 @@ describe("Draft with AI", () => {
     render(<AgentsView registry={registry()} canManage onEdit={onEdit} />, { wrapper });
     fireEvent.click(screen.getByRole("button", { name: /draft with ai/i }));
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Draft an agent with AI" })).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText(/what should this agent do/i), { target: { value: "Explain table sizes" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Draft" }));
     await waitFor(() => expect(onEdit).toHaveBeenCalled());
