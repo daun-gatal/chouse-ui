@@ -2,6 +2,7 @@
 app: Dashboards › Ask AI
 route: /dashboards
 permissions: dashboards:edit, ai:optimize
+screenshot: dashboards-ask-ai
 ---
 # Draft dashboards with AI
 

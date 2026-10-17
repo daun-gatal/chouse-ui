@@ -23,6 +23,7 @@ You can always switch with the dock.
 | **Continue working** | Your unsaved query tabs — **Open all** to restore them in the Explorer |
 | **Quick access** | Your favorites and recent tables |
 | **Saved queries** | Queries you saved or that were shared with you (`saved_queries:view`) |
+| **Pinned dashboards** | [Dashboards](/docs/dashboards/) you pinned to Home that are assigned to the active connection (`dashboards:view`) |
 | **Cluster metrics** | Databases, tables & views, total rows, storage, connections and active queries |
 | **Quick actions** | **New query**, **Import** (upload CSV / TSV / JSON), **Monitor** (live metrics and queries), **Query history** |
 | **Recent activity** | Your latest query executions (`query:history:view`; everyone's with `query:history:view:all`) |

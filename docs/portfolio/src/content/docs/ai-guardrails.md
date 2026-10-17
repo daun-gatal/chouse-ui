@@ -2,6 +2,7 @@
 app: AI Governance › Guardrails
 route: /ai/guardrails
 permissions: ai_guardrails:view, ai_guardrails:manage
+screenshot: ai-guardrails
 ---
 # AI guardrails
 

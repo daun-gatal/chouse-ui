@@ -2,6 +2,7 @@
 app: AI Governance › AI activity
 route: /ai/usage
 permissions: ai_usage:view, ai:chat, ai:optimize
+screenshot: ai-usage
 ---
 # AI activity
 
