@@ -87,6 +87,6 @@ Open any guardrail to edit it, test it, restore an earlier version from its hist
 
 **Recent triggers** lists every match: the guardrail, stage, action and mode, how many values matched, the agent and tool, and a link to the AI request. Matched values are never stored, only counts and where they happened. Triggers are kept as long as [AI activity](/docs/ai-usage/) (`AI_USAGE_RETENTION_DAYS`). A row in **AI Governance › Assistant › Agents** shows how many guardrails apply to that agent.
 
-## MCP and the CLI
+## Chat, MCP and the CLI
 
-[MCP](/docs/mcp-tools/) agents can read the setup with `list_ai_guardrails` and the trigger log with `list_ai_guardrail_triggers`; the [CLI](/docs/cli/) has `chouse ai guardrails` and `chouse ai guardrail-triggers`. Both are read-only: guardrails are changed in the UI or the REST API (`/api/ai-guardrails`).
+Ask the chat — *"which guardrails are in shadow mode?"*, *"what did guardrails catch today?"* — and *CHouse Admin*'s [Platform Auditor](/docs/ai-chat-agents/#chouse-admin) answers with the `list_ai_guardrails` and `list_ai_guardrail_triggers` tools, which any agent of yours can be granted in **AI Governance › Assistant** (see the [tool catalog](/docs/ai-tools/)). [MCP](/docs/mcp-tools/) agents get the same two tools, and the [CLI](/docs/cli/) has `chouse ai guardrails` and `chouse ai guardrail-triggers`. Both are read-only: guardrails are changed in the UI or the REST API (`/api/ai-guardrails`).

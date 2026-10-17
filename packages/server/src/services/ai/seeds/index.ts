@@ -325,10 +325,10 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-platform-auditor", slug: "platform-auditor", name: "Platform Auditor",
-    description: "Connections, AI models, CHouse's AI agents and their usage, cost and data sent to providers, external agents and MCP settings, and the audit log.",
+    description: "Connections, AI models, CHouse's AI agents and their usage, cost, data sent to providers and guardrails, external agents and MCP settings, and the audit log.",
     kind: "agent", systemPrompt: PLATFORM_AUDITOR_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 8 },
     requiredPermissions: [], skills: [], subagents: [],
-    tools: ["whoami", "list_connections", "list_ai_models", "list_ai_agents", "get_ai_usage", "list_ai_requests", "get_ai_request", "list_agent_sessions", "get_agent_governance", "audit_log"],
+    tools: ["whoami", "list_connections", "list_ai_models", "list_ai_agents", "list_ai_guardrails", "list_ai_guardrail_triggers", "get_ai_usage", "list_ai_requests", "get_ai_request", "list_agent_sessions", "get_agent_governance", "audit_log"],
   },
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",

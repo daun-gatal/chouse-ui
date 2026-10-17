@@ -476,6 +476,26 @@ const managementTools: CatalogTool[] = [
     request: () => ({ path: "/api/ai-agents/registry" }),
     project: summarizeRegistry,
   }),
+  apiTool<{ guardrails: unknown[] }>({
+    name: "list_ai_guardrails", title: "AI guardrails", category: "ai", permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
+    description:
+      "The guardrails every CHouse AI run (and, where enabled, every MCP tool result) passes through: kind, settings, stages, action, " +
+      "shadow or enforce mode, scope, order, whether it is on, and its triggers in the last 24 hours.",
+    request: () => ({ path: "/api/ai-guardrails" }),
+    project: (data) => data.guardrails,
+  }),
+  apiTool({
+    name: "list_ai_guardrail_triggers", title: "AI guardrail triggers", category: "ai", permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
+    description:
+      "Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. " +
+      "Matched values are never stored.",
+    schema: z.object({
+      days: z.number().int().min(1).max(365).optional().describe("Window in days (default 1)"),
+      guardrailId: z.string().optional().describe("Only this guardrail's triggers (id from list_ai_guardrails)"),
+      limit: z.number().int().min(1).max(500).optional().describe("Rows to return (default 100)"),
+    }),
+    request: (a) => ({ path: "/api/ai-guardrails/events", query: { days: optionalInt(a.days), guardrailId: str(a.guardrailId), limit: optionalInt(a.limit) } }),
+  }),
 ];
 
 /** Operations tools for performance, capacity, upgrades, collectors, fixes and notebooks (ADR 0016). */

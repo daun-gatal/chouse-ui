@@ -1,7 +1,7 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 61 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 63 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
@@ -65,6 +65,8 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `list_ai_requests` | AI requests | Your CHouse access | `ai_usage:view`, `ai:chat`, `ai:optimize` | Recent AI requests, newest first: user, origin (UI, MCP agent, token, background), token and client, agent, tokens, cost, ClickHouse read, rows sent and status. | 1 |
 | `get_ai_request` | AI request | Your CHouse access | `ai_usage:view`, `ai:chat`, `ai:optimize` | One AI request step by step: each LLM call with tokens and cost, each tool call with its ClickHouse queries and the data it sent to the model. | 1 |
 | `list_ai_agents` | AI agents | Your CHouse access | `ai_agents:view` | How CHouse's AI is set up: which agent each AI feature runs, and each agent's model config, harness, tools, skills, subagents and tuning, whether it is built in or customized and has an update. Prompts and skill files are left out. | 1 |
+| `list_ai_guardrails` | AI guardrails | Your CHouse access | `ai_guardrails:view` | The guardrails every CHouse AI run (and, where enabled, every MCP tool result) passes through: kind, settings, stages, action, shadow or enforce mode, scope, order, whether it is on, and its triggers in the last 24 hours. | 1 |
+| `list_ai_guardrail_triggers` | AI guardrail triggers | Your CHouse access | `ai_guardrails:view` | Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. Matched values are never stored. | 1 |
 | `get_query_regressions` | Query regressions | Your CHouse access | `performance:view` | Query shapes slower or heavier than their own baseline on a connection, with the upgrades, DDL and setting changes around their onset. | 1 |
 | `get_capacity` | Capacity | Your CHouse access | `capacity:view` | Disk forecasts per node (days until the threshold), fastest-growing and cold tables, codec trials, and cost by consumer with cost:view. | 1 |
 | `list_upgrade_assessments` | Upgrade assessments | Your CHouse access | `upgrades:view` | Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays. | 1 |
