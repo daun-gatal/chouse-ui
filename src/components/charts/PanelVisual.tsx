@@ -106,7 +106,7 @@ export function PanelVisual({ spec, data, height, title, extraLines }: PanelVisu
         yAxis: chart.value.y,
         colorScheme: spec.colorScheme,
       }}
-      options={{ variant: "panel", height, formatValue: formatter, thresholds }}
+      options={{ variant: "panel", height, formatValue: formatter, thresholds, seriesMeasure: spec.series === null ? null : spec.y[0] ?? null }}
     />
   );
 }

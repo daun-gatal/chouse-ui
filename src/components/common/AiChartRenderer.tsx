@@ -184,6 +184,13 @@ export type ChartViewOptions =
         formatValue: (value: unknown) => string;
         /** Horizontal (vertical for horizontal bars) lines at these values. */
         thresholds: Array<{ value: number; color: string }>;
+        /**
+         * When the rows were split into one column per series (per user, per
+         * connection), the column every series measures. The y axis is titled
+         * by it, not by whichever series came first, and the series share one
+         * scale so they stay comparable.
+         */
+        seriesMeasure: string | null;
     };
 
 const CARD_OPTIONS: ChartViewOptions = { variant: 'card' };
@@ -230,7 +237,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
         axis,
         Math.max(...rows.map((row) => Math.abs(Number(row[axis] ?? 0))).filter(Number.isFinite), 0),
     ])), [rows, yAxes]);
-    const canUseDualScale = yAxes.length === 2 && !['stacked_bar', 'stacked_area'].includes(chartType);
+    const seriesMeasure = panel ? panel.seriesMeasure : null;
+    const canUseDualScale = seriesMeasure === null && yAxes.length === 2 && !['stacked_bar', 'stacked_area'].includes(chartType);
     const [firstMagnitude, secondMagnitude] = yAxes.map((axis) => yAxisMagnitudes.get(axis) ?? 0);
     const smallerMagnitude = Math.min(firstMagnitude, secondMagnitude);
     const largerMagnitude = Math.max(firstMagnitude, secondMagnitude);
@@ -240,9 +248,13 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
         : undefined;
     const leftAxisSeries = yAxes.find((axis) => axis !== rightAxisSeries) ?? yAxes[0];
     const axisForSeries = (axis: string): 'left' | 'right' => axis === rightAxisSeries ? 'right' : 'left';
+    // A panel's shared scale holding several measures is named by its legend;
+    // titling it after the first one would mislabel the rest.
+    const leftAxisTitle: string | null = seriesMeasure
+        ?? (isPanel && !useDualScale && yAxes.length > 1 ? null : leftAxisSeries ?? null);
 
     const xAxisLabel = humanizeAxisName(xAxis);
-    const yAxisLabels = chartType === 'histogram' ? ['Count'] : yAxes.map(humanizeAxisName);
+    const yAxisLabels = chartType === 'histogram' ? ['Count'] : seriesMeasure !== null ? [humanizeAxisName(seriesMeasure)] : yAxes.map(humanizeAxisName);
     const needsAngledTicks = rows.length > 8;
 
     const sharedXAxis = (
@@ -272,8 +284,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
             tickLine={false}
             tickFormatter={fmt}
             width={64}
-            label={yAxes.length === 1 ? {
-                value: humanizeAxisName(yAxes[0]),
+            label={seriesMeasure !== null || yAxes.length === 1 ? {
+                value: humanizeAxisName(seriesMeasure ?? yAxes[0]),
                 angle: -90,
                 position: 'insideLeft',
                 offset: 8,
@@ -292,8 +304,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                 tickLine={false}
                 tickFormatter={fmt}
                 width={64}
-                label={leftAxisSeries ? {
-                    value: humanizeAxisName(leftAxisSeries),
+                label={leftAxisTitle !== null ? {
+                    value: humanizeAxisName(leftAxisTitle),
                     angle: -90,
                     position: 'insideLeft',
                     offset: 8,
