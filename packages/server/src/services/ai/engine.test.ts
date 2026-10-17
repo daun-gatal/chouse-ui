@@ -84,6 +84,7 @@ function registry(agents: AgentDef[], bindings: Record<string, string>, harnesse
     harnesses: new Map(harnesses.map((h) => [h.id, h])),
     skills: new Map(),
     bindings: new Map(Object.entries(bindings).map(([featureId, agentId]) => [featureId, { featureId, agentId, updatedBy: null, updatedAt: 0 }])),
+    guardrails: new Map(),
   };
 }
 

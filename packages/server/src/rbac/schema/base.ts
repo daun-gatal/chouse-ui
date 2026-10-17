@@ -150,6 +150,10 @@ export const PERMISSIONS = {
   // and the data sent to providers. Without it a user sees only their own.
   AI_USAGE_VIEW: 'ai_usage:view',
 
+  // AI guardrails (ADR 0022): what passes through every AI run and MCP tool result.
+  AI_GUARDRAILS_VIEW: 'ai_guardrails:view',
+  AI_GUARDRAILS_MANAGE: 'ai_guardrails:manage',
+
   // SSO Management
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
@@ -298,6 +302,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_AGENTS_VIEW,
     PERMISSIONS.AI_AGENTS_MANAGE,
     PERMISSIONS.AI_USAGE_VIEW,
+    PERMISSIONS.AI_GUARDRAILS_VIEW,
+    PERMISSIONS.AI_GUARDRAILS_MANAGE,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
@@ -634,6 +640,11 @@ export const AUDIT_ACTIONS = {
   AI_BINDING_UPDATE: 'ai_binding.update',
   AI_REGISTRY_RESET: 'ai_registry.reset',
   AI_REGISTRY_ROLLBACK: 'ai_registry.rollback',
+
+  // AI guardrails (ADR 0022)
+  AI_GUARDRAIL_CREATE: 'ai_guardrail.create',
+  AI_GUARDRAIL_UPDATE: 'ai_guardrail.update',
+  AI_GUARDRAIL_DELETE: 'ai_guardrail.delete',
 
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',

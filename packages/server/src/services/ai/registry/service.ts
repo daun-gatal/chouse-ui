@@ -16,6 +16,7 @@ import { resetRegistryCache } from "./cache";
 import { agentRow, agentSeedHash, harnessSeedHash, skillSeedHash } from "./seedSync";
 import * as store from "./store";
 import type { AgentDef, FeatureBinding, HarnessDef, RegistryRevision, RegistrySnapshot, SkillDef } from "./types";
+import type { GuardrailDef } from "../guardrails/types";
 import { introducedProblems, parseSkillFrontMatter, usagesOf, withChanges, type RegistryProblem } from "./validation";
 
 type Editable<T> = Omit<T, "id" | "isSystem" | "seedHash" | "customized" | "version" | "createdAt" | "updatedAt" | "createdBy">;
@@ -236,6 +237,11 @@ export async function rollback(revisionId: string, actor: string | null): Promis
     const agentId = typeof snap.agentId === "string" ? snap.agentId : "";
     await bindFeature(revision.entityId, agentId, actor);
     return "binding";
+  }
+  if (revision.entity === "guardrail") {
+    const { rollbackGuardrail } = await import("../guardrails/service");
+    await rollbackGuardrail(snap as unknown as GuardrailDef, actor);
+    return "guardrail";
   }
   if (revision.entity === "agent") {
     const restored = snap as unknown as AgentDef;

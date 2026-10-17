@@ -21,6 +21,7 @@ import { OBSERVE_TABLE_NAMES } from "./observeSchema";
 import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
 import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
+import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -407,6 +408,24 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.permissionExists(p)).toBe(true);
     for (const [role, granted] of Object.entries(DASHBOARD_GRANTS)) {
       for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.roleHasPermission(role, p)).toBe(granted.includes(p));
+    }
+  },
+  "1.62.0": async () => {
+    // ADR 0022: guardrail and event tables; the ai_guardrails:* permissions for admins only.
+    expect(AI_GUARDRAIL_TABLE_NAMES).toEqual(["ai_guardrails", "ai_guardrail_events"]);
+    for (const t of AI_GUARDRAIL_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of ["ai_guardrails_slug_idx", "ai_guardrail_events_created_idx", "ai_guardrail_events_guardrail_idx", "ai_guardrail_events_request_idx"]) {
+      expect(await h.indexExists(i)).toBe(true);
+    }
+    for (const c of ["kind", "config", "stages", "action", "mode", "scope", "position", "seed_hash", "customized"]) {
+      expect(await h.columnExists("ai_guardrails", c)).toBe(true);
+    }
+    // Events never store matched values: only counts and where they happened.
+    expect(await h.columnExists("ai_guardrail_events", "match_count")).toBe(true);
+    expect(await h.columnExists("ai_guardrail_events", "matched_value")).toBe(false);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      const admin = role === "super_admin" || role === "admin";
+      for (const p of ["ai_guardrails:view", "ai_guardrails:manage"]) expect(await h.roleHasPermission(role, p)).toBe(admin);
     }
   },
 };
@@ -1246,6 +1265,38 @@ for (const dialect of DIALECTS) {
         JOIN rbac_permissions p ON p.id = rp.permission_id
         JOIN rbac_roles r ON r.id = rp.role_id
         WHERE r.name = 'admin' AND p.name = 'dashboards:manage'`);
+      expect(Number(grants[0].c)).toBe(1);
+      expect((await runMigrations()).migrationsApplied).toEqual([]);
+    });
+  });
+
+  describe(`migrations · ADR 0022 guardrails upgrade [${dialect}]`, () => {
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ through: "1.61.0" });
+      // 1.0.0 seeds roles from today's defaults, so remove the guardrail
+      // permissions to look like an install that predates them.
+      await h.rawRun(sql`DELETE FROM rbac_role_permissions WHERE permission_id IN (SELECT id FROM rbac_permissions WHERE name LIKE 'ai_guardrails:%')`);
+      await h.rawRun(sql`DELETE FROM rbac_permissions WHERE name LIKE 'ai_guardrails:%'`);
+      for (const t of AI_GUARDRAIL_TABLE_NAMES) expect(await h.tableExists(t)).toBe(false);
+      await runMigrations();
+    }, 60_000);
+
+    it("creates the tables empty and grants admins only", async () => {
+      for (const t of AI_GUARDRAIL_TABLE_NAMES) expect(await h.rowCount(t)).toBe(0);
+      expect(await h.roleHasPermission("admin", "ai_guardrails:manage")).toBe(true);
+      expect(await h.roleHasPermission("developer", "ai_guardrails:view")).toBe(false);
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.62.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      const grants = await h.rawAll(sql`
+        SELECT COUNT(*) AS c FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON p.id = rp.permission_id
+        JOIN rbac_roles r ON r.id = rp.role_id
+        WHERE r.name = 'admin' AND p.name = 'ai_guardrails:manage'`);
       expect(Number(grants[0].c)).toBe(1);
       expect((await runMigrations()).migrationsApplied).toEqual([]);
     });

@@ -162,6 +162,7 @@ describe("chat agent candidates", () => {
     harnesses: new Map(),
     skills: new Map(),
     bindings: new Map([["chat", { featureId: "chat", agentId: "data", updatedBy: null, updatedAt: 0 }]]),
+    guardrails: new Map(),
   };
 
   it("lists routers first, then top-level chat agents the user may use", () => {

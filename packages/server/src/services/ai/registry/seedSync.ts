@@ -25,7 +25,9 @@ import {
   type SeedSkill,
 } from "../seeds";
 import { resetRegistryCache } from "./cache";
-import { loadSnapshot, saveAgent, saveHarness, saveSkill, setBinding } from "./store";
+import { loadSnapshot, saveAgent, saveGuardrail, saveHarness, saveSkill, setBinding } from "./store";
+import { SEED_GUARDRAILS } from "../seeds/guardrails";
+import { guardrailRow, guardrailSeedHash } from "../guardrails/service";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 
 export interface SeedSyncResult {
@@ -143,6 +145,13 @@ export async function syncRegistrySeeds(): Promise<SeedSyncResult> {
     count(await guarded(`agent:${seed.id}`, () => syncRow(existing, agentSeedHash(seed),
       // An upgrade keeps the administrator's enable switch.
       (meta) => saveAgent({ ...agentRow(seed), enabled: existing ? existing.enabled : true }, { actor: SEED_ACTOR, ...meta }))));
+  }
+
+  for (const seed of SEED_GUARDRAILS) {
+    const existing = snapshot.guardrails.get(seed.id);
+    count(await guarded(`guardrail:${seed.id}`, () => syncRow(existing, guardrailSeedHash(seed),
+      // An upgrade keeps the administrator's switch, mode and position.
+      (meta) => saveGuardrail(guardrailRow(seed, existing ? { enabled: existing.enabled, mode: existing.mode, position: existing.position } : seed.defaults), { actor: SEED_ACTOR, ...meta }))));
   }
 
   const after = await loadSnapshot();

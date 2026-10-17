@@ -26,6 +26,8 @@ import {
   type InvokedToolCall,
 } from "./registry/builder";
 import { registerHarnessBaseline } from "./registry/harness";
+import { runnerForRun } from "./guardrails/runtime";
+import { guardrailErrorIn } from "./guardrails/runner";
 import { currentCaller, persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
 import { userMayUseAgent, chatAgentCandidates } from "./registry/chatAgents";
 import type { AgentDef, RegistrySnapshot } from "./registry/types";
@@ -186,7 +188,9 @@ async function collectStructuredRun(
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
     { recursionLimit, signal },
-  );
+  ).catch((error: unknown) => {
+    throw guardrailErrorIn(error) ?? error;
+  });
   return finalTextFromState(result);
 }
 
@@ -250,6 +254,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
         runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
         variables,
         calls,
+        guardrails: runnerForRun(snapshot, cap.id, ctx, run),
       });
       const deepAgent = await buildAgentTree(agent, instructions, build);
 
@@ -361,6 +366,7 @@ export async function invokeChat(
       variables: {},
       calls,
       includeChild: (child) => userMayUseAgent(child, ctx),
+      guardrails: runnerForRun(snapshot, "chat", ctx, run),
     });
     const deepAgent = await buildAgentTree(agent, prompts.system, build);
     const overrides = runtimeOverrides(resolved.config);
@@ -370,7 +376,9 @@ export async function invokeChat(
         recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
         signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
       },
-    );
+    ).catch((error: unknown) => {
+      throw guardrailErrorIn(error) ?? error;
+    });
     return { content: finalTextFromState(result), toolCalls: calls, agent: { id: agent.id, slug: agent.slug, name: agent.name } };
   });
 }

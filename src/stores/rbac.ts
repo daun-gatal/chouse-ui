@@ -515,6 +515,8 @@ export const RBAC_PERMISSIONS = {
   // AI agent registry (AI Governance › Assistant, ADR 0019)
   AI_AGENTS_VIEW: 'ai_agents:view',
   AI_AGENTS_MANAGE: 'ai_agents:manage',
+  AI_GUARDRAILS_VIEW: 'ai_guardrails:view',
+  AI_GUARDRAILS_MANAGE: 'ai_guardrails:manage',
   // ADR 0020: everyone's AI usage, cost and data egress (without it, only your own).
   AI_USAGE_VIEW: 'ai_usage:view',
 

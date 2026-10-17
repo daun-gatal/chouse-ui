@@ -25,6 +25,7 @@ import type {
   SkillDef,
   SkillLinkMode,
 } from "./types";
+import { GUARDRAIL_ACTIONS, GUARDRAIL_KINDS, GUARDRAIL_MODES, GUARDRAIL_STAGES, type GuardrailDef, type GuardrailScope } from "../guardrails/types";
 
 function bool(value: unknown): boolean {
   return value === true || value === 1 || value === "1" || value === "true" || value === "t";
@@ -146,6 +147,42 @@ function skillFromRow(r: Row): SkillDef {
   };
 }
 
+function oneOf<T extends string>(values: readonly T[], value: unknown, fallback: T): T {
+  return values.find((v) => v === value) ?? fallback;
+}
+
+function parseScope(value: unknown): GuardrailScope {
+  const parsed = json<Record<string, unknown>>(value, {});
+  const list = (v: unknown): "all" | string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : "all");
+  return { agents: list(parsed.agents), features: list(parsed.features), mcp: parsed.mcp === true };
+}
+
+export function guardrailFromRow(r: Row): GuardrailDef {
+  const config = json<unknown>(r.config, {});
+  return {
+    id: str(r.id),
+    slug: str(r.slug),
+    name: str(r.name),
+    description: str(r.description),
+    // Rows are written through validation, so unknown values only come from a newer build.
+    kind: oneOf(GUARDRAIL_KINDS, str(r.kind), "pattern"),
+    config: config && typeof config === "object" && !Array.isArray(config) ? config as Record<string, unknown> : {},
+    stages: stringArray(r.stages).filter((s): s is GuardrailDef["stages"][number] => (GUARDRAIL_STAGES as readonly string[]).includes(s)),
+    action: oneOf(GUARDRAIL_ACTIONS, str(r.action), "block"),
+    mode: oneOf(GUARDRAIL_MODES, str(r.mode), "enforce"),
+    scope: parseScope(r.scope),
+    position: num(r.position),
+    enabled: bool(r.enabled),
+    isSystem: bool(r.is_system),
+    seedHash: strOrNull(r.seed_hash),
+    customized: bool(r.customized),
+    version: num(r.version),
+    createdBy: strOrNull(r.created_by),
+    createdAt: num(r.created_at),
+    updatedAt: num(r.updated_at),
+  };
+}
+
 function bindingFromRow(r: Row): FeatureBinding {
   return {
     featureId: str(r.feature_id),
@@ -171,11 +208,12 @@ async function bumpRegistryVersion(): Promise<void> {
 /** Read the whole registry. The version is read first so a racing write only ever makes the snapshot look older. */
 export async function loadSnapshot(): Promise<RegistrySnapshot> {
   const version = await getRegistryVersion();
-  const [harnesses, agents, skills, bindings] = await Promise.all([
+  const [harnesses, agents, skills, bindings, guardrails] = await Promise.all([
     all(sql`SELECT * FROM ai_harnesses`),
     all(sql`SELECT * FROM ai_agents`),
     all(sql`SELECT * FROM ai_skills`),
     all(sql`SELECT * FROM ai_feature_bindings`),
+    all(sql`SELECT * FROM ai_guardrails`),
   ]);
   return {
     version,
@@ -183,6 +221,7 @@ export async function loadSnapshot(): Promise<RegistrySnapshot> {
     agents: new Map(agents.map((r) => { const a = agentFromRow(r); return [a.id, a]; })),
     skills: new Map(skills.map((r) => { const s = skillFromRow(r); return [s.id, s]; })),
     bindings: new Map(bindings.map((r) => { const b = bindingFromRow(r); return [b.featureId, b]; })),
+    guardrails: new Map(guardrails.map((r) => { const g = guardrailFromRow(r); return [g.id, g]; })),
   };
 }
 
@@ -201,7 +240,7 @@ function revisionFromRow(r: Row): RegistryRevision {
   const entity = str(r.entity);
   return {
     id: str(r.id),
-    entity: (["agent", "harness", "skill", "binding"].includes(entity) ? entity : "agent") as RegistryEntity,
+    entity: (["agent", "harness", "skill", "binding", "guardrail"].includes(entity) ? entity : "agent") as RegistryEntity,
     entityId: str(r.entity_id),
     version: num(r.version),
     action: str(r.action),
@@ -342,12 +381,12 @@ export async function setBinding(featureId: string, agentId: string, meta: Pick<
   return binding;
 }
 
-async function deleteRow(entity: RegistryEntity, table: "ai_agents" | "ai_harnesses" | "ai_skills", id: string, meta: Pick<WriteMeta, "actor" | "expectedVersion">): Promise<void> {
+async function deleteRow(entity: RegistryEntity, table: "ai_agents" | "ai_harnesses" | "ai_skills" | "ai_guardrails", id: string, meta: Pick<WriteMeta, "actor" | "expectedVersion">): Promise<void> {
   const existing = await one(sql`SELECT * FROM ${sql.raw(table)} WHERE id = ${id}`);
   if (!existing) throw AppError.notFound(`The ${entity} '${id}' does not exist`);
   if (meta.expectedVersion !== undefined && meta.expectedVersion !== num(existing.version)) throw conflict(entity, id);
   await run(sql`DELETE FROM ${sql.raw(table)} WHERE id = ${id}`);
-  const snapshot = entity === "agent" ? agentFromRow(existing) : entity === "harness" ? harnessFromRow(existing) : skillFromRow(existing);
+  const snapshot = entity === "agent" ? agentFromRow(existing) : entity === "harness" ? harnessFromRow(existing) : entity === "guardrail" ? guardrailFromRow(existing) : skillFromRow(existing);
   await recordRevision(entity, id, num(existing.version), "delete", snapshot, meta.actor);
   await bumpRegistryVersion();
 }
@@ -358,6 +397,41 @@ export function deleteAgent(id: string, meta: Pick<WriteMeta, "actor" | "expecte
 
 export function deleteHarness(id: string, meta: Pick<WriteMeta, "actor" | "expectedVersion">): Promise<void> {
   return deleteRow("harness", "ai_harnesses", id, meta);
+}
+
+type GuardrailInput = Omit<GuardrailDef, "version" | "createdAt" | "updatedAt" | "createdBy">;
+
+export async function saveGuardrail(input: GuardrailInput, meta: WriteMeta): Promise<GuardrailDef> {
+  const now = Date.now();
+  const existing = await one(sql`SELECT version FROM ai_guardrails WHERE id = ${input.id}`);
+  const config = JSON.stringify(input.config);
+  const stages = JSON.stringify(input.stages);
+  const scope = JSON.stringify(input.scope);
+  if (!existing) {
+    await run(sql`
+      INSERT INTO ai_guardrails (id, slug, name, description, kind, config, stages, action, mode, scope, position, enabled, is_system, seed_hash, customized, version, created_by, created_at, updated_at)
+      VALUES (${input.id}, ${input.slug}, ${input.name}, ${input.description}, ${input.kind}, ${config}, ${stages}, ${input.action}, ${input.mode}, ${scope},
+        ${input.position}, ${input.enabled ? 1 : 0}, ${input.isSystem ? 1 : 0}, ${input.seedHash}, ${input.customized ? 1 : 0}, 1, ${meta.actor}, ${now}, ${now})
+    `);
+  } else {
+    const current = num(existing.version);
+    if (meta.expectedVersion !== undefined && meta.expectedVersion !== current) throw conflict("guardrail", input.id);
+    const updated = await all(sql`
+      UPDATE ai_guardrails SET slug = ${input.slug}, name = ${input.name}, description = ${input.description}, kind = ${input.kind},
+        config = ${config}, stages = ${stages}, action = ${input.action}, mode = ${input.mode}, scope = ${scope}, position = ${input.position},
+        enabled = ${input.enabled ? 1 : 0}, is_system = ${input.isSystem ? 1 : 0}, seed_hash = ${input.seedHash}, customized = ${input.customized ? 1 : 0},
+        version = version + 1, updated_at = ${now}
+      WHERE id = ${input.id} AND version = ${current} RETURNING id`);
+    if (updated.length === 0) throw conflict("guardrail", input.id);
+  }
+  const saved = guardrailFromRow((await one(sql`SELECT * FROM ai_guardrails WHERE id = ${input.id}`))!);
+  await recordRevision("guardrail", saved.id, saved.version, meta.action, saved, meta.actor);
+  await bumpRegistryVersion();
+  return saved;
+}
+
+export function deleteGuardrail(id: string, meta: Pick<WriteMeta, "actor" | "expectedVersion">): Promise<void> {
+  return deleteRow("guardrail", "ai_guardrails", id, meta);
 }
 
 export function deleteSkill(id: string, meta: Pick<WriteMeta, "actor" | "expectedVersion">): Promise<void> {

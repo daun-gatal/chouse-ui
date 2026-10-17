@@ -66,7 +66,7 @@ patterns, term lists, columns, a rule for the judge — but never supply code.
 |---|---|---|---|
 | `pattern` | all | log, warn, redact, block | Regexes plus built-in detectors: `email`, `card` (Luhn-checked), `phone`, `ip` (parsed v4/v6), `url`, and secret detectors `aws_key`, `chouse_token`, `jwt`, `private_key`, `password_in_url`, `bearer_token` |
 | `keywords` | input, tool_result, output | log, warn, redact, block | Whole-word, case-insensitive terms |
-| `columns` | tool_result | log, redact, block | Values of result columns matching names or globs (`users.email`, `*.ssn`) |
+| `columns` | tool_result | log, redact, block | Values of result columns matching names or globs (`email`, `*_ssn`). Results rarely say which table a column came from, so `users.email` also matches a bare `email` column |
 | `injection` | tool_result | log, warn, block | Instruction-like text inside tool results; `warn` marks the result as untrusted data for the model |
 | `sql` | tool_call | log, warn, block | SQL arguments: read-only, `LIMIT` on row-returning SELECTs, denied databases/tables, maximum estimated rows (EXPLAIN ESTIMATE, session connection tools only) |
 | `tool` | tool_call | log, warn, block | Per-tool rule: deny, at most N calls per run, or only for given roles |
@@ -100,7 +100,9 @@ on every agent and subagent of the tree. Within a stage, guardrails run in
   the content is untrusted data; on tool calls it gets the reason next to the
   result.
 - **Fail closed.** If a guardrail itself throws (bad config, judge model
-  unavailable), the run stops. A guardrail never silently stops applying.
+  unavailable, a value over the 1 MB scan limit), the run stops. A guardrail
+  never silently stops applying. LangChain wraps middleware errors, so the
+  engine unwraps the guardrail's own error to report it.
 - **Shadow mode** evaluates and records exactly as enforce would, and changes
   nothing. New guardrails can start in shadow and be switched to enforce from
   their row.
@@ -113,17 +115,19 @@ run (`limits` model calls, `judge`) do not apply to MCP.
 ### 4. Events
 
 Every match is recorded in `ai_guardrail_events`: guardrail, stage, action,
-mode, match count, agent path, tool, and the AI request and step (ADR 0020) it
-belongs to — or the MCP session for MCP. **Matched values are never stored.**
-Events are written once per request with the usage run; MCP events are written
-per call. Retention follows `AI_USAGE_RETENTION_DAYS`.
+mode, match count, agent path, tool, user, and the AI request (ADR 0020) it
+belongs to. A run a guardrail stopped before its first model call has no
+request row, so its events carry no request id. MCP events have source `mcp`.
+**Matched values are never stored.** Events are written once per request with
+the usage run; MCP events are written per call. Retention follows
+`AI_USAGE_RETENTION_DAYS`.
 
 ### 5. Preconfigured guardrails
 
 | Guardrail | Kind | Default |
 |---|---|---|
 | PII redaction | pattern (email, card, phone, ip) on tool results | **on**, enforce, redact |
-| Secret detection | pattern (secret detectors) on input, tool results, output | **on**, enforce, redact (block on output) |
+| Secret detection | pattern (secret detectors) on input, tool results, output | **on**, enforce, redact |
 | Prompt-injection shield | injection | **on**, enforce, warn |
 | Call limits | limits (120 tool calls, 80 model calls per run) | **on**, enforce, block |
 | Result size cap | limits (1,000 rows, 256 KB per result) | **on**, enforce, redact |

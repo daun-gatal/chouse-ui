@@ -18,13 +18,15 @@ const service = await import("./service");
 const { getRegistrySnapshot, resetRegistryCache } = await import("./cache");
 const { validateGraph } = await import("./validation");
 const { SEED_AGENTS, SEED_BINDINGS, SEED_HARNESSES, SEED_SKILLS } = await import("../seeds");
+const { SEED_GUARDRAILS } = await import("../seeds/guardrails");
+const guardrails = await import("../guardrails/service");
 
 import type { AgentDef } from "./types";
 
 const ACTOR = "admin-1";
 
 async function wipeRegistry(): Promise<void> {
-  for (const table of ["ai_agents", "ai_harnesses", "ai_skills", "ai_feature_bindings", "ai_registry_revisions"]) {
+  for (const table of ["ai_agents", "ai_harnesses", "ai_skills", "ai_feature_bindings", "ai_registry_revisions", "ai_guardrails"]) {
     await run(sql.raw(`DELETE FROM ${table}`));
   }
   resetRegistryCache();
@@ -73,7 +75,7 @@ describe("seed sync", () => {
 
   it("inserts every built-in harness, skill, agent and binding", async () => {
     const result = await syncRegistrySeeds();
-    expect(result.inserted).toBe(SEED_HARNESSES.length + SEED_SKILLS.length + SEED_AGENTS.length);
+    expect(result.inserted).toBe(SEED_HARNESSES.length + SEED_SKILLS.length + SEED_AGENTS.length + SEED_GUARDRAILS.length);
     expect(result.bindingsRestored).toBe(Object.keys(SEED_BINDINGS).length);
     const snapshot = await store.loadSnapshot();
     expect(snapshot.agents.size).toBe(SEED_AGENTS.length);
@@ -110,6 +112,23 @@ describe("seed sync", () => {
     const result = await syncRegistrySeeds();
     expect(result.updateAvailable).toBe(1);
     expect((await store.loadSnapshot()).agents.get("builtin-agent-sql-debugger")!.systemPrompt).toBe("mine");
+  });
+
+  it("inserts the built-in guardrails with their defaults", async () => {
+    await syncRegistrySeeds();
+    const rows = [...(await store.loadSnapshot()).guardrails.values()];
+    expect(rows.map((g) => g.slug).sort()).toEqual(SEED_GUARDRAILS.map((g) => g.slug).sort());
+    expect(rows.filter((g) => g.enabled).map((g) => g.slug).sort()).toEqual(["call-limits", "pii-redaction", "prompt-injection-shield", "result-size-cap", "secret-detection"]);
+    expect(rows.every((g) => g.isSystem && !g.customized && g.mode === "enforce")).toBe(true);
+  });
+
+  it("upgrades a guardrail but keeps its switch, mode and position", async () => {
+    await syncRegistrySeeds();
+    await run(sql`UPDATE ai_guardrails SET seed_hash = 'old', description = 'stale', enabled = 0, mode = 'shadow', position = 5 WHERE id = 'builtin-guardrail-pii'`);
+    expect((await syncRegistrySeeds()).upgraded).toBe(1);
+    const pii = (await store.loadSnapshot()).guardrails.get("builtin-guardrail-pii")!;
+    expect(pii.description).not.toBe("stale");
+    expect([pii.enabled, pii.mode, pii.position]).toEqual([false, "shadow", 5]);
   });
 
   it("restores a missing or dangling feature binding", async () => {
@@ -296,5 +315,72 @@ describe("harnesses and skills", () => {
     const reset = await service.resetSkill(builtin.id, ACTOR);
     expect(reset.customized).toBe(false);
     expect(reset.files["reference.md"]).toBe(builtin.files["reference.md"]);
+  });
+});
+
+// ============================================
+// Guardrails (ADR 0022)
+// ============================================
+
+describe("guardrail management", () => {
+  beforeEach(async () => {
+    await wipeRegistry();
+    await syncRegistrySeeds();
+  });
+
+  function input(overrides: Partial<Parameters<typeof guardrails.createGuardrail>[0]> = {}): Parameters<typeof guardrails.createGuardrail>[0] {
+    return {
+      slug: "employee-ids", name: "Employee IDs", description: "", kind: "pattern",
+      config: { detectors: [], patterns: [{ label: "Employee ID", regex: "EMP-\\d{6}", caseInsensitive: false }], strategy: "placeholder" },
+      stages: ["tool_result"], action: "redact", mode: "shadow", scope: { agents: "all", features: "all", mcp: false },
+      position: 25, enabled: true, ...overrides,
+    };
+  }
+
+  it("creates, versions, edits and deletes a custom guardrail", async () => {
+    const created = await guardrails.createGuardrail(input(), ACTOR);
+    expect(created.version).toBe(1);
+    const updated = await guardrails.updateGuardrail(created.id, input({ mode: "enforce" }), 1, ACTOR);
+    expect([updated.mode, updated.version, updated.customized]).toEqual(["enforce", 2, false]);
+    await expect(guardrails.updateGuardrail(created.id, input(), 1, ACTOR)).rejects.toThrow("changed by someone else");
+    expect((await store.listRevisions("guardrail", created.id)).map((r) => r.action)).toEqual(["update", "create"]);
+    await guardrails.deleteGuardrail(created.id, 2, ACTOR);
+    expect((await store.loadSnapshot()).guardrails.has(created.id)).toBe(false);
+  });
+
+  it("refuses invalid guardrails with every problem listed", async () => {
+    await expect(guardrails.createGuardrail(input({ slug: "pii-redaction" }), ACTOR)).rejects.toThrow("already uses the slug");
+    await expect(guardrails.createGuardrail(input({ config: { detectors: [], patterns: [{ label: "x", regex: "(a+)+", caseInsensitive: false }], strategy: "placeholder" } }), ACTOR)).rejects.toThrow("Nested repeats");
+    await expect(guardrails.createGuardrail(input({ scope: { agents: ["nope"], features: ["not-a-feature"], mcp: false } }), ACTOR)).rejects.toThrow(/Unknown agent 'nope'.*Unknown AI feature 'not-a-feature'/);
+  });
+
+  it("marks a built-in customized on a content edit, not on a mode switch, and resets it", async () => {
+    const pii = (await store.loadSnapshot()).guardrails.get("builtin-guardrail-pii")!;
+    const shadow = await guardrails.setGuardrailState(pii.id, { mode: "shadow" }, pii.version, ACTOR);
+    expect(shadow.customized).toBe(false);
+    const { id: _i, isSystem: _s, seedHash: _h, customized: _c, version: _v, createdAt: _a, updatedAt: _u, createdBy: _b, ...content } = shadow;
+    const edited = await guardrails.updateGuardrail(pii.id, { ...content, config: { ...content.config, strategy: "mask" } }, shadow.version, ACTOR);
+    expect(edited.customized).toBe(true);
+    await expect(guardrails.deleteGuardrail(pii.id, edited.version, ACTOR)).rejects.toThrow("cannot be deleted");
+    const reset = await guardrails.resetGuardrail(pii.id, ACTOR);
+    expect([reset.customized, (reset.config as { strategy: string }).strategy, reset.mode]).toEqual([false, "placeholder", "shadow"]);
+  });
+
+  it("reorders every guardrail by id", async () => {
+    const ids = [...(await store.loadSnapshot()).guardrails.values()].sort((a, b) => b.position - a.position).map((g) => g.id);
+    const saved = await guardrails.reorderGuardrails(ids, ACTOR);
+    expect(saved.map((g) => g.position)).toEqual(ids.map((_, i) => (i + 1) * 10));
+    await expect(guardrails.reorderGuardrails(ids.slice(1), ACTOR)).rejects.toThrow("every guardrail id exactly once");
+  });
+
+  it("keeps an agent a guardrail is scoped to from being deleted", async () => {
+    const agent = await service.createAgent(agentInput(), ACTOR);
+    await guardrails.createGuardrail(input({ scope: { agents: [agent.id], features: "all", mcp: false } }), ACTOR);
+    await expect(service.deleteAgent(agent.id, agent.version, ACTOR)).rejects.toThrow("guardrail 'Employee IDs'");
+  });
+
+  it("refuses an enabled judge without an active model", async () => {
+    const topic = (await store.loadSnapshot()).guardrails.get("builtin-guardrail-topic")!;
+    await expect(guardrails.setGuardrailState(topic.id, { enabled: true }, topic.version, ACTOR)).rejects.toThrow("Choose the model that judges");
   });
 });

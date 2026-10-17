@@ -136,6 +136,8 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.AI_AGENTS_VIEW,
     PERMISSIONS.AI_AGENTS_MANAGE,
     PERMISSIONS.AI_USAGE_VIEW,
+    PERMISSIONS.AI_GUARDRAILS_VIEW,
+    PERMISSIONS.AI_GUARDRAILS_MANAGE,
   ],
   'SSO Management': [
     PERMISSIONS.SSO_VIEW,
@@ -266,6 +268,8 @@ export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.AI_AGENTS_VIEW]: 'View AI Agents',
   [PERMISSIONS.AI_AGENTS_MANAGE]: 'Manage AI Agents, Harnesses and Skills',
   [PERMISSIONS.AI_USAGE_VIEW]: 'View AI Usage, Cost and Data Egress',
+  [PERMISSIONS.AI_GUARDRAILS_VIEW]: 'View AI Guardrails and Their Triggers',
+  [PERMISSIONS.AI_GUARDRAILS_MANAGE]: 'Manage AI Guardrails',
   [PERMISSIONS.SSO_VIEW]: 'View SSO Configuration',
   [PERMISSIONS.SSO_EDIT]: 'Edit SSO Configuration',
   [PERMISSIONS.SSO_DELETE]: 'Delete SSO Providers',

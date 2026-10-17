@@ -6,6 +6,7 @@
  * without threading it through every signature.
  */
 
+import type { GuardrailEvent } from "../guardrails/types";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "crypto";
 
@@ -125,6 +126,8 @@ export class UsageRun {
   readonly meta: UsageRunMeta;
   readonly steps: UsageStep[] = [];
   readonly egress: EgressRecord[] = [];
+  /** Guardrail triggers during the run (ADR 0022), written with it. */
+  readonly guardrailEvents: Array<GuardrailEvent & { createdAt: number }> = [];
   agent: UsageAgent | null = null;
   status: RunStatus = "ok";
   error: string | null = null;
@@ -151,6 +154,10 @@ export class UsageRun {
   /** Remember where an agent sits in the tree; the first registration of a slug wins. */
   registerAgentPath(slug: string, path: string): void {
     if (!this.agentPaths.has(slug)) this.agentPaths.set(slug, path);
+  }
+
+  recordGuardrail(event: GuardrailEvent): void {
+    this.guardrailEvents.push({ ...event, createdAt: this.clock() });
   }
 
   nextQueryId(): string {
