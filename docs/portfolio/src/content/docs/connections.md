@@ -33,6 +33,8 @@ Open a connection's **Edit** dialog. The **Observability grants** panel checks w
 
 The observability collectors read every connection's system tables on a schedule — see [How data is watched](/docs/data-observability/#how-often-it-runs). **Collection schedule** in the page header sets how often each collector runs for **every connection**; a connection's **Edit** dialog sets its **own** schedule, which wins over that. Reading the schedule needs `connections:view`, changing it `connections:edit`.
 
+![The Collection schedule sheet](/docs/img/app/admin-connections-schedule.jpg "Collection schedule: how often each collector runs, for every connection")
+
 For each collector you choose:
 
 - **Runs** — how often, from its fastest allowed interval up to once a day. *Inherit* follows the setting for every connection, or the built-in interval.

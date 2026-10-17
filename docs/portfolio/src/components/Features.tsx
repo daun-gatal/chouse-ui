@@ -6,7 +6,8 @@ import {
   Terminal, KeyRound, Gauge, Layers, Stethoscope, Network, SunMoon,
   LayoutGrid, BellRing, Radar, CalendarClock, GitBranch, HeartPulse,
   Workflow, ShieldCheck, BookOpen, Siren, Wrench, NotebookPen, GitPullRequestArrow,
-  TrendingUp, HardDrive, ArrowUpCircle, ArrowRight,
+  TrendingUp, HardDrive, ArrowUpCircle, ArrowRight, LayoutDashboard, Timer,
+  WandSparkles, Coins, ShieldHalf,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -38,6 +39,8 @@ const GROUPS: FeatureGroup[] = [
       { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
       { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
       { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, email or webhooks — with an AI root-cause report on breach" },
+      { icon: LayoutDashboard, title: "Dashboards", desc: "Your own panels in SQL, or a template to start from — variables, fleet-wide panels, sharing by role, and threshold alerts on any panel" },
+      { icon: Timer, title: "Collection schedule", desc: "How often each collector samples, for every connection or one — incremental reads keep the load on ClickHouse low" },
     ],
   },
   {
@@ -72,11 +75,11 @@ const GROUPS: FeatureGroup[] = [
     docs: "/docs/doctor/",
     items: [
       { icon: Stethoscope, title: "Doctor", desc: "An AI health check of your fleet with read-only queries — scheduled, or triggered by an alert — that proposes fixes for approval" },
-      { icon: Zap, title: "Optimize in place", desc: "A rewrite of a logged query with the same result, a before→after EXPLAIN, and one click to open it" },
-      { icon: Bot, title: "Diagnose errors & parts", desc: "Cause, impact and ordered fixes on a system.errors row or a part-log entry" },
+      { icon: Zap, title: "Optimize & diagnose in place", desc: "A rewrite of a logged query with a before→after EXPLAIN, or the cause and ordered fixes for an error or a part-log entry" },
+      { icon: WandSparkles, title: "Draft with AI", desc: "Describe a dashboard, agent, harness or skill and review the draft, section by section, before anything is saved" },
       { icon: MessageSquare, title: "AI Assist & chat", desc: "Schema-aware optimizer, debugger and chat in the SQL editor" },
       { icon: Eye, title: "Facts vs. interpretation", desc: "Incident explanations keep what was observed apart from what is inferred — the AI never picks the root cause" },
-      { icon: KeyRound, title: "Your model", desc: "OpenAI, Anthropic, Google, Azure, Bedrock, Ollama and ten more — or any OpenAI-compatible server you host" },
+      { icon: KeyRound, title: "Your model", desc: "OpenAI, Anthropic, Google, Azure, Bedrock, Ollama and ten more, or any OpenAI-compatible server you host — one picker everywhere, with each model's context window" },
     ],
   },
   {
@@ -101,6 +104,8 @@ const GROUPS: FeatureGroup[] = [
       { icon: Gauge, title: "Agent governance", desc: "Every agent session recorded, budgets checked with EXPLAIN ESTIMATE before queries run, health notices in results, a pause switch" },
       { icon: Terminal, title: "chouse CLI 1.0", desc: "Tables in a terminal, JSON when piped, profiles, exit codes, and --yes / --dry-run on anything that changes data" },
       { icon: KeyRound, title: "Personal access tokens", desc: "Scoped, expiring, rotatable ch_pat_ tokens that carry their owner's live permissions" },
+      { icon: ShieldHalf, title: "AI guardrails", desc: "PII and secret redaction, prompt-injection warnings, call limits and SQL safety on what the AI and MCP see and return — try new rules in shadow mode" },
+      { icon: Coins, title: "AI activity & cost", desc: "Every AI request from the UI, MCP or a token: who started it, each step, tokens, price, and which tables' data was sent to the model" },
     ],
   },
   {
@@ -159,7 +164,7 @@ const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
   {
     icon: Users,
     title: "Built for teams — and their agents",
-    desc: "Own users and roles, data access per connection, SSO and a full audit trail; AI agents get the same rules plus budgets.",
+    desc: "Own users and roles, data access per connection, SSO and a full audit trail; AI agents get the same rules plus budgets and guardrails.",
     meta: "RBAC built-in",
   },
   {

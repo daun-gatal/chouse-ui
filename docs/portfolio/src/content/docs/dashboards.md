@@ -2,6 +2,7 @@
 app: Dashboards
 route: /dashboards
 permissions: dashboards:view
+screenshot: dashboards
 ---
 # Dashboards
 
@@ -50,6 +51,8 @@ Each dashboard is assigned to **All connections** or to a list of connections. C
 - A dashboard on an assigned connection may still read a table that connection does not have. That panel says so, naming the connection, and the rest still draw.
 
 ## Edit a dashboard
+
+![The panel editor](/docs/img/app/dashboards-panel-editor.jpg "Editing a panel: its SQL, a preview of the result and the chart settings")
 
 **Edit** starts an edit session. Nothing is saved until **Save**:
 
