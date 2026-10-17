@@ -12,7 +12,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Download, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Database, Download, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +49,7 @@ import { dashboardKeys } from "../hooks";
 import { isAssignedTo, scopeLabel } from "../scope";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
+import { ConnectionsDialog } from "./ConnectionsDialog";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
 import { NotAssignedNotice } from "./NotAssignedNotice";
 import { PanelCard, WIDTH_CLASSES } from "./PanelCard";
@@ -119,6 +120,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [editingPanel, setEditingPanel] = useState<{ key: string | null; panel: PanelInput } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ key: string; title: string; alerts: number } | null>(null);
@@ -286,7 +288,21 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           <h1 className="truncate text-lg font-semibold text-paper">{settings.title}</h1>
           {settings.description && <p className="truncate text-xs text-paper-dim">{settings.description}</p>}
         </div>
-        <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim" data-testid="dashboard-scope">{scopeLabel(data.scope)}</span>
+        {data.access.edit && !editing ? (
+          <button
+            type="button"
+            onClick={() => setConnectionsOpen(true)}
+            className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim transition-colors hover:border-ink-400 hover:text-paper"
+            aria-label={`Connections: ${scopeLabel(data.scope)}. Change`}
+            data-testid="dashboard-scope"
+          >
+            <Database className="h-3 w-3" aria-hidden /> {scopeLabel(data.scope)}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim" data-testid="dashboard-scope">
+            <Database className="h-3 w-3" aria-hidden /> {scopeLabel(data.scope)}
+          </span>
+        )}
         {data.shares.length > 0 && <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
         {editing ? (
           <>
@@ -392,6 +408,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
       </AlertDialog>
       {askAi && <AskAiDialog open onOpenChange={setAskAi} existing={data} />}
       {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
+      {connectionsOpen && <ConnectionsDialog open onOpenChange={setConnectionsOpen} detail={data} />}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

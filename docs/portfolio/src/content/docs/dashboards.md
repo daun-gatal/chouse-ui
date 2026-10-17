@@ -41,7 +41,7 @@ The time range and variable values are kept in the page's URL, so a link opens t
 
 ## Connections
 
-Each dashboard is assigned to **All connections** or to a list of connections, in **Settings › Connections**. A dashboard you make (new, from a template, with AI, or by pinning a query) is assigned to the connection you are on; add more in Settings.
+Each dashboard is assigned to **All connections** or to a list of connections. Click the connections chip next to the dashboard's title to change them (it saves straight away), or use **Settings › Connections** while editing. **New dashboard** and **Use template** let you pick when you make one, starting with the connection you are on; a dashboard drafted with AI or made by pinning a query is assigned to the connection you are on.
 
 - **Dashboards** and Home list only the dashboards assigned to your active connection. Switch connection in the dock to see the others; the list says how many there are.
 - A link to a dashboard that is not assigned to your active connection runs nothing. It says which connections the dashboard is for, with a button to switch to each one you may use.

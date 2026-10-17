@@ -20,6 +20,7 @@ import {
   instantiateTemplate,
   listDashboards,
   listTemplates,
+  type ConnectionScope,
   type DashboardExport,
   type DashboardSummary,
   type DashboardTemplate,
@@ -29,7 +30,8 @@ import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/chart
 import { cn } from "@/lib/utils";
 
 import { dashboardKeys } from "../hooks";
-import { isAssignedTo, scopeForNew, scopeLabel } from "../scope";
+import { isAssignedTo, scopeLabel } from "../scope";
+import { ConnectionsField, scopeProblem } from "./ConnectionsField";
 import { AskAiDialog } from "./AskAiDialog";
 
 function DashboardCard({ dashboard }: { dashboard: DashboardSummary }): React.ReactElement {
@@ -74,11 +76,13 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(template?.title ?? "New dashboard");
   const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
-  const activeConnectionName = useAuthStore((s) => s.activeConnectionName);
+  // Starts with the connection you are on; tick more, or All connections.
+  const [scope, setScope] = useState<ConnectionScope>(() => ({ kind: "only", connectionIds: activeConnectionId ? [activeConnectionId] : [] }));
+  const problem = scopeProblem(scope);
   const create = useMutation({
     mutationFn: () => template
-      ? instantiateTemplate(template.id)
-      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scopeForNew(activeConnectionId), variables: [], panels: [] }),
+      ? instantiateTemplate(template.id, scope)
+      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scope, variables: [], panels: [] }),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       onOpenChange(false);
@@ -99,14 +103,13 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
               <Input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
             </label>
           )}
-          <p className="text-xs text-paper-dim">
-            For {activeConnectionName ? <span className="font-mono">{activeConnectionName}</span> : "the connection you are on"}. Settings can assign it to more connections.
-          </p>
+          <ConnectionsField scope={scope} onChange={setScope} />
+          {problem && <p className="text-[11px] text-amber-300">{problem}</p>}
           {create.isError && <p role="alert" className="text-xs text-red-300">{create.error.message}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button className={BTN_PRIMARY} onClick={() => create.mutate()} disabled={create.isPending || (!template && title.trim() === "")}>Create</Button>
+          <Button className={BTN_PRIMARY} onClick={() => create.mutate()} disabled={create.isPending || problem !== null || (!template && title.trim() === "")}>Create</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

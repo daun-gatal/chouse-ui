@@ -36,7 +36,7 @@ describe("dashboards API", () => {
     await dashboards.lintPanel("SELECT 1", VIZ);
     await dashboards.variableOptions("d1", "db");
     await dashboards.listTemplates();
-    await dashboards.instantiateTemplate("replication");
+    await dashboards.instantiateTemplate("replication", { kind: "any" });
     await dashboards.listAlerts("d1");
     await dashboards.listAllAlerts();
     expect(seen).toEqual([

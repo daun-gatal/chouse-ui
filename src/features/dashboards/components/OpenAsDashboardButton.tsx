@@ -11,21 +11,23 @@ import { ChartColumn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { instantiateTemplate } from "@/api/dashboards";
-import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { BTN_OUTLINE } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
+import { scopeForNew } from "../scope";
 
 export function OpenAsDashboardButton({ templateId }: { templateId: string }): React.ReactElement | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const canCreate = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_EDIT));
   const [busy, setBusy] = useState(false);
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
   if (!canCreate) return null;
   const open = async (): Promise<void> => {
     setBusy(true);
     try {
-      const created = await instantiateTemplate(templateId);
+      const created = await instantiateTemplate(templateId, scopeForNew(activeConnectionId));
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       navigate(`/dashboards/${created.dashboard.id}`);
     } catch (error) {

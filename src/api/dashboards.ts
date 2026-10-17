@@ -233,8 +233,8 @@ export function listTemplates(): Promise<DashboardTemplate[]> {
   return api.get<DashboardTemplate[]>(`${base}/templates`);
 }
 
-export function instantiateTemplate(templateId: string): Promise<DashboardDetail> {
-  return api.post<DashboardDetail>(`${base}/templates/${enc(templateId)}/instantiate`);
+export function instantiateTemplate(templateId: string, connectionScope: ConnectionScope): Promise<DashboardDetail> {
+  return api.post<DashboardDetail>(`${base}/templates/${enc(templateId)}/instantiate`, { connectionScope });
 }
 
 /** A detail's stored panels as the input a save takes. */

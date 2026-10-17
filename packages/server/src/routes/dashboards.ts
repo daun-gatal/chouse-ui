@@ -255,11 +255,13 @@ dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zVali
   return ok(c, await detailResponse(c, id), 201);
 });
 
-dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async (c) => {
+/** A template copy is assigned to the connections its maker picks. */
+const instantiateSchema = z.object({ connectionScope: connectionScopeSchema }).strict();
+
+dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", instantiateSchema), async (c) => {
   const template = findTemplate(requireParam(c, "templateId"));
   if (!template) throw AppError.notFound("Template not found");
-  // A copy is for the connection it is made on; Settings can assign more.
-  const input: DashboardInput = { ...template.dashboard, connectionScope: { kind: "only", connectionIds: [currentConnectionId(c)] } };
+  const input: DashboardInput = { ...template.dashboard, connectionScope: c.req.valid("json").connectionScope };
   assertValid(input);
   await assertScope(c, input.connectionScope, null);
   const id = await store.createDashboard(input, viewerOf(c).id);

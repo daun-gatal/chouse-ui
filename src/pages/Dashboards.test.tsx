@@ -41,7 +41,7 @@ const RUN = { kind: "single", connectionId: "c1", window: { from: 1, to: 2, inte
 function setup(initial = "/dashboards/d1", overrides: Record<string, unknown> = {}): void {
   server.use(
     http.get("/api/dashboards/d1", () => ok(detail(overrides))),
-    http.get("/api/rbac/connections/my", () => HttpResponse.json({ success: true, data: [{ id: "c1", name: "alpha", isActive: true }] })),
+    http.get("/api/rbac/connections/my", () => HttpResponse.json({ success: true, data: [{ id: "c1", name: "alpha", isActive: true }, { id: "c2", name: "beta", isActive: true }] })),
   );
   runPanel.mockReset();
   runPanel.mockResolvedValue(RUN);
@@ -112,6 +112,45 @@ describe("Dashboards page", () => {
     expect((bodies[0] as { version: number }).version).toBe(4);
   });
 
+  it("assigns connections from the chip next to the title, saved at the loaded version", async () => {
+    const bodies: Array<{ version: number; dashboard: { connectionScope: unknown } }> = [];
+    setup("/dashboards/d1", {
+      dashboard: { ...(detail().dashboard as object), connectionScope: { kind: "only", connectionIds: ["c1"] } },
+      scope: { kind: "only", connections: [{ id: "c1", name: "alpha" }], hidden: 0 },
+    });
+    server.use(http.put("/api/dashboards/d1", async ({ request }) => {
+      bodies.push((await request.json()) as (typeof bodies)[number]);
+      return ok(detail());
+    }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connections: alpha. Change" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Assign to beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].version).toBe(4);
+    expect(bodies[0].dashboard.connectionScope).toEqual({ kind: "only", connectionIds: ["c1", "c2"] });
+  });
+
+  it("picks connections when making a dashboard, starting with the active one", async () => {
+    const created: Array<{ connectionScope: unknown }> = [];
+    server.use(
+      http.get("/api/dashboards", () => ok([])),
+      http.get("/api/dashboards/templates", () => ok([])),
+      http.post("/api/dashboards", async ({ request }) => {
+        created.push((await request.json()) as (typeof created)[number]);
+        return ok(detail());
+      }),
+    );
+    setup("/dashboards");
+    fireEvent.click(await screen.findByRole("button", { name: /New dashboard/ }));
+    expect((await screen.findByRole("checkbox", { name: "Assign to alpha" })).getAttribute("data-state")).toBe("checked");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Assign to alpha" }));
+    expect(screen.getByRole("button", { name: "Create" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: "All connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0].connectionScope).toEqual({ kind: "any" });
+  });
+
   it("says when a link's time range is not usable", async () => {
     setup("/dashboards/d1?range=5h");
     expect(await screen.findByText(/The link's time range "5h"/)).toBeTruthy();
@@ -122,7 +161,7 @@ describe("Dashboards page", () => {
     expect(await screen.findByTestId("not-assigned")).toBeTruthy();
     expect(screen.getByText(/It is made for beta, 1 connection you cannot use/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Switch to beta" })).toBeTruthy();
-    expect(screen.getByTestId("dashboard-scope").textContent).toBe("beta, 1 other");
+    expect(screen.getByTestId("dashboard-scope").textContent?.trim()).toBe("beta, 1 other");
     expect(runPanel).not.toHaveBeenCalled();
   });
 

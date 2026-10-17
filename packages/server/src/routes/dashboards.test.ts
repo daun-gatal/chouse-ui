@@ -297,15 +297,21 @@ describe("templates", () => {
     const list = await call("viewOnly", "GET", "/dashboards/templates");
     expect(list.status).toBe(200);
     expect(list.json.data.map((t: { id: string }) => t.id)).toContain("clickhouse-overview");
-    expect((await call("viewOnly", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(403);
-    const copy = await call("owner", "POST", "/dashboards/templates/replication/instantiate");
+    const forAlpha = { connectionScope: { kind: "only", connectionIds: ["conn-1"] } };
+    expect((await call("viewOnly", "POST", "/dashboards/templates/replication/instantiate", forAlpha)).status).toBe(403);
+    const copy = await call("owner", "POST", "/dashboards/templates/replication/instantiate", forAlpha);
     expect(copy.status).toBe(201);
     expect(copy.json.data.dashboard.title).toBe("Replication");
     expect(copy.json.data.dashboard.ownerId).toBe("u-owner");
     expect(copy.json.data.panels.length).toBeGreaterThan(0);
     expect(copy.json.data.dashboard.connectionScope).toEqual({ kind: "only", connectionIds: ["conn-1"] });
-    expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate")).status).toBe(404);
-    expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(403);
+    expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate", forAlpha)).status).toBe(404);
+    expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate", forAlpha)).status).toBe(403);
+    // The maker picks the connections; one they cannot use, or none at all, is refused.
+    const all = await call("owner", "POST", "/dashboards/templates/replication/instantiate", { connectionScope: { kind: "any" } });
+    expect(all.json.data.dashboard.connectionScope).toEqual({ kind: "any" });
+    expect((await call("owner", "POST", "/dashboards/templates/replication/instantiate", { connectionScope: { kind: "only", connectionIds: ["conn-3"] } })).status).toBe(400);
+    expect((await call("owner", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(400);
   });
 });
 
