@@ -18,6 +18,7 @@ export const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   data_health: "Data health",
   data_observability: "Data observability",
   performance: "Performance, capacity & upgrades",
+  dashboards: "Dashboards",
   ai: "Chouse AI",
   ai_governance: "AI governance",
 };
@@ -29,6 +30,7 @@ export const MCP_CATEGORY_ORDER: McpToolCategory[] = [
   "data_observability",
   "data_health",
   "performance",
+  "dashboards",
   "monitoring",
   "scheduling",
   "ai",

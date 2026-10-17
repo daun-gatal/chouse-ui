@@ -310,13 +310,14 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-operations-analyst", slug: "operations-analyst", name: "Operations Analyst",
-    description: "Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, remediation actions and investigation notebooks, Doctor reports, fleet health, query regressions, capacity, upgrade readiness and the observability collectors.",
+    description: "Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, remediation actions and investigation notebooks, Doctor reports, fleet health, query regressions, capacity, upgrade readiness, the observability collectors and custom dashboards.",
     kind: "agent", systemPrompt: OPERATIONS_ANALYST_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 8 },
     requiredPermissions: [], skills: [], subagents: [],
     tools: [
       "list_scheduled_jobs", "get_scheduled_job", "list_scheduled_runs", "list_health_checks", "get_health_check", "list_health_incidents", "list_alerting",
       "list_observe_incidents", "list_remediation_actions", "get_investigation_notebook", "list_doctor_reports", "fleet_snapshots",
       "get_query_regressions", "get_capacity", "list_upgrade_assessments", "get_upgrade_rollout", "get_collector_status", "get_collector_schedule",
+      "list_dashboards", "get_dashboard",
     ],
   },
   {

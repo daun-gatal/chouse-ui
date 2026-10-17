@@ -21,6 +21,7 @@ import { registerObserveTools } from "./tools/observe";
 import { registerDataObservabilityTools, registerRemediationProposalTool, registerRemediationReadTools } from "./tools/dataObservability";
 import { registerPerformanceTools } from "./tools/performance";
 import { registerAiGovernanceTools } from "./tools/aiGovernance";
+import { registerDashboardTools } from "./tools/dashboards";
 import { registerWriteTools } from "./tools/writes";
 import { registerDestructiveTools } from "./tools/destructive";
 import { registerAiTools } from "./tools/ai";
@@ -55,6 +56,7 @@ export function collectTools(deps: McpDeps): ChouseToolRegistration[] {
   registerDataObservabilityTools(sink, deps);
   registerRemediationReadTools(sink, deps);
   registerPerformanceTools(sink, deps);
+  registerDashboardTools(sink, deps);
   registerWriteTools(sink, deps);
   registerRemediationProposalTool(sink, deps);
   registerDestructiveTools(sink, deps);

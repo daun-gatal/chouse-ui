@@ -543,7 +543,37 @@ const operationsTools: CatalogTool[] = [
     }),
     request: (a) => ({ path: `/api/notebooks/attached/${segment(String(a.attachedTo))}/${segment(String(a.ref))}` }),
   }),
+  apiTool<DashboardRow[]>({
+    name: "list_dashboards", title: "Dashboards", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
+    description: "Custom dashboards the user may view: title, owner, panel count, the roles it is shared with, and whether the user pinned it.",
+    request: () => ({ path: "/api/dashboards" }),
+    project: (rows) => rows.map((r) => ({
+      id: r.id, title: r.title, description: r.description, owner: r.ownerName, panels: r.panelCount,
+      sharedWith: r.shares.map((s) => s.roleDisplayName), pinned: r.pinned, updatedAt: r.updatedAt,
+    })),
+  }),
+  apiTool<DashboardDetailPayload>({
+    name: "get_dashboard", title: "Dashboard", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
+    description: "One custom dashboard: its variables, default range and connection, and each panel's title, SQL, chart type and unit.",
+    schema: z.object({ id: z.string().min(1).describe("Dashboard id from list_dashboards") }),
+    request: (a) => ({ path: `/api/dashboards/${segment(String(a.id))}` }),
+    project: (d) => ({
+      id: d.dashboard.id, title: d.dashboard.title, description: d.dashboard.description, connectionId: d.dashboard.connectionId,
+      timeRange: d.dashboard.timeRange, variables: d.dashboard.variables,
+      panels: d.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet })),
+    }),
+  }),
 ];
+
+interface DashboardRow {
+  id: string; title: string; description: string; ownerName: string | null; panelCount: number;
+  shares: Array<{ roleDisplayName: string }>; pinned: boolean; updatedAt: number;
+}
+
+interface DashboardDetailPayload {
+  dashboard: { id: string; title: string; description: string; connectionId: string | null; timeRange: string; variables: unknown[] };
+  panels: Array<{ id: string; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }>;
+}
 
 // ============================================
 // Catalog
