@@ -43,6 +43,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
 | [Draft an agent](#draft-an-agent) | AI Governance | `ai:optimize` | Evidence only | [Agent Author](#agent-author) |
 | [Draft a harness](#draft-a-harness) | AI Governance | `ai:optimize` | Evidence only | [Harness Author](#harness-author) |
+| [Draft a guardrail](#draft-a-guardrail) | AI Governance | `ai:optimize` | Evidence only | [Guardrail Drafter](#guardrail-drafter) |
 
 ## Chat features
 
@@ -393,9 +394,21 @@ AI Governance › Assistant › Harnesses › Draft with AI: drafts or refines a
 | --- | --- | --- |
 | `ctx.evidence` | json | The request and the live registry facts the draft may use (JSON). |
 
+### Draft a guardrail
+
+ID `draft-guardrail` · needs `ai:optimize` · structured answer (JSON contract)
+
+AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail draft (kind, settings, stages, action) for review.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Guardrail Drafter](#guardrail-drafter).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The goal, the guardrail kinds with their settings, and the drafting rules (JSON). |
+
 ## Built-in agents
 
-The 31 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 32 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -521,6 +534,20 @@ Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).
 | Harness | Focused |
 | Tuning | 8 steps · 8,000 output tokens |
 | Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `validate_sql` |
+| Skills | all built-in skills on demand |
+
+### Guardrail Drafter
+
+Turns a goal into a guardrail draft for review (AI Governance › Guardrails).
+
+| Setting | Value |
+| --- | --- |
+| Slug | `guardrail-drafter` |
+| Kind | Feature agent |
+| Used by | [Draft a guardrail](#draft-a-guardrail) |
+| Harness | Focused |
+| Tuning | 3 steps · 3,000 output tokens |
+| Tools | none |
 | Skills | all built-in skills on demand |
 
 ### Scheduled Query Drafter

@@ -22,7 +22,7 @@ Investigations of a specific run or incident open in a dialog with the same sect
 
 - **Refresh AI brief** regenerates it from the latest evidence.
 - **Useful?** — mark it useful or not; the feedback helps tune it.
-- The model button on Data pages picks the AI model for every AI feature there; your choice is stored for you. *System default* uses the default [deployment](/docs/ai-models/#3-create-a-deployment).
+- The model button on Data pages picks the AI model for every AI feature there; your choice is stored for you and shared with Dashboards and AI Governance. *System default* uses the default [deployment](/docs/ai-models/#3-create-a-deployment).
 
 ## What it sees
 

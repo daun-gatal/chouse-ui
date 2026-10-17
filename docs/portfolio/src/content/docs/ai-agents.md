@@ -73,7 +73,7 @@ The server checks again on save, including the agent's templates against the fea
 
 ## Models and limits
 
-An agent can name its own model; empty means the default model from [AI models](/docs/ai-models/). A model the user picks in the chat or the SQL editor wins over the agent's model, and a subagent without its own model uses its parent's.
+An agent can name its own model; empty means the default model from [AI models](/docs/ai-models/). Change it in the editor, or straight from the **Model** column of the agents list. A model the user picks in the chat or the SQL editor wins over the agent's model, and a subagent without its own model uses its parent's.
 
 The per-model runtime parameters set in AI models — *recursion limit* and *run timeout* — win over an agent's tuning. When a run stops with "The AI agent hit its step limit", raise the agent's step budget or recursion limit, or that model's parameter. See [Settings](/docs/ai-agent-editor/#settings).
 

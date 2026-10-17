@@ -6,7 +6,7 @@ screenshot: agents-sessions
 ---
 # AI Governance
 
-**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy. CHouse's own AI — the chat and the AI features — has its own tab, [AI activity](/docs/ai-usage/) (`/ai/usage`): tokens, cost and the data sent to LLM providers.
+**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy. CHouse's own AI — the chat and the AI features — has its own tab, [AI activity](/docs/ai-usage/) (`/ai/usage`): tokens, cost and the data sent to LLM providers. [Guardrails](/docs/ai-guardrails/) (`/ai/guardrails`) control what passes through every AI run and MCP tool result. The model button in the header picks your AI model for the page's AI features, such as Draft with AI.
 
 ## Sessions
 

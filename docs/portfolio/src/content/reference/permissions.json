@@ -374,6 +374,16 @@
     "category": "AI Agents",
     "anchor": "ai-agents"
   },
+  "ai_guardrails:view": {
+    "name": "View AI Guardrails and Their Triggers",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
+  "ai_guardrails:manage": {
+    "name": "Manage AI Guardrails",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
   "sso:view": {
     "name": "View SSO Configuration",
     "category": "SSO Management",
