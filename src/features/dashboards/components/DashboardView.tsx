@@ -42,13 +42,15 @@ import {
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import type { RefreshSeconds } from "@/lib/viz/spec";
-import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { BTN_GHOST, BTN_ICON, BTN_OUTLINE, BTN_PRIMARY } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
+import { isAssignedTo, scopeLabel } from "../scope";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
+import { NotAssignedNotice } from "./NotAssignedNotice";
 import { PanelCard, WIDTH_CLASSES } from "./PanelCard";
 import { PanelAlertsButton, useDashboardAlerts } from "./PanelAlerts";
 import { PanelEditor } from "./PanelEditor";
@@ -107,6 +109,8 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [params, setParams] = useSearchParams();
   const canCreate = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_EDIT));
   const canAskAi = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  const activeConnectionName = useAuthStore((s) => s.activeConnectionName);
   const [askAi, setAskAi] = useState(false);
   const detail = useQuery({ queryKey: dashboardKeys.detail(id), queryFn: () => getDashboard(id) });
 
@@ -282,6 +286,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           <h1 className="truncate text-lg font-semibold text-paper">{settings.title}</h1>
           {settings.description && <p className="truncate text-xs text-paper-dim">{settings.description}</p>}
         </div>
+        <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim" data-testid="dashboard-scope">{scopeLabel(data.scope)}</span>
         {data.shares.length > 0 && <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
         {editing ? (
           <>
@@ -326,22 +331,28 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
         <div role="status" className="border-b border-ink-500 px-4 py-2 text-xs text-paper-dim">Variables changed: panels run again after you save.</div>
       )}
 
-      <ViewControls
-        dashboardId={id}
-        variables={data.dashboard.variables}
-        view={view}
-        refreshSeconds={refreshSeconds}
-        onViewChange={setView}
-        onRefreshChange={setRefresh}
-      />
+      {data.scope.kind === "only" && !editing && !isAssignedTo(data.scope, activeConnectionId) ? (
+        <NotAssignedNotice scope={data.scope} activeConnectionName={activeConnectionName} />
+      ) : (
+        <>
+          <ViewControls
+            dashboardId={id}
+            variables={data.dashboard.variables}
+            view={view}
+            refreshSeconds={refreshSeconds}
+            onViewChange={setView}
+            onRefreshChange={setRefresh}
+          />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {editing ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={panels.map((p) => p.key)} strategy={rectSortingStrategy}>{grid}</SortableContext>
-          </DndContext>
-        ) : grid}
-      </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {editing ? (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={panels.map((p) => p.key)} strategy={rectSortingStrategy}>{grid}</SortableContext>
+              </DndContext>
+            ) : grid}
+          </div>
+        </>
+      )}
 
       {editingPanel && (
         <PanelEditor
@@ -349,6 +360,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           onOpenChange={(open) => { if (!open) setEditingPanel(null); }}
           initial={editingPanel.panel}
           variables={settings.variables}
+          connectionScope={settings.connectionScope}
           view={view}
           onSave={savePanel}
         />

@@ -23,13 +23,14 @@ const STAT = { version: 1, type: "stat", x: null, y: ["lag"], series: null, unit
 
 function detail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
+    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
     panels: [{ id: "p1", dashboardId: "d1", position: 0, title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, width: 6, height: "s", fleet: false, createdAt: 0, updatedAt: 0 }],
     shares: [],
     access: { owner: true, view: true, edit: true, delete: true, share: true },
     pinned: false,
     lint: { p1: [] },
     alertCounts: {},
+    scope: { kind: "any" },
     ...overrides,
   };
 }
@@ -37,9 +38,9 @@ function detail(overrides: Record<string, unknown> = {}): Record<string, unknown
 const ok = (data: unknown) => HttpResponse.json({ success: true, data });
 const RUN = { kind: "single", connectionId: "c1", window: { from: 1, to: 2, intervalSeconds: 60 }, data: { columns: [{ name: "lag", type: "UInt64" }], rows: [{ lag: 1234 }], elapsedMs: 3, readRows: 1, readBytes: 10, ranAt: 0 }, cached: false };
 
-function setup(initial = "/dashboards/d1"): void {
+function setup(initial = "/dashboards/d1", overrides: Record<string, unknown> = {}): void {
   server.use(
-    http.get("/api/dashboards/d1", () => ok(detail())),
+    http.get("/api/dashboards/d1", () => ok(detail(overrides))),
     http.get("/api/rbac/connections/my", () => HttpResponse.json({ success: true, data: [{ id: "c1", name: "alpha", isActive: true }] })),
   );
   runPanel.mockReset();
@@ -116,9 +117,36 @@ describe("Dashboards page", () => {
     expect(await screen.findByText(/The link's time range "5h"/)).toBeTruthy();
   });
 
+  it("shows where a dashboard is assigned instead of running it on another connection", async () => {
+    setup("/dashboards/d1", { scope: { kind: "only", connections: [{ id: "c2", name: "beta" }], hidden: 1 } });
+    expect(await screen.findByTestId("not-assigned")).toBeTruthy();
+    expect(screen.getByText(/It is made for beta, 1 connection you cannot use/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Switch to beta" })).toBeTruthy();
+    expect(screen.getByTestId("dashboard-scope").textContent).toBe("beta, 1 other");
+    expect(runPanel).not.toHaveBeenCalled();
+  });
+
+  it("lists only the active connection's dashboards and counts the rest", async () => {
+    const summary = (id: string, title: string, scope: unknown) => ({ ...(detail().dashboard as object), id, title, panelCount: 1, ownerName: "u1", shares: [], access: detail().access, pinned: false, scope });
+    server.use(
+      http.get("/api/dashboards", () => ok([
+        summary("d1", "Kafka", { kind: "only", connections: [{ id: "c1", name: "alpha" }], hidden: 0 }),
+        summary("d2", "Fleet overview", { kind: "any" }),
+        summary("d3", "Billing", { kind: "only", connections: [{ id: "c2", name: "beta" }], hidden: 0 }),
+      ])),
+      http.get("/api/dashboards/templates", () => ok([])),
+    );
+    setup("/dashboards");
+    expect(await screen.findByText("Kafka")).toBeTruthy();
+    expect(screen.getByText("Fleet overview")).toBeTruthy();
+    expect(screen.queryByText("Billing")).toBeNull();
+    expect(screen.getByTestId("dashboards-elsewhere").textContent).toContain("1 more dashboard is assigned to other connections");
+    expect(screen.getAllByTestId("dashboard-card-scope").map((e) => e.textContent)).toEqual(["alpha", "All connections"]);
+  });
+
   it("lists dashboards and templates", async () => {
     server.use(
-      http.get("/api/dashboards", () => ok([{ ...(detail().dashboard as object), panelCount: 1, ownerName: "u1", shares: [], access: detail().access, pinned: true }])),
+      http.get("/api/dashboards", () => ok([{ ...(detail().dashboard as object), panelCount: 1, ownerName: "u1", shares: [], access: detail().access, pinned: true, scope: { kind: "any" } }])),
       http.get("/api/dashboards/templates", () => ok([{ id: "replication", title: "Replication", description: "Replica delay", openFrom: null, dashboard: { panels: [{}, {}] } }])),
     );
     setup("/dashboards");

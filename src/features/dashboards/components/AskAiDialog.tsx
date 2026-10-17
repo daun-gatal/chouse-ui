@@ -33,6 +33,7 @@ import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, TEXTAREA } from "@/components/cha
 import type { Variable } from "@/lib/viz/spec";
 
 import { dashboardKeys } from "../hooks";
+import { scopeForNew } from "../scope";
 
 const STATUS = {
   ok: { icon: CircleCheck, label: "Checked", className: "text-emerald-300" },
@@ -85,7 +86,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
       const panels: PanelInput[] = review.panels.flatMap((p) => (p.include && p.draft.panel ? [p.draft.panel] : []));
       if (!existing) {
         const created = await createDashboard({
-          title: review.draft.title, description: review.draft.description, timeRange: "6h", refreshSeconds: 60, variables: review.draft.variables, panels,
+          title: review.draft.title, description: review.draft.description, timeRange: "6h", refreshSeconds: 60, connectionScope: scopeForNew(connectionId), variables: review.draft.variables, panels,
         });
         return created.dashboard.id;
       }

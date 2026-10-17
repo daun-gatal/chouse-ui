@@ -83,7 +83,7 @@ function panel(overrides: Record<string, unknown> = {}): Record<string, unknown>
 }
 
 function dashboard(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, variables: [], panels: [panel()], ...overrides };
+  return { title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, connectionScope: { kind: "any" }, variables: [], panels: [panel()], ...overrides };
 }
 
 async function create(user: UserKey = "owner", overrides: Record<string, unknown> = {}): Promise<any> {
@@ -107,7 +107,8 @@ beforeAll(async () => {
   for (const [user, role] of membership) {
     await rawRun(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${`${user}-${role}`}, ${user}, ${role}, unixepoch())`);
   }
-  for (const [id, name] of [["conn-1", "alpha"], ["conn-2", "beta"]]) {
+  // gamma exists, but no rule lets anyone here use it.
+  for (const [id, name] of [["conn-1", "alpha"], ["conn-2", "beta"], ["conn-3", "gamma"]]) {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES (${id}, ${name}, 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
   }
@@ -302,6 +303,7 @@ describe("templates", () => {
     expect(copy.json.data.dashboard.title).toBe("Replication");
     expect(copy.json.data.dashboard.ownerId).toBe("u-owner");
     expect(copy.json.data.panels.length).toBeGreaterThan(0);
+    expect(copy.json.data.dashboard.connectionScope).toEqual({ kind: "only", connectionIds: ["conn-1"] });
     expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate")).status).toBe(404);
     expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(403);
   });
@@ -413,7 +415,7 @@ describe("running panels", () => {
   });
 
   it("previews an unsaved panel with lint, for editors only", async () => {
-    const body = { sql: "SELECT name AS t, value AS v FROM system.events", viz: { ...LINE, unit: "none" }, fleet: false, variables: [], values: {}, range: RANGE };
+    const body = { sql: "SELECT name AS t, value AS v FROM system.events", viz: { ...LINE, unit: "none" }, fleet: false, variables: [], values: {}, range: RANGE, connectionScope: { kind: "any" } };
     expect((await call("viewOnly", "POST", "/dashboards/preview", body)).status).toBe(403);
     const res = await call("manager", "POST", "/dashboards/preview", body);
     expect(res.status).toBe(200);
@@ -421,6 +423,53 @@ describe("running panels", () => {
     expect(res.json.data.lint.map((f: { code: string }) => f.code)).toEqual(["cumulative_counter", "missing_unit"]);
     const lint = await call("owner", "POST", "/dashboards/lint", { sql: body.sql, viz: body.viz });
     expect(lint.json.data.findings).toHaveLength(2);
+  });
+});
+
+describe("connection assignments", () => {
+  const ONLY_ALPHA = { kind: "only", connectionIds: ["conn-1"] };
+
+  it("shows a viewer the connections a dashboard is assigned to and refuses to run elsewhere", async () => {
+    const created = await create("owner", { connectionScope: ONLY_ALPHA });
+    expect(created.scope).toEqual({ kind: "only", connections: [{ id: "conn-1", name: "alpha" }], hidden: 0 });
+    const listed = (await call("owner", "GET", "/dashboards")).json.data.find((d: { id: string }) => d.id === created.dashboard.id);
+    expect(listed.scope).toEqual(created.scope);
+    const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
+    expect((await call("owner", "POST", path, { range: RANGE, values: {} }, "conn-1")).status).toBe(200);
+    const elsewhere = await call("owner", "POST", path, { range: RANGE, values: {} }, "conn-2");
+    expect(elsewhere.status).toBe(400);
+    expect(elsewhere.json.error.message).toBe("This dashboard is not assigned to the connection you are on. It is assigned to alpha.");
+    expect(sent.map((q) => q.connectionId)).toEqual(["conn-1"]);
+    const preview = { sql: ORDERS_SQL, viz: LINE, fleet: false, variables: [], values: {}, range: RANGE, connectionScope: { kind: "only", connectionIds: ["conn-2"] } };
+    expect((await call("owner", "POST", "/dashboards/preview", preview, "conn-1")).status).toBe(400);
+  });
+
+  it("runs a fleet panel on the assigned connections only", async () => {
+    const created = await create("owner", { connectionScope: ONLY_ALPHA, panels: [panel({ fleet: true })] });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {} });
+    expect(res.json.data.connections.map((e: { connectionName: string }) => e.connectionName)).toEqual(["alpha"]);
+    expect(res.json.data.omitted).toBe(0);
+  });
+
+  it("assigns only connections that exist and the saver may use, on save and on import", async () => {
+    const gamma = await call("owner", "POST", "/dashboards", dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-3"] } }));
+    expect(gamma.status).toBe(400);
+    expect(gamma.json.error.message).toBe("You cannot use the connection gamma, so you cannot assign the dashboard to it");
+    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v1", id: null, dashboard: dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-9"] } }) });
+    expect(imported.status).toBe(400);
+    expect(imported.json.error.message).toBe("There is no connection conn-9 to assign the dashboard to");
+  });
+
+  it("keeps a connection an editor cannot use, counted but not named", async () => {
+    const { createDashboard } = await import("../services/dashboards/store");
+    const id = await createDashboard(dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-1", "conn-3"] } }) as never, "u-owner");
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
+    const seen = await call("peer", "GET", `/dashboards/${id}`);
+    expect(seen.json.data.scope).toEqual({ kind: "only", connections: [{ id: "conn-1", name: "alpha" }], hidden: 1 });
+    const save = await call("peer", "PUT", `/dashboards/${id}`, { version: seen.json.data.dashboard.version, dashboard: { ...dashboard(), title: "Renamed", connectionScope: { kind: "only", connectionIds: ["conn-1", "conn-3"] } } });
+    expect(save.status).toBe(200);
+    const elsewhere = await call("peer", "POST", `/dashboards/${id}/panels/${save.json.data.panels[0].id}/run`, { range: RANGE, values: {} }, "conn-2");
+    expect(elsewhere.json.error.message).toBe("This dashboard is not assigned to the connection you are on. It is assigned to alpha, 1 connection you cannot use.");
   });
 });
 
@@ -468,6 +517,20 @@ describe("panel alerts", () => {
     expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ channelIds: ["nope"] }))).status).toBe(400);
     expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ config: { ...(alertBody().config as object), values: { db: "x" } } }))).status).toBe(400);
     expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ connectionId: "conn-x" }))).status).toBe(403);
+  });
+
+  it("keeps alerts on the dashboard's connections", async () => {
+    const created = await create("owner", { connectionScope: { kind: "only", connectionIds: ["conn-1", "conn-2"] } });
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ connectionId: "conn-2" }))).status).toBe(201);
+    const narrowed = await call("owner", "PUT", `/dashboards/${id}`, { version: created.dashboard.version, dashboard: { ...dashboard(), panels: [{ ...panel(), id: panelId }], connectionScope: { kind: "only", connectionIds: ["conn-1"] } } });
+    expect(narrowed.status).toBe(400);
+    expect(narrowed.json.error.message).toBe('The alert "Orders spike" watches a connection this would remove from the dashboard. Delete the alert or keep that connection.');
+    const onlyAlpha = await create("owner", { connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
+    const outside = await call("owner", "POST", `/dashboards/${onlyAlpha.dashboard.id}/panels/${onlyAlpha.panels[0].id}/alerts`, alertBody({ connectionId: "conn-2" }));
+    expect(outside.status).toBe(400);
+    expect(outside.json.error.message).toContain("not assigned to the connection");
     const fleet = await create("owner", { panels: [panel({ fleet: true })] });
     const onFleet = await call("owner", "POST", `/dashboards/${fleet.dashboard.id}/panels/${fleet.panels[0].id}/alerts`, alertBody());
     expect(onFleet.status).toBe(400);

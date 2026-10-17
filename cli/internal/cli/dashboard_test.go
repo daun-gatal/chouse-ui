@@ -35,7 +35,10 @@ func dashboardServer(t *testing.T) (*httptest.Server, func() []dashboardCall) {
 		case r.URL.Path == "/api/rbac/connections/my":
 			writeOK(w, []any{map[string]any{"id": prodID, "name": "prod"}})
 		case r.URL.Path == "/api/dashboards" && r.Method == "GET":
-			writeOK(w, []any{map[string]any{"id": "d1", "title": "Orders", "panelCount": 2}})
+			writeOK(w, []any{
+				map[string]any{"id": "d1", "title": "Orders", "panelCount": 2, "scope": map[string]any{"kind": "only", "connections": []any{map[string]any{"id": prodID, "name": "prod"}}, "hidden": 1}},
+				map[string]any{"id": "d2", "title": "Overview", "panelCount": 8, "scope": map[string]any{"kind": "any"}},
+			})
 		case r.URL.Path == "/api/dashboards/d1/export":
 			writeOK(w, map[string]any{"format": "chouse.dashboard/v1", "id": "d1", "dashboard": map[string]any{"title": "Orders"}})
 		case strings.HasSuffix(r.URL.Path, "/run"):
@@ -150,5 +153,18 @@ func TestDashboardExportWritesPrettyJSON(t *testing.T) {
 	raw, err := os.ReadFile(file)
 	if err != nil || !strings.Contains(string(raw), "\"id\": \"d1\"") {
 		t.Fatalf("export file: %v %s", err, raw)
+	}
+}
+
+func TestDashboardListShowsAssignedConnections(t *testing.T) {
+	srv, _ := dashboardServer(t)
+	res := run(t, srv, false, "", "dashboard", "list", "-o", "table")
+	if res.code != 0 {
+		t.Fatalf("list failed: %+v", res)
+	}
+	for _, want := range []string{"CONNECTIONS", "prod, +1 more", "all"} {
+		if !strings.Contains(res.out, want) {
+			t.Fatalf("list output missing %q:\n%s", want, res.out)
+		}
 	}
 }

@@ -8,6 +8,12 @@ import type { ResultColumn } from "@/lib/viz/resolve";
 import { invokeAI, type InvokeOptions } from "./ai";
 import { api } from "./client";
 
+/** The connections a dashboard is assigned to (ADR 0021 §3). */
+export type ConnectionScope = { kind: "any" } | { kind: "only"; connectionIds: string[] };
+
+/** A scope as the viewer sees it: the assigned connections they may use, by name, and how many others. */
+export type ScopeView = { kind: "any" } | { kind: "only"; connections: Array<{ id: string; name: string }>; hidden: number };
+
 export interface DashboardRecord {
   id: string;
   title: string;
@@ -15,6 +21,7 @@ export interface DashboardRecord {
   ownerId: string;
   timeRange: RelativeRange;
   refreshSeconds: RefreshSeconds;
+  connectionScope: ConnectionScope;
   variables: Variable[];
   version: number;
   createdAt: number;
@@ -67,6 +74,7 @@ export interface DashboardDetail {
   lint: Record<string, LintFinding[]>;
   /** Alerts per panel id (counts only, for every viewer). */
   alertCounts: Record<string, number>;
+  scope: ScopeView;
 }
 
 export interface DashboardSummary extends DashboardRecord {
@@ -75,6 +83,7 @@ export interface DashboardSummary extends DashboardRecord {
   shares: ShareRecord[];
   access: DashboardAccess;
   pinned: boolean;
+  scope: ScopeView;
 }
 
 export interface PanelInput {
@@ -93,6 +102,7 @@ export interface DashboardInput {
   description: string;
   timeRange: RelativeRange;
   refreshSeconds: RefreshSeconds;
+  connectionScope: ConnectionScope;
   variables: Variable[];
   panels: PanelInput[];
 }
@@ -137,7 +147,8 @@ export interface DashboardTemplate {
   title: string;
   description: string;
   openFrom: "performance" | "capacity" | null;
-  dashboard: DashboardInput;
+  /** A copy is assigned to the connection it is made on. */
+  dashboard: Omit<DashboardInput, "connectionScope">;
 }
 
 export interface ShareTarget {
@@ -202,6 +213,8 @@ export interface PreviewRequest extends RunRequest {
   viz: VizSpec;
   fleet: boolean;
   variables: Variable[];
+  /** The edit session's connections, saved or not. */
+  connectionScope: ConnectionScope;
 }
 
 export function previewPanel(request: PreviewRequest, signal?: AbortSignal): Promise<{ result: PanelRunResult; lint: LintFinding[] }> {
@@ -232,6 +245,7 @@ export function toInput(detail: Pick<DashboardDetail, "dashboard" | "panels">): 
     description: dashboard.description,
     timeRange: dashboard.timeRange,
     refreshSeconds: dashboard.refreshSeconds,
+    connectionScope: dashboard.connectionScope,
     variables: dashboard.variables,
     panels: panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet })),
   };

@@ -1,6 +1,7 @@
 /**
- * The dashboards the user pinned, for Home (ADR 0021 §12). Shows nothing to
- * users without dashboards:view or with no pins.
+ * The dashboards the user pinned that are assigned to the active connection,
+ * for Home (ADR 0021 §12). Shows nothing to users without dashboards:view or
+ * with no such pins.
  */
 
 import React from "react";
@@ -9,15 +10,17 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartColumn } from "lucide-react";
 
 import { listDashboards } from "@/api/dashboards";
-import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 
 import { dashboardKeys } from "../hooks";
+import { isAssignedTo } from "../scope";
 
 export function PinnedDashboards({ header }: { header: React.ReactNode }): React.ReactElement | null {
   const navigate = useNavigate();
   const canView = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_VIEW));
   const dashboards = useQuery({ queryKey: dashboardKeys.list(), queryFn: listDashboards, enabled: canView });
-  const pinned = (dashboards.data ?? []).filter((d) => d.pinned);
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  const pinned = (dashboards.data ?? []).filter((d) => d.pinned && isAssignedTo(d.scope, activeConnectionId));
   if (!canView || pinned.length === 0) return null;
   return (
     <section className="mt-12 flex flex-col gap-5" aria-label="Pinned dashboards">

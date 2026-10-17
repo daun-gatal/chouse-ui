@@ -1,21 +1,26 @@
 /**
  * Dashboard settings (ADR 0021 §1, §3): title, description, default range
- * and refresh, and the variables panels can use. Changes go into
+ * and refresh, the connections it is for, and the variables panels can use. Changes go into
  * the edit session; the dashboard is saved with Save.
  */
 
 import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { DashboardInput } from "@/api/dashboards";
+import { rbacConnectionsApi } from "@/api";
+import type { ConnectionScope, DashboardInput } from "@/api/dashboards";
 import { IDENTIFIER_RE, RELATIVE_RANGE_KEYS, REFRESH_SECONDS, VARIABLE_NAME_RE, type RefreshSeconds, type RelativeRange, type Variable } from "@/lib/viz/spec";
 import { BTN_ICON, BTN_OUTLINE, BTN_PRIMARY, FIELD, TEXTAREA, FIELD_LABEL } from "@/components/charts/controlStyles";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores";
 
 import { refreshLabel } from "./ViewControls";
 
@@ -50,9 +55,50 @@ function newVariable(existing: Variable[]): Variable {
   return { name: `var${n}`, label: `Variable ${n}`, kind: "string", options: { source: "static", values: [""] }, default: "" };
 }
 
+/**
+ * All connections, or the ones ticked. Assigned connections the editor cannot
+ * use are not listed but stay assigned: they are someone else's to remove.
+ */
+function ConnectionsField({ scope, onChange }: { scope: ConnectionScope; onChange: (scope: ConnectionScope) => void }): React.ReactElement {
+  const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  const mine = connections.data ?? [];
+  const ids = scope.kind === "only" ? scope.connectionIds : [];
+  const kept = ids.filter((id) => !mine.some((c) => c.id === id)).length;
+  const toggle = (id: string, on: boolean): void => onChange({ kind: "only", connectionIds: on ? [...ids, id] : ids.filter((x) => x !== id) });
+  return (
+    <div className="flex flex-col gap-2">
+      <span className={FIELD_LABEL}>Connections — the dashboard is listed and runs only on these</span>
+      <RadioGroup
+        className="flex gap-4"
+        value={scope.kind}
+        onValueChange={(kind) => onChange(kind === "any" ? { kind: "any" } : { kind: "only", connectionIds: activeConnectionId ? [activeConnectionId] : [] })}
+        aria-label="Connections"
+      >
+        <label className="flex items-center gap-2 text-xs text-paper"><RadioGroupItem value="any" /> All connections</label>
+        <label className="flex items-center gap-2 text-xs text-paper"><RadioGroupItem value="only" /> Only these</label>
+      </RadioGroup>
+      {scope.kind === "only" && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-xs border border-ink-500 p-2">
+          {connections.isError && <p role="alert" className="text-xs text-red-300">{connections.error.message}</p>}
+          {mine.map((c) => (
+            <label key={c.id} className="flex items-center gap-2 font-mono text-xs text-paper">
+              <Checkbox checked={ids.includes(c.id)} onCheckedChange={(on) => toggle(c.id, on === true)} aria-label={`Assign to ${c.name}`} /> {c.name}
+            </label>
+          ))}
+          {kept > 0 && <p className="w-full text-[11px] text-paper-faint">Also assigned to {kept} connection{kept === 1 ? "" : "s"} you cannot use; that stays as it is.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply }: Props): React.ReactElement {
   const [draft, setDraft] = useState<Settings>(settings);
-  const problems = draft.variables.flatMap((v) => variableProblems(v, draft.variables).map((p) => `${v.label || v.name}: ${p}`));
+  const problems = [
+    ...(draft.connectionScope.kind === "only" && draft.connectionScope.connectionIds.length === 0 ? ["Connections: pick at least one, or All connections"] : []),
+    ...draft.variables.flatMap((v) => variableProblems(v, draft.variables).map((p) => `${v.label || v.name}: ${p}`)),
+  ];
   const titleMissing = draft.title.trim() === "";
 
   const setVariable = (i: number, next: Variable): void => setDraft({ ...draft, variables: draft.variables.map((v, j) => (j === i ? next : v)) });
@@ -86,6 +132,8 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply 
               </Select>
             </label>
           </div>
+
+          <ConnectionsField scope={draft.connectionScope} onChange={(connectionScope) => setDraft({ ...draft, connectionScope })} />
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">

@@ -27,7 +27,7 @@ import { dashboardAccess, has, type Viewer } from "./access";
 import * as alertStore from "./alertStore";
 import type { AlertConfig, AlertState, AlertStatus, PanelAlert } from "./alertStore";
 import { runPanel } from "./runner";
-import type { REDUCERS } from "./spec";
+import { inScope, type REDUCERS } from "./spec";
 import * as store from "./store";
 
 const TICK_MS = 60_000;
@@ -123,6 +123,7 @@ export async function evaluate(alert: PanelAlert, now: number): Promise<Evaluate
   if (!panel) return { outcome: { kind: "error", reason: "The panel no longer exists" }, dashboardTitle, panelTitle: "" };
   const result = (outcome: Outcome): Evaluated => ({ outcome, dashboardTitle, panelTitle: panel.title });
   if (panel.fleet) return result({ kind: "error", reason: "The panel now runs across the fleet; alerts need a panel for one connection" });
+  if (!inScope(detail.dashboard.connectionScope, alert.connectionId)) return result({ kind: "error", reason: "The dashboard is no longer assigned to the connection this alert watches" });
   const owner = await ownerViewer(alert.ownerId);
   if (typeof owner === "string") return result({ kind: "error", reason: owner });
   if (!dashboardAccess(owner, detail.dashboard, detail.shares).view) return result({ kind: "error", reason: "The alert's owner can no longer view this dashboard" });

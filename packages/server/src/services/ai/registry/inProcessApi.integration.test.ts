@@ -116,15 +116,17 @@ describe("management tools through the real API", () => {
     const { createDashboard } = await import("../../dashboards/store");
     const viz = { version: 1 as const, type: "line" as const, x: "t", y: ["v"], series: null, unit: "count" as const, decimals: null, thresholds: [], colorScheme: "violet" as const, reduce: null };
     const id = await createDashboard({
-      title: "Orders", description: "Pipeline", connectionId: null, timeRange: "6h", refreshSeconds: 0, variables: [],
+      title: "Orders", description: "Pipeline", connectionScope: { kind: "only", connectionIds: ["conn-elsewhere"] }, timeRange: "6h", refreshSeconds: 0, variables: [],
       panels: [{ id: null, title: "Rows", sql: "SELECT now() AS t, 1 AS v", viz, width: 6, height: "m", fleet: false }],
     }, USER);
     const permissions = ["dashboards:view"];
     const bearerToken = await token(["custom"], permissions);
     const [list] = buildGrantedTools(["list_dashboards"], { ctx: { bearerToken, permissions } });
-    expect(await list.invoke({})).toEqual([expect.objectContaining({ id, title: "Orders", owner: "inprocess", panels: 1, sharedWith: [], pinned: false })]);
+    expect(await list.invoke({})).toEqual([expect.objectContaining({ id, title: "Orders", owner: "inprocess", panels: 1, connections: { names: [], others: 1 }, sharedWith: [], pinned: false })]);
     const [get] = buildGrantedTools(["get_dashboard"], { ctx: { bearerToken, permissions } });
     const detail = (await get.invoke({ id })) as Record<string, unknown>;
+    // A connection the user cannot use is counted, not named.
+    expect(detail.connections).toEqual({ names: [], others: 1 });
     expect(detail.panels).toEqual([expect.objectContaining({ title: "Rows", sql: "SELECT now() AS t, 1 AS v", chart: "line", unit: "count", fleet: false })]);
     expect(await get.invoke({ id: "missing" })).toEqual({ error: "Dashboard not found" });
   });

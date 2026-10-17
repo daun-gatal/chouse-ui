@@ -16,7 +16,8 @@ export interface DashboardTemplate {
   description: string;
   /** Which built-in view offers "Open as dashboard" for this template, if any. */
   openFrom: "performance" | "capacity" | null;
-  dashboard: DashboardInput;
+  /** A copy is assigned to the connection it is made on (routes). */
+  dashboard: Omit<DashboardInput, "connectionScope">;
 }
 
 const BUCKET = "toStartOfInterval(event_time, INTERVAL {{interval_s}} SECOND)";

@@ -17,7 +17,7 @@ import { z } from "zod";
 import { getDatabase, getDatabaseType, type PostgresDb, type SqliteDb } from "../../rbac/db";
 import { all, num, one, run, str, strOrNull, type Row } from "../observe/db";
 import { alertIdsForPanels, deleteAlertStatements } from "./alertStore";
-import { PANEL_HEIGHTS, variableSchema, vizSpecSchema, type DashboardInput, type PanelInput, type RelativeRange, type Variable, type VizSpec } from "./spec";
+import { connectionScopeSchema, PANEL_HEIGHTS, variableSchema, vizSpecSchema, type ConnectionScope, type DashboardInput, type PanelInput, type RelativeRange, type Variable, type VizSpec } from "./spec";
 
 export interface DashboardRecord {
   id: string;
@@ -26,6 +26,7 @@ export interface DashboardRecord {
   ownerId: string;
   timeRange: RelativeRange;
   refreshSeconds: number;
+  connectionScope: ConnectionScope;
   variables: Variable[];
   version: number;
   createdAt: number;
@@ -93,6 +94,7 @@ function dashboardRow(r: Row): DashboardRecord {
     ownerId: str(r.owner_id),
     timeRange: range.data,
     refreshSeconds: num(r.refresh_seconds),
+    connectionScope: parseStored(connectionScopeSchema, r.connection_scope, `connection scope of dashboard ${id}`),
     variables: parseStored(z.array(variableSchema), r.variables, `variables of dashboard ${id}`),
     version: num(r.version),
     createdAt: num(r.created_at),
@@ -243,8 +245,8 @@ export async function createDashboard(input: DashboardInput, ownerId: string): P
   // Ids in the input belong to wherever it came from (an import, a duplicate); a new dashboard gets new panels.
   const { statements } = panelStatements(id, input.panels, new Set(), now);
   await atomic(sql`
-    INSERT INTO dashboards (id, title, description, owner_id, time_range, refresh_seconds, variables, version, created_at, updated_at)
-    VALUES (${id}, ${input.title}, ${input.description}, ${ownerId}, ${input.timeRange}, ${input.refreshSeconds}, ${JSON.stringify(input.variables)}, 1, ${now}, ${now})
+    INSERT INTO dashboards (id, title, description, owner_id, time_range, refresh_seconds, connection_scope, variables, version, created_at, updated_at)
+    VALUES (${id}, ${input.title}, ${input.description}, ${ownerId}, ${input.timeRange}, ${input.refreshSeconds}, ${JSON.stringify(input.connectionScope)}, ${JSON.stringify(input.variables)}, 1, ${now}, ${now})
     RETURNING id`, statements);
   return id;
 }
@@ -274,7 +276,7 @@ export async function updateDashboard(id: string, version: number, input: Dashbo
   ];
   await atomic(sql`
     UPDATE dashboards SET title = ${input.title}, description = ${input.description},
-      time_range = ${input.timeRange}, refresh_seconds = ${input.refreshSeconds}, variables = ${JSON.stringify(input.variables)},
+      time_range = ${input.timeRange}, refresh_seconds = ${input.refreshSeconds}, connection_scope = ${JSON.stringify(input.connectionScope)}, variables = ${JSON.stringify(input.variables)},
       version = ${version + 1}, updated_at = ${now}
     WHERE id = ${id} AND version = ${version}
     RETURNING id`, [...removals, ...statements]);

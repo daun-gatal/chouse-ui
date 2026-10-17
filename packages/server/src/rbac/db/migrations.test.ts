@@ -401,6 +401,9 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     // ADR 0021: dashboards tables and the dashboards:* permissions per role.
     for (const t of DASHBOARD_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
     for (const i of DASHBOARD_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    // Dashboards have no connection of their own, only the ones they are assigned to.
+    expect(await h.columnExists("dashboards", "connection_scope")).toBe(true);
+    expect(await h.columnExists("dashboards", "connection_id")).toBe(false);
     for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.permissionExists(p)).toBe(true);
     for (const [role, granted] of Object.entries(DASHBOARD_GRANTS)) {
       for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.roleHasPermission(role, p)).toBe(granted.includes(p));

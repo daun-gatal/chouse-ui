@@ -11,6 +11,7 @@ function dashboard(overrides: Record<string, unknown> = {}): Record<string, unkn
     description: "",
     timeRange: "6h",
     refreshSeconds: 60,
+    connectionScope: { kind: "any" },
     variables: [],
     panels: [{ id: null, title: "Rows", sql: "SELECT 1 AS t, 2 AS v", viz: LINE, width: 6, height: "m", fleet: false }],
     ...overrides,
@@ -86,5 +87,16 @@ describe("dashboardInputSchema", () => {
     expect(dashboardInputSchema.safeParse(dashboard({ refreshSeconds: 10 })).success).toBe(false);
     expect(dashboardInputSchema.safeParse(dashboard({ timeRange: "90m" })).success).toBe(false);
     expect(dashboardInputSchema.safeParse(dashboard({ theme: "dark" })).success).toBe(false);
+  });
+
+  it("takes all connections or a non-empty list of distinct ones, nothing else", () => {
+    const ok = (connectionScope: unknown): boolean => dashboardInputSchema.safeParse(dashboard({ connectionScope })).success;
+    expect(ok({ kind: "any" })).toBe(true);
+    expect(ok({ kind: "only", connectionIds: ["c1", "c2"] })).toBe(true);
+    expect(ok({ kind: "only", connectionIds: [] })).toBe(false);
+    expect(ok({ kind: "only", connectionIds: ["c1", "c1"] })).toBe(false);
+    expect(ok({ kind: "any", connectionIds: ["c1"] })).toBe(false);
+    expect(ok({ kind: "some" })).toBe(false);
+    expect(ok(undefined)).toBe(false);
   });
 });

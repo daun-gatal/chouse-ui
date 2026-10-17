@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { previewPanel, type PanelInput, type PanelRunResult } from "@/api/dashboards";
+import { previewPanel, type ConnectionScope, type PanelInput, type PanelRunResult } from "@/api/dashboards";
 import { suggestSpec } from "@/lib/viz/autodetect";
 import { mergeFleet, type ResultColumn } from "@/lib/viz/resolve";
 import { PANEL_HEIGHTS, PANEL_WIDTHS, vizSpecProblems, type Variable } from "@/lib/viz/spec";
@@ -53,14 +53,16 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initial: PanelInput;
   variables: Variable[];
+  /** The edit session's connections: a fleet preview runs on these. */
+  connectionScope: ConnectionScope;
   view: ViewState;
   onSave: (panel: PanelInput) => void;
 }
 
-export function PanelEditor({ open, onOpenChange, initial, variables, view, onSave }: Props): React.ReactElement {
+export function PanelEditor({ open, onOpenChange, initial, variables, connectionScope, view, onSave }: Props): React.ReactElement {
   const [draft, setDraft] = useState<PanelInput>(initial);
   const preview = useMutation({
-    mutationFn: () => previewPanel({ sql: draft.sql, viz: draft.viz, fleet: draft.fleet, variables, values: view.values, range: view.range }),
+    mutationFn: () => previewPanel({ sql: draft.sql, viz: draft.viz, fleet: draft.fleet, variables, values: view.values, range: view.range, connectionScope }),
   });
   const columns = useMemo(() => (preview.data ? resultColumns(preview.data.result) : []), [preview.data]);
   const fleet = fleetProblem(draft);

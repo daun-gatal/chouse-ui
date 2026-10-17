@@ -35,9 +35,19 @@ Running a panel also needs `query:execute`, and the panel's tables must be allow
 - **Time range**: from the last 15 minutes to the last 30 days.
 - **Auto-refresh**: off, 30 s, 1 m, 5 m or 15 m. It pauses while the browser tab is in the background.
 
-Panels run on your active connection, the one picked in the dock, like every other page: switch it there and the dashboard runs again on the new one. A dashboard built on one cluster may read tables another one does not have; those panels say so, naming the connection, and the rest still draw. [Fleet panels](#fleet-panels) run on every connection at once.
+Panels run on your active connection, the one picked in the dock, like every other page. See [Connections](#connections) for which dashboards you see on which connection.
 
 The time range and variable values are kept in the page's URL, so a link opens the view you are looking at, on the reader's own active connection. A link with a value the dashboard does not know, such as an unknown time range, says so and uses the dashboard's own setting instead.
+
+## Connections
+
+Each dashboard is assigned to **All connections** or to a list of connections, in **Settings › Connections**. A dashboard you make (new, from a template, with AI, or by pinning a query) is assigned to the connection you are on; add more in Settings.
+
+- **Dashboards** and Home list only the dashboards assigned to your active connection. Switch connection in the dock to see the others; the list says how many there are.
+- A link to a dashboard that is not assigned to your active connection runs nothing. It says which connections the dashboard is for, with a button to switch to each one you may use.
+- You can assign only connections you may use. If the dashboard is also assigned to connections you cannot use, you see how many, not their names, and your save keeps them.
+- An imported dashboard keeps its connections. Connections that do not exist on this CHouse are refused, never dropped: edit the file's `connectionScope` first.
+- A dashboard on an assigned connection may still read a table that connection does not have. That panel says so, naming the connection, and the rest still draw.
 
 ## Edit a dashboard
 
@@ -45,7 +55,7 @@ The time range and variable values are kept in the page's URL, so a link opens t
 
 - **Add panel**, or the pencil on a panel: write the SQL, run a **preview**, and set the chart: type, x and y columns, split by series, unit, decimals, thresholds and colors. **Suggest a chart** picks one from the result's column types.
 - Drag the grip to reorder panels, and set each panel's width (3, 4, 6, 8 or 12 of 12 columns) and height.
-- **Settings**: title, description, default time range and refresh, and the variables.
+- **Settings**: title, description, default time range and refresh, [connections](#connections), and the variables.
 - **Run on every connection** makes a fleet panel. See [Fleet panels](#fleet-panels).
 
 **Save** stores the whole dashboard at the version you opened. If someone saved it in the meantime, your save is refused: reload to see their version. Removing a panel that has [alerts](#panel-alerts) asks first, and its alerts are deleted with it.
@@ -98,13 +108,13 @@ Results are shared between viewers for 30 seconds, so a dashboard ten people wat
 
 ## Fleet panels
 
-A panel with **Run on every connection** runs on every connection you may use, up to 20 sorted by name, and draws one line or bar per connection. It works for line, area, bar, stat and table panels with one y column. A connection that fails is listed under the chart with its error, and the others still render.
+A panel with **Run on every connection** runs on every connection the dashboard is assigned to that you may use, up to 20 sorted by name, and draws one line or bar per connection. It works for line, area, bar, stat and table panels with one y column. A connection that fails is listed under the chart with its error, and the others still render.
 
 ## Panel alerts
 
 The bell on a panel lists its alerts (`alerting:view`). With `alerting:edit` and edit access to the dashboard, you can create one: alert when the **last**, **max**, **min**, **avg** or **sum** of one of the panel's y columns over a window is above or below a value, checked every few minutes, firing after a number of breaches in a row. It notifies the [notification channels](/docs/alerting/) you pick when it fires, resolves, can't be evaluated, and evaluates again.
 
-An alert runs on the connection that was active when it was created (alerts are checked with no browser open, so they keep their own), with the variable values it was saved with, and with the access of the person who saved it. That access is checked again on every evaluation. If they are deactivated or lose access, the alert goes to **Error** with the reason and notifies once. It never passes silently. Enabled alerts draw their threshold on the panel's chart, red while firing. **Admin › Alerting** lists every panel alert with its state.
+An alert runs on the connection that was active when it was created, which must be one the dashboard is assigned to (alerts are checked with no browser open, so they keep their own; a save that would unassign it is refused), with the variable values it was saved with, and with the access of the person who saved it. That access is checked again on every evaluation. If they are deactivated or lose access, the alert goes to **Error** with the reason and notifies once. It never passes silently. Enabled alerts draw their threshold on the panel's chart, red while firing. **Admin › Alerting** lists every panel alert with its state.
 
 ## Sharing, pins and export
 

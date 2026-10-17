@@ -29,18 +29,22 @@ import { getChannel } from "../services/alerting/store";
 import { AGENT_RECORDED_HEADER, agentContextFor } from "../services/agents/governance";
 import * as alertStore from "../services/dashboards/alertStore";
 import { evaluate } from "../services/dashboards/alerts";
-import { dashboardAccess, has, type DashboardAccess, type Viewer } from "../services/dashboards/access";
+import { getConnectionById, type ConnectionResponse } from "../rbac/services/connections";
+import { dashboardAccess, has, viewerConnections, type DashboardAccess, type Viewer } from "../services/dashboards/access";
 import { lintPanel, type LintFinding } from "../services/dashboards/lint";
 import { resolveValues, runFleet, runOptions, runPanel, viewerConnection, type AgentFor, type PanelQuery } from "../services/dashboards/runner";
 import {
   DASHBOARD_EXPORT_FORMAT,
   dashboardExportSchema,
   dashboardInputSchema,
+  connectionScopeSchema,
   dashboardUpdateSchema,
+  inScope,
   MAX_SQL_LENGTH,
   timeRangeSchema,
   variableSchema,
   vizSpecSchema,
+  type ConnectionScope,
   type DashboardExport,
   type DashboardInput,
 } from "../services/dashboards/spec";
@@ -108,9 +112,61 @@ function toInput(detail: store.DashboardDetail): DashboardInput {
     description: dashboard.description,
     timeRange: dashboard.timeRange,
     refreshSeconds: dashboard.refreshSeconds as DashboardInput["refreshSeconds"],
+    connectionScope: dashboard.connectionScope,
     variables: dashboard.variables,
     panels: panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet })),
   };
+}
+
+/**
+ * A dashboard's connections as one viewer sees them: the ones they may use, by
+ * name, and how many others there are. Names of connections the viewer cannot
+ * use are not theirs to see.
+ */
+type ScopeView = { kind: "any" } | { kind: "only"; connections: Array<{ id: string; name: string }>; hidden: number };
+
+function scopeView(scope: ConnectionScope, usable: ConnectionResponse[]): ScopeView {
+  if (scope.kind === "any") return { kind: "any" };
+  const connections = usable.filter((c) => scope.connectionIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }));
+  return { kind: "only", connections, hidden: scope.connectionIds.length - connections.length };
+}
+
+/**
+ * Connections assigned on a save must exist and be ones the saver may use.
+ * Ones already assigned are kept as they are, so an editor who cannot use one
+ * of them does not have to drop it to change something else.
+ */
+async function assertScope(c: Context, scope: ConnectionScope, previous: ConnectionScope | null): Promise<void> {
+  if (scope.kind === "any") return;
+  const kept = new Set(previous?.kind === "only" ? previous.connectionIds : []);
+  const usable = new Set((await viewerConnections(viewerOf(c))).map((conn) => conn.id));
+  for (const id of scope.connectionIds) {
+    if (kept.has(id) || usable.has(id)) continue;
+    const connection = await getConnectionById(id);
+    throw AppError.badRequest(connection
+      ? `You cannot use the connection ${connection.name}, so you cannot assign the dashboard to it`
+      : `There is no connection ${id} to assign the dashboard to`);
+  }
+}
+
+/** A save may not leave an alert watching a connection the dashboard is no longer assigned to. */
+async function assertAlertsInScope(dashboardId: string, input: DashboardInput): Promise<void> {
+  const kept = new Set(input.panels.map((p) => p.id).filter((panelId): panelId is string => panelId !== null));
+  const outside = (await alertStore.listAlerts({ dashboardId }))
+    .filter((a) => kept.has(a.panelId) && !inScope(input.connectionScope, a.connectionId));
+  if (outside.length > 0) {
+    throw AppError.badRequest(`The alert "${outside[0].name}" watches a connection this would remove from the dashboard. Delete the alert or keep that connection.`);
+  }
+}
+
+/** Refuse to run on a connection the dashboard is not assigned to, saying which it is assigned to. */
+async function assertInScope(c: Context, scope: ConnectionScope, connectionId: string): Promise<void> {
+  if (inScope(scope, connectionId)) return;
+  const view = scopeView(scope, await viewerConnections(viewerOf(c)));
+  const names = view.kind === "only" ? view.connections.map((conn) => conn.name) : [];
+  const others = view.kind === "only" && view.hidden > 0 ? `${view.hidden} connection${view.hidden === 1 ? "" : "s"} you cannot use` : null;
+  const list = [...names, ...(others ? [others] : [])].join(", ");
+  throw AppError.badRequest(`This dashboard is not assigned to the connection you are on. It is assigned to ${list}.`);
 }
 
 function lintOf(detail: store.DashboardDetail): Record<string, LintFinding[]> {
@@ -123,7 +179,8 @@ async function detailResponse(c: Context, id: string): Promise<unknown> {
   // Counts only, for every viewer: an editor removing a panel is told its alerts go with it.
   const alertCounts: Record<string, number> = {};
   for (const alert of await alertStore.listAlerts({ dashboardId: id })) alertCounts[alert.panelId] = (alertCounts[alert.panelId] ?? 0) + 1;
-  return { ...detail, access, pinned: pinned.has(id), lint: lintOf(detail), alertCounts };
+  const scope = scopeView(detail.dashboard.connectionScope, await viewerConnections(viewerOf(c)));
+  return { ...detail, access, pinned: pinned.has(id), lint: lintOf(detail), alertCounts, scope };
 }
 
 function saveConflict(error: unknown): never {
@@ -140,8 +197,9 @@ function saveConflict(error: unknown): never {
 dashboards.get("/", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
   const viewer = viewerOf(c);
   const pinned = await store.pinnedIds(viewer.id);
+  const usable = await viewerConnections(viewer);
   const rows = (await store.listDashboards())
-    .map((d) => ({ ...d, access: dashboardAccess(viewer, d, d.shares), pinned: pinned.has(d.id) }))
+    .map((d) => ({ ...d, access: dashboardAccess(viewer, d, d.shares), pinned: pinned.has(d.id), scope: scopeView(d.connectionScope, usable) }))
     .filter((d) => d.access.view);
   return ok(c, rows);
 });
@@ -181,6 +239,7 @@ dashboards.get("/:id/export", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), as
 dashboards.post("/", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", dashboardInputSchema), async (c) => {
   const input = c.req.valid("json");
   assertValid(input);
+  await assertScope(c, input.connectionScope, null);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length } });
   return ok(c, await detailResponse(c, id), 201);
@@ -189,6 +248,8 @@ dashboards.post("/", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator(
 dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", dashboardExportSchema), async (c) => {
   const { dashboard: input } = c.req.valid("json");
   assertValid(input);
+  // An export from another install names connections this one may not have: refused, never dropped.
+  await assertScope(c, input.connectionScope, null);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_IMPORT, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length } });
   return ok(c, await detailResponse(c, id), 201);
@@ -197,8 +258,10 @@ dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zVali
 dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async (c) => {
   const template = findTemplate(requireParam(c, "templateId"));
   if (!template) throw AppError.notFound("Template not found");
-  const input: DashboardInput = template.dashboard;
+  // A copy is for the connection it is made on; Settings can assign more.
+  const input: DashboardInput = { ...template.dashboard, connectionScope: { kind: "only", connectionIds: [currentConnectionId(c)] } };
   assertValid(input);
+  await assertScope(c, input.connectionScope, null);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, template: template.id } });
   return ok(c, await detailResponse(c, id), 201);
@@ -206,10 +269,12 @@ dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSI
 
 dashboards.put("/:id", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", dashboardUpdateSchema), async (c) => {
   const id = requireParam(c, "id");
-  const { access } = await visible(c, id);
+  const { detail, access } = await visible(c, id);
   if (!access.edit) throw AppError.forbidden("You can view this dashboard but not edit it");
   const { version, dashboard: input } = c.req.valid("json");
   assertValid(input);
+  await assertScope(c, input.connectionScope, detail.dashboard.connectionScope);
+  await assertAlertsInScope(id, input);
   const result = await store.updateDashboard(id, version, input).catch(saveConflict);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
   return ok(c, await detailResponse(c, id));
@@ -218,6 +283,7 @@ dashboards.put("/:id", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidato
 dashboards.post("/:id/duplicate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async (c) => {
   const { detail } = await visible(c, requireParam(c, "id"));
   const input = { ...toInput(detail), title: `Copy of ${detail.dashboard.title}`.slice(0, 200) };
+  await assertScope(c, input.connectionScope, detail.dashboard.connectionScope);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, duplicateOf: detail.dashboard.id } });
   return ok(c, await detailResponse(c, id), 201);
@@ -283,11 +349,16 @@ function requireQueryExecute(c: Context): void {
   if (!has(viewerOf(c), PERMISSIONS.QUERY_EXECUTE)) throw AppError.forbidden("Running panels needs query:execute");
 }
 
-/** A fleet panel runs on every connection the viewer may use; any other on the current one. */
-async function runQuery(c: Context, query: PanelQuery, fleet: boolean): Promise<unknown> {
+/**
+ * A fleet panel runs on every connection the dashboard is assigned to that the
+ * viewer may use; any other panel on the current one, if it is assigned.
+ */
+async function runQuery(c: Context, query: PanelQuery, fleet: boolean, scope: ConnectionScope): Promise<unknown> {
   markAgentRecorded(c);
-  if (fleet) return { kind: "fleet", ...(await runFleet(viewerOf(c), query, agentFor(c))) };
-  return { kind: "single", ...(await runPanel(viewerOf(c), currentConnectionId(c), query, agentFor(c))) };
+  if (fleet) return { kind: "fleet", ...(await runFleet(viewerOf(c), query, agentFor(c), scope)) };
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, scope, connectionId);
+  return { kind: "single", ...(await runPanel(viewerOf(c), connectionId, query, agentFor(c))) };
 }
 
 dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", runSchema), async (c) => {
@@ -298,7 +369,7 @@ dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBO
   if (!panel) throw AppError.notFound("Panel not found");
   const { range, values } = c.req.valid("json");
   const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
-  return ok(c, await runQuery(c, query, panel.fleet));
+  return ok(c, await runQuery(c, query, panel.fleet, detail.dashboard.connectionScope));
 });
 
 dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
@@ -308,6 +379,7 @@ dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DA
   if (!variable) throw AppError.notFound("Variable not found");
   if (variable.options.source === "static") return ok(c, { values: variable.options.values });
   const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
   markAgentRecorded(c);
   return ok(c, { values: await runOptions(viewerOf(c), connectionId, variable.options.sql, agentFor(c)) });
 });
@@ -330,6 +402,8 @@ const previewSchema = z.object({
   variables: z.array(variableSchema).max(10),
   values: valuesSchema,
   range: timeRangeSchema,
+  /** The edit session's connections, saved or not. */
+  connectionScope: connectionScopeSchema,
 }).strict();
 
 dashboards.post("/preview", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", previewSchema), async (c) => {
@@ -338,7 +412,7 @@ dashboards.post("/preview", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zVal
   const problems = panelProblems(body, body.variables);
   if (problems.length > 0) throw AppError.badRequest(problems[0], { problems });
   const query: PanelQuery = { sql: body.sql, variables: body.variables, values: body.values, range: body.range, dashboardId: null, panelId: "preview" };
-  const result = await runQuery(c, query, body.fleet);
+  const result = await runQuery(c, query, body.fleet, body.connectionScope);
   return ok(c, { result, lint: lintPanel(body.sql, body.viz) });
 });
 
@@ -357,6 +431,7 @@ async function assertAlertValid(c: Context, detail: store.DashboardDetail, panel
   const panel = detail.panels.find((p) => p.id === panelId);
   if (!panel) throw AppError.notFound("Panel not found");
   if (panel.fleet) throw AppError.badRequest("Alerts need a panel for one connection; this one runs across the fleet");
+  await assertInScope(c, detail.dashboard.connectionScope, input.connectionId);
   if (!panel.viz.y.includes(input.config.column)) {
     throw AppError.badRequest(panel.viz.y.length === 0
       ? "Alerts need a chart panel with a y column"

@@ -18,6 +18,7 @@ const DASHBOARD_TABLES: string[] = [
     owner_id         TEXT NOT NULL,
     time_range       TEXT NOT NULL,
     refresh_seconds  {BIGINT} NOT NULL DEFAULT 0,
+    connection_scope TEXT NOT NULL DEFAULT '{"kind":"any"}',
     variables        TEXT NOT NULL DEFAULT '[]',
     version          {BIGINT} NOT NULL DEFAULT 1,
     created_at       {BIGINT} NOT NULL,

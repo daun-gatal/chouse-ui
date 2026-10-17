@@ -61,6 +61,7 @@ describe("AskAiDialog", () => {
     await waitFor(() => expect(api.createDashboard).toHaveBeenCalledTimes(1));
     const input = api.createDashboard.mock.calls[0][0];
     expect(input.title).toBe("Orders pipeline");
+    expect(input.connectionScope).toEqual({ kind: "only", connectionIds: ["c1"] });
     expect(input.panels.map((p: { title: string; sql: string }) => [p.title, p.sql])).toEqual([["By database", "SELECT d AS t, b AS v FROM x\nLIMIT 12"]]);
   });
 

@@ -26,7 +26,7 @@ import { validateReadOnlySelect } from "../scheduledQueries/validation";
 import { isAdmin, viewerConnections, type Viewer } from "./access";
 import { cacheKey, KeyedSemaphore, ResultCache, type Cached } from "./cache";
 import { compileSql, resolveWindow, type Compiled, type Window } from "./macros";
-import type { TimeRange, Variable } from "./spec";
+import { inScope, type ConnectionScope, type TimeRange, type Variable } from "./spec";
 
 export const DASHBOARDS_SOURCE = "dashboards";
 export const MAX_RESULT_ROWS = 10_000;
@@ -239,8 +239,9 @@ export async function runPanel(viewer: Viewer, connectionId: string, query: Pane
 }
 
 /** Run one panel on every connection the viewer may use (up to MAX_FLEET_CONNECTIONS). */
-export async function runFleet(viewer: Viewer, query: PanelQuery, agentFor: AgentFor, nowMs: number = Date.now()): Promise<FleetRun> {
-  const all = await viewerConnections(viewer);
+export async function runFleet(viewer: Viewer, query: PanelQuery, agentFor: AgentFor, scope: ConnectionScope, nowMs: number = Date.now()): Promise<FleetRun> {
+  // The fleet is the dashboard's connections, not every cluster the viewer can reach.
+  const all = (await viewerConnections(viewer)).filter((c) => inScope(scope, c.id));
   const connections = [...all].sort((a, b) => a.name.localeCompare(b.name)).slice(0, MAX_FLEET_CONNECTIONS);
   const window = resolveWindow(query.range, nowMs);
   const entries = await Promise.all(connections.map(async (connection): Promise<FleetEntry> => {

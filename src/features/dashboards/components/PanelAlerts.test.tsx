@@ -19,8 +19,8 @@ vi.mock("@/stores", async (importOriginal) => {
 const VIZ = { version: 1 as const, type: "line" as const, x: "t", y: ["lag"], series: null, unit: "count" as const, decimals: 0, thresholds: [], colorScheme: "violet" as const, reduce: null };
 const PANEL: PanelInput = { id: "p1", title: "Consumer lag", sql: "SELECT 1", viz: VIZ, width: 6, height: "m", fleet: false };
 const DETAIL = {
-  dashboard: { id: "d1", title: "Kafka", description: "", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 1, createdAt: 0, updatedAt: 0 },
-  panels: [], shares: [], pinned: false, lint: {}, alertCounts: { p1: 1 },
+  dashboard: { id: "d1", title: "Kafka", description: "", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], version: 1, createdAt: 0, updatedAt: 0 },
+  panels: [], shares: [], pinned: false, lint: {}, alertCounts: { p1: 1 }, scope: { kind: "any" },
   access: { owner: true, view: true, edit: true, delete: true, share: true },
 } as unknown as DashboardDetail;
 const ALERT = {

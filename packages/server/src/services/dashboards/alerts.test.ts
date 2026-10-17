@@ -115,7 +115,7 @@ describe("evaluator end to end", () => {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES ('conn-a', 'alpha', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
     dashboardId = await store.createDashboard({
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, variables: [],
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [],
       panels: [{ id: null, title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null }, width: 6, height: "m", fleet: false }],
     }, OWNER);
     panelId = (await store.getDashboard(dashboardId))!.panels[0].id;
@@ -196,10 +196,22 @@ describe("evaluator end to end", () => {
     expect(status.lastError).toContain("not numbers");
   });
 
+  it("goes to error when the dashboard is no longer assigned to the alert's connection", async () => {
+    const detail = (await store.getDashboard(dashboardId))!;
+    const panels = detail.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet }));
+    await store.updateDashboard(dashboardId, detail.dashboard.version, {
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-b"] }, variables: [], panels,
+    });
+    rows = [{ v: 1 }];
+    const status = await tick();
+    expect(status.state).toBe("error");
+    expect(status.lastError).toBe("The dashboard is no longer assigned to the connection this alert watches");
+  });
+
   it("is removed with its panel when a save drops the panel", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
     const result = await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [],
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], panels: [],
     });
     expect(result.removedAlertIds).toEqual([alertId]);
     expect(await alertStore.getAlert(alertId)).toBeNull();

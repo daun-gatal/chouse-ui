@@ -24,11 +24,12 @@ import {
   type DashboardSummary,
   type DashboardTemplate,
 } from "@/api/dashboards";
-import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 import { cn } from "@/lib/utils";
 
 import { dashboardKeys } from "../hooks";
+import { isAssignedTo, scopeForNew, scopeLabel } from "../scope";
 import { AskAiDialog } from "./AskAiDialog";
 
 function DashboardCard({ dashboard }: { dashboard: DashboardSummary }): React.ReactElement {
@@ -48,6 +49,7 @@ function DashboardCard({ dashboard }: { dashboard: DashboardSummary }): React.Re
       <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-paper-faint">
         {dashboard.panelCount} panel{dashboard.panelCount === 1 ? "" : "s"} · {dashboard.access.owner ? "yours" : `by ${dashboard.ownerName ?? "a removed user"}`}
       </span>
+      <span className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-paper-faint" data-testid="dashboard-card-scope">{scopeLabel(dashboard.scope)}</span>
     </button>
   );
 }
@@ -71,10 +73,12 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(template?.title ?? "New dashboard");
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  const activeConnectionName = useAuthStore((s) => s.activeConnectionName);
   const create = useMutation({
     mutationFn: () => template
       ? instantiateTemplate(template.id)
-      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] }),
+      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scopeForNew(activeConnectionId), variables: [], panels: [] }),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       onOpenChange(false);
@@ -95,6 +99,9 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
               <Input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
             </label>
           )}
+          <p className="text-xs text-paper-dim">
+            For {activeConnectionName ? <span className="font-mono">{activeConnectionName}</span> : "the connection you are on"}. Settings can assign it to more connections.
+          </p>
           {create.isError && <p role="alert" className="text-xs text-red-300">{create.error.message}</p>}
         </div>
         <DialogFooter>
@@ -144,7 +151,10 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
     }
   };
 
-  const all = dashboards.data ?? [];
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  // The list is the active connection's dashboards; the others are a dock switch away.
+  const all = (dashboards.data ?? []).filter((d) => isAssignedTo(d.scope, activeConnectionId));
+  const elsewhere = (dashboards.data ?? []).length - all.length;
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <header className="flex flex-wrap items-center gap-2 border-b border-ink-500 px-6 py-4">
@@ -183,6 +193,11 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
               {all.some((d) => d.pinned) && <Section title="Pinned" dashboards={all.filter((d) => d.pinned)} empty="" />}
               <Section title="Yours" dashboards={all.filter((d) => d.access.owner)} empty={canEdit ? "You have no dashboards yet. Start from a template below." : "You have no dashboards."} />
               <Section title="Shared with you" dashboards={all.filter((d) => !d.access.owner)} empty="Nothing is shared with you yet." />
+              {elsewhere > 0 && (
+                <p className="text-xs text-paper-faint" data-testid="dashboards-elsewhere">
+                  {elsewhere} more dashboard{elsewhere === 1 ? " is" : "s are"} assigned to other connections. Switch connection in the dock to see {elsewhere === 1 ? "it" : "them"}.
+                </p>
+              )}
             </>
           )}
         </div>

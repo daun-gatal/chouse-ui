@@ -19,7 +19,7 @@ describe("dashboards API", () => {
         return HttpResponse.json({ success: true, data: {} });
       }),
     );
-    const input: dashboards.DashboardInput = { title: "T", description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] };
+    const input: dashboards.DashboardInput = { title: "T", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], panels: [] };
     await dashboards.listDashboards();
     await dashboards.getDashboard("d/1");
     await dashboards.createDashboard(input);
@@ -32,7 +32,7 @@ describe("dashboards API", () => {
     await dashboards.setPinned("d1", false);
     await dashboards.exportDashboard("d1");
     await dashboards.runPanel("d1", "p1", { range: RANGE, values: {} });
-    await dashboards.previewPanel({ sql: "SELECT 1", viz: VIZ, fleet: false, variables: [], values: {}, range: RANGE });
+    await dashboards.previewPanel({ sql: "SELECT 1", viz: VIZ, fleet: false, variables: [], values: {}, range: RANGE, connectionScope: { kind: "any" } });
     await dashboards.lintPanel("SELECT 1", VIZ);
     await dashboards.variableOptions("d1", "db");
     await dashboards.listTemplates();
@@ -70,9 +70,9 @@ describe("dashboards API", () => {
 
   it("maps a detail back to the input a save takes", () => {
     const panel = { id: "p1", dashboardId: "d1", position: 0, title: "P", sql: "SELECT 1", viz: VIZ, width: 6 as const, height: "m" as const, fleet: false, createdAt: 0, updatedAt: 0 };
-    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", timeRange: "1h" as const, refreshSeconds: 30 as const, variables: [], version: 2, createdAt: 0, updatedAt: 0 };
+    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", timeRange: "1h" as const, refreshSeconds: 30 as const, connectionScope: { kind: "only" as const, connectionIds: ["c1"] }, variables: [], version: 2, createdAt: 0, updatedAt: 0 };
     expect(dashboards.toInput({ dashboard, panels: [panel] })).toEqual({
-      title: "T", description: "x", timeRange: "1h", refreshSeconds: 30, variables: [],
+      title: "T", description: "x", timeRange: "1h", refreshSeconds: 30, connectionScope: { kind: "only", connectionIds: ["c1"] }, variables: [],
       panels: [{ id: "p1", title: "P", sql: "SELECT 1", viz: VIZ, width: 6, height: "m", fleet: false }],
     });
   });

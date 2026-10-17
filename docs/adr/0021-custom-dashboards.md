@@ -50,8 +50,9 @@ tool cannot reuse:
 ### 1. Model
 
 A **dashboard** has a title, a description, an owner, a default time range and
-refresh, variables, panels, shares and pins. It has no connection of its own:
-like every other page, it runs on the caller's active connection (§3). A **panel**
+refresh, the **connections it is assigned to**, variables, panels, shares and
+pins. It has no connection picker of its own: like every other page, it runs on
+the caller's active connection, and only if it is assigned to it (§3). A **panel**
 has a title, one read-only SELECT, a **viz spec**, a position, a width (3, 4, 6,
 8 or 12 of a 12-column grid), a height (`s`, `m`, `l`) and a `fleet` flag.
 
@@ -111,7 +112,22 @@ compiled to **native ClickHouse query parameters** and never concatenated:
   none stated is refused rather than sent to the user's default connection. A
   second picker on the dashboard would let it disagree with the dock about which
   cluster the page shows.
-- A table a panel reads may not exist on the connection the viewer is on. The
+- A dashboard is assigned to **all connections** or to a list of them
+  (`connectionScope`: `{kind: "any"}` or `{kind: "only", connectionIds}`, at
+  least one, distinct). A dashboard built for one cluster's tables would
+  otherwise fail panel by panel on every other cluster.
+  - The Dashboards list and Home show only the dashboards assigned to the active
+    connection, and say how many others there are.
+  - A link to a dashboard not assigned to the active connection shows which
+    connections it is for, with a switch to each the viewer may use, and runs
+    nothing. The server refuses such runs, variable lists and previews too.
+  - A new dashboard, a template copy and an AI draft are assigned to the
+    connection they are made on.
+  - A save may assign only connections that exist and the saver may use.
+    Assigned connections the saver cannot use are kept as they are, and are
+    shown to them as a count, never by name. Import refuses unknown ids instead
+    of dropping them.
+- A table a panel reads may still not exist on an assigned connection. The
   panel then shows ClickHouse's error, naming the connection; the other panels
   still run.
 - Variable options are a static list, or come from a one-column read-only query
@@ -181,8 +197,8 @@ Super Admin holds all permissions, as always.
 
 ### 6. Fleet fan-out
 
-A panel with `fleet: true` runs on every connection the viewer may access, up to
-20, each through §4. Each connection is one series. A connection that fails
+A panel with `fleet: true` runs on every connection the dashboard is assigned to
+that the viewer may access, up to 20, each through §4. Each connection is one series. A connection that fails
 shows its error in the legend, and the others still render.
 
 ### 7. Panel alerts
@@ -191,7 +207,10 @@ A panel can carry threshold alerts, with:
 
 - `column`, `reduce`, `op` (`>`, `>=`, `<`, `<=`) and `value`;
 - `forEvaluations` (consecutive breaches before firing) and `everyMinutes`;
-- the connection and the rule's owner.
+- the connection, which must be one the dashboard is assigned to, and the rule's
+  owner. A save that would unassign the connection an alert watches is refused,
+  naming the alert; an alert that finds itself outside the assignment anyway
+  moves to `error`.
 
 Creating one needs `alerting:edit` and edit access to the dashboard. Delivery
 uses the existing notification channels, `sendChannelMessage` and

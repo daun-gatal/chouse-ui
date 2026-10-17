@@ -173,6 +173,27 @@ export type TimeRange = z.infer<typeof timeRangeSchema>;
 export const PANEL_WIDTHS = [3, 4, 6, 8, 12] as const;
 export const PANEL_HEIGHTS = ["s", "m", "l"] as const;
 export const MAX_PANELS = 40;
+export const MAX_SCOPE_CONNECTIONS = 50;
+
+/**
+ * Which connections a dashboard is made for (ADR 0021 §3). It still runs on
+ * the caller's active connection; outside the scope it refuses to, rather than
+ * fail panel by panel on tables that cluster does not have. Fleet panels run
+ * on the scoped connections only.
+ */
+export const connectionScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("any") }).strict(),
+  z.object({
+    kind: z.literal("only"),
+    connectionIds: z.array(z.string().min(1)).min(1).max(MAX_SCOPE_CONNECTIONS)
+      .refine((ids) => new Set(ids).size === ids.length, "a connection is listed twice"),
+  }).strict(),
+]);
+export type ConnectionScope = z.infer<typeof connectionScopeSchema>;
+
+export function inScope(scope: ConnectionScope, connectionId: string): boolean {
+  return scope.kind === "any" || scope.connectionIds.includes(connectionId);
+}
 
 export const panelInputSchema = z.object({
   id: z.string().uuid().nullable(),
@@ -190,6 +211,7 @@ export const dashboardInputSchema = z.object({
   description: z.string().trim().max(2_000),
   timeRange: z.enum(RELATIVE_RANGE_KEYS),
   refreshSeconds: z.union([z.literal(0), z.literal(30), z.literal(60), z.literal(300), z.literal(900)]),
+  connectionScope: connectionScopeSchema,
   variables: z.array(variableSchema).max(MAX_VARIABLES),
   panels: z.array(panelInputSchema).max(MAX_PANELS),
 }).strict().superRefine((input, ctx) => {

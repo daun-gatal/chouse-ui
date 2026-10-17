@@ -2,9 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,7 +20,34 @@ const dashboardFormat = "chouse.dashboard/v1"
 // dashboardRanges are the values of `dashboard run-panel --range`.
 var dashboardRanges = []string{"15m", "1h", "3h", "6h", "12h", "24h", "2d", "7d", "30d"}
 
-var dashboardView = view("", "ID", "TITLE", "PANELS=panelCount", "OWNER=ownerName", "PINNED=pinned", "UPDATED=updatedAt")
+var dashboardView = output.View{Columns: slices.Concat(
+	cols("ID", "TITLE", "PANELS=panelCount"),
+	[]output.Column{scopeCol()},
+	cols("OWNER=ownerName", "PINNED=pinned", "UPDATED=updatedAt"),
+)}
+
+// scopeCol shows the connections a dashboard is assigned to: "all", or the
+// ones you may use by name and a count of the others.
+func scopeCol() output.Column {
+	return output.Column{Header: "CONNECTIONS", Path: "scope", Format: func(v any) string {
+		scope, ok := v.(map[string]any)
+		if !ok || scope["kind"] == "any" {
+			return "all"
+		}
+		var names []string
+		if list, ok := scope["connections"].([]any); ok {
+			for _, c := range list {
+				if m, ok := c.(map[string]any); ok {
+					names = append(names, fmt.Sprint(m["name"]))
+				}
+			}
+		}
+		if hidden, ok := scope["hidden"].(float64); ok && hidden > 0 {
+			names = append(names, fmt.Sprintf("+%d more", int(hidden)))
+		}
+		return strings.Join(names, ", ")
+	}}
+}
 
 var dashboardPanelsView = view("panels", "ID", "TITLE", "CHART=viz.type", "UNIT=viz.unit", "WIDTH=width", "FLEET=fleet")
 

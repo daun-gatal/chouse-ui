@@ -17,8 +17,10 @@ import { createDashboard, getDashboard, listDashboards, toInput, updateDashboard
 import { log } from "@/lib/log";
 import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 import type { VizSpec } from "@/lib/viz/spec";
+import { useAuthStore } from "@/stores";
 
 import { dashboardKeys } from "../hooks";
+import { isAssignedTo, scopeForNew } from "../scope";
 
 const NEW = "__new__";
 
@@ -33,7 +35,9 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dashboards = useQuery({ queryKey: dashboardKeys.list(), queryFn: listDashboards, enabled: open });
-  const editable = (dashboards.data ?? []).filter((d) => d.access.edit);
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
+  // The query ran on the active connection, so it goes to a dashboard made for it.
+  const editable = (dashboards.data ?? []).filter((d) => d.access.edit && isAssignedTo(d.scope, activeConnectionId));
   const [target, setTarget] = useState<string>(NEW);
   const [newTitle, setNewTitle] = useState("New dashboard");
   const [panelTitle, setPanelTitle] = useState("New panel");
@@ -52,7 +56,7 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
       let id: string;
       if (target === NEW) {
         const created = await createDashboard({
-          title: newTitle.trim(), description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [panel],
+          title: newTitle.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scopeForNew(activeConnectionId), variables: [], panels: [panel],
         });
         id = created.dashboard.id;
       } else {
