@@ -94,6 +94,14 @@ on every agent and subagent of the tree. Within a stage, guardrails run in
 | `tool_result` | `wrapToolCall`, after the tool | The tool message content (JSON results are walked value by value, so redaction keeps them valid JSON) |
 | `output` | `afterModel` | The model's text |
 
+- **Data a feature gathers** before its agent starts (its `json` template
+  variables, such as Data Health samples or a fleet overview) reaches the model
+  like a tool result, so the content kinds of the tool-result stage (pattern,
+  keywords, columns, injection) apply to it before the prompt is rendered.
+  Limits do not: a feature bounds its own evidence.
+- **The formatting fallback** — the extra model call the engine makes when an
+  AI feature's answer does not parse — runs outside the agent, so the engine
+  applies the input stage to its messages and the output stage to its answer.
 - **`block`** stops the run with a `GuardrailBlockedError`, which the chat and
   features show as "Blocked by guardrail *name*: *reason*".
 - **`warn`** lets the run continue: on tool results the model gets a notice that

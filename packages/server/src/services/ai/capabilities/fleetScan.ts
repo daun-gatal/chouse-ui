@@ -27,6 +27,18 @@ import type { StructuredCapability } from "../types";
  * Only worth inlining the playbook when the scan actually surfaced a heavy
  * query to optimize — otherwise the prompt stays lean.
  */
+/**
+ * The overview as the prompt got it, after guardrails (ADR 0022), compacted.
+ * A guardrail notice in front makes it plain text; it is then sent as is.
+ */
+function compactJson(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text));
+  } catch {
+    return text;
+  }
+}
+
 export function needsPlaybook(overview: Record<string, unknown>[]): boolean {
   return overview.some((o) => {
     const heavy = Array.isArray(o.recentHeavyQueries) ? o.recentHeavyQueries : [];
@@ -263,12 +275,12 @@ export const fleetScanCapability: StructuredCapability<
     };
   },
 
-  fallbackMessages(prepared, _ctx, raw, prompts): AgentMessage[] {
+  fallbackMessages(_prepared, _ctx, raw, prompts, variables): AgentMessage[] {
     return [
       { role: "system", content: prompts.system },
       {
         role: "user",
-        content: `Fleet overview:\n\`\`\`json\n${JSON.stringify(prepared.overview)}\n\`\`\`\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured health report now.`,
+        content: `Fleet overview:\n\`\`\`json\n${compactJson(String(variables.overview ?? "[]"))}\n\`\`\`\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured health report now.`,
       },
     ];
   },

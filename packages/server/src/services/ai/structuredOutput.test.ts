@@ -268,4 +268,24 @@ describe("structuredOutput", () => {
       Object.defineProperty(Date, "now", { configurable: true, value: originalNow });
     }
   });
+
+  it("runs the fallback guardrails only when the raw answer does not parse, and lets a block through", async () => {
+    const model = new ChatOpenAI({ apiKey: "test", model: "unused" });
+    const invoke = mock(async () => ({ content: '{"answer":"from fallback"}' }));
+    Object.defineProperty(model, "invoke", { value: invoke });
+    Object.defineProperty(model, "withStructuredOutput", { value: undefined });
+    const guardIn = mock(async (messages: Array<{ role: "user" | "system" | "assistant"; content: string }>) => messages.map((m) => ({ ...m, content: m.content.replace("secret", "[REDACTED]") })));
+    const guardOut = mock(async (output: { answer: string }) => ({ answer: output.answer.toUpperCase() }));
+
+    expect(await structuredOutput({ ...baseOptions(model), raw: '{"answer":"raw"}', guardFallbackMessages: guardIn, guardFallbackOutput: guardOut })).toEqual({ answer: "raw" });
+    expect(guardIn).not.toHaveBeenCalled();
+
+    const result = await structuredOutput({ ...baseOptions(model), fallbackMessages: [{ role: "user", content: "my secret" }], guardFallbackMessages: guardIn, guardFallbackOutput: guardOut });
+    expect(result).toEqual({ answer: "FROM FALLBACK" });
+    expect(JSON.stringify(invoke.mock.calls[0])).toContain("my [REDACTED]");
+    expect(JSON.stringify(invoke.mock.calls[0])).not.toContain("my secret");
+
+    const blocked = new Error("Blocked by guardrail 'X': 1 match");
+    await expect(structuredOutput({ ...baseOptions(model), guardFallbackOutput: async () => { throw blocked; } })).rejects.toBe(blocked);
+  });
 });

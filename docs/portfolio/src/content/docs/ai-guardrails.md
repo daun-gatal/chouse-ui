@@ -24,8 +24,10 @@ Drafting a guardrail with AI also needs `ai:optimize`.
 | --- | --- |
 | User input | What the user typed, or the task of an AI feature, before the first model call |
 | Tool calls | The tool and its arguments before the tool runs, and model call counts |
-| Tool results | What a tool returns, before the model sees it. JSON results are rewritten value by value and stay valid JSON |
+| Tool results | What a tool returns, before the model sees it, and the data an AI feature gathers before its agent starts (Data Health samples, query history, a fleet overview). JSON is rewritten value by value and stays valid JSON. Limits apply to tool results only |
 | Model output | The model's answer |
+
+When an AI feature's answer doesn't parse, CHouse asks the model once more to format it. That call gets the same input and output guardrails as the agent.
 
 Within a stage, guardrails run top to bottom in the list, each seeing the previous one's output. Drag a row to change the order.
 

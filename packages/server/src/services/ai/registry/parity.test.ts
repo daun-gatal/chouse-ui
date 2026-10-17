@@ -128,7 +128,7 @@ describe("registry parity with the pre-registry capabilities", () => {
           expect(prompts.system).toBe(c.instructions);
           expect([{ role: "user", content: renderTaskMessage(agent, variables, snapshot) }]).toEqual(c.messages!);
           if (c.fallbackMessages) {
-            expect(cap.fallbackMessages?.(c.prepared, ctx, "RAW NOTES", prompts)).toEqual(c.fallbackMessages);
+            expect(cap.fallbackMessages?.(c.prepared, ctx, "RAW NOTES", prompts, variables)).toEqual(c.fallbackMessages);
           } else {
             expect(cap.fallbackMessages).toBeUndefined();
           }

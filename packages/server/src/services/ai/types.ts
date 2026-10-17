@@ -139,7 +139,11 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> exten
    * Messages for the structured JSON fallback when the agent's free text didn't
    * parse. Defaults to a generic "here are your notes, produce the JSON now".
    */
-  fallbackMessages?(prepared: TPrepared, ctx: AgentRunContext, raw: string, prompts: RenderedPrompts): AgentMessage[];
+  /**
+   * `variables` are the rendered template variables after guardrails (ADR
+   * 0022): a fallback that re-sends gathered data must take it from there.
+   */
+  fallbackMessages?(prepared: TPrepared, ctx: AgentRunContext, raw: string, prompts: RenderedPrompts, variables: Record<string, TemplateValue>): AgentMessage[];
   /** Map the parsed JSON (+ run meta) into the public result. */
   finalize(
     parsed: TParsed,

@@ -200,3 +200,23 @@ describe("GuardrailRunner · tool calls", () => {
     expect(await r.checkToolResult([], "ok", META, notes)).toBe("[CHouse guardrail warning — Test guardrail: The tool x is not allowed]\nok");
   });
 });
+
+describe("GuardrailRunner · gathered data and structured answers", () => {
+  it("redacts gathered evidence with content kinds only, recording it as evidence", async () => {
+    const limits = guardrail({ slug: "l", kind: "limits", config: { maxToolCalls: null, maxModelCalls: null, maxResultRows: 1, maxResultBytes: null }, stages: ["tool_result"], action: "redact" });
+    const { runner: r, events } = runner([PII, limits]);
+    const out = await r.checkGathered(r.at("tool_result", "a"), "evidence", JSON.stringify({ rows: [{ e: "a@b.io" }, { e: "c@d.io" }] }), "root");
+    expect(JSON.parse(out)).toEqual({ rows: [{ e: "[EMAIL]" }, { e: "[EMAIL]" }] });
+    expect(events).toEqual([expect.objectContaining({ tool: "evidence:evidence", stage: "tool_result", matchCount: 2 })]);
+  });
+
+  it("redacts string values of a structured answer and judges it once", async () => {
+    const judged: string[] = [];
+    const judge = guardrail({ slug: "j", kind: "judge", config: { rule: "No customer emails in answers", modelConfigId: "m" }, stages: ["output"], action: "log" });
+    const { runner: r, events } = runner([PII, judge], { judge: async (_m, _rule, text) => { judged.push(text); return { violates: true, reason: "has email" }; } });
+    const out = await r.checkStructured(r.at("output", "a"), { summary: "mail a@b.io", items: [{ to: "c@d.io" }], n: 1 }, META);
+    expect(out).toEqual({ summary: "mail [EMAIL]", items: [{ to: "[EMAIL]" }], n: 1 });
+    expect(judged).toEqual([JSON.stringify(out)]);
+    expect(events.map((e) => `${e.stage}:${e.matchCount}`)).toEqual(["output:2", "output:1"]);
+  });
+});
