@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AiInsightDialog, CorrelationView, InvestigationView, OperationalBriefCard, TuningView } from "@/features/dataops-ai";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { useDataHealthPromise, useDataHealthTimeline, useRunDataHealthPromise } from "./hooks";
 import { DH_LABEL, DH_PRIMARY, HealthBadge, formatHealthTime, formatMetric, formatSchedule, isDateOnlyColumnType } from "./lib";
@@ -127,7 +127,7 @@ export function PromiseDetail({ id, onBack, onEdit }: { id: string; onBack: () =
   const canRun = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_RUN));
   const canEdit = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT));
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const promise = promiseQuery.data;
   const [dialog, setDialog] = useState<"investigate" | "tune" | "correlate" | "backtest" | "diagnostic" | null>(null);
   const [loading, setLoading] = useState(false);

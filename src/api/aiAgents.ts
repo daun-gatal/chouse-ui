@@ -335,8 +335,8 @@ export function runAgentTest(request: TestRequest): Promise<TestResult> {
 }
 
 /** Draft, refine or redraft an entity with AI. Nothing is saved; the result opens in the editor. */
-export function draftEntity<T>(kind: DraftKind, request: DraftRequest<T>): Promise<DraftResult<T>> {
-  return api.post<DraftResult<T>>(`${BASE}/draft/${kind}`, request);
+export function draftEntity<T>(kind: DraftKind, request: DraftRequest<T>, modelId?: string): Promise<DraftResult<T>> {
+  return api.post<DraftResult<T>>(`${BASE}/draft/${kind}`, request, modelId ? { params: { modelId } } : undefined);
 }
 
 /** The editable fields of a stored agent, for the editor. */

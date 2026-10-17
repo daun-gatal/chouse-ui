@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Activity, Bot, ListChecks, Pause, Play, Plug, Shield, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
+import { AiModelButton } from "@/components/common/AiModelButton";
 import { NavPill, PageHeader } from "@/components/common/PageShell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -195,6 +196,7 @@ export default function Agents(): ReactElement {
         nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink />)}
         actions={
           <>
+            <AiModelButton />
             {canManage && EXTERNAL_TABS.has(active) && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (

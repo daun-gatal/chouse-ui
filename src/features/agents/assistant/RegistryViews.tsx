@@ -7,13 +7,14 @@ import { Fragment, useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { Bot, Pencil, Plus } from "lucide-react";
 
+import type { AiModelOption } from "@/api/ai";
 import { agentInputOf, type AgentInput, type AiAgent, type AiRegistry } from "@/api/aiAgents";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, EmptyState, Mono, Panel, StatusPill } from "@/features/observe/ui";
 import type { AgentEditorTarget } from "./AgentEditor";
 import { DraftWithAiButton, DraftWithAiDialog } from "./DraftWithAi";
-import { useAssistantMutations } from "./hooks";
+import { useAssistantMutations, useModelOptions } from "./hooks";
 import { agentTree, blankAgent, compatibleAgents, CONTEXT_LABELS, groupFeatures, groupTools, problemsFor, type AgentTreeNode } from "./lib";
 import { ContextBadge, errorMessage, OriginBadge } from "./shared";
 
@@ -82,7 +83,41 @@ export function FeaturesView({ registry, canManage, onEdit }: { registry: AiRegi
   );
 }
 
-function TreeRows({ node, depth, registry, onEdit }: { node: AgentTreeNode; depth: number; registry: AiRegistry; onEdit: (target: AgentEditorTarget) => void }): ReactElement {
+const INHERIT_MODEL = "__inherit__";
+
+/**
+ * Switch an agent's model without opening the editor. Unset means the agent
+ * uses the run's model: the user's picked model, else the system default
+ * (subagents inherit their parent's).
+ */
+function AgentModelSelect({ agent, models, canManage }: { agent: AiAgent; models: AiModelOption[]; canManage: boolean }): ReactElement {
+  const { saveAgent } = useAssistantMutations();
+  const current = agent.modelConfigId ?? INHERIT_MODEL;
+  const known = agent.modelConfigId === null || models.some((m) => m.id === agent.modelConfigId);
+  const change = async (value: string): Promise<void> => {
+    const modelConfigId = value === INHERIT_MODEL ? null : value;
+    try {
+      await saveAgent.mutateAsync({ id: agent.id, input: { ...agentInputOf(agent), modelConfigId }, version: agent.version });
+      toast.success(`${agent.name} now uses ${modelConfigId ? models.find((m) => m.id === modelConfigId)?.label ?? "the chosen model" : "the run's model"}`);
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not change the model"));
+    }
+  };
+  return (
+    <span onClick={(e) => e.stopPropagation()}>
+      <Select value={current} onValueChange={(v) => void change(v)} disabled={!canManage || saveAgent.isPending}>
+        <SelectTrigger className={`h-7 w-40 rounded-xs text-[11px] ${known ? "" : "text-amber-500"}`} aria-label={`Model for ${agent.name}`}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={INHERIT_MODEL}>Run's model</SelectItem>
+          {!known && agent.modelConfigId && <SelectItem value={agent.modelConfigId}>Unavailable model</SelectItem>}
+          {models.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </span>
+  );
+}
+
+function TreeRows({ node, depth, registry, onEdit, models, canManage }: { node: AgentTreeNode; depth: number; registry: AiRegistry; onEdit: (target: AgentEditorTarget) => void; models: AiModelOption[]; canManage: boolean }): ReactElement {
   const { agent } = node;
   const problems = problemsFor(registry.problems, "agent", agent.id);
   const harness = registry.harnesses.find((h) => h.id === agent.harnessId);
@@ -103,6 +138,7 @@ function TreeRows({ node, depth, registry, onEdit }: { node: AgentTreeNode; dept
         </td>
         <td className="text-[11px] text-paper-muted">{agent.taskTemplate === null ? "Chat / subagent" : "Feature"}</td>
         <td className="text-[11px] text-paper-muted">{harness?.name ?? "—"}</td>
+        <td><AgentModelSelect agent={agent} models={models} canManage={canManage} /></td>
         <td className="tabular-nums text-[11px] text-paper-muted">{agent.tools.length}</td>
         <td className="text-[11px] text-paper-muted">{agent.usedBy.length > 0 ? agent.usedBy.join(", ") : "—"}</td>
         <td>
@@ -113,7 +149,7 @@ function TreeRows({ node, depth, registry, onEdit }: { node: AgentTreeNode; dept
           </span>
         </td>
       </tr>
-      {node.children.map((child) => <TreeRows key={`${agent.id}>${child.agent.id}`} node={child} depth={depth + 1} registry={registry} onEdit={onEdit} />)}
+      {node.children.map((child) => <TreeRows key={`${agent.id}>${child.agent.id}`} node={child} depth={depth + 1} registry={registry} onEdit={onEdit} models={models} canManage={canManage} />)}
     </Fragment>
   );
 }
@@ -121,6 +157,7 @@ function TreeRows({ node, depth, registry, onEdit }: { node: AgentTreeNode; dept
 export function AgentsView({ registry, canManage, onEdit }: { registry: AiRegistry; canManage: boolean; onEdit: (target: AgentEditorTarget) => void }): ReactElement {
   const tree = agentTree(registry);
   const [drafting, setDrafting] = useState(false);
+  const models = useModelOptions().data ?? [];
   return (
     <Panel
       title="Agents"
@@ -140,8 +177,8 @@ export function AgentsView({ registry, canManage, onEdit }: { registry: AiRegist
           }} />
       )}
       {tree.length === 0 ? <EmptyState icon={Bot} title="No agents" /> : (
-        <DataTable label="Agents" head={["Agent", "Type", "Harness", "Tools", "Used by", "Status"]}>
-          {tree.map((node) => <TreeRows key={node.agent.id} node={node} depth={0} registry={registry} onEdit={onEdit} />)}
+        <DataTable label="Agents" head={["Agent", "Type", "Harness", "Model", "Tools", "Used by", "Status"]}>
+          {tree.map((node) => <TreeRows key={node.agent.id} node={node} depth={0} registry={registry} onEdit={onEdit} models={models} canManage={canManage} />)}
         </DataTable>
       )}
     </Panel>

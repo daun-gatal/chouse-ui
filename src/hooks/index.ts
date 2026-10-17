@@ -50,7 +50,7 @@ export {
 } from './useAuth';
 
 // DataOps page-level AI model selection
-export { useDataOpsModelId } from './useDataOpsModelId';
+export { useAiModelId } from './useAiModelId';
 
 // Utility hooks
 export { useDebounce } from './useDebounce';

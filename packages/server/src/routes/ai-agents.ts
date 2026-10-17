@@ -372,6 +372,7 @@ aiAgents.post("/draft/:kind", MANAGE, async (c) => {
     // MANAGE already verified ai_agents:manage, possibly against the database
     // rather than the token, so the drafter's own check must agree with it.
     permissions: [...(c.get("rbacPermissions") ?? []), PERMISSIONS.AI_AGENTS_MANAGE],
+    modelId: c.req.query("modelId") || undefined,
   });
   return ok(c, result);
 });

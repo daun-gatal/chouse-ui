@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient, type UseMutationResult, type Use
 
 import * as aiAgents from "@/api/aiAgents";
 import { fetchAiModels, type AiModelOption } from "@/api/ai";
+import { useAiModelId } from "@/hooks/useAiModelId";
 
 export const assistantKeys = {
   all: ["ai-agents"] as const,
@@ -90,5 +91,6 @@ export function useAgentTest(): UseMutationResult<aiAgents.TestResult, Error, ai
 
 /** Draft with AI. Drafting never writes to the registry, so nothing is refreshed. */
 export function useDraft<T>(kind: aiAgents.DraftKind): UseMutationResult<aiAgents.DraftResult<T>, Error, aiAgents.DraftRequest<T>> {
-  return useMutation({ mutationFn: (request: aiAgents.DraftRequest<T>) => aiAgents.draftEntity<T>(kind, request) });
+  const modelId = useAiModelId();
+  return useMutation({ mutationFn: (request: aiAgents.DraftRequest<T>) => aiAgents.draftEntity<T>(kind, request, modelId) });
 }
