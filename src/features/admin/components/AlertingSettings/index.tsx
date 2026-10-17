@@ -12,6 +12,7 @@
  */
 
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -66,6 +67,9 @@ import {
 } from "@/api/alerting";
 import { ChannelDialog, ALERTING_KEYS } from "@/features/alerting/ChannelDialog";
 import { RuleDialog } from "@/features/alerting/RuleDialog";
+import { listAllAlerts } from "@/api/dashboards";
+import { STATE_STYLES } from "@/features/dashboards/components/PanelAlerts";
+import { eventSummary } from "@/lib/alertEvents";
 
 const PANEL_TITLE = "font-mono text-[11px] uppercase tracking-[0.14em] text-paper";
 const ADD_BTN =
@@ -455,6 +459,49 @@ function RulesPanel({ canEdit, canDelete }: { canEdit: boolean; canDelete: boole
 }
 
 // ============================================
+// Dashboard panel alerts (ADR 0021 §7) — managed on their dashboards
+// ============================================
+
+function PanelAlertsPanel() {
+  const { data: alerts, isLoading, isError, error } = useQuery({ queryKey: ["dashboards", "alerts", "all"], queryFn: listAllAlerts });
+  const total = alerts?.length ?? 0;
+  const [page, setPage] = useClampedPage(total);
+  const paged = (alerts ?? []).slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  return (
+    <PanelCard icon={SlidersHorizontal} title="Dashboard panel alerts">
+      {isLoading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+        </div>
+      ) : isError ? (
+        <p role="alert" className="py-3 text-[12px] text-red-300">{errMessage(error)}</p>
+      ) : total === 0 ? (
+        <p className="py-6 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">
+          No panel alerts — add one from a dashboard panel's bell
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {paged.map((a) => (
+            <div key={a.id} className={ROW}>
+              <div className="min-w-0 flex-1">
+                <Link to={`/dashboards/${a.dashboardId}`} className="truncate text-[13px] text-paper hover:underline">{a.name}</Link>
+                <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-paper-faint">
+                  {a.dashboardTitle ?? "Deleted dashboard"} · {a.severity} · {a.channelIds.length} channel{a.channelIds.length === 1 ? "" : "s"}
+                  {a.enabled ? "" : " · disabled"}
+                </div>
+                {a.status?.lastError && <div className="truncate text-[11px] text-red-300">{a.status.lastError}</div>}
+              </div>
+              {a.status && <span className={cn("font-mono text-[10px] uppercase tracking-[0.12em]", STATE_STYLES[a.status.state].className)}>{STATE_STYLES[a.status.state].label}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      <Pager page={page} total={total} onPage={setPage} />
+    </PanelCard>
+  );
+}
+
+// ============================================
 // Events panel
 // ============================================
 
@@ -523,7 +570,7 @@ function EventsPanel({ canDelete }: { canDelete: boolean }) {
                 )}
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[12px] text-paper">{ev.payload ?? "—"}</div>
+                <div className="truncate text-[12px] text-paper" title={eventSummary(ev.payload)}>{eventSummary(ev.payload)}</div>
                 <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-paper-faint">
                   {new Date(ev.firedAt).toLocaleString()}
                   {ev.deliveredTo.length > 0 ? ` · ${ev.deliveredTo.length} delivered` : ""}
@@ -585,6 +632,7 @@ const AlertingSettings: React.FC = () => {
 
       <ChannelsPanel canEdit={canEdit} canDelete={canDelete} />
       <RulesPanel canEdit={canEdit} canDelete={canDelete} />
+      <PanelAlertsPanel />
       <EventsPanel canDelete={canDelete} />
     </div>
   );

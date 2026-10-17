@@ -113,7 +113,10 @@ function lintOf(detail: store.DashboardDetail): Record<string, LintFinding[]> {
 async function detailResponse(c: Context, id: string): Promise<unknown> {
   const { detail, access } = await visible(c, id);
   const pinned = await store.pinnedIds(viewerOf(c).id);
-  return { ...detail, access, pinned: pinned.has(id), lint: lintOf(detail) };
+  // Counts only, for every viewer: an editor removing a panel is told its alerts go with it.
+  const alertCounts: Record<string, number> = {};
+  for (const alert of await alertStore.listAlerts({ dashboardId: id })) alertCounts[alert.panelId] = (alertCounts[alert.panelId] ?? 0) + 1;
+  return { ...detail, access, pinned: pinned.has(id), lint: lintOf(detail), alertCounts };
 }
 
 function saveConflict(error: unknown): never {

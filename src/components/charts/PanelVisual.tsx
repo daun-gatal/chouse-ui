@@ -80,12 +80,17 @@ export interface PanelVisualProps {
   data: ResultData;
   height: number;
   title?: string;
+  /** More lines to draw on a chart, such as alert thresholds. */
+  extraLines?: Array<{ value: number; color: string }>;
 }
 
-export function PanelVisual({ spec, data, height, title }: PanelVisualProps): React.ReactElement {
+export function PanelVisual({ spec, data, height, title, extraLines }: PanelVisualProps): React.ReactElement {
   const chart = useMemo(() => (spec.type === "stat" || spec.type === "table" ? null : resolveChart(spec, data)), [spec, data]);
   const formatter = useMemo(() => (v: unknown): string => formatValue(v, spec.unit, spec.decimals), [spec.unit, spec.decimals]);
-  const thresholds = useMemo(() => spec.thresholds.map((t) => ({ value: t.value, color: THRESHOLD_COLORS[t.severity] })), [spec.thresholds]);
+  const thresholds = useMemo(
+    () => [...spec.thresholds.map((t) => ({ value: t.value, color: THRESHOLD_COLORS[t.severity] })), ...(extraLines ?? [])],
+    [spec.thresholds, extraLines],
+  );
 
   if (spec.type === "stat") return <StatValue spec={spec} data={data} height={height} />;
   if (spec.type === "table") return <ResultTable data={data} height={height} />;

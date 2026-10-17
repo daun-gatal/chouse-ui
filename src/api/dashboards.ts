@@ -65,6 +65,8 @@ export interface DashboardDetail {
   access: DashboardAccess;
   pinned: boolean;
   lint: Record<string, LintFinding[]>;
+  /** Alerts per panel id (counts only, for every viewer). */
+  alertCounts: Record<string, number>;
 }
 
 export interface DashboardSummary extends DashboardRecord {

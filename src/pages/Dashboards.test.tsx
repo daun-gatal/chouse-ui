@@ -28,6 +28,7 @@ function detail(overrides: Record<string, unknown> = {}): Record<string, unknown
     access: { owner: true, view: true, edit: true, delete: true, share: true },
     pinned: false,
     lint: { p1: [] },
+    alertCounts: {},
     ...overrides,
   };
 }

@@ -47,6 +47,8 @@ interface Props {
   actions?: React.ReactNode;
   /** The card sits in a wrapper that owns its grid span (drag and drop). */
   wrapped?: boolean;
+  /** Alert thresholds to draw on the chart. */
+  alertLines?: Array<{ value: number; color: string }>;
 }
 
 /** A fleet result as one result to draw: a `connection` column, split by it for charts. */
@@ -70,7 +72,7 @@ function FleetStats({ spec, result }: { spec: VizSpec; result: Extract<PanelRunR
   );
 }
 
-export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, onEdit, onRemove, dragHandle, actions, wrapped = false }: Props): React.ReactElement {
+export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, onEdit, onRemove, dragHandle, actions, wrapped = false, alertLines }: Props): React.ReactElement {
   const height = PANEL_HEIGHTS_PX[panel.height];
   const run = useQuery({
     queryKey: ["dashboards", "run", dashboardId, panelId, panel.sql, panel.fleet, view],
@@ -136,7 +138,7 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         ) : visual && run.data?.kind === "fleet" && panel.viz.type === "stat" ? (
           <FleetStats spec={panel.viz} result={run.data} />
         ) : visual && (run.data?.kind === "single" || visual.data.rows.length > 0) ? (
-          <PanelVisual spec={visual.spec} data={visual.data} height={height} title={panel.title} />
+          <PanelVisual spec={visual.spec} data={visual.data} height={height} title={panel.title} extraLines={alertLines} />
         ) : (
           <PanelMessage tone="error">No connection returned a result</PanelMessage>
         )}

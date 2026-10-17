@@ -49,6 +49,7 @@ import { dashboardKeys } from "../hooks";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
 import { PanelCard, WIDTH_CLASSES } from "./PanelCard";
+import { PanelAlertsButton, useDashboardAlerts } from "./PanelAlerts";
 import { PanelEditor } from "./PanelEditor";
 import { ShareDialog } from "./ShareDialog";
 import { ViewControls } from "./ViewControls";
@@ -96,15 +97,10 @@ function SortablePanel({ id, width, children }: { id: string; width: PanelInput[
   );
 }
 
-/** Extra header controls per stored panel (alerts plug in here). */
-export type PanelActions = (args: { detail: DashboardDetail; panelId: string; panel: PanelInput; view: ViewState }) => React.ReactNode;
+/** Alert threshold colors on charts: firing alerts stand out. */
+const ALERT_LINE_COLORS = { firing: "#EF4444", other: "#A1A1AA" };
 
-interface Props {
-  id: string;
-  panelActions?: PanelActions;
-}
-
-export function DashboardView({ id, panelActions }: Props): React.ReactElement {
+export function DashboardView({ id }: { id: string }): React.ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -119,6 +115,8 @@ export function DashboardView({ id, panelActions }: Props): React.ReactElement {
   const [shareOpen, setShareOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ key: string; title: string; alerts: number } | null>(null);
+  const alerts = useDashboardAlerts(id);
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
@@ -251,10 +249,17 @@ export function DashboardView({ id, panelActions }: Props): React.ReactElement {
             editing={editing}
             lint={panel.id ? data.lint[panel.id] ?? [] : []}
             onEdit={() => setEditingPanel({ key, panel })}
-            onRemove={() => draft && setDraft({ ...draft, panels: draft.panels.filter((p) => p.key !== key) })}
+            onRemove={() => {
+              const count = panel.id ? data.alertCounts[panel.id] ?? 0 : 0;
+              if (count > 0) setPendingRemoval({ key, title: panel.title, alerts: count });
+              else if (draft) setDraft({ ...draft, panels: draft.panels.filter((p) => p.key !== key) });
+            }}
             dragHandle={handle}
             wrapped={editing}
-            actions={!editing && panel.id && panelActions ? panelActions({ detail: data, panelId: panel.id, panel, view }) : undefined}
+            actions={!editing && panel.id ? <PanelAlertsButton detail={data} panelId={panel.id} panel={panel} view={view} /> : undefined}
+            alertLines={(alerts.data ?? [])
+              .filter((a) => a.enabled && a.panelId === panel.id && panel.viz.y.includes(a.config.column))
+              .map((a) => ({ value: a.config.value, color: a.status?.state === "firing" ? ALERT_LINE_COLORS.firing : ALERT_LINE_COLORS.other }))}
           />
         );
         return editing ? <SortablePanel key={key} id={key} width={panel.width}>{(handle) => card(handle)}</SortablePanel> : card();
@@ -354,6 +359,23 @@ export function DashboardView({ id, panelActions }: Props): React.ReactElement {
           onApply={(next) => setDraft({ ...draft, settings: next })}
         />
       )}
+      <AlertDialog open={pendingRemoval !== null} onOpenChange={(open) => { if (!open) setPendingRemoval(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {pendingRemoval?.title}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This panel has {pendingRemoval?.alerts} alert{pendingRemoval?.alerts === 1 ? "" : "s"}. When you save, the panel and its alerts are deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (draft && pendingRemoval) setDraft({ ...draft, panels: draft.panels.filter((p) => p.key !== pendingRemoval.key) });
+              setPendingRemoval(null);
+            }}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

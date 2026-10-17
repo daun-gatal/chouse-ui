@@ -473,4 +473,13 @@ describe("panel alerts", () => {
     expect(saved.status).toBe(200);
     expect((await call("owner", "GET", `/dashboards/${id}/alerts`)).json.data).toEqual([]);
   });
+
+  it("tells every viewer how many alerts each panel has", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody());
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
+    expect((await call("peer", "GET", `/dashboards/${id}`)).json.data.alertCounts).toEqual({ [panelId]: 1 });
+  });
 });
