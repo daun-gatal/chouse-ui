@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { AppError } from "../types";
 import { requestLogger } from "../utils/logger";
 
@@ -25,6 +26,13 @@ export function errorHandler(err: Error, c: Context) {
     message = err.message;
     category = err.category;
     details = err.details;
+  } else if (err instanceof HTTPException) {
+    // Hono's own refusals, such as a malformed or missing JSON body, keep their
+    // status: the client sent a bad request, the server did not fail.
+    statusCode = err.status;
+    errorCode = err.status === 400 ? 'BAD_REQUEST' : `HTTP_${err.status}`;
+    message = err.message || message;
+    category = err.status < 500 ? 'validation' : category;
   } else if (err.name === 'ZodError') {
     statusCode = 400;
     errorCode = 'VALIDATION_ERROR';
