@@ -28,7 +28,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "Why not just Grafana + a ClickHouse exporter?",
-    answer: "Grafana is great for dashboards, but you can't kill a runaway query from it, manage RBAC and encrypted connections, browse the schema, or get an AI root-cause analysis. CHouse UI is the operator's console — it acts on the cluster, not just graphs it. Plenty of teams run both.",
+    answer: "Grafana is great for dashboards (CHouse UI now has its own too, with alerts on any panel), but you can't kill a runaway query from Grafana, manage RBAC and encrypted connections, browse the schema, or get an AI root-cause analysis. CHouse UI is the operator's console — it acts on the cluster, not just graphs it. Plenty of teams run both.",
     docs: [{ label: "Monitoring", href: "/docs/monitoring-overview/" }],
   },
   {
