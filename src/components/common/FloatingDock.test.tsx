@@ -32,6 +32,7 @@ vi.mock("@/lib/navAccess", () => ({
   EXPLORER_ACCESS_PERMISSIONS: ["explorer:view"],
   DATA_ACCESS_PERMISSIONS: ["observe:view"],
   AGENTS_ACCESS_PERMISSIONS: ["agents:view"],
+  DASHBOARDS_ACCESS_PERMISSIONS: ["dashboards:view"],
 }));
 
 vi.mock("@/features/onboarding/store", () => {

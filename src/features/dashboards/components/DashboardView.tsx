@@ -1,0 +1,372 @@
+/**
+ * One dashboard (ADR 0021 §12): the view bar, the panel grid, and an edit
+ * session — panels added, edited, removed and reordered locally, then saved
+ * as a whole at the version that was loaded. A save that lost a race says so
+ * and offers a reload; nothing is merged silently.
+ */
+
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { toast } from "sonner";
+import { ArrowLeft, Copy, Download, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Trash2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { rbacConnectionsApi } from "@/api";
+import { ApiError } from "@/api/client";
+import {
+  deleteDashboard,
+  duplicateDashboard,
+  exportDashboard,
+  getDashboard,
+  setPinned,
+  toInput,
+  updateDashboard,
+  type DashboardDetail,
+  type DashboardInput,
+  type PanelInput,
+} from "@/api/dashboards";
+import { log } from "@/lib/log";
+import { cn } from "@/lib/utils";
+import type { RefreshSeconds } from "@/lib/viz/spec";
+import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+
+import { dashboardKeys } from "../hooks";
+import { parseView, writeView, type ViewState } from "../urlState";
+import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
+import { PanelCard, WIDTH_CLASSES } from "./PanelCard";
+import { PanelEditor } from "./PanelEditor";
+import { ShareDialog } from "./ShareDialog";
+import { ViewControls } from "./ViewControls";
+
+interface DraftPanel {
+  /** Stable key for drag and drop and React, independent of the stored id. */
+  key: string;
+  panel: PanelInput;
+}
+
+interface Draft {
+  settings: Omit<DashboardInput, "panels">;
+  panels: DraftPanel[];
+}
+
+let keySeq = 0;
+const nextKey = (): string => `panel-${++keySeq}`;
+
+function toDraft(detail: DashboardDetail): Draft {
+  const { panels, ...settings } = toInput(detail);
+  return { settings, panels: panels.map((panel) => ({ key: panel.id ?? nextKey(), panel })) };
+}
+
+const NEW_PANEL: PanelInput = {
+  id: null,
+  title: "New panel",
+  sql: "SELECT toStartOfInterval(event_time, INTERVAL {{interval_s}} SECOND) AS t, count() AS queries\nFROM system.query_log\nWHERE event_time >= {{from}} AND event_time < {{to}}\nGROUP BY t ORDER BY t",
+  viz: { version: 1, type: "line", x: "t", y: ["queries"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null },
+  width: 6,
+  height: "m",
+  fleet: false,
+};
+
+function SortablePanel({ id, width, children }: { id: string; width: PanelInput["width"]; children: (handle: React.ReactNode) => React.ReactElement }): React.ReactElement {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const handle = (
+    <button type="button" className="cursor-grab text-paper-faint hover:text-paper" aria-label="Drag to reorder" {...attributes} {...listeners}>
+      <GripVertical className="h-4 w-4" />
+    </button>
+  );
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 }} className={cn("col-span-12 min-w-0", WIDTH_CLASSES[width])}>
+      {children(handle)}
+    </div>
+  );
+}
+
+/** Extra header controls per stored panel (alerts plug in here). */
+export type PanelActions = (args: { detail: DashboardDetail; panelId: string; panel: PanelInput; view: ViewState }) => React.ReactNode;
+
+interface Props {
+  id: string;
+  panelActions?: PanelActions;
+}
+
+export function DashboardView({ id, panelActions }: Props): React.ReactElement {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const canCreate = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_EDIT));
+  const detail = useQuery({ queryKey: dashboardKeys.detail(id), queryFn: () => getDashboard(id) });
+  const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
+
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<{ key: string | null; panel: PanelInput } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  const data = detail.data;
+  const parsed = useMemo(() => (data ? parseView(params, data.dashboard) : null), [params, data]);
+  const editing = draft !== null;
+
+  // `?edit=1` (a new dashboard) opens straight into editing, once.
+  useEffect(() => {
+    if (!data || !params.has("edit")) return;
+    if (data.access.edit) setDraft((current) => current ?? toDraft(data));
+    const next = new URLSearchParams(params);
+    next.delete("edit");
+    setParams(next, { replace: true });
+  }, [data, params, setParams]);
+
+  const save = useMutation({
+    mutationFn: async (d: Draft) => {
+      if (!data) throw new Error("The dashboard is not loaded");
+      return updateDashboard(id, data.dashboard.version, { ...d.settings, panels: d.panels.map((p) => p.panel) });
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData(dashboardKeys.detail(id), saved);
+      void queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
+      setDraft(null);
+      setConflict(false);
+      toast.success("Dashboard saved");
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.statusCode === 409) setConflict(true);
+      log.error("Saving the dashboard failed", error);
+    },
+  });
+
+  const pin = useMutation({
+    mutationFn: (pinned: boolean) => setPinned(id, pinned),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+    onError: (error) => toast.error(error.message),
+  });
+
+  if (detail.isPending) return <div className="p-6 text-sm text-paper-faint">Loading dashboard…</div>;
+  if (detail.isError || !data || !parsed) {
+    return (
+      <div className="flex flex-col items-start gap-3 p-6">
+        <p role="alert" className="text-sm text-red-300">{detail.error?.message ?? "The dashboard could not be loaded"}</p>
+        <Button variant="outline" size="sm" onClick={() => navigate("/dashboards")}><ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All dashboards</Button>
+      </div>
+    );
+  }
+
+  const view = parsed.view;
+  const settings = draft ? draft.settings : toInput(data);
+  const panels: DraftPanel[] = draft ? draft.panels : data.panels.map((p) => ({ key: p.id, panel: { id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet } }));
+  const refreshSeconds = refresh ?? data.dashboard.refreshSeconds;
+  const stored = new Map(data.panels.map((p) => [p.id, p]));
+
+  /** The stored panel id to run, or null when this edit session changed what the server would run. */
+  const runnableId = (panel: PanelInput): string | null => {
+    if (panel.id === null) return null;
+    const s = stored.get(panel.id);
+    return s && s.sql === panel.sql && s.fleet === panel.fleet && JSON.stringify(settings.variables) === JSON.stringify(data.dashboard.variables) ? s.id : null;
+  };
+
+  const setView = (next: ViewState): void => setParams(writeView(params, next, data.dashboard.connectionId), { replace: true });
+
+  const onDragEnd = (event: DragEndEvent): void => {
+    if (!draft || !event.over || event.active.id === event.over.id) return;
+    const from = draft.panels.findIndex((p) => p.key === event.active.id);
+    const to = draft.panels.findIndex((p) => p.key === event.over?.id);
+    if (from < 0 || to < 0) return;
+    setDraft({ ...draft, panels: arrayMove(draft.panels, from, to) });
+  };
+
+  const download = async (): Promise<void> => {
+    try {
+      const body = await exportDashboard(id);
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${data.dashboard.title.replace(/[^a-zA-Z0-9-_]+/g, "-").slice(0, 60) || "dashboard"}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const duplicate = async (): Promise<void> => {
+    try {
+      const copy = await duplicateDashboard(id);
+      await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
+      navigate(`/dashboards/${copy.dashboard.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    try {
+      await deleteDashboard(id);
+      await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
+      toast.success("Dashboard deleted");
+      navigate("/dashboards");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const savePanel = (panel: PanelInput): void => {
+    if (!draft || !editingPanel) return;
+    const panelsNext = editingPanel.key === null
+      ? [...draft.panels, { key: nextKey(), panel }]
+      : draft.panels.map((p) => (p.key === editingPanel.key ? { ...p, panel } : p));
+    setDraft({ ...draft, panels: panelsNext });
+    setEditingPanel(null);
+  };
+
+  const grid = (
+    <div className="grid grid-cols-12 gap-3 p-4" data-testid="panel-grid">
+      {panels.map(({ key, panel }) => {
+        const card = (handle?: React.ReactNode): React.ReactElement => (
+          <PanelCard
+            key={key}
+            dashboardId={id}
+            panelId={runnableId(panel)}
+            panel={panel}
+            view={view}
+            refreshSeconds={editing ? 0 : refreshSeconds}
+            editing={editing}
+            lint={panel.id ? data.lint[panel.id] ?? [] : []}
+            onEdit={() => setEditingPanel({ key, panel })}
+            onRemove={() => draft && setDraft({ ...draft, panels: draft.panels.filter((p) => p.key !== key) })}
+            dragHandle={handle}
+            wrapped={editing}
+            actions={!editing && panel.id && panelActions ? panelActions({ detail: data, panelId: panel.id, panel, view }) : undefined}
+          />
+        );
+        return editing ? <SortablePanel key={key} id={key} width={panel.width}>{(handle) => card(handle)}</SortablePanel> : card();
+      })}
+      {panels.length === 0 && (
+        <div className="col-span-12 rounded-md border border-dashed border-ink-500 p-10 text-center text-sm text-paper-faint">
+          {editing ? "Add a panel to start." : data.access.edit ? "This dashboard has no panels yet. Edit it to add one." : "This dashboard has no panels yet."}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex flex-wrap items-center gap-2 border-b border-ink-500 px-4 py-3">
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="All dashboards" onClick={() => navigate("/dashboards")}><ArrowLeft className="h-4 w-4" /></Button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-lg font-semibold text-paper">{settings.title}</h1>
+          {settings.description && <p className="truncate text-xs text-paper-dim">{settings.description}</p>}
+        </div>
+        {data.shares.length > 0 && <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
+        {editing ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setEditingPanel({ key: null, panel: { ...NEW_PANEL } })}><Plus className="mr-1.5 h-3.5 w-3.5" /> Add panel</Button>
+            <Button size="sm" variant="outline" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1.5 h-3.5 w-3.5" /> Settings</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setDraft(null); setConflict(false); }}>Cancel</Button>
+            <Button size="sm" onClick={() => save.mutate(draft)} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save"}</Button>
+          </>
+        ) : (
+          <>
+            <Button size="sm" variant="ghost" aria-label={data.pinned ? "Unpin from Home" : "Pin to Home"} onClick={() => pin.mutate(!data.pinned)}>
+              {data.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+            </Button>
+            {data.access.share && <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}><Share2 className="mr-1.5 h-3.5 w-3.5" /> Share</Button>}
+            {data.access.edit && <Button size="sm" onClick={() => setDraft(toDraft(data))}><Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit</Button>}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canCreate && <DropdownMenuItem onClick={() => void duplicate()}><Copy className="mr-2 h-3.5 w-3.5" /> Duplicate</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => void download()}><Download className="mr-2 h-3.5 w-3.5" /> Export JSON</DropdownMenuItem>
+                {data.access.delete && <DropdownMenuItem className="text-red-300" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-3.5 w-3.5" /> Delete</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+      </header>
+
+      {conflict && (
+        <div role="alert" className="flex items-center gap-3 border-b border-amber-900/40 bg-amber-950/30 px-4 py-2 text-xs text-amber-200">
+          <span className="flex-1">Someone saved this dashboard after you opened it. Reload to see their version; your unsaved changes will be lost.</span>
+          <Button size="sm" variant="outline" onClick={() => { setDraft(null); setConflict(false); void detail.refetch(); }}>Reload</Button>
+        </div>
+      )}
+      {save.isError && !conflict && <div role="alert" className="border-b border-red-900/40 bg-red-950/30 px-4 py-2 text-xs text-red-200">{save.error.message}</div>}
+      {parsed.problems.length > 0 && (
+        <div role="status" className="border-b border-amber-900/40 bg-amber-950/20 px-4 py-2 text-xs text-amber-200">
+          {parsed.problems.map((p) => <p key={p}>{p}. The dashboard's own setting is used instead.</p>)}
+        </div>
+      )}
+      {editing && settings.variables.length > 0 && JSON.stringify(settings.variables) !== JSON.stringify(data.dashboard.variables) && (
+        <div role="status" className="border-b border-ink-500 px-4 py-2 text-xs text-paper-dim">Variables changed: panels run again after you save.</div>
+      )}
+
+      <ViewControls
+        dashboardId={id}
+        variables={data.dashboard.variables}
+        view={view}
+        refreshSeconds={refreshSeconds}
+        onViewChange={setView}
+        onRefreshChange={setRefresh}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {editing ? (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={panels.map((p) => p.key)} strategy={rectSortingStrategy}>{grid}</SortableContext>
+          </DndContext>
+        ) : grid}
+      </div>
+
+      {editingPanel && (
+        <PanelEditor
+          open
+          onOpenChange={(open) => { if (!open) setEditingPanel(null); }}
+          initial={editingPanel.panel}
+          variables={settings.variables}
+          view={view}
+          onSave={savePanel}
+        />
+      )}
+      {settingsOpen && draft && (
+        <DashboardSettingsDialog
+          open
+          onOpenChange={setSettingsOpen}
+          settings={draft.settings}
+          connections={(connections.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
+          onApply={(next) => setDraft({ ...draft, settings: next })}
+        />
+      )}
+      {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {data.dashboard.title}?</AlertDialogTitle>
+            <AlertDialogDescription>The dashboard, its panels and their alerts are deleted for everyone it is shared with. This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void remove()}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

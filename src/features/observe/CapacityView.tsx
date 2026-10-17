@@ -21,6 +21,7 @@ import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { observeKeys, useCapacity, useSetCostRates, useStartCodecTrial } from "./hooks";
 import { formatAgo, formatBytes, formatPercent, humanize } from "./lib";
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "./ui";
+import { OpenAsDashboardButton } from "@/features/dashboards/components/OpenAsDashboardButton";
 
 const NODE_COLORS = ["#ffcc01", "#60a5fa", "#34d399", "#f87171", "#a78bfa", "#fb923c", "#2dd4bf", "#f472b6"];
 
@@ -140,9 +141,12 @@ export function CapacityView({ refreshKey }: { refreshKey?: number }): ReactElem
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4" data-onboarding-id="monitoring-capacity-forecast">
-      <div>
-        <h2 className="text-[16px] font-semibold tracking-tight text-paper">When you run out, and what to reclaim first</h2>
-        <p className="mt-1 text-[12px] text-paper-muted">Forecasts from system.disks and part_log growth. Savings are measured on samples, not guessed.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[16px] font-semibold tracking-tight text-paper">When you run out, and what to reclaim first</h2>
+          <p className="mt-1 text-[12px] text-paper-muted">Forecasts from system.disks and part_log growth. Savings are measured on samples, not guessed.</p>
+        </div>
+        <OpenAsDashboardButton templateId="disk-and-tables" connectionId={connectionId} />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Disk used" value={total ? formatPercent(used / total) : "—"} meta={total ? `${formatBytes(used)} of ${formatBytes(total)}` : "Waiting for samples"} icon={HardDrive} />

@@ -67,6 +67,9 @@ export const MONITORING_ACCESS_PERMISSIONS: string[] = [
   RBAC_PERMISSIONS.UPGRADES_VIEW,
 ];
 
+/** Having this reveals the Dashboards page (route + nav entry), ADR 0021. */
+export const DASHBOARDS_ACCESS_PERMISSIONS: string[] = [RBAC_PERMISSIONS.DASHBOARDS_VIEW];
+
 /** Having ANY of these reveals the Explorer page (route + nav entry). */
 export const EXPLORER_ACCESS_PERMISSIONS: string[] = [
   RBAC_PERMISSIONS.DB_VIEW,
