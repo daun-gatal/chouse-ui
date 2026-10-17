@@ -77,9 +77,11 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
   const run = useQuery({
     queryKey: ["dashboards", "run", dashboardId, panelId, panel.sql, panel.fleet, view],
     queryFn: ({ signal }) => {
+      // Disabled below while there is no stored panel to run.
       if (panelId === null) throw new Error("Save the dashboard to run this panel");
       return runPanel(dashboardId, panelId, { range: view.range, values: view.values, connectionId: view.connectionId }, signal);
     },
+    enabled: panelId !== null,
     refetchInterval: refreshSeconds > 0 ? refreshSeconds * 1000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
@@ -104,7 +106,7 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
     <section className={cn("flex min-w-0 flex-col rounded-md border border-ink-500 bg-ink-100", wrapped ? "h-full" : ["col-span-12", WIDTH_CLASSES[panel.width]])} aria-label={panel.title}>
       <header className="flex items-center gap-2 border-b border-ink-500 px-3 py-2">
         {editing && dragHandle}
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-paper">{panel.title}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-paper" title={panel.title}>{panel.title}</h3>
         {panel.fleet && <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim"><Zap className="h-3 w-3" aria-hidden /> Fleet</span>}
         {lint.length > 0 && editing && (
           <TooltipProvider>
@@ -118,7 +120,6 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
             </Tooltip>
           </TooltipProvider>
         )}
-        {meta && <span className="hidden font-mono text-[10px] text-paper-faint sm:inline">{meta}</span>}
         {actions}
         <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Refresh ${panel.title}`} onClick={() => void run.refetch()} disabled={run.isFetching || panelId === null}>
           <RefreshCw className={cn("h-3.5 w-3.5", run.isFetching && "animate-spin")} />
@@ -131,7 +132,9 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         )}
       </header>
       <div className="min-w-0 p-3" style={{ minHeight: height }}>
-        {run.isError ? (
+        {panelId === null ? (
+          <PanelMessage tone="muted">Save the dashboard to run this panel</PanelMessage>
+        ) : run.isError ? (
           <PanelMessage tone="error">{run.error.message}</PanelMessage>
         ) : run.isPending ? (
           <PanelMessage tone="muted">Running…</PanelMessage>
@@ -149,6 +152,7 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
             ))}
           </ul>
         )}
+        {meta && <p className="mt-1 text-right font-mono text-[10px] text-paper-faint" data-testid="panel-meta">{meta}</p>}
         {run.data?.kind === "fleet" && run.data.omitted > 0 && (
           <p className="mt-1 text-[11px] text-amber-300">Showing the first {run.data.connections.length} connections by name; {run.data.omitted} more are not run.</p>
         )}

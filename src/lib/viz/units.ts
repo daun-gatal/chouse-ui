@@ -28,9 +28,11 @@ function bytes(n: number, decimals: number | null): string {
   return `${sign}${Number(value.toFixed(i === 0 ? 0 : decimals ?? 1))} ${BYTE_UNITS[i]}`;
 }
 
-function duration(seconds: number, decimals: number | null): string {
+function duration(seconds: number, decimals: number | null, zero: string): string {
   const abs = Math.abs(seconds);
   const d = decimals ?? 1;
+  // Zero has no natural scale: say it in the column's own unit, not µs.
+  if (seconds === 0) return zero;
   if (abs < 1e-3) return `${Number((seconds * 1e6).toFixed(d))} µs`;
   if (abs < 1) return `${Number((seconds * 1e3).toFixed(d))} ms`;
   if (abs < 60) return `${Number(seconds.toFixed(d))} s`;
@@ -66,11 +68,11 @@ export function formatValue(value: unknown, unit: Unit, decimals: number | null 
     case "bytes":
       return bytes(n, decimals);
     case "ms":
-      return duration(n / 1e3, decimals);
+      return duration(n / 1e3, decimals, "0 ms");
     case "us":
-      return duration(n / 1e6, decimals);
+      return duration(n / 1e6, decimals, "0 µs");
     case "s":
-      return duration(n, decimals);
+      return duration(n, decimals, "0 s");
   }
 }
 

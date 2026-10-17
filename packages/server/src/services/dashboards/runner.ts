@@ -34,6 +34,13 @@ export const MAX_OPTION_ROWS = 1_000;
 export const MAX_BYTES_TO_READ = 20 * 1024 * 1024 * 1024;
 export const MAX_EXECUTION_SECONDS = 30;
 export const MAX_FLEET_CONNECTIONS = 20;
+/**
+ * How long a panel waits for ClickHouse to answer at all. The shared client
+ * allows minutes; a node that is down must fail a panel (or one connection of
+ * a fleet panel) in about the time a slow query is allowed, not hold it.
+ */
+export const REQUEST_TIMEOUT_MS = (MAX_EXECUTION_SECONDS + 10) * 1000;
+const ESTIMATE_TIMEOUT_MS = 10_000;
 
 export interface PanelColumn {
   name: string;
@@ -116,7 +123,10 @@ export async function viewerConnection(viewer: Viewer, connectionId: string): Pr
   return connection;
 }
 
-function queryError(error: unknown, maxRows: number): AppError {
+export function queryError(error: unknown, maxRows: number, timedOut: boolean): AppError {
+  if (timedOut) {
+    return AppError.unavailable(`ClickHouse did not answer within ${REQUEST_TIMEOUT_MS / 1000} s; the server may be down or unreachable.`);
+  }
   if (error instanceof ClickHouseError) {
     if (error.type === "TOO_MANY_ROWS_OR_BYTES") {
       return AppError.badRequest(`The query returned more than ${maxRows.toLocaleString("en-US")} rows. Aggregate further (a coarser bucket, fewer groups) or add a LIMIT.`);
@@ -150,7 +160,7 @@ function estimator(connectionId: string): { executeQuery<T>(query: string): Prom
   return {
     async executeQuery<T>(query: string): Promise<{ data: T[] }> {
       const client = await connectionClient(connectionId);
-      const result = await client.query({ query, format: "JSON", clickhouse_settings: { readonly: "1", max_execution_time: 10 } });
+      const result = await client.query({ query, format: "JSON", abort_signal: AbortSignal.timeout(ESTIMATE_TIMEOUT_MS), clickhouse_settings: { readonly: "1", max_execution_time: 10 } });
       return (await result.json()) as { data: T[] };
     },
   };
@@ -158,12 +168,14 @@ function estimator(connectionId: string): { executeQuery<T>(query: string): Prom
 
 /** Step 6: run a compiled statement with the dashboard caps. */
 export async function execute(connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS): Promise<PanelData> {
+  const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
     const client = await connectionClient(connectionId);
     const result = await client.query({
       query: compiled.sql,
       query_params: compiled.params,
       format: "JSON",
+      abort_signal: deadline,
       clickhouse_settings: {
         readonly: "1",
         max_execution_time: MAX_EXECUTION_SECONDS,
@@ -185,7 +197,7 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
       ranAt: Date.now(),
     };
   } catch (error) {
-    throw queryError(error, maxRows);
+    throw queryError(error, maxRows, deadline.aborted);
   }
 }
 

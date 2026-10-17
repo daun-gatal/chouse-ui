@@ -24,6 +24,8 @@ describe("formatValue", () => {
     expect(formatValue(90, "s")).toBe("1.5 min");
     expect(formatValue(500, "us")).toBe("500 µs");
     expect(formatValue(7200, "s", 0)).toBe("2 h");
+    expect(formatValue(0, "s")).toBe("0 s");
+    expect(formatValue(0, "ms")).toBe("0 ms");
   });
 
   it("shows non-numbers as they are and null as a dash", () => {

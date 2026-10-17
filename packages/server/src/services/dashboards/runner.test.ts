@@ -9,11 +9,13 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { AgentContext, GovernanceResult } from "../agents/governance";
 
 const sent: string[] = [];
+const signals: unknown[] = [];
 let failNext = false;
 mock.module("../scheduledQueries/chClient", () => ({
   clientForConnection: async () => ({
-    query: async (args: { query: string }) => {
+    query: async (args: { query: string; abort_signal?: unknown }) => {
       sent.push(args.query);
+      signals.push(args.abort_signal);
       if (failNext) {
         failNext = false;
         throw new Error("connection reset");
@@ -40,7 +42,7 @@ mock.module("./access", () => ({
   viewerConnections: async () => [{ id: "conn-1", name: "alpha", database: "default" }],
 }));
 
-const { clearPanelCache, runPanel } = await import("./runner");
+const { clearPanelCache, queryError, REQUEST_TIMEOUT_MS, runPanel } = await import("./runner");
 
 const viewer = { id: "u1", roles: ["admin"], permissions: [] };
 const agent: AgentContext = { patId: "pat-1", userId: "u1", roles: ["admin"], source: "mcp", clientName: "Claude Code", tool: "run_dashboard_panel", connectionId: "conn-1" };
@@ -52,6 +54,22 @@ beforeEach(() => {
   decision = "allow";
   failNext = false;
   clearPanelCache();
+});
+
+describe("request deadline", () => {
+  it("gives every panel query its own deadline", async () => {
+    signals.length = 0;
+    await runPanel(viewer, "conn-1", query, () => null);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect((signals[0] as AbortSignal).aborted).toBe(false);
+  });
+
+  it("says ClickHouse did not answer when the deadline passed, whatever the client threw", () => {
+    const error = queryError(new Error("The user aborted a request."), 10_000, true);
+    expect(error.message).toBe(`ClickHouse did not answer within ${REQUEST_TIMEOUT_MS / 1000} s; the server may be down or unreachable.`);
+    expect(error.statusCode).toBe(503);
+    expect(queryError(new Error("socket hang up"), 10_000, false).message).toContain("socket hang up");
+  });
 });
 
 describe("runPanel for token callers", () => {

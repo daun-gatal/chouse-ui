@@ -73,6 +73,8 @@ export function PanelEditor({ open, onOpenChange, initial, variables, view, onSa
   }, [preview.data, draft.viz]);
 
   const runPreview = (): void => preview.mutate();
+  const previewResult = preview.data?.result;
+  const failures = previewResult?.kind === "fleet" ? previewResult.connections.filter((e): e is Extract<typeof e, { ok: false }> => !e.ok) : [];
 
   const useSuggestion = (): void => {
     if (columns.length === 0 || !preview.data) return;
@@ -151,6 +153,11 @@ export function PanelEditor({ open, onOpenChange, initial, variables, view, onSa
               <PanelVisual spec={visual.spec} data={visual.data} height={260} title={draft.title} />
             ) : (
               <PanelMessage tone="muted">{preview.data ? "Fix the settings above to draw the preview" : "Run a preview to see the result"}</PanelMessage>
+            )}
+            {failures.length > 0 && (
+              <ul className="mt-2 space-y-0.5 border-t border-ink-500 pt-2" aria-label="Connections that failed">
+                {failures.map((f) => <li key={f.connectionId} className="text-[11px] text-red-300"><span className="font-mono">{f.connectionName}</span>: {f.error}</li>)}
+              </ul>
             )}
           </div>
         </div>
