@@ -6,6 +6,7 @@ const mockCreateAiModel = mock();
 const mockGetAiModelById = mock();
 const mockGetAiProviderById = mock();
 const mockListAiModels = mock();
+const mockListAiProviders = mock();
 const mockUpdateAiModel = mock();
 const mockDeleteAiModel = mock();
 
@@ -14,6 +15,7 @@ mock.module("../services/aiModels", () => ({
     getAiModelById: mockGetAiModelById,
     getAiProviderById: mockGetAiProviderById,
     listAiModels: mockListAiModels,
+    listAiProviders: mockListAiProviders,
     updateAiModel: mockUpdateAiModel,
     deleteAiModel: mockDeleteAiModel,
 }));
@@ -182,17 +184,17 @@ describe("RBAC AI Models Routes · params", () => {
         });
 
         it("accepts valid params for the model's provider", async () => {
-            const params = { topK: 40, maxTokens: 8192 };
+            // gpt-4o is not in Anthropic's profile table, so the window is required.
+            const params = { topK: 40, maxTokens: 8192, contextWindow: 200_000 };
             mockGetAiModelById.mockResolvedValue({ ...storedModel, providerId: "prov-anthropic" });
             const res = await patch(app, "model-1", { params });
             expect(res.status).toBe(200);
             expect(mockUpdateAiModel).toHaveBeenCalledWith("model-1", expect.objectContaining({ params }));
         });
 
-        it("clears params with null (no provider validation needed)", async () => {
+        it("clears params with null for a model the profile knows", async () => {
             const res = await patch(app, "model-1", { params: null });
             expect(res.status).toBe(200);
-            expect(mockGetAiProviderById).not.toHaveBeenCalled();
             expect(mockUpdateAiModel).toHaveBeenCalledWith("model-1", expect.objectContaining({ params: null }));
             expect(mockCreateAuditLogWithContext).toHaveBeenCalledWith(
                 expect.anything(),
@@ -209,6 +211,56 @@ describe("RBAC AI Models Routes · params", () => {
             const res = await patch(app, "model-x", { params: { temperature: 0.5 } });
             expect(res.status).toBe(404);
         });
+    });
+});
+
+describe("RBAC AI Models Routes · context window (ADR 0022)", () => {
+    let app: Hono;
+    const compatProvider = { ...openaiProvider, id: "prov-compat", providerType: "openai-compatible", baseUrl: "http://localhost:8000/v1" };
+
+    beforeEach(() => {
+        app = new Hono();
+        app.onError(errorHandler);
+        app.route("/ai-base-models", aiModelsRoutes);
+        mockCreateAiModel.mockClear();
+        mockUpdateAiModel.mockClear();
+        mockGetAiProviderById.mockImplementation(async (id: string) => (id === "prov-compat" ? compatProvider : openaiProvider));
+        mockCreateAiModel.mockResolvedValue(storedModel);
+        mockUpdateAiModel.mockResolvedValue(storedModel);
+    });
+
+    it("refuses a model LangChain does not know without a window", async () => {
+        const res = await post(app, { providerId: "prov-compat", name: "Local", modelId: "my-local-llm" });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.message).toContain("Set a context window for the AI model 'Local'");
+        expect(mockCreateAiModel).not.toHaveBeenCalled();
+    });
+
+    it("accepts it with a window", async () => {
+        const res = await post(app, { providerId: "prov-compat", name: "Local", modelId: "my-local-llm", params: { contextWindow: 32_768 } });
+        expect(res.status).toBe(201);
+    });
+
+    it("rejects maxTokens at or above the window", async () => {
+        const res = await post(app, { providerId: "prov-compat", name: "Local", modelId: "my-local-llm", params: { contextWindow: 8_192, maxTokens: 8_192 } });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.message).toContain("'maxTokens' must be smaller than 'contextWindow'");
+    });
+
+    it("refuses an update that leaves a stored unknown model without a window", async () => {
+        mockGetAiModelById.mockResolvedValue({ ...storedModel, providerId: "prov-compat", name: "Local", modelId: "my-local-llm" });
+        const res = await patch(app, "model-1", { name: "Local 2" });
+        expect(res.status).toBe(400);
+        expect(mockUpdateAiModel).not.toHaveBeenCalled();
+        expect((await patch(app, "model-1", { params: { contextWindow: 32_768 } })).status).toBe(200);
+    });
+
+    it("lists the window each model's profile reports", async () => {
+        mockListAiModels.mockResolvedValue([storedModel, { ...storedModel, id: "model-2", providerId: "prov-compat", modelId: "my-local-llm" }]);
+        mockListAiProviders.mockResolvedValue([openaiProvider, compatProvider]);
+        const res = await app.request("/ai-base-models", { headers: AUTH });
+        const body = await res.json();
+        expect(body.data.map((m: { profileContextWindow: number | null }) => m.profileContextWindow)).toEqual([128_000, null]);
     });
 });
 
@@ -229,13 +281,13 @@ describe("RBAC AI Models Routes · pricing (ADR 0020)", () => {
 
     it("stores a price on create", async () => {
         const pricing = { input: 2.5, output: 10, cacheRead: 1.25 };
-        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt", pricing });
+        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt-4o", pricing });
         expect(res.status).toBe(201);
         expect(mockCreateAiModel).toHaveBeenCalledWith(expect.objectContaining({ pricing }));
     });
 
     it("accepts a model without a price", async () => {
-        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt" });
+        const res = await post(app, { providerId: "prov-openai", name: "GPT", modelId: "gpt-4o" });
         expect(res.status).toBe(201);
     });
 

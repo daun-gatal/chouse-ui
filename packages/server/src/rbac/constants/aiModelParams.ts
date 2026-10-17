@@ -79,6 +79,11 @@ export interface AiModelParams {
   runTimeoutMs?: number;
   /** Preferred structured-output strategy. `auto` negotiates with safe fallbacks. */
   structuredOutputPolicy?: StructuredOutputPolicy;
+  /**
+   * Model input window in tokens. DeepAgents summarizes at 85% of it. Required
+   * when LangChain's model profile does not know the model (see modelProfile.ts).
+   */
+  contextWindow?: number;
 
   // — Escape hatch —
   /**
@@ -94,6 +99,7 @@ const ENGINE_KEYS: readonly AiModelParamKey[] = [
   'recursionLimit',
   'runTimeoutMs',
   'structuredOutputPolicy',
+  'contextWindow',
 ];
 
 const COMMON_KEYS: readonly AiModelParamKey[] = [
@@ -151,6 +157,7 @@ export const PARAM_BOUNDS = {
   recursionLimit: { min: 8, max: 1000 },
   runTimeoutMs: { min: 10_000, max: 3_600_000 },
   thinkingBudgetTokens: { min: -1, max: 128_000 },
+  contextWindow: { min: 1_024, max: 10_000_000 },
 } as const;
 
 export const STOP_SEQUENCES_MAX: Record<ProviderType, number> = {
@@ -198,6 +205,7 @@ const INT_KEYS: readonly AiModelParamKey[] = [
   'recursionLimit',
   'runTimeoutMs',
   'thinkingBudgetTokens',
+  'contextWindow',
 ];
 
 function isFiniteNumber(value: unknown): value is number {
@@ -245,6 +253,10 @@ export function validateAiModelParams(params: AiModelParams, providerType: Provi
   if (params.structuredOutputPolicy !== undefined
       && !isStructuredOutputPolicy(params.structuredOutputPolicy)) {
     errors.push(`'structuredOutputPolicy' must be one of: ${STRUCTURED_OUTPUT_POLICIES.join(', ')}`);
+  }
+
+  if (isFiniteNumber(params.maxTokens) && isFiniteNumber(params.contextWindow) && params.maxTokens >= params.contextWindow) {
+    errors.push(`'maxTokens' must be smaller than 'contextWindow'`);
   }
 
   // Per-provider tightenings on top of the generic bounds.
