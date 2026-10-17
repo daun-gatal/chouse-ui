@@ -15,6 +15,10 @@ import { DataTable, EmptyState, Mono, Panel, StatusPill } from "@/features/obser
 import type { AgentEditorTarget } from "./AgentEditor";
 import { DraftWithAiButton, DraftWithAiDialog } from "./DraftWithAi";
 import { useAssistantMutations, useModelOptions } from "./hooks";
+import { useGuardrails } from "../guardrails/hooks";
+import { appliesToAgent } from "../guardrails/lib";
+import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import type { Guardrail } from "@/api/aiGuardrails";
 import { agentTree, blankAgent, compatibleAgents, CONTEXT_LABELS, groupFeatures, groupTools, problemsFor, type AgentTreeNode } from "./lib";
 import { ContextBadge, errorMessage, OriginBadge } from "./shared";
 
@@ -83,6 +87,12 @@ export function FeaturesView({ registry, canManage, onEdit }: { registry: AiRegi
   );
 }
 
+/** Guardrails that run for this agent (ADR 0022), named in the tooltip. */
+function GuardrailCount({ agentId, guardrails }: { agentId: string; guardrails: Guardrail[] }): ReactElement {
+  const applied = guardrails.filter((g) => appliesToAgent(g, agentId));
+  return <span title={applied.map((g) => `${g.name}${g.mode === "shadow" ? " (shadow)" : ""}${g.scope.features === "all" ? "" : " · some features"}`).join("\n") || "No guardrail applies"}>{applied.length}</span>;
+}
+
 const INHERIT_MODEL = "__inherit__";
 
 /**
@@ -117,7 +127,7 @@ function AgentModelSelect({ agent, models, canManage }: { agent: AiAgent; models
   );
 }
 
-function TreeRows({ node, depth, registry, onEdit, models, canManage }: { node: AgentTreeNode; depth: number; registry: AiRegistry; onEdit: (target: AgentEditorTarget) => void; models: AiModelOption[]; canManage: boolean }): ReactElement {
+function TreeRows({ node, depth, registry, onEdit, models, canManage, guardrails }: { node: AgentTreeNode; depth: number; registry: AiRegistry; onEdit: (target: AgentEditorTarget) => void; models: AiModelOption[]; canManage: boolean; guardrails: Guardrail[] | null }): ReactElement {
   const { agent } = node;
   const problems = problemsFor(registry.problems, "agent", agent.id);
   const harness = registry.harnesses.find((h) => h.id === agent.harnessId);
@@ -139,6 +149,7 @@ function TreeRows({ node, depth, registry, onEdit, models, canManage }: { node: 
         <td className="text-[11px] text-paper-muted">{agent.taskTemplate === null ? "Chat / subagent" : "Feature"}</td>
         <td className="text-[11px] text-paper-muted">{harness?.name ?? "—"}</td>
         <td><AgentModelSelect agent={agent} models={models} canManage={canManage} /></td>
+        {guardrails && <td className="tabular-nums text-[11px] text-paper-muted"><GuardrailCount agentId={agent.id} guardrails={guardrails} /></td>}
         <td className="tabular-nums text-[11px] text-paper-muted">{agent.tools.length}</td>
         <td className="text-[11px] text-paper-muted">{agent.usedBy.length > 0 ? agent.usedBy.join(", ") : "—"}</td>
         <td>
@@ -149,7 +160,7 @@ function TreeRows({ node, depth, registry, onEdit, models, canManage }: { node: 
           </span>
         </td>
       </tr>
-      {node.children.map((child) => <TreeRows key={`${agent.id}>${child.agent.id}`} node={child} depth={depth + 1} registry={registry} onEdit={onEdit} models={models} canManage={canManage} />)}
+      {node.children.map((child) => <TreeRows key={`${agent.id}>${child.agent.id}`} node={child} depth={depth + 1} registry={registry} onEdit={onEdit} models={models} canManage={canManage} guardrails={guardrails} />)}
     </Fragment>
   );
 }
@@ -158,6 +169,9 @@ export function AgentsView({ registry, canManage, onEdit }: { registry: AiRegist
   const tree = agentTree(registry);
   const [drafting, setDrafting] = useState(false);
   const models = useModelOptions().data ?? [];
+  const canSeeGuardrails = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_GUARDRAILS_VIEW));
+  const guardrailQuery = useGuardrails(canSeeGuardrails);
+  const guardrails = canSeeGuardrails ? guardrailQuery.data?.guardrails ?? [] : null;
   return (
     <Panel
       title="Agents"
@@ -177,8 +191,8 @@ export function AgentsView({ registry, canManage, onEdit }: { registry: AiRegist
           }} />
       )}
       {tree.length === 0 ? <EmptyState icon={Bot} title="No agents" /> : (
-        <DataTable label="Agents" head={["Agent", "Type", "Harness", "Model", "Tools", "Used by", "Status"]}>
-          {tree.map((node) => <TreeRows key={node.agent.id} node={node} depth={0} registry={registry} onEdit={onEdit} models={models} canManage={canManage} />)}
+        <DataTable label="Agents" head={["Agent", "Type", "Harness", "Model", ...(guardrails ? ["Guardrails"] : []), "Tools", "Used by", "Status"]}>
+          {tree.map((node) => <TreeRows key={node.agent.id} node={node} depth={0} registry={registry} onEdit={onEdit} models={models} canManage={canManage} guardrails={guardrails} />)}
         </DataTable>
       )}
     </Panel>
