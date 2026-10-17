@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { AppError } from "../types";
 import { requestId } from "./requestId";
 import { ZodError } from "zod";
@@ -71,6 +72,18 @@ describe("Error Handler Middleware", () => {
         expect(data.error.category).toBe("validation");
         expect(data.error.details).toHaveLength(1);
         expect(data.error.details[0].path).toEqual(["username"]);
+    });
+
+    it("keeps the status of Hono's own refusals, such as a missing JSON body", async () => {
+        app.post("/teapot", () => {
+            throw new HTTPException(418, { message: "No coffee here" });
+        });
+
+        const res = await app.request("/teapot", { method: "POST" });
+        const data = await res.json();
+
+        expect(res.status).toBe(418);
+        expect(data.error).toMatchObject({ code: "HTTP_418", message: "No coffee here", category: "validation" });
     });
 
     it("should handle generic Error as Internal Server Error", async () => {

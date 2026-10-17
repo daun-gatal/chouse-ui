@@ -7,6 +7,7 @@ import {
   EXPLORER_ACCESS_PERMISSIONS,
   DATA_ACCESS_PERMISSIONS,
   AGENTS_ACCESS_PERMISSIONS,
+  DASHBOARDS_ACCESS_PERMISSIONS,
 } from "./navAccess";
 
 describe("navAccess — admin", () => {
@@ -62,6 +63,10 @@ describe("navAccess — data observability (ADR 0016)", () => {
     expect(MONITORING_ACCESS_PERMISSIONS).toEqual(
       expect.arrayContaining([RBAC_PERMISSIONS.PERFORMANCE_VIEW, RBAC_PERMISSIONS.CAPACITY_VIEW, RBAC_PERMISSIONS.UPGRADES_VIEW]),
     );
+  });
+
+  it("dashboards open for dashboards:view", () => {
+    expect(DASHBOARDS_ACCESS_PERMISSIONS).toEqual([RBAC_PERMISSIONS.DASHBOARDS_VIEW]);
   });
 
   it("AI Governance opens for external-agent and AI agent viewers, and for AI activity users", () => {

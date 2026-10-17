@@ -18,6 +18,7 @@ import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { observeKeys, useFingerprintSeries, useMyConnections, usePerformance } from "./hooks";
 import { formatAgo, formatBytes, formatCount, humanize } from "./lib";
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, OBS_LABEL, Panel, StatusPill } from "./ui";
+import { OpenAsDashboardButton } from "@/features/dashboards/components/OpenAsDashboardButton";
 
 const REPLICA_COLORS = ["#ffcc01", "#60a5fa", "#34d399", "#f87171", "#a78bfa", "#fb923c"];
 
@@ -135,9 +136,12 @@ export function PerformanceView({ refreshKey }: { refreshKey?: number }): ReactE
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4" data-onboarding-id="monitoring-performance-regressions">
-      <div>
-        <h2 className="text-[16px] font-semibold tracking-tight text-paper">What got slower, and what changed</h2>
-        <p className="mt-1 text-[12px] text-paper-muted">Every query shape is tracked by normalized_query_hash against its own 14-day baseline. Regressions are lined up with the changes around them.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[16px] font-semibold tracking-tight text-paper">What got slower, and what changed</h2>
+          <p className="mt-1 text-[12px] text-paper-muted">Every query shape is tracked by normalized_query_hash against its own 14-day baseline. Regressions are lined up with the changes around them.</p>
+        </div>
+        <OpenAsDashboardButton templateId="query-latency" />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Query shapes tracked" value={formatCount(data.fingerprints)} meta="Per replica" />

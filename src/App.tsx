@@ -11,6 +11,7 @@ import MonitoringPage from "@/pages/Monitoring";
 import DataPage, { LegacyDataOpsRedirect } from "@/pages/Data";
 import AgentsPage, { LegacyAgentsRedirect } from "@/pages/Agents";
 import PreferencesPage from "@/pages/Preferences";
+import DashboardsPage from "@/pages/Dashboards";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import AppInitializer from "@/components/common/AppInit";
@@ -32,6 +33,7 @@ import {
   EXPLORER_ACCESS_PERMISSIONS,
   DATA_ACCESS_PERMISSIONS,
   AGENTS_ACCESS_PERMISSIONS,
+  DASHBOARDS_ACCESS_PERMISSIONS,
 } from "@/lib/navAccess";
 import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
 import { api, rbacConnectionsApi } from "@/api";
@@ -212,6 +214,16 @@ export default function App() {
                 element={
                   <AdminRoute requiredPermission={MONITORING_ACCESS_PERMISSIONS}>
                     <MonitoringPage />
+                  </AdminRoute>
+                }
+              />
+
+              {/* Custom dashboards (ADR 0021) */}
+              <Route
+                path="/dashboards/:id?"
+                element={
+                  <AdminRoute requiredPermission={DASHBOARDS_ACCESS_PERMISSIONS}>
+                    <DashboardsPage />
                   </AdminRoute>
                 }
               />

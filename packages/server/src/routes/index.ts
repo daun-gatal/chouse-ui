@@ -25,6 +25,7 @@ import agents from "./agents";
 import aiAgents from "./ai-agents";
 import aiUsage from "./ai-usage";
 import integrations from "./integrations";
+import dashboards from "./dashboards";
 import { requestCallerMiddleware } from "../services/ai/usage/origin";
 
 const api = new Hono();
@@ -121,6 +122,9 @@ api.route("/agents", agents);
 api.route("/ai-agents", aiAgents);
 api.route("/ai-usage", aiUsage);
 api.route("/integrations", integrations);
+
+// Custom dashboards (ADR 0021)
+api.route("/dashboards", dashboards);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);

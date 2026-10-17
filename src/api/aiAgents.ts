@@ -6,7 +6,7 @@
 import { api } from "./client";
 
 export type ToolContextKind = "session" | "fleet" | "userApi";
-export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "chat" | "governance";
+export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "dashboards" | "chat" | "governance";
 export type AgentKind = "router" | "agent";
 export type SkillLinkMode = "progressive" | "pinned";
 

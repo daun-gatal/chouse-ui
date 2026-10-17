@@ -19,7 +19,7 @@ import type {
   VariableSpec,
 } from "@/api/aiAgents";
 
-export const SURFACE_ORDER: FeatureSurface[] = ["chat", "sql-editor", "doctor", "diagnostics", "dataops", "observe", "governance"];
+export const SURFACE_ORDER: FeatureSurface[] = ["chat", "sql-editor", "doctor", "diagnostics", "dataops", "observe", "dashboards", "governance"];
 
 export const SURFACE_LABELS: Record<FeatureSurface, string> = {
   chat: "Chat",
@@ -28,6 +28,7 @@ export const SURFACE_LABELS: Record<FeatureSurface, string> = {
   diagnostics: "Diagnostics",
   dataops: "DataOps",
   observe: "Observability",
+  dashboards: "Dashboards",
   governance: "AI Governance",
 };
 

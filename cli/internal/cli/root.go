@@ -87,7 +87,7 @@ Safe by default: reads never prompt; commands that change things ask first
 	add("start", a.newStatusCmd(), a.newAuthCmd(), a.newConfigCmd(), a.newConnectionCmd(), a.newVersionCmd())
 	add("data", a.newQueryCmd(), a.newTableCmd(), a.newSavedCmd(), a.newUploadCmd())
 	add("ops", a.newMetricsCmd(), a.newLogsCmd(), a.newLiveCmd(), a.newFleetCmd(), a.newPerfCmd(), a.newCapacityCmd(), a.newUpgradesCmd(),
-		a.newCollectorsCmd(), a.newScheduledCmd(), a.newAlertCmd(), a.newAuditCmd())
+		a.newCollectorsCmd(), a.newDashboardCmd(), a.newScheduledCmd(), a.newAlertCmd(), a.newAuditCmd())
 	add("observe", a.newHealthCmd(), a.newLineageCmd(), a.newIncidentsCmd(), a.newRemediationCmd(), a.newContextCmd(), a.newNotebookCmd())
 	add("agents", a.newAICmd(), a.newDoctorCmd(), a.newAgentsCmd(), a.newMCPCmd())
 	strictGroups(root)

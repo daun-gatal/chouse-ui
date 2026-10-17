@@ -20,8 +20,21 @@ import * as h from "./migrationTestHarness";
 import { OBSERVE_TABLE_NAMES } from "./observeSchema";
 import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
 import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
+import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
+
+const DASHBOARD_PERMISSION_NAMES = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "dashboards:manage"];
+
+/** The dashboards:* permissions each system role holds after 1.61.0. */
+const DASHBOARD_GRANTS: Record<string, string[]> = {
+  super_admin: DASHBOARD_PERMISSION_NAMES,
+  admin: DASHBOARD_PERMISSION_NAMES,
+  developer: ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share"],
+  analyst: ["dashboards:view", "dashboards:edit", "dashboards:delete"],
+  viewer: ["dashboards:view"],
+  guest: [],
+};
 
 // Per-version assertions, evaluated against the final full-chain database (or, for
 // the legacy data-access table, asserting it was dropped by 1.27.0).
@@ -383,6 +396,18 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.columnIsNullable("ai_usage_requests", c)).toBe(true);
     }
     expect(await h.indexExists("ai_usage_requests_pat_idx")).toBe(true);
+  },
+  "1.61.0": async () => {
+    // ADR 0021: dashboards tables and the dashboards:* permissions per role.
+    for (const t of DASHBOARD_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of DASHBOARD_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    // Dashboards have no connection of their own, only the ones they are assigned to.
+    expect(await h.columnExists("dashboards", "connection_scope")).toBe(true);
+    expect(await h.columnExists("dashboards", "connection_id")).toBe(false);
+    for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.permissionExists(p)).toBe(true);
+    for (const [role, granted] of Object.entries(DASHBOARD_GRANTS)) {
+      for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.roleHasPermission(role, p)).toBe(granted.includes(p));
+    }
   },
 };
 
@@ -1142,6 +1167,86 @@ for (const dialect of DIALECTS) {
       const { getDatabase } = await import("./index");
       await migration.up(getDatabase());
       expect(await h.rowCount("ai_usage_requests")).toBe(2);
+      expect((await runMigrations()).migrationsApplied).toEqual([]);
+    });
+  });
+}
+
+// ADR 0021 upgrade: an install from before dashboards gets the tables and the
+// default grants, keeps every unrelated grant, and re-running changes nothing.
+for (const dialect of DIALECTS) {
+  describe(`migrations · ADR 0021 dashboards upgrade [${dialect}]`, () => {
+    const grantsOf = async (role: string): Promise<string[]> => {
+      const rows = await h.rawAll(sql`
+        SELECT p.name AS name FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON p.id = rp.permission_id
+        JOIN rbac_roles r ON r.id = rp.role_id
+        WHERE r.name = ${role} ORDER BY p.name`);
+      return rows.map((r) => String(r.name));
+    };
+    let viewerBefore: string[] = [];
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ through: "1.60.0" });
+      // 1.0.0 seeds roles from today's defaults, so remove the dashboards
+      // permissions to look like an install that predates them.
+      await h.rawRun(sql`DELETE FROM rbac_role_permissions WHERE permission_id IN (SELECT id FROM rbac_permissions WHERE name LIKE 'dashboards:%')`);
+      await h.rawRun(sql`DELETE FROM rbac_permissions WHERE name LIKE 'dashboards:%'`);
+      for (const t of DASHBOARD_TABLE_NAMES) expect(await h.tableExists(t)).toBe(false);
+      viewerBefore = await grantsOf("viewer");
+      await runMigrations();
+    }, 60_000);
+
+    it("creates the tables and grants the defaults per role", async () => {
+      for (const t of DASHBOARD_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+      for (const [role, granted] of Object.entries(DASHBOARD_GRANTS)) {
+        for (const p of DASHBOARD_PERMISSION_NAMES) expect(await h.roleHasPermission(role, p)).toBe(granted.includes(p));
+      }
+    });
+
+    it("keeps every grant that is not a dashboards permission", async () => {
+      expect(await grantsOf("viewer")).toEqual([...viewerBefore, "dashboards:view"].sort());
+    });
+
+    it("stores a dashboard with panels, a share, a pin and a panel alert", async () => {
+      const at = Date.now();
+      await h.rawRun(sql`INSERT INTO dashboards (id, title, owner_id, time_range, created_at, updated_at) VALUES ('d1', 'Orders', 'u1', '6h', ${at}, ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_panels (id, dashboard_id, position, title, sql, viz, width, height, created_at, updated_at)
+        VALUES ('p1', 'd1', 0, 'Rows', 'SELECT 1', '{}', 6, 'm', ${at}, ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_shares (dashboard_id, role_id, can_edit, created_at) VALUES ('d1', 'r1', 1, ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_pins (user_id, dashboard_id, created_at) VALUES ('u1', 'd1', ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_alerts (id, dashboard_id, panel_id, name, owner_id, connection_id, severity, config, created_at, updated_at)
+        VALUES ('a1', 'd1', 'p1', 'Too many rows', 'u1', 'c1', 'warning', '{}', ${at}, ${at})`);
+      await h.rawRun(sql`INSERT INTO dashboard_alert_channels (alert_id, channel_id) VALUES ('a1', 'ch1')`);
+      await h.rawRun(sql`INSERT INTO dashboard_alert_state (alert_id, state, since, last_value) VALUES ('a1', 'ok', ${at}, ${1.5})`);
+      const rows = await h.rawAll(sql`SELECT description, refresh_seconds, variables, version FROM dashboards WHERE id = 'd1'`);
+      expect(rows[0].description).toBe("");
+      expect(Number(rows[0].refresh_seconds)).toBe(0);
+      expect(rows[0].variables).toBe("[]");
+      expect(Number(rows[0].version)).toBe(1);
+      const panels = await h.rawAll(sql`SELECT fleet FROM dashboard_panels WHERE id = 'p1'`);
+      expect(Number(panels[0].fleet)).toBe(0);
+      const alert = await h.rawAll(sql`SELECT enabled FROM dashboard_alerts WHERE id = 'a1'`);
+      expect(Number(alert[0].enabled)).toBe(1);
+      const state = await h.rawAll(sql`SELECT breaches, last_value, last_error FROM dashboard_alert_state WHERE alert_id = 'a1'`);
+      expect(Number(state[0].breaches)).toBe(0);
+      expect(Number(state[0].last_value)).toBe(1.5);
+      expect(state[0].last_error).toBeNull();
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.61.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("dashboards")).toBe(1);
+      expect(await h.rowCount("dashboard_panels")).toBe(1);
+      const grants = await h.rawAll(sql`
+        SELECT COUNT(*) AS c FROM rbac_role_permissions rp
+        JOIN rbac_permissions p ON p.id = rp.permission_id
+        JOIN rbac_roles r ON r.id = rp.role_id
+        WHERE r.name = 'admin' AND p.name = 'dashboards:manage'`);
+      expect(Number(grants[0].c)).toBe(1);
       expect((await runMigrations()).migrationsApplied).toEqual([]);
     });
   });

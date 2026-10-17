@@ -641,6 +641,89 @@
       "runnable": true
     },
     {
+      "path": "chouse dashboard",
+      "use": "chouse dashboard",
+      "short": "Dashboards: list, show, run a panel, export, apply, delete",
+      "long": "Custom dashboards (ADR 0021) as code. export writes a dashboard as JSON;\napply creates a dashboard from that JSON, or updates the dashboard its id\nnames so it matches the file exactly (panels left out are removed with\ntheir alerts). run-panel runs one panel's read-only query with your own\ndata access. delete asks first (or needs --yes).",
+      "example": "  chouse dashboard list\n  chouse dashboard export 7c1e… > orders.json\n  chouse dashboard apply -f orders.json\n  chouse dashboard run-panel 7c1e… 2b9d… --range 24h --var db=shop",
+      "aliases": [
+        "dashboards"
+      ],
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard apply",
+      "use": "chouse dashboard apply -f FILE [flags]",
+      "short": "Create or update a dashboard from an export",
+      "long": "With \"id\": null in the file, a new dashboard is created (yours, with new\npanel ids). With an id, that dashboard is updated to match the file: panels\nkeep their ids, panels missing from the file are removed together with\ntheir alerts. The server validates every panel; nothing is partly applied.",
+      "example": "  chouse dashboard apply -f orders.json\n  chouse dashboard export 7c1e… | chouse dashboard apply -f -",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "the export to apply (- for stdin)"
+        }
+      ]
+    },
+    {
+      "path": "chouse dashboard delete",
+      "use": "chouse dashboard delete <id>",
+      "short": "Delete a dashboard with its panels and alerts",
+      "example": "  chouse dashboard delete 7c1e… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard export",
+      "use": "chouse dashboard export <id> [flags]",
+      "short": "Write a dashboard as JSON (the format apply takes)",
+      "example": "  chouse dashboard export 7c1e… > orders.json\n  chouse dashboard export 7c1e… --out orders.json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "out",
+          "type": "string",
+          "usage": "write to this file instead of stdout"
+        }
+      ]
+    },
+    {
+      "path": "chouse dashboard get",
+      "use": "chouse dashboard get <id>",
+      "short": "Show a dashboard's panels (-o json for everything)",
+      "example": "  chouse dashboard get 7c1e…",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard list",
+      "use": "chouse dashboard list",
+      "short": "List the dashboards you may view",
+      "example": "  chouse dashboard list -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard run-panel",
+      "use": "chouse dashboard run-panel <dashboardId> <panelId> [flags]",
+      "short": "Run one panel's read-only query",
+      "example": "  chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h\n  chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "range",
+          "type": "string",
+          "default": "1h",
+          "usage": "how far back: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d"
+        },
+        {
+          "name": "var",
+          "type": "stringArray",
+          "usage": "a variable value as name=value (repeatable)"
+        }
+      ]
+    },
+    {
       "path": "chouse doctor",
       "use": "chouse doctor",
       "short": "Chouse AI Doctor: fleet health reports",

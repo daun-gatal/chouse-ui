@@ -30,6 +30,7 @@ import DownloadDialog from "@/components/common/DownloadDialog";
 import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
 import ExplainTab from "./ExplainTab";
+import { ResultChart } from "./ResultChart";
 import { DebugQueryDialog } from "@/components/common/DebugQueryDialog";
 import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 
@@ -133,6 +134,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const { refetch: refetchDatabases } = useDatabases();
   const tab = getTabById(tabId);
   const [activeTab, setActiveTab] = useState<string>("results");
+  // The SQL behind the current result, for the Chart tab's "Pin to dashboard".
+  const [resultSql, setResultSql] = useState<string>("");
 
   // Ref to the SQL editor — used by the hint strip to invoke editor actions
   const editorRef = useRef<SqlEditorHandle>(null);
@@ -232,7 +235,9 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     async (query: string) => {
       setExplainPlan(null);
       setExplainError(null);
-      setActiveTab("results");
+      // Stay on the chart when re-running from it; anything else shows the rows.
+      setActiveTab((current) => (current === "chart" ? "chart" : "results"));
+      setResultSql(query);
 
       // Save valid query for debugging context if needed later
       setDebugQueryString(query);
@@ -568,9 +573,13 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       );
     }
 
+    const canChart = hasData && (tab?.result?.meta.length ?? 0) > 0;
+    // A re-run with no rows has nothing to chart: show its (empty) result instead.
+    const shownTab = activeTab === "chart" && !canChart ? "results" : activeTab;
+
     return (
       <Tabs
-        value={activeTab}
+        value={shownTab}
         onValueChange={setActiveTab}
         className="h-full flex flex-col"
       >
@@ -588,6 +597,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               </span>
             )}
           </TabsTrigger>
+          {canChart && (
+            <TabsTrigger value="chart" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
+              Chart
+            </TabsTrigger>
+          )}
           <TabsTrigger value="statistics" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
             Statistics
           </TabsTrigger>
@@ -620,6 +634,9 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         <div className="flex-1 overflow-hidden w-full relative">
           <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full data-[state=inactive]:hidden absolute inset-0">
             {renderResultsTab()}
+          </TabsContent>
+          <TabsContent value="chart" className="absolute inset-0 m-0 h-full overflow-hidden bg-ink-50 data-[state=inactive]:hidden">
+            {shownTab === "chart" && tab?.result && <ResultChart result={tab.result} sql={resultSql} />}
           </TabsContent>
           <TabsContent value="statistics" className="absolute inset-0 m-0 h-full overflow-auto bg-ink-50 p-4 data-[state=inactive]:hidden">
             {renderStatisticsResults()}

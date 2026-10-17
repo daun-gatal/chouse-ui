@@ -16,6 +16,7 @@ export const AUTHENTICATED_ROUTE_INVENTORY = [
   "/doctor/:reportId?",
   "/overview",
   "/monitoring/:tab?",
+  "/dashboards/:id?",
   "/data/:tab?/:a?/:b?",
   "/ai/:tab?/:id?",
   "/explorer",
@@ -40,6 +41,7 @@ export const NON_GUIDED_ROUTE_INVENTORY = [
 ] as const;
 
 export const REQUIRED_ONBOARDING_SURFACES = [
+  "dashboards.list", "dashboards.templates", "dashboards.create",
   "shell.navigation", "shell.connection", "shell.command-palette", "shell.ai-chat", "shell.preferences",
   "fleet.nodes", "fleet.inventory", "fleet.trends", "fleet.exceptions", "fleet.alerts",
   "doctor.run", "doctor.history", "doctor.report", "doctor.schedule",
@@ -249,6 +251,18 @@ export const ONBOARDING_CHAPTERS: OnboardingChapter[] = [
       step("admin.sso", "Single sign-on", "Configure global behavior and provider mappings, test the provider, and preserve break-glass access before disabling password login.", "/admin/sso", { target: "admin-section-sso", requiredAny: [p.SSO_VIEW] }),
       step("admin.audit", "Audit history", "Filter security and administration events, export within permission, and prune only with an explicit retention decision.", "/admin/audit", { target: "admin-section-audit", requiredAny: [p.AUDIT_VIEW] }),
       step("admin.alerting", "Channels, rules, and recent alerts", "Separate delivery destinations from detection rules, test channels, attach rules, and use recent events to validate behavior.", "/admin/alerting", { target: "admin-section-alerting", requiredAny: [p.ALERTING_VIEW] }),
+    ],
+  },
+  {
+    id: "dashboards",
+    title: "Build dashboards",
+    summary: "Chart your own queries, share them with roles and start from curated templates.",
+    estimatedMinutes: 3,
+    requiredAny: [p.DASHBOARDS_VIEW],
+    steps: [
+      step("dashboards.list", "Your dashboards", "Pinned dashboards, your own and those shared with your roles. Every panel runs with your own data access, so a shared dashboard never shows you more than you can query.", "/dashboards", { target: "dashboards-list", requiredAny: [p.DASHBOARDS_VIEW] }),
+      step("dashboards.templates", "Start from a template", "Curated templates cover query latency, merges and parts, replication, disk and ingestion. Using one copies it into a dashboard you own.", "/dashboards", { target: "dashboards-templates", requiredAny: [p.DASHBOARDS_VIEW] }),
+      step("dashboards.create", "Create or import", "Start an empty dashboard, import an exported JSON file, or pin a chart from the SQL workspace's Chart tab.", "/dashboards", { target: "dashboards-create", requiredAny: [p.DASHBOARDS_EDIT] }),
     ],
   },
   {

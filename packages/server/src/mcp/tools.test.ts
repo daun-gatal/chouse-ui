@@ -207,6 +207,10 @@ const DEFAULT_TOOL_NAMES = [
   "list_ai_requests",
   "get_ai_request",
   "list_ai_agents",
+  "list_dashboards",
+  "get_dashboard",
+  "export_dashboard",
+  "run_dashboard_panel",
 ];
 
 const WRITE_TOOLS = [
@@ -216,9 +220,10 @@ const WRITE_TOOLS = [
   "acknowledge_incident",
   "test_alert_channel",
   "propose_remediation",
+  "apply_dashboard",
 ];
 
-const DESTRUCTIVE_TOOLS = ["kill_query", "query_raw", "delete_saved_query", "delete_scheduled_job"];
+const DESTRUCTIVE_TOOLS = ["kill_query", "query_raw", "delete_saved_query", "delete_scheduled_job", "delete_dashboard"];
 
 async function listTools(mcp: McpServer): Promise<Array<{ name: string; title?: string; annotations?: Record<string, unknown> }>> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -666,5 +671,60 @@ describe("AI governance tools", () => {
     expect(chat.sort()).toEqual(["get_ai_data_egress", "get_ai_request", "get_ai_usage", "list_ai_requests", "whoami"]);
     const registry = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.AI_AGENTS_VIEW] }));
     expect(registry.sort()).toEqual(["list_ai_agents", "whoami"]);
+  });
+});
+
+describe("dashboards tools (ADR 0021)", () => {
+  function dashboardProxy(): { proxy: Hono; calls: Array<{ call: string; body: unknown; headers: Record<string, string> }> } {
+    const calls: Array<{ call: string; body: unknown; headers: Record<string, string> }> = [];
+    const proxy = new Hono();
+    proxy.all("*", async (c) => {
+      const url = new URL(c.req.url);
+      calls.push({ call: `${c.req.method} ${url.pathname}`, body: c.req.method === "GET" || c.req.method === "DELETE" ? undefined : await c.req.json(), headers: c.req.header() });
+      return c.json({ success: true, data: { dashboard: { id: "d1", version: 7 } } });
+    });
+    return { proxy, calls };
+  }
+
+  it("reads dashboards and runs a panel with the caller's token", async () => {
+    const { proxy, calls } = dashboardProxy();
+    const harness = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    for (const [name, args] of [
+      ["list_dashboards", {}],
+      ["get_dashboard", { id: "d/1" }],
+      ["export_dashboard", { id: "d1" }],
+      ["run_dashboard_panel", { id: "d1", panel_id: "p1", range: "6h", values: { db: "shop" }, connection_id: "conn-2" }],
+    ] as Array<[string, Record<string, unknown>]>) {
+      const { result } = await harness.request("tools/call", { name, arguments: args }, CTX);
+      expect({ name, isError: result?.isError ?? false }).toEqual({ name, isError: false });
+    }
+    expect(calls.map((c) => c.call)).toEqual([
+      "GET /api/dashboards",
+      "GET /api/dashboards/d%2F1",
+      "GET /api/dashboards/d1/export",
+      "POST /api/dashboards/d1/panels/p1/run",
+    ]);
+    expect(calls[3].body).toEqual({ range: { kind: "relative", value: "6h" }, values: { db: "shop" } });
+    expect(calls[3].headers["x-connection-id"]).toBe("conn-2");
+    expect(calls[3].headers["x-chouse-agent-source"]).toBe("mcp");
+    await harness.close();
+  });
+
+  it("applies an export: a new dashboard is imported, an existing one is updated at its current version", async () => {
+    const { proxy, calls } = dashboardProxy();
+    const harness = await createHarness(buildMcpServer(enable("apply_dashboard"), buildMcpDeps(proxy), ALL));
+    const doc = { title: "Orders", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], panels: [] };
+    await harness.request("tools/call", { name: "apply_dashboard", arguments: { dashboard: { format: "chouse.dashboard/v1", id: null, dashboard: doc } } }, CTX);
+    await harness.request("tools/call", { name: "apply_dashboard", arguments: { dashboard: { format: "chouse.dashboard/v1", id: "d1", dashboard: doc } } }, CTX);
+    expect(calls.map((c) => c.call)).toEqual(["POST /api/dashboards/import", "GET /api/dashboards/d1", "PUT /api/dashboards/d1"]);
+    expect(calls[0].body).toEqual({ format: "chouse.dashboard/v1", id: null, dashboard: doc });
+    expect(calls[2].body).toEqual({ version: 7, dashboard: doc });
+    await harness.close();
+  });
+
+  it("lists dashboard tools only for tokens with dashboards:view, and deleting needs dashboards:delete", async () => {
+    const { proxy } = makeProxy({});
+    const names = await listToolNames(buildMcpServer(enable("apply_dashboard", "delete_dashboard"), buildMcpDeps(proxy), { permissions: [PERMISSIONS.DASHBOARDS_VIEW] }));
+    expect(names.sort()).toEqual(["export_dashboard", "get_dashboard", "list_dashboards", "run_dashboard_panel", "whoami"]);
   });
 });

@@ -39,6 +39,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Explain an incident](#explain-an-incident) | Observability | `ai:optimize` | Evidence only | [Incident Explainer](#incident-explainer) |
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
+| [Draft a dashboard](#draft-a-dashboard) | Dashboards | `ai:optimize` | ClickHouse session | [Dashboard Drafter](#dashboard-drafter) |
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
 | [Draft an agent](#draft-an-agent) | AI Governance | `ai:optimize` | Evidence only | [Agent Author](#agent-author) |
 | [Draft a harness](#draft-a-harness) | AI Governance | `ai:optimize` | Evidence only | [Harness Author](#harness-author) |
@@ -340,6 +341,20 @@ Context › Draft with AI: drafts a table's curated context from metadata and an
 | --- | --- | --- |
 | `ctx.evidence` | json | The evidence object the feature assembled (JSON). |
 
+## Dashboards features
+
+### Draft a dashboard
+
+ID `draft-dashboard` · needs `ai:optimize` · structured answer (JSON contract)
+
+Dashboards › Ask AI: drafts a dashboard, or panels to add to one, from a goal; every panel is checked and dry-run before review.
+
+**Tools may use:** ClickHouse session. **Built-in agent:** [Dashboard Drafter](#dashboard-drafter).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The goal, the dashboard being added to, and the panel rules (JSON). |
+
 ## AI Governance features
 
 ### Draft a skill
@@ -380,7 +395,7 @@ AI Governance › Assistant › Harnesses › Draft with AI: drafts or refines a
 
 ## Built-in agents
 
-The 30 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 31 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -492,6 +507,20 @@ Reviews every node's health, deep-dives heavy queries and writes the Doctor repo
 | Harness | Focused |
 | Tuning | 12 steps · 16,000 output tokens |
 | Tools | `query_node` |
+| Skills | all built-in skills on demand |
+
+### Dashboard Drafter
+
+Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).
+
+| Setting | Value |
+| --- | --- |
+| Slug | `dashboard-drafter` |
+| Kind | Feature agent |
+| Used by | [Draft a dashboard](#draft-a-dashboard) |
+| Harness | Focused |
+| Tuning | 8 steps · 8,000 output tokens |
+| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `validate_sql` |
 | Skills | all built-in skills on demand |
 
 ### Scheduled Query Drafter
@@ -763,7 +792,7 @@ Users, roles, permissions, data access policies, personal access tokens, SSO, an
 
 ### Operations Analyst
 
-Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, remediation actions and investigation notebooks, Doctor reports, fleet health, query regressions, capacity, upgrade readiness and the observability collectors.
+Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents, remediation actions and investigation notebooks, Doctor reports, fleet health, query regressions, capacity, upgrade readiness, the observability collectors and custom dashboards.
 
 | Setting | Value |
 | --- | --- |
@@ -772,7 +801,7 @@ Scheduled jobs and runs, Data Health promises and incidents, alerting, observabi
 | Used by | subagent of CHouse Admin |
 | Harness | Focused |
 | Tuning | 8 steps |
-| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule` |
+| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard` |
 | Skills | none |
 
 ### Platform Auditor

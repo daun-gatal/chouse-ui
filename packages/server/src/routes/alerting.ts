@@ -25,6 +25,7 @@ import {
   AlertSeverity,
 } from "../services/alerting/types";
 import * as store from "../services/alerting/store";
+import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { sendChannelTest } from "../services/alerting/deliver";
 
 const alerting = new Hono();
@@ -173,9 +174,14 @@ alerting.delete("/channels/:id", requirePermission(PERMISSIONS.ALERTING_DELETE),
   const existing = await store.getChannel(id);
   if (!existing) return c.json({ success: false, error: "Channel not found" }, 404);
   const usage = await store.countRulesUsingChannel(id);
-  if (usage > 0) {
+  const panelAlerts = await countAlertsUsingChannel(id);
+  if (usage > 0 || panelAlerts > 0) {
+    const parts = [
+      ...(usage > 0 ? [`${usage} rule${usage === 1 ? "" : "s"}`] : []),
+      ...(panelAlerts > 0 ? [`${panelAlerts} dashboard panel alert${panelAlerts === 1 ? "" : "s"}`] : []),
+    ];
     return c.json(
-      { success: false, error: `Channel is used by ${usage} rule${usage === 1 ? "" : "s"}; detach it first.` },
+      { success: false, error: `Channel is used by ${parts.join(" and ")}; detach it first.` },
       409,
     );
   }

@@ -543,7 +543,45 @@ const operationsTools: CatalogTool[] = [
     }),
     request: (a) => ({ path: `/api/notebooks/attached/${segment(String(a.attachedTo))}/${segment(String(a.ref))}` }),
   }),
+  apiTool<DashboardRow[]>({
+    name: "list_dashboards", title: "Dashboards", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
+    description: "Custom dashboards the user may view: title, owner, panel count, the connections it is assigned to, the roles it is shared with, and whether the user pinned it.",
+    request: () => ({ path: "/api/dashboards" }),
+    project: (rows) => rows.map((r) => ({
+      id: r.id, title: r.title, description: r.description, owner: r.ownerName, panels: r.panelCount, connections: scopeNames(r.scope),
+      sharedWith: r.shares.map((s) => s.roleDisplayName), pinned: r.pinned, updatedAt: r.updatedAt,
+    })),
+  }),
+  apiTool<DashboardDetailPayload>({
+    name: "get_dashboard", title: "Dashboard", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
+    description: "One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's title, SQL, chart type and unit.",
+    schema: z.object({ id: z.string().min(1).describe("Dashboard id from list_dashboards") }),
+    request: (a) => ({ path: `/api/dashboards/${segment(String(a.id))}` }),
+    project: (d) => ({
+      id: d.dashboard.id, title: d.dashboard.title, description: d.dashboard.description, connections: scopeNames(d.scope),
+      timeRange: d.dashboard.timeRange, variables: d.dashboard.variables,
+      panels: d.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet })),
+    }),
+  }),
 ];
+
+type DashboardScopeView = { kind: "any" } | { kind: "only"; connections: Array<{ name: string }>; hidden: number };
+
+/** "all", or the assigned connections the user may use, plus how many others. */
+function scopeNames(scope: DashboardScopeView): string | { names: string[]; others: number } {
+  return scope.kind === "any" ? "all" : { names: scope.connections.map((c) => c.name), others: scope.hidden };
+}
+
+interface DashboardRow {
+  id: string; title: string; description: string; ownerName: string | null; panelCount: number; scope: DashboardScopeView;
+  shares: Array<{ roleDisplayName: string }>; pinned: boolean; updatedAt: number;
+}
+
+interface DashboardDetailPayload {
+  dashboard: { id: string; title: string; description: string; timeRange: string; variables: unknown[] };
+  scope: DashboardScopeView;
+  panels: Array<{ id: string; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }>;
+}
 
 // ============================================
 // Catalog

@@ -137,6 +137,7 @@ export type McpToolCategory =
   | "data_health"
   | "data_observability"
   | "performance"
+  | "dashboards"
   | "ai"
   | "ai_governance";
 

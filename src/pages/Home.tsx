@@ -37,6 +37,7 @@ import { useWorkspaceStore, genTabId } from "@/stores/workspace";
 import { useRbacStore } from "@/stores/rbac";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import UploadFromFile from "@/features/explorer/components/UploadFile";
+import { PinnedDashboards } from "@/features/dashboards/components/PinnedDashboards";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ============================================
@@ -560,6 +561,9 @@ export default function HomePage() {
             />
           </div>
         </section>
+
+        {/* ─── Pinned dashboards (ADR 0021) ─── */}
+        <PinnedDashboards header={<SectionHeader eyebrow="Dashboards" title="Pinned dashboards" />} />
 
         {/* ─── Continue working ─── */}
         {unsavedTabs.length > 0 && (

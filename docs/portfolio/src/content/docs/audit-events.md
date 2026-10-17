@@ -1,7 +1,7 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 125 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 133 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
@@ -38,3 +38,5 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 125 in al
 | AI skills | `ai_skill.create`, `ai_skill.update`, `ai_skill.delete` |
 | AI feature bindings | `ai_binding.update` |
 | AI agent registry | `ai_registry.reset`, `ai_registry.rollback` |
+| Dashboards | `dashboard.create`, `dashboard.update`, `dashboard.delete`, `dashboard.share`, `dashboard.import` |
+| Dashboards | `panel_alert.create`, `panel_alert.update`, `panel_alert.delete` |

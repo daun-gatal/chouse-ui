@@ -183,6 +183,7 @@ export const MCP_TOOL_CATEGORIES = [
   "data_health",
   "data_observability",
   "performance",
+  "dashboards",
   "ai",
   "ai_governance",
 ] as const;

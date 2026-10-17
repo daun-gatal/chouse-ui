@@ -176,6 +176,14 @@ export const DOC_SECTIONS: DocSection[] = [
         ],
       },
       {
+        id: "dashboards",
+        label: "Dashboards",
+        pages: [
+          { slug: "dashboards", title: "Dashboards", description: "Your own charts of ClickHouse: panels, variables, time range and refresh, sharing, fleet panels, panel alerts, templates and dashboards as code." },
+          { slug: "dashboards-ai", title: "Draft dashboards with AI", description: "Describe what to watch; every drafted panel is checked and dry-run with your access before you accept it." },
+        ],
+      },
+      {
         id: "fleet",
         label: "Fleet",
         pages: [

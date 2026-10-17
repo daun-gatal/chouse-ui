@@ -29,7 +29,7 @@ It delegates to three specialists, each with its own [CHouse tools](/docs/ai-too
 | Subagent | Covers |
 | --- | --- |
 | **Access Auditor** | Users, roles and permissions, data access policies, your personal access tokens (never the secret), SSO, ClickHouse users and roles |
-| **Operations Analyst** | Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents with their proposed fixes and investigation notebooks, Doctor reports, the fleet snapshot, query regressions, capacity, upgrade readiness and rollout, observability collectors and their schedule |
+| **Operations Analyst** | Scheduled jobs and runs, Data Health promises and incidents, alerting, observability incidents with their proposed fixes and investigation notebooks, Doctor reports, the fleet snapshot, query regressions, capacity, upgrade readiness and rollout, observability collectors and their schedule, custom dashboards and their panels |
 | **Platform Auditor** | Connections, AI models, CHouse's AI agents and which feature runs which, [AI activity](/docs/ai-usage/) (usage, estimated cost, data sent to providers), external agents and MCP settings, the audit log |
 
 Things to ask:

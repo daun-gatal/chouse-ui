@@ -61,6 +61,7 @@ import {
     Funnel,
     LabelList,
     Brush,
+    ReferenceLine,
 } from 'recharts';
 
 /**
@@ -168,6 +169,37 @@ interface AiChartRendererProps {
     spec: ChartSpec;
 }
 
+/**
+ * How a chart is drawn. `card` is the chat's chart with its header, row
+ * count and downloads; `panel` is a dashboard panel (ADR 0021): no chrome, a
+ * fixed height, the panel's unit and threshold lines, and every row drawn.
+ */
+export type ChartViewOptions =
+    | { variant: 'card' }
+    | {
+        variant: 'panel';
+        /** The drawing height in pixels. */
+        height: number;
+        /** Formats axis ticks, tooltips and cells in the panel's unit. */
+        formatValue: (value: unknown) => string;
+        /** Horizontal (vertical for horizontal bars) lines at these values. */
+        thresholds: Array<{ value: number; color: string }>;
+        /**
+         * When the rows were split into one column per series (per user, per
+         * connection), the column every series measures. The y axis is titled
+         * by it, not by whichever series came first, and the series share one
+         * scale so they stay comparable.
+         */
+        seriesMeasure: string | null;
+    };
+
+const CARD_OPTIONS: ChartViewOptions = { variant: 'card' };
+
+/** Draws an already-resolved chart spec (no repair, unlike AiChartRenderer). */
+export function ChartView({ spec, options }: { spec: ChartSpec; options: ChartViewOptions }): React.ReactElement {
+    return <ChartRendererContent spec={spec} options={options} />;
+}
+
 export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElement | null {
     const normalized = useMemo(() => normalizeChartSpec(spec), [spec]);
 
@@ -188,9 +220,16 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
     return <ChartRendererContent spec={normalized.spec} />;
 }
 
-function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElement {
+function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpec; options?: ChartViewOptions }): React.ReactElement {
     const { chartType, title, rows, xAxis, yAxis, colorScheme } = spec;
     const [containerRef, containerWidth] = useContainerWidth();
+    const panel = options.variant === 'panel' ? options : null;
+    const isPanel = panel !== null;
+    const fmt = panel ? panel.formatValue : formatAxisValue;
+    const thresholds = panel ? panel.thresholds : [];
+    const thresholdLines = thresholds.map((t, i) => (
+        <ReferenceLine key={`threshold-${i}`} yAxisId="left" y={t.value} stroke={t.color} strokeDasharray="4 3" ifOverflow="extendDomain" />
+    ));
 
     const palette = useMemo(() => buildColorPalette(colorScheme), [colorScheme]);
     const yAxes = useMemo(() => resolveYAxes(yAxis), [yAxis]);
@@ -198,7 +237,8 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
         axis,
         Math.max(...rows.map((row) => Math.abs(Number(row[axis] ?? 0))).filter(Number.isFinite), 0),
     ])), [rows, yAxes]);
-    const canUseDualScale = yAxes.length === 2 && !['stacked_bar', 'stacked_area'].includes(chartType);
+    const seriesMeasure = panel ? panel.seriesMeasure : null;
+    const canUseDualScale = seriesMeasure === null && yAxes.length === 2 && !['stacked_bar', 'stacked_area'].includes(chartType);
     const [firstMagnitude, secondMagnitude] = yAxes.map((axis) => yAxisMagnitudes.get(axis) ?? 0);
     const smallerMagnitude = Math.min(firstMagnitude, secondMagnitude);
     const largerMagnitude = Math.max(firstMagnitude, secondMagnitude);
@@ -208,9 +248,13 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
         : undefined;
     const leftAxisSeries = yAxes.find((axis) => axis !== rightAxisSeries) ?? yAxes[0];
     const axisForSeries = (axis: string): 'left' | 'right' => axis === rightAxisSeries ? 'right' : 'left';
+    // A panel's shared scale holding several measures is named by its legend;
+    // titling it after the first one would mislabel the rest.
+    const leftAxisTitle: string | null = seriesMeasure
+        ?? (isPanel && !useDualScale && yAxes.length > 1 ? null : leftAxisSeries ?? null);
 
     const xAxisLabel = humanizeAxisName(xAxis);
-    const yAxisLabels = chartType === 'histogram' ? ['Count'] : yAxes.map(humanizeAxisName);
+    const yAxisLabels = chartType === 'histogram' ? ['Count'] : seriesMeasure !== null ? [humanizeAxisName(seriesMeasure)] : yAxes.map(humanizeAxisName);
     const needsAngledTicks = rows.length > 8;
 
     const sharedXAxis = (
@@ -238,10 +282,10 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
             tick={{ fill: '#71717a', fontSize: 10 }}
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
-            tickFormatter={formatAxisValue}
+            tickFormatter={fmt}
             width={64}
-            label={yAxes.length === 1 ? {
-                value: humanizeAxisName(yAxes[0]),
+            label={seriesMeasure !== null || yAxes.length === 1 ? {
+                value: humanizeAxisName(seriesMeasure ?? yAxes[0]),
                 angle: -90,
                 position: 'insideLeft',
                 offset: 8,
@@ -258,10 +302,10 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                 tick={{ fill: '#71717a', fontSize: 10 }}
                 axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                 tickLine={false}
-                tickFormatter={formatAxisValue}
+                tickFormatter={fmt}
                 width={64}
-                label={leftAxisSeries ? {
-                    value: humanizeAxisName(leftAxisSeries),
+                label={leftAxisTitle !== null ? {
+                    value: humanizeAxisName(leftAxisTitle),
                     angle: -90,
                     position: 'insideLeft',
                     offset: 8,
@@ -276,7 +320,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     tick={{ fill: '#71717a', fontSize: 10 }}
                     axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                     tickLine={false}
-                    tickFormatter={formatAxisValue}
+                    tickFormatter={fmt}
                     width={64}
                     label={{
                         value: humanizeAxisName(rightAxisSeries),
@@ -301,7 +345,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
             labelStyle={tooltipLabelStyle}
             itemStyle={{ color: '#d4d4d8', fontSize: '11px' }}
             formatter={(value: unknown, name?: string) => [
-                formatAxisValue(value),
+                fmt(value),
                 humanizeAxisName(name ?? yAxes[0] ?? '')
             ]}
             labelFormatter={(label: unknown) => `${xAxisLabel}: ${String(label)}`}
@@ -318,11 +362,9 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
     ) : null;
 
     const isBarFamily = ['bar', 'horizontal_bar', 'grouped_bar', 'stacked_bar'].includes(chartType);
-    const displayRows =
-        isBarFamily && rows.length > BAR_MAX_CATEGORIES
-            ? rows.slice(0, BAR_MAX_CATEGORIES)
-            : rows;
-    const barFamilyTruncated = isBarFamily && rows.length > BAR_MAX_CATEGORIES;
+    // A panel draws every row it was given; the chat card keeps the top categories.
+    const barFamilyTruncated = !isPanel && isBarFamily && rows.length > BAR_MAX_CATEGORIES;
+    const displayRows = barFamilyTruncated ? rows.slice(0, BAR_MAX_CATEGORIES) : rows;
 
     const baseName = sanitizeChartFilename(title);
     const timestamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
@@ -373,9 +415,11 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
         URL.revokeObjectURL(url);
     }, [rows, baseName]);
 
-    const CHART_HEIGHT = chartType === 'horizontal_bar'
-        ? Math.min(520, Math.max(280, displayRows.length * 30 + 90))
-        : 320;
+    const CHART_HEIGHT = panel
+        ? panel.height
+        : chartType === 'horizontal_bar'
+            ? Math.min(520, Math.max(280, displayRows.length * 30 + 90))
+            : 320;
     const chartMargin = { top: 8, right: rightAxisSeries ? 8 : 16, bottom: 4, left: 4 };
 
     // ============================================
@@ -397,6 +441,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
+                    {thresholdLines}
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
@@ -423,6 +468,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
+                    {thresholdLines}
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
@@ -449,7 +495,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         tick={{ fill: '#71717a', fontSize: 10 }}
                         axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                         tickLine={false}
-                        tickFormatter={formatAxisValue}
+                        tickFormatter={fmt}
                     />
                     <YAxis
                         type="category"
@@ -465,6 +511,9 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     />
                     {sharedTooltip}
                     {sharedLegend}
+                    {thresholds.map((t, i) => (
+                        <ReferenceLine key={`threshold-${i}`} x={t.value} stroke={t.color} strokeDasharray="4 3" ifOverflow="extendDomain" />
+                    ))}
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
@@ -490,6 +539,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
+                    {thresholdLines}
                     {yAxes.map((col, i) => (
                         <Line
                             key={col}
@@ -504,7 +554,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                             connectNulls={false}
                         />
                     ))}
-                    {rows.length > 30 && (
+                    {!isPanel && rows.length > 30 && (
                         <Brush
                             dataKey={xAxis}
                             height={18}
@@ -538,6 +588,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
+                    {thresholdLines}
                     {yAxes.map((col, i) => (
                         <Area
                             key={col}
@@ -551,7 +602,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                             stackId={isStacked ? 'a' : undefined}
                         />
                     ))}
-                    {rows.length > 30 && (
+                    {!isPanel && rows.length > 30 && (
                         <Brush
                             dataKey={xAxis}
                             height={18}
@@ -604,7 +655,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         contentStyle={tooltipStyle}
                         labelStyle={tooltipLabelStyle}
                         itemStyle={{ color: '#d4d4d8', fontSize: '11px' }}
-                        formatter={(v: unknown) => [formatAxisValue(v), '']}
+                        formatter={(v: unknown) => [fmt(v), '']}
                         separator=""
                     />
                 </PieChart>
@@ -641,7 +692,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         contentStyle={tooltipStyle}
                         labelStyle={tooltipLabelStyle}
                         itemStyle={{ color: '#d4d4d8', fontSize: '11px' }}
-                        formatter={(v: unknown) => [formatAxisValue(v), '']}
+                        formatter={(v: unknown) => [fmt(v), '']}
                         separator=""
                     />
                     <Legend wrapperStyle={{ fontSize: '10px', color: '#71717a', paddingTop: '8px' }} />
@@ -650,7 +701,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         x="50%" y="46%" textAnchor="middle" dominantBaseline="middle"
                         style={{ fill: '#e4e4e7', fontSize: '16px', fontWeight: 700 }}
                     >
-                        {formatAxisValue(total)}
+                        {fmt(total)}
                     </text>
                     <text
                         x="50%" y="56%" textAnchor="middle" dominantBaseline="middle"
@@ -681,7 +732,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         tick={{ fill: '#71717a', fontSize: 10 }}
                         axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                         tickLine={false}
-                        tickFormatter={formatAxisValue}
+                        tickFormatter={fmt}
                         label={{ value: xCol, position: 'insideBottom', offset: -2, fill: '#71717a', fontSize: 10 }}
                     />
                     <YAxis
@@ -691,14 +742,14 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         tick={{ fill: '#71717a', fontSize: 10 }}
                         axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
                         tickLine={false}
-                        tickFormatter={formatAxisValue}
+                        tickFormatter={fmt}
                         width={55}
                         label={{ value: yCol, angle: -90, position: 'insideLeft', offset: 10, fill: '#71717a', fontSize: 10 }}
                     />
                     <Tooltip
                         cursor={false}
                         contentStyle={tooltipStyle}
-                        formatter={(v: unknown, name?: string) => [formatAxisValue(v), name ?? '']}
+                        formatter={(v: unknown, name?: string) => [fmt(v), name ?? '']}
                     />
                     <Scatter data={scatterData} fill={palette[0]} opacity={0.75} />
                 </ScatterChart>
@@ -708,7 +759,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
 
         // ---- RADAR ----
         case 'radar': {
-            const radarData = rows.slice(0, 50).map((r) => {
+            const radarData = (isPanel ? rows : rows.slice(0, 50)).map((r) => {
                 const entry: Record<string, unknown> = { subject: String(r[xAxis] ?? '') };
                 yAxes.forEach((col) => {
                     entry[col] = Number(r[col] ?? 0);
@@ -719,7 +770,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                 <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%" accessibilityLayer>
                     <PolarGrid stroke="rgba(255,255,255,0.08)" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: '#71717a', fontSize: 10 }} />
-                    <PolarRadiusAxis tick={{ fill: '#71717a', fontSize: 9 }} tickFormatter={formatAxisValue} />
+                    <PolarRadiusAxis tick={{ fill: '#71717a', fontSize: 9 }} tickFormatter={fmt} />
                     {sharedTooltip}
                     {yAxes.length > 1 && <Legend wrapperStyle={{ fontSize: '10px', color: '#71717a' }} />}
                     {yAxes.map((col, i) => (
@@ -797,7 +848,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                         contentStyle={tooltipStyle}
                         labelStyle={tooltipLabelStyle}
                         itemStyle={{ color: '#d4d4d8', fontSize: '11px' }}
-                        formatter={(v: unknown) => [formatAxisValue(v), '']}
+                        formatter={(v: unknown) => [fmt(v), '']}
                         separator=""
                     />
                     <Funnel dataKey="value" data={funnelData} isAnimationActive>
@@ -828,7 +879,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                     <Tooltip
                         contentStyle={tooltipStyle}
                         labelStyle={tooltipLabelStyle}
-                        formatter={(v: unknown) => [formatAxisValue(v), 'Count']}
+                        formatter={(v: unknown) => [fmt(v), 'Count']}
                     />
                     <Bar dataKey="count" fill={palette[0]} radius={[3, 3, 0, 0]} />
                 </BarChart>
@@ -838,7 +889,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
 
         // ---- HEATMAP (table-based) ----
         case 'heatmap': {
-            return <HeatmapTable spec={spec} palette={palette} />;
+            return <HeatmapTable spec={spec} palette={palette} options={options} />;
         }
 
         // ---- FALLBACK ----
@@ -854,6 +905,18 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
                 </BarChart>
             );
         }
+    }
+
+    if (isPanel) {
+        return (
+            <div ref={containerRef} className="w-full min-w-0" style={{ height: `${CHART_HEIGHT}px` }}>
+                {containerWidth > 0 && (
+                    <ResponsiveContainer width={containerWidth} height={CHART_HEIGHT}>
+                        {chartElement}
+                    </ResponsiveContainer>
+                )}
+            </div>
+        );
     }
 
     // Compute chart width: container width minus horizontal padding (px-2 = 8px * 2)
@@ -926,7 +989,7 @@ function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElemen
 // Heatmap sub-component (table-based)
 // ============================================
 
-function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] }): React.ReactElement {
+function HeatmapTable({ spec, palette, options }: { spec: ChartSpec; palette: string[]; options: ChartViewOptions }): React.ReactElement {
     const { rows, xAxis, yAxis, title } = spec;
     const yAxes = resolveYAxes(yAxis);
     const cardRef = useRef<HTMLDivElement>(null);
@@ -980,6 +1043,9 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
         URL.revokeObjectURL(url);
     }, [rows, baseName]);
 
+    const panel = options.variant === 'panel' ? options : null;
+    const fmt = panel ? panel.formatValue : formatAxisValue;
+
     // Find numeric range for colour scaling
     const allValues = rows.flatMap((r) => yAxes.map((col) => Number(r[col] ?? 0)));
     const min = Math.min(...allValues);
@@ -997,6 +1063,44 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
         return `rgba(${r},${g},${b},${0.1 + intensity * 0.7})`;
     }
 
+    const table = (
+        <table className="w-full border-collapse text-[10px]">
+            <thead>
+                <tr>
+                    <th className="whitespace-nowrap pb-1 pr-3 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{xAxis}</th>
+                    {yAxes.map((col) => (
+                        <th key={col} className="whitespace-nowrap px-2 pb-1 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{col}</th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {(panel ? rows : rows.slice(0, 50)).map((r, i) => (
+                    <tr key={i}>
+                        <td className="whitespace-nowrap py-0.5 pr-3 text-paper-muted">
+                            {String(r[xAxis] ?? '').slice(0, 20)}
+                        </td>
+                        {yAxes.map((col) => {
+                            const val = Number(r[col] ?? 0);
+                            return (
+                                <td
+                                    key={col}
+                                    className="rounded px-2 py-0.5 text-center font-mono"
+                                    style={{ backgroundColor: cellColor(val), color: '#e4e4e7' }}
+                                >
+                                    {fmt(val)}
+                                </td>
+                            );
+                        })}
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+
+    if (panel) {
+        return <div className="overflow-auto" style={{ height: `${panel.height}px` }}>{table}</div>;
+    }
+
     return (
         <div ref={cardRef} className="mb-1 mt-3 overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             {title && (
@@ -1005,37 +1109,7 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
                 </div>
             )}
             <div className="max-h-[280px] overflow-x-auto overflow-y-auto p-3">
-                <table className="w-full border-collapse text-[10px]">
-                    <thead>
-                        <tr>
-                            <th className="whitespace-nowrap pb-1 pr-3 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{xAxis}</th>
-                            {yAxes.map((col) => (
-                                <th key={col} className="whitespace-nowrap px-2 pb-1 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{col}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.slice(0, 50).map((r, i) => (
-                            <tr key={i}>
-                                <td className="whitespace-nowrap py-0.5 pr-3 text-paper-muted">
-                                    {String(r[xAxis] ?? '').slice(0, 20)}
-                                </td>
-                                {yAxes.map((col) => {
-                                    const val = Number(r[col] ?? 0);
-                                    return (
-                                        <td
-                                            key={col}
-                                            className="rounded px-2 py-0.5 text-center font-mono"
-                                            style={{ backgroundColor: cellColor(val), color: '#e4e4e7' }}
-                                        >
-                                            {formatAxisValue(val)}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                {table}
             </div>
             <div className="flex items-center justify-between gap-2 px-4 pb-2">
                 <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">

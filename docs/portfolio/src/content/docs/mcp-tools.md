@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 60 tools the [MCP server](/docs/mcp/) offers. 48 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 66 tools the [MCP server](/docs/mcp/) offers. 52 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -52,6 +52,12 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`get_upgrade_assessment`](#get_upgrade_assessment) | Read | Yes | `upgrades:view` |
 | [`get_canary_replay`](#get_canary_replay) | Read | Yes | `upgrades:view` |
 | [`get_upgrade_rollout`](#get_upgrade_rollout) | Read | Yes | `upgrades:view` |
+| [`list_dashboards`](#list_dashboards) | Read | Yes | `dashboards:view` |
+| [`get_dashboard`](#get_dashboard) | Read | Yes | `dashboards:view` |
+| [`export_dashboard`](#export_dashboard) | Read | Yes | `dashboards:view` |
+| [`run_dashboard_panel`](#run_dashboard_panel) | Read | Yes | `dashboards:view` |
+| [`apply_dashboard`](#apply_dashboard) | Write | No | `dashboards:edit` |
+| [`delete_dashboard`](#delete_dashboard) | Destructive | No | `dashboards:delete` |
 | [`metrics_overview`](#metrics_overview) | Read | Yes | `metrics:view` |
 | [`live_queries`](#live_queries) | Read | Yes | `live_queries:view` |
 | [`fleet_snapshots`](#fleet_snapshots) | Read | Yes | `fleet:view` |
@@ -479,6 +485,70 @@ One workload replay on a canary connection: queries replayed, skipped and missin
 Every connection the token can use with its ClickHouse version and rollout gates: replica lag, open regressions and sick replicas.
 
 No parameters.
+
+## Dashboards
+
+### list_dashboards
+
+*List dashboards* — **Read** · on by default · needs any of `dashboards:view`
+
+Dashboards this token's user may view (own, shared with their roles, or all with dashboards:manage), with panel counts and access.
+
+No parameters.
+
+### get_dashboard
+
+*Get a dashboard* — **Read** · on by default · needs any of `dashboards:view`
+
+One dashboard: its variables, panels (SQL and chart settings), shares, lint findings and the caller's access.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+
+### export_dashboard
+
+*Export a dashboard* — **Read** · on by default · needs any of `dashboards:view`
+
+A dashboard as JSON (format chouse.dashboard/v1) that apply_dashboard and the CLI take — to review or keep in git.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+
+### run_dashboard_panel
+
+*Run a dashboard panel* — **Read** · on by default · needs any of `dashboards:view`
+
+Run one panel's read-only query for a time range and variable values, with the caller's own data access. Returns columns and rows (at most 10,000), or for a fleet panel one result per connection.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id |
+| `panel_id` | `string` | Yes | Panel id (from get_dashboard) |
+| `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | How far back to run the panel |
+| `values` | `record` | No | Variable values by name; a variable left out uses its default |
+| `connection_id` | `string` | No | Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection |
+
+### apply_dashboard
+
+*Create or update a dashboard* — **Write** · off by default · needs any of `dashboards:edit`
+
+Create a dashboard from an export, or update the one its id names to match it exactly (panels left out are removed with their alerts). Every panel is validated like a save in the UI; nothing is partly applied.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `dashboard` | `record` | Yes | A dashboard export ({format: "chouse.dashboard/v1", id, dashboard}) as export_dashboard returns it. With an id, that dashboard is updated in place (its panel ids are kept); with id null, a new dashboard is created. |
+
+### delete_dashboard
+
+*Delete a dashboard* — **Destructive** · off by default · needs any of `dashboards:delete`
+
+Delete a dashboard with its panels, shares, pins and panel alerts. Destructive — enabled by an administrator and limited by your token's scopes; the human approves via the client's permission prompt before the call.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
 
 ## Monitoring
 

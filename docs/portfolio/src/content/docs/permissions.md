@@ -9,11 +9,11 @@ Every permission in CHouse UI, grouped the way **Admin › Roles** groups them, 
 
 | Role | ID | For | Permissions |
 | --- | --- | --- | --- |
-| Super Administrator | `super_admin` | Full system access with all permissions | 107 |
-| Administrator | `admin` | User management and full ClickHouse access | 93 |
-| Developer | `developer` | DDL and DML access for development | 38 |
-| Analyst | `analyst` | Read/write access for data analysis | 24 |
-| Viewer | `viewer` | Read-only access to data | 14 |
+| Super Administrator | `super_admin` | Full system access with all permissions | 112 |
+| Administrator | `admin` | User management and full ClickHouse access | 98 |
+| Developer | `developer` | DDL and DML access for development | 42 |
+| Analyst | `analyst` | Read/write access for data analysis | 27 |
+| Viewer | `viewer` | Read-only access to data | 15 |
 | Guest | `guest` | Read-only access to all tabs and data | 20 |
 
 Built-in roles can't be deleted, and only a super admin can change their permissions — the ticks below are the defaults a fresh install starts with. Create your own roles in **Admin › Roles** from any mix of the permissions below — see [Users & roles](/docs/rbac-roles/).
@@ -254,3 +254,13 @@ Built-in roles can't be deleted, and only a super admin can change their permiss
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `agents:view` | View Agent Activity | ✓ | ✓ | ✓ |   |   |   |
 | `agents:manage` | Manage Agent Policies | ✓ | ✓ |   |   |   |   |
+
+## Dashboards
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `dashboards:view` | View Dashboards | ✓ | ✓ | ✓ | ✓ | ✓ |   |
+| `dashboards:edit` | Create and Edit Dashboards | ✓ | ✓ | ✓ | ✓ |   |   |
+| `dashboards:delete` | Delete Dashboards | ✓ | ✓ | ✓ | ✓ |   |   |
+| `dashboards:share` | Share Dashboards With Roles | ✓ | ✓ | ✓ |   |   |   |
+| `dashboards:manage` | Manage All Dashboards | ✓ | ✓ |   |   |   |   |

@@ -26,6 +26,7 @@ import {
   PinOff,
   BookOpen,
   Bot,
+  ChartColumn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
@@ -43,6 +44,7 @@ import {
   EXPLORER_ACCESS_PERMISSIONS,
   DATA_ACCESS_PERMISSIONS,
   AGENTS_ACCESS_PERMISSIONS,
+  DASHBOARDS_ACCESS_PERMISSIONS,
 } from "@/lib/navAccess";
 import { motion, useDragControls, PanInfo, AnimatePresence } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
@@ -390,6 +392,8 @@ export default function FloatingDock() {
 
   const canViewData = hasAnyPermission(DATA_ACCESS_PERMISSIONS);
 
+  const canViewDashboards = hasAnyPermission(DASHBOARDS_ACCESS_PERMISSIONS);
+
   const canViewAgents = hasAnyPermission(AGENTS_ACCESS_PERMISSIONS);
 
   const canViewAdmin = hasAnyPermission(ADMIN_ACCESS_PERMISSIONS);
@@ -403,6 +407,7 @@ export default function FloatingDock() {
     { icon: LayoutDashboard, label: "Home", to: "/overview" },
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
+    ...(canViewDashboards ? [{ icon: ChartColumn, label: "Dashboards", to: "/dashboards" }] : []),
     ...(canViewData ? [{ icon: Workflow, label: "Data", to: "/data" }] : []),
     ...(canViewFleet ? [{ icon: Globe2, label: "Fleet", to: "/fleet" }] : []),
     ...(canViewDoctor ? [{ icon: Stethoscope, label: "Doctor", to: "/doctor" }] : []),
