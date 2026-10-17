@@ -44,6 +44,7 @@ import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import type { RefreshSeconds } from "@/lib/viz/spec";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { BTN_GHOST, BTN_ICON, BTN_OUTLINE, BTN_PRIMARY } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
 import { parseView, writeView, type ViewState } from "../urlState";
@@ -165,7 +166,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
     return (
       <div className="flex flex-col items-start gap-3 p-6">
         <p role="alert" className="text-sm text-red-300">{detail.error?.message ?? "The dashboard could not be loaded"}</p>
-        <Button variant="outline" size="sm" onClick={() => navigate("/dashboards")}><ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All dashboards</Button>
+        <Button variant="outline" className={BTN_OUTLINE} onClick={() => navigate("/dashboards")}><ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> All dashboards</Button>
       </div>
     );
   }
@@ -278,7 +279,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-ink-500 px-4 py-3">
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="All dashboards" onClick={() => navigate("/dashboards")}><ArrowLeft className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" className={cn(BTN_ICON, "h-8 w-8")} aria-label="All dashboards" onClick={() => navigate("/dashboards")}><ArrowLeft className="h-4 w-4" /></Button>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-semibold text-paper">{settings.title}</h1>
           {settings.description && <p className="truncate text-xs text-paper-dim">{settings.description}</p>}
@@ -286,21 +287,21 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
         {data.shares.length > 0 && <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
         {editing ? (
           <>
-            <Button size="sm" variant="outline" onClick={() => setEditingPanel({ key: null, panel: { ...NEW_PANEL } })}><Plus className="mr-1.5 h-3.5 w-3.5" /> Add panel</Button>
-            <Button size="sm" variant="outline" onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1.5 h-3.5 w-3.5" /> Settings</Button>
-            <Button size="sm" variant="ghost" onClick={() => { setDraft(null); setConflict(false); }}>Cancel</Button>
-            <Button size="sm" onClick={() => save.mutate(draft)} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save"}</Button>
+            <Button variant="outline" className={BTN_OUTLINE} onClick={() => setEditingPanel({ key: null, panel: { ...NEW_PANEL } })}><Plus className="mr-1.5 h-3.5 w-3.5" /> Add panel</Button>
+            <Button variant="outline" className={BTN_OUTLINE} onClick={() => setSettingsOpen(true)}><Settings2 className="mr-1.5 h-3.5 w-3.5" /> Settings</Button>
+            <Button variant="ghost" className={BTN_GHOST} onClick={() => { setDraft(null); setConflict(false); }}>Cancel</Button>
+            <Button className={BTN_PRIMARY} onClick={() => save.mutate(draft)} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save"}</Button>
           </>
         ) : (
           <>
-            <Button size="sm" variant="ghost" aria-label={data.pinned ? "Unpin from Home" : "Pin to Home"} onClick={() => pin.mutate(!data.pinned)}>
+            <Button variant="ghost" className={BTN_GHOST} aria-label={data.pinned ? "Unpin from Home" : "Pin to Home"} onClick={() => pin.mutate(!data.pinned)}>
               {data.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             </Button>
-            {data.access.share && <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}><Share2 className="mr-1.5 h-3.5 w-3.5" /> Share</Button>}
-            {data.access.edit && canAskAi && <Button size="sm" variant="outline" onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
-            {data.access.edit && <Button size="sm" onClick={() => setDraft(toDraft(data))}><Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit</Button>}
+            {data.access.share && <Button variant="outline" className={BTN_OUTLINE} onClick={() => setShareOpen(true)}><Share2 className="mr-1.5 h-3.5 w-3.5" /> Share</Button>}
+            {data.access.edit && canAskAi && <Button variant="outline" className={BTN_OUTLINE} onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
+            {data.access.edit && <Button className={BTN_PRIMARY} onClick={() => setDraft(toDraft(data))}><Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit</Button>}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className={cn(BTN_ICON, "h-8 w-8")} aria-label="More actions"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {canCreate && <DropdownMenuItem onClick={() => void duplicate()}><Copy className="mr-2 h-3.5 w-3.5" /> Duplicate</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => void download()}><Download className="mr-2 h-3.5 w-3.5" /> Export JSON</DropdownMenuItem>
@@ -314,7 +315,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
       {conflict && (
         <div role="alert" className="flex items-center gap-3 border-b border-amber-900/40 bg-amber-950/30 px-4 py-2 text-xs text-amber-200">
           <span className="flex-1">Someone saved this dashboard after you opened it. Reload to see their version; your unsaved changes will be lost.</span>
-          <Button size="sm" variant="outline" onClick={() => { setDraft(null); setConflict(false); void detail.refetch(); }}>Reload</Button>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => { setDraft(null); setConflict(false); void detail.refetch(); }}>Reload</Button>
         </div>
       )}
       {save.isError && !conflict && <div role="alert" className="border-b border-red-900/40 bg-red-950/30 px-4 py-2 text-xs text-red-200">{save.error.message}</div>}

@@ -29,6 +29,7 @@ import {
   type PanelInput,
 } from "@/api/dashboards";
 import { cn } from "@/lib/utils";
+import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, TEXTAREA } from "@/components/charts/controlStyles";
 import type { Variable } from "@/lib/viz/spec";
 
 import { dashboardKeys } from "../hooks";
@@ -130,6 +131,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
         {!review ? (
           <div className="flex flex-col gap-3">
             <Textarea
+              className={TEXTAREA}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={4}
@@ -184,15 +186,15 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
         <DialogFooter>
           {!review ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button onClick={() => draft.mutate()} disabled={draft.isPending || goal.trim().length < 8}>
+              <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button className={BTN_PRIMARY} onClick={() => draft.mutate()} disabled={draft.isPending || goal.trim().length < 8}>
                 {draft.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />} {draft.isPending ? "Drafting…" : "Draft"}
               </Button>
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setReview(null)}>Discard</Button>
-              <Button onClick={() => accept.mutate()} disabled={accept.isPending || included === 0}>
+              <Button variant="outline" className={BTN_OUTLINE} onClick={() => setReview(null)}>Discard</Button>
+              <Button className={BTN_PRIMARY} onClick={() => accept.mutate()} disabled={accept.isPending || included === 0}>
                 {existing ? `Add ${included} panel${included === 1 ? "" : "s"}` : `Create with ${included} panel${included === 1 ? "" : "s"}`}
               </Button>
             </>
@@ -204,5 +206,5 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
 }
 
 function FixButton({ sql, onApply }: { sql: string; onApply: (sql: string) => void }): React.ReactElement {
-  return <Button size="sm" variant="outline" className="h-6" onClick={() => onApply(sql)}>Apply fix</Button>;
+  return <Button variant="outline" className={BTN_INLINE} onClick={() => onApply(sql)}>Apply fix</Button>;
 }

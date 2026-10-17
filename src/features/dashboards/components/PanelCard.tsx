@@ -18,6 +18,7 @@ import { mergeFleet, type ResultData } from "@/lib/viz/resolve";
 import type { VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
 import { cn } from "@/lib/utils";
+import { BTN_ICON } from "@/components/charts/controlStyles";
 
 import type { ViewState } from "../urlState";
 
@@ -121,13 +122,13 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
           </TooltipProvider>
         )}
         {actions}
-        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Refresh ${panel.title}`} onClick={() => void run.refetch()} disabled={run.isFetching || panelId === null}>
+        <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Refresh ${panel.title}`} onClick={() => void run.refetch()} disabled={run.isFetching || panelId === null}>
           <RefreshCw className={cn("h-3.5 w-3.5", run.isFetching && "animate-spin")} />
         </Button>
         {editing && (
           <>
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Edit ${panel.title}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove ${panel.title}`} onClick={onRemove}><Trash2 className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Edit ${panel.title}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Remove ${panel.title}`} onClick={onRemove}><Trash2 className="h-3.5 w-3.5" /></Button>
           </>
         )}
       </header>

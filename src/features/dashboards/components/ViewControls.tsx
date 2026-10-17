@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { rbacConnectionsApi } from "@/api";
 import { variableOptions } from "@/api/dashboards";
 import { RELATIVE_RANGE_KEYS, REFRESH_SECONDS, type RefreshSeconds, type RelativeRange, type Variable } from "@/lib/viz/spec";
+import { FIELD } from "@/components/charts/controlStyles";
+import { cn } from "@/lib/utils";
 
 import type { ViewState } from "../urlState";
 
@@ -43,7 +45,7 @@ function VariableSelect({ dashboardId, variable, value, connectionId, onChange }
     <label className="flex items-center gap-1.5">
       <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">{variable.label}</span>
       <Select value={value === "" ? EMPTY : value} onValueChange={(v) => onChange(v === EMPTY ? "" : v)}>
-        <SelectTrigger className="h-8 min-w-28" aria-label={variable.label}><SelectValue /></SelectTrigger>
+        <SelectTrigger className={cn(FIELD, "min-w-28")} aria-label={variable.label}><SelectValue /></SelectTrigger>
         <SelectContent>
           {all.map((v) => <SelectItem key={v === "" ? EMPTY : v} value={v === "" ? EMPTY : v}>{v === "" ? "(empty)" : v}</SelectItem>)}
         </SelectContent>
@@ -72,7 +74,7 @@ export function ViewControls({ dashboardId, variables, view, refreshSeconds, onV
       <label className="flex items-center gap-1.5">
         <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         <Select value={view.connectionId ?? ""} onValueChange={(connectionId) => onViewChange({ ...view, connectionId })}>
-          <SelectTrigger className="h-8 min-w-36" aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
+          <SelectTrigger className={cn(FIELD, "min-w-36")} aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
           <SelectContent>
             {known.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
           </SelectContent>
@@ -96,7 +98,7 @@ export function ViewControls({ dashboardId, variables, view, refreshSeconds, onV
           value={view.range.kind === "relative" ? view.range.value : ABSOLUTE}
           onValueChange={(v) => { if (v !== ABSOLUTE) onViewChange({ ...view, range: { kind: "relative", value: v as RelativeRange } }); }}
         >
-          <SelectTrigger className="h-8 min-w-36" aria-label="Time range"><SelectValue /></SelectTrigger>
+          <SelectTrigger className={cn(FIELD, "min-w-36")} aria-label="Time range"><SelectValue /></SelectTrigger>
           <SelectContent>
             {view.range.kind === "absolute" && (
               <SelectItem value={ABSOLUTE}>{new Date(view.range.from * 1000).toLocaleString()} – {new Date(view.range.to * 1000).toLocaleString()}</SelectItem>
@@ -108,7 +110,7 @@ export function ViewControls({ dashboardId, variables, view, refreshSeconds, onV
       <label className="flex items-center gap-1.5">
         <RefreshCw className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         <Select value={String(refreshSeconds)} onValueChange={(v) => onRefreshChange(Number(v) as RefreshSeconds)}>
-          <SelectTrigger className="h-8 w-20" aria-label="Auto-refresh"><SelectValue /></SelectTrigger>
+          <SelectTrigger className={cn(FIELD, "w-20")} aria-label="Auto-refresh"><SelectValue /></SelectTrigger>
           <SelectContent>{REFRESH_SECONDS.map((s) => <SelectItem key={s} value={String(s)}>{refreshLabel(s)}</SelectItem>)}</SelectContent>
         </Select>
       </label>

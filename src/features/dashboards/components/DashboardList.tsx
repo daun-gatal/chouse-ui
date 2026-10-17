@@ -28,6 +28,8 @@ import {
   type DashboardTemplate,
 } from "@/api/dashboards";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
+import { cn } from "@/lib/utils";
 
 import { dashboardKeys } from "../hooks";
 import { AskAiDialog } from "./AskAiDialog";
@@ -77,9 +79,9 @@ function ConnectionField({ value, onChange }: { value: string | null; onChange: 
   const connections = useConnections();
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-paper-dim">Connection</span>
+      <span className={FIELD_LABEL}>Connection</span>
       <Select value={value ?? ""} onValueChange={onChange}>
-        <SelectTrigger aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
+        <SelectTrigger className={FIELD} aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
         <SelectContent>{connections.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
       </Select>
     </label>
@@ -111,16 +113,16 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
         <div className="flex flex-col gap-3">
           {!template && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-paper-dim">Title</span>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+              <span className={FIELD_LABEL}>Title</span>
+              <Input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
             </label>
           )}
           <ConnectionField value={connectionId} onChange={setConnectionId} />
           {create.isError && <p role="alert" className="text-xs text-red-300">{create.error.message}</p>}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => create.mutate()} disabled={create.isPending || (!template && title.trim() === "")}>Create</Button>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className={BTN_PRIMARY} onClick={() => create.mutate()} disabled={create.isPending || (!template && title.trim() === "")}>Create</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -176,9 +178,9 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
         {toolbar}
         <PermissionGuard requiredPermission={RBAC_PERMISSIONS.DASHBOARDS_EDIT}>
           <div className="flex items-center gap-2" data-onboarding-id="dashboards-create">
-            {canAskAi && <Button size="sm" variant="outline" onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
-            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><FileUp className="mr-1.5 h-3.5 w-3.5" /> Import</Button>
-            <Button size="sm" onClick={() => setCreating({ template: null })}><Plus className="mr-1.5 h-3.5 w-3.5" /> New dashboard</Button>
+            {canAskAi && <Button variant="outline" className={BTN_OUTLINE} onClick={() => setAskAi(true)}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Ask AI</Button>}
+            <Button variant="outline" className={BTN_OUTLINE} onClick={() => fileRef.current?.click()}><FileUp className="mr-1.5 h-3.5 w-3.5" /> Import</Button>
+            <Button className={BTN_PRIMARY} onClick={() => setCreating({ template: null })}><Plus className="mr-1.5 h-3.5 w-3.5" /> New dashboard</Button>
           </div>
         </PermissionGuard>
         <input
@@ -214,9 +216,9 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
             {(templates.data ?? []).map((t) => (
               <div key={t.id} className="flex flex-col gap-2 rounded-md border border-dashed border-ink-500 p-4">
                 <span className="flex items-center gap-2 font-medium text-paper"><LayoutTemplate className="h-4 w-4 text-paper-dim" aria-hidden /> {t.title}</span>
-                <span className="text-xs text-paper-dim">{t.description}</span>
+                <span className={FIELD_LABEL}>{t.description}</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-paper-faint">{t.dashboard.panels.length} panels</span>
-                {canEdit && <Button size="sm" variant="outline" className="self-start" onClick={() => setCreating({ template: t })}>Use template</Button>}
+                {canEdit && <Button variant="outline" className={cn(BTN_OUTLINE, "self-start")} onClick={() => setCreating({ template: t })}>Use template</Button>}
               </div>
             ))}
           </div>

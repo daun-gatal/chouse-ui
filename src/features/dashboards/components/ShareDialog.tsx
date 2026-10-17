@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { listShareTargets, setShares, type ShareRecord } from "@/api/dashboards";
+import { BTN_OUTLINE, BTN_PRIMARY } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
 
@@ -66,8 +67,8 @@ export function ShareDialog({ open, onOpenChange, dashboardId, shares }: Props):
         </table>
         {save.isError && <p role="alert" className="text-xs text-red-300">{save.error.message}</p>}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || !targets.isSuccess}>Save</Button>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className={BTN_PRIMARY} onClick={() => save.mutate()} disabled={save.isPending || !targets.isSuccess}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

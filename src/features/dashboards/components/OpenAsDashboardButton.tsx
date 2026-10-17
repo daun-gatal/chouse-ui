@@ -13,6 +13,7 @@ import { ChartColumn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { instantiateTemplate } from "@/api/dashboards";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { BTN_OUTLINE } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
 
@@ -35,7 +36,7 @@ export function OpenAsDashboardButton({ templateId, connectionId }: { templateId
     }
   };
   return (
-    <Button size="sm" variant="outline" onClick={() => void open()} disabled={busy}>
+    <Button variant="outline" className={BTN_OUTLINE} onClick={() => void open()} disabled={busy}>
       <ChartColumn className="mr-1.5 h-3.5 w-3.5" /> Open as dashboard
     </Button>
   );

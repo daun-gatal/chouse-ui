@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getConnectionId } from "@/api/client";
 import { createDashboard, getDashboard, listDashboards, toInput, updateDashboard, type PanelInput } from "@/api/dashboards";
 import { log } from "@/lib/log";
+import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 import type { VizSpec } from "@/lib/viz/spec";
 
 import { dashboardKeys } from "../hooks";
@@ -84,9 +85,9 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-paper-dim">Dashboard</span>
+            <span className={FIELD_LABEL}>Dashboard</span>
             <Select value={target} onValueChange={setTarget}>
-              <SelectTrigger aria-label="Dashboard"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={FIELD} aria-label="Dashboard"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NEW}>New dashboard</SelectItem>
                 {editable.map((d) => <SelectItem key={d.id} value={d.id}>{d.title}</SelectItem>)}
@@ -96,19 +97,19 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
           {dashboards.isError && <p className="text-xs text-red-300">Couldn't load your dashboards: {dashboards.error.message}</p>}
           {target === NEW && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-paper-dim">New dashboard title</span>
-              <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} maxLength={200} />
+              <span className={FIELD_LABEL}>New dashboard title</span>
+              <Input className={FIELD} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} maxLength={200} />
             </label>
           )}
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-paper-dim">Panel title</span>
-            <Input value={panelTitle} onChange={(e) => setPanelTitle(e.target.value)} maxLength={200} />
+            <span className={FIELD_LABEL}>Panel title</span>
+            <Input className={FIELD} value={panelTitle} onChange={(e) => setPanelTitle(e.target.value)} maxLength={200} />
           </label>
           {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => void pin()} disabled={saving || invalid}>{saving ? "Pinning…" : "Pin"}</Button>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className={BTN_PRIMARY} onClick={() => void pin()} disabled={saving || invalid}>{saving ? "Pinning…" : "Pin"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

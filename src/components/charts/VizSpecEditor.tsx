@@ -25,10 +25,10 @@ import {
   type VizSpec,
 } from "@/lib/viz/spec";
 import { UNIT_LABELS } from "@/lib/viz/units";
+import { BTN_ICON, BTN_INLINE, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 
 const NONE = "__none__";
 
-const label = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
 
 /** Fields a chart type uses, so switching type keeps the spec drawable. */
 export function retype(spec: VizSpec, type: ChartType, columns: ResultColumn[]): VizSpec {
@@ -83,9 +83,9 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
     <div className="flex flex-col gap-3 text-xs" data-testid="viz-spec-editor">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
-          <span className={label}>Chart</span>
+          <span className={FIELD_LABEL}>Chart</span>
           <Select value={spec.type} onValueChange={(v) => onChange(retype(spec, v as ChartType, columns))}>
-            <SelectTrigger className="h-8 w-40" aria-label="Chart type"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={cn(FIELD, "w-40")} aria-label="Chart type"><SelectValue /></SelectTrigger>
             <SelectContent>
               {CHART_TYPES.map((t) => <SelectItem key={t} value={t}>{humanizeAxisName(t)}</SelectItem>)}
             </SelectContent>
@@ -93,9 +93,9 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
         </div>
         {usesX && (
           <div className="flex flex-col gap-1">
-            <span className={label}>X</span>
+            <span className={FIELD_LABEL}>X</span>
             <Select value={spec.x ?? NONE} onValueChange={(v) => onChange({ ...spec, x: v === NONE ? null : v, y: spec.y.filter((n) => n !== v) })}>
-              <SelectTrigger className="h-8 w-44" aria-label="X column"><SelectValue placeholder="Pick a column" /></SelectTrigger>
+              <SelectTrigger className={cn(FIELD, "w-44")} aria-label="X column"><SelectValue placeholder="Pick a column" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>None</SelectItem>
                 {names.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
@@ -105,9 +105,9 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
         )}
         {canSplit && (
           <div className="flex flex-col gap-1">
-            <span className={label}>Split by</span>
+            <span className={FIELD_LABEL}>Split by</span>
             <Select value={spec.series ?? NONE} onValueChange={(v) => onChange({ ...spec, series: v === NONE ? null : v })}>
-              <SelectTrigger className="h-8 w-40" aria-label="Split by series"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={cn(FIELD, "w-40")} aria-label="Split by series"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>None</SelectItem>
                 {names.filter((n) => n !== spec.x && !spec.y.includes(n)).map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
@@ -116,18 +116,18 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
           </div>
         )}
         <div className="flex flex-col gap-1">
-          <span className={label}>Unit</span>
+          <span className={FIELD_LABEL}>Unit</span>
           <Select value={spec.unit} onValueChange={(v) => onChange({ ...spec, unit: v as VizSpec["unit"] })}>
-            <SelectTrigger className="h-8 w-36" aria-label="Unit"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={cn(FIELD, "w-36")} aria-label="Unit"><SelectValue /></SelectTrigger>
             <SelectContent>
               {UNITS.map((u) => <SelectItem key={u} value={u}>{UNIT_LABELS[u]}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className={label}>Decimals</span>
+          <span className={FIELD_LABEL}>Decimals</span>
           <Select value={spec.decimals === null ? NONE : String(spec.decimals)} onValueChange={(v) => onChange({ ...spec, decimals: v === NONE ? null : Number(v) })}>
-            <SelectTrigger className="h-8 w-24" aria-label="Decimals"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Decimals"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE}>Auto</SelectItem>
               {[0, 1, 2, 3, 4, 5, 6].map((d) => <SelectItem key={d} value={String(d)}>{d}</SelectItem>)}
@@ -136,9 +136,9 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
         </div>
         {spec.type === "stat" && (
           <div className="flex flex-col gap-1">
-            <span className={label}>Reduce</span>
+            <span className={FIELD_LABEL}>Reduce</span>
             <Select value={spec.reduce ?? NONE} onValueChange={(v) => onChange({ ...spec, reduce: v === NONE ? null : (v as VizSpec["reduce"]) })}>
-              <SelectTrigger className="h-8 w-28" aria-label="Reduce"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Reduce"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {REDUCERS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
               </SelectContent>
@@ -146,9 +146,9 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
           </div>
         )}
         <div className="flex flex-col gap-1">
-          <span className={label}>Colors</span>
+          <span className={FIELD_LABEL}>Colors</span>
           <Select value={spec.colorScheme} onValueChange={(v) => onChange({ ...spec, colorScheme: v as VizSpec["colorScheme"] })}>
-            <SelectTrigger className="h-8 w-28" aria-label="Colors"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Colors"><SelectValue /></SelectTrigger>
             <SelectContent>
               {COLOR_SCHEMES.map((c) => <SelectItem key={c} value={c}>{humanizeAxisName(c)}</SelectItem>)}
             </SelectContent>
@@ -158,7 +158,7 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
 
       {usesY && (
         <div className="flex flex-col gap-1">
-          <span className={label}>{multiY ? "Y (pick one or more)" : "Y"}</span>
+          <span className={FIELD_LABEL}>{multiY ? "Y (pick one or more)" : "Y"}</span>
           <div className="flex flex-wrap gap-1.5">
             {names.filter((n) => n !== spec.x && n !== spec.series).map((n) => (
               <button
@@ -180,13 +180,13 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
 
       {THRESHOLD_TYPES.has(spec.type) && (
         <div className="flex flex-col gap-1">
-          <span className={label}>Thresholds</span>
+          <span className={FIELD_LABEL}>Thresholds</span>
           <div className="flex flex-wrap items-center gap-2">
             {spec.thresholds.map((t, i) => (
               <div key={i} className="flex items-center gap-1">
                 <Input
                   type="number"
-                  className="h-7 w-24"
+                  className={cn(FIELD, "h-7 w-24")}
                   aria-label={`Threshold ${i + 1} value`}
                   value={Number.isFinite(t.value) ? t.value : ""}
                   onChange={(e) => {
@@ -196,19 +196,19 @@ export function VizSpecEditor({ spec, columns, onChange, hideProblems = false }:
                   }}
                 />
                 <Select value={t.severity} onValueChange={(v) => onChange({ ...spec, thresholds: spec.thresholds.map((x, j) => (j === i ? { ...x, severity: v as typeof t.severity } : x)) })}>
-                  <SelectTrigger className="h-7 w-28" aria-label={`Threshold ${i + 1} severity`}><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={cn(FIELD, "w-28")} aria-label={`Threshold ${i + 1} severity`}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="warning">Warning</SelectItem>
                     <SelectItem value="critical">Critical</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove threshold ${i + 1}`} onClick={() => onChange({ ...spec, thresholds: spec.thresholds.filter((_, j) => j !== i) })}>
+                <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Remove threshold ${i + 1}`} onClick={() => onChange({ ...spec, thresholds: spec.thresholds.filter((_, j) => j !== i) })}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
             ))}
             {spec.thresholds.length < 4 && (
-              <Button variant="outline" size="sm" className="h-7" onClick={() => onChange({ ...spec, thresholds: [...spec.thresholds, { value: 0, severity: "warning" }] })}>
+              <Button variant="outline" className={BTN_INLINE} onClick={() => onChange({ ...spec, thresholds: [...spec.thresholds, { value: 0, severity: "warning" }] })}>
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add threshold
               </Button>
             )}

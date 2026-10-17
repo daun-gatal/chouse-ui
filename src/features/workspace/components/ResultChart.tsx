@@ -15,6 +15,7 @@ import { PinToDashboardDialog } from "@/features/dashboards/components/PinToDash
 import { suggestSpec } from "@/lib/viz/autodetect";
 import { vizSpecProblems, type VizSpec } from "@/lib/viz/spec";
 import { RBAC_PERMISSIONS } from "@/stores";
+import { BTN_OUTLINE } from "@/components/charts/controlStyles";
 
 interface Props {
   result: QueryResult;
@@ -40,7 +41,7 @@ export function ResultChart({ result, sql }: Props): React.ReactElement {
           <VizSpecEditor spec={spec} columns={columns} onChange={(next) => setEdited({ signature, spec: next })} />
         </div>
         <PermissionGuard requiredPermission={RBAC_PERMISSIONS.DASHBOARDS_EDIT}>
-          <Button size="sm" variant="outline" onClick={() => setPinOpen(true)} disabled={problems.length > 0 || sql.trim() === ""}>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => setPinOpen(true)} disabled={problems.length > 0 || sql.trim() === ""}>
             <Pin className="mr-1.5 h-3.5 w-3.5" /> Pin to dashboard
           </Button>
         </PermissionGuard>

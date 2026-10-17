@@ -19,6 +19,8 @@ import { previewPanel, type PanelInput, type PanelRunResult } from "@/api/dashbo
 import { suggestSpec } from "@/lib/viz/autodetect";
 import { mergeFleet, type ResultColumn } from "@/lib/viz/resolve";
 import { PANEL_HEIGHTS, PANEL_WIDTHS, vizSpecProblems, type Variable } from "@/lib/viz/spec";
+import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
+import { cn } from "@/lib/utils";
 
 import type { ViewState } from "../urlState";
 
@@ -43,7 +45,7 @@ function resultColumns(result: PanelRunResult): ResultColumn[] {
 }
 
 function ApplyFix({ sql, onApply }: { sql: string; onApply: (sql: string) => void }): React.ReactElement {
-  return <Button size="sm" variant="outline" className="h-6" onClick={() => onApply(sql)}>Apply fix</Button>;
+  return <Button variant="outline" className={BTN_INLINE} onClick={() => onApply(sql)}>Apply fix</Button>;
 }
 
 interface Props {
@@ -94,20 +96,20 @@ export function PanelEditor({ open, onOpenChange, initial, variables, view, onSa
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex min-w-60 flex-1 flex-col gap-1">
-              <span className="text-xs text-paper-dim">Title</span>
-              <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={200} />
+              <span className={FIELD_LABEL}>Title</span>
+              <Input className={FIELD} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={200} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-paper-dim">Width</span>
+              <span className={FIELD_LABEL}>Width</span>
               <Select value={String(draft.width)} onValueChange={(v) => setDraft({ ...draft, width: Number(v) as PanelInput["width"] })}>
-                <SelectTrigger className="w-28" aria-label="Width"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Width"><SelectValue /></SelectTrigger>
                 <SelectContent>{PANEL_WIDTHS.map((w) => <SelectItem key={w} value={String(w)}>{w} / 12</SelectItem>)}</SelectContent>
               </Select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-paper-dim">Height</span>
+              <span className={FIELD_LABEL}>Height</span>
               <Select value={draft.height} onValueChange={(v) => setDraft({ ...draft, height: v as PanelInput["height"] })}>
-                <SelectTrigger className="w-28" aria-label="Height"><SelectValue /></SelectTrigger>
+                <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Height"><SelectValue /></SelectTrigger>
                 <SelectContent>{PANEL_HEIGHTS.map((h) => <SelectItem key={h} value={h}>{HEIGHT_LABELS[h]}</SelectItem>)}</SelectContent>
               </Select>
             </label>
@@ -122,10 +124,10 @@ export function PanelEditor({ open, onOpenChange, initial, variables, view, onSa
           </Suspense>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={runPreview} disabled={preview.isPending || draft.sql.trim() === ""}>
+            <Button className={BTN_PRIMARY} onClick={runPreview} disabled={preview.isPending || draft.sql.trim() === ""}>
               {preview.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Play className="mr-1.5 h-3.5 w-3.5" />} Run preview
             </Button>
-            {columns.length > 0 && <Button size="sm" variant="outline" onClick={useSuggestion}>Suggest a chart</Button>}
+            {columns.length > 0 && <Button variant="outline" className={BTN_OUTLINE} onClick={useSuggestion}>Suggest a chart</Button>}
           </div>
 
           {preview.data && preview.data.lint.length > 0 && (
@@ -162,8 +164,8 @@ export function PanelEditor({ open, onOpenChange, initial, variables, view, onSa
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => onSave({ ...draft, title: draft.title.trim() })} disabled={problems.length > 0 || draft.title.trim() === "" || draft.sql.trim() === ""}>
+          <Button variant="outline" className={BTN_OUTLINE} onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className={BTN_PRIMARY} onClick={() => onSave({ ...draft, title: draft.title.trim() })} disabled={problems.length > 0 || draft.title.trim() === "" || draft.sql.trim() === ""}>
             {initial.id ? "Update panel" : "Add panel"}
           </Button>
         </DialogFooter>
