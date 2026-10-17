@@ -30,7 +30,7 @@ export const draftDashboardCapability: StructuredCapability<DraftRequest, DraftR
   outputSchema: DashboardDraftSchema,
   prepare(input, ctx) {
     requirePermission(ctx, PERMISSIONS.DASHBOARDS_EDIT);
-    if (ctx.connectionId !== input.connectionId) throw AppError.badRequest("Select the dashboard's connection before drafting with AI");
+    if (ctx.connectionId !== input.connectionId) throw AppError.badRequest("Draft on the connection you are on: this request names another one");
     return input;
   },
   templateVariables: (prepared) => ({ evidence: JSON.stringify(draftEvidence(prepared)) }),

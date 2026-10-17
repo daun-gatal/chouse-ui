@@ -528,7 +528,7 @@ Run one panel's read-only query for a time range and variable values, with the c
 | `panel_id` | `string` | Yes | Panel id (from get_dashboard) |
 | `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | How far back to run the panel |
 | `values` | `record` | No | Variable values by name; a variable left out uses its default |
-| `connection_id` | `string` | No | Connection to run on (defaults to the dashboard's connection) |
+| `connection_id` | `string` | No | Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection |
 
 ### apply_dashboard
 

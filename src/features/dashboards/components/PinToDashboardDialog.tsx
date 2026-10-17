@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getConnectionId } from "@/api/client";
 import { createDashboard, getDashboard, listDashboards, toInput, updateDashboard, type PanelInput } from "@/api/dashboards";
 import { log } from "@/lib/log";
 import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
@@ -53,7 +52,7 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
       let id: string;
       if (target === NEW) {
         const created = await createDashboard({
-          title: newTitle.trim(), description: "", connectionId: getConnectionId(), timeRange: "6h", refreshSeconds: 0, variables: [], panels: [panel],
+          title: newTitle.trim(), description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [panel],
         });
         id = created.dashboard.id;
       } else {

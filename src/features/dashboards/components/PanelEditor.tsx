@@ -60,7 +60,7 @@ interface Props {
 export function PanelEditor({ open, onOpenChange, initial, variables, view, onSave }: Props): React.ReactElement {
   const [draft, setDraft] = useState<PanelInput>(initial);
   const preview = useMutation({
-    mutationFn: () => previewPanel({ sql: draft.sql, viz: draft.viz, fleet: draft.fleet, variables, values: view.values, range: view.range, connectionId: view.connectionId }),
+    mutationFn: () => previewPanel({ sql: draft.sql, viz: draft.viz, fleet: draft.fleet, variables, values: view.values, range: view.range }),
   });
   const columns = useMemo(() => (preview.data ? resultColumns(preview.data.result) : []), [preview.data]);
   const fleet = fleetProblem(draft);

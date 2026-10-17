@@ -24,7 +24,6 @@ export interface DashboardRecord {
   title: string;
   description: string;
   ownerId: string;
-  connectionId: string | null;
   timeRange: RelativeRange;
   refreshSeconds: number;
   variables: Variable[];
@@ -92,7 +91,6 @@ function dashboardRow(r: Row): DashboardRecord {
     title: str(r.title),
     description: str(r.description),
     ownerId: str(r.owner_id),
-    connectionId: strOrNull(r.connection_id),
     timeRange: range.data,
     refreshSeconds: num(r.refresh_seconds),
     variables: parseStored(z.array(variableSchema), r.variables, `variables of dashboard ${id}`),
@@ -245,8 +243,8 @@ export async function createDashboard(input: DashboardInput, ownerId: string): P
   // Ids in the input belong to wherever it came from (an import, a duplicate); a new dashboard gets new panels.
   const { statements } = panelStatements(id, input.panels, new Set(), now);
   await atomic(sql`
-    INSERT INTO dashboards (id, title, description, owner_id, connection_id, time_range, refresh_seconds, variables, version, created_at, updated_at)
-    VALUES (${id}, ${input.title}, ${input.description}, ${ownerId}, ${input.connectionId}, ${input.timeRange}, ${input.refreshSeconds}, ${JSON.stringify(input.variables)}, 1, ${now}, ${now})
+    INSERT INTO dashboards (id, title, description, owner_id, time_range, refresh_seconds, variables, version, created_at, updated_at)
+    VALUES (${id}, ${input.title}, ${input.description}, ${ownerId}, ${input.timeRange}, ${input.refreshSeconds}, ${JSON.stringify(input.variables)}, 1, ${now}, ${now})
     RETURNING id`, statements);
   return id;
 }
@@ -275,7 +273,7 @@ export async function updateDashboard(id: string, version: number, input: Dashbo
     ...deleteAlertStatements(removedAlertIds),
   ];
   await atomic(sql`
-    UPDATE dashboards SET title = ${input.title}, description = ${input.description}, connection_id = ${input.connectionId},
+    UPDATE dashboards SET title = ${input.title}, description = ${input.description},
       time_range = ${input.timeRange}, refresh_seconds = ${input.refreshSeconds}, variables = ${JSON.stringify(input.variables)},
       version = ${version + 1}, updated_at = ${now}
     WHERE id = ${id} AND version = ${version}

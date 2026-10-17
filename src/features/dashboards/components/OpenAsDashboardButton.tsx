@@ -1,7 +1,6 @@
 /**
  * "Open as dashboard" on a built-in view (ADR 0021 §8): copies the matching
- * template into a dashboard the user owns, on the active connection, and
- * opens it. Shown to users who can create dashboards.
+ * template into a dashboard the user owns and opens it. Shown to users who can create dashboards.
  */
 
 import React, { useState } from "react";
@@ -17,7 +16,7 @@ import { BTN_OUTLINE } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
 
-export function OpenAsDashboardButton({ templateId, connectionId }: { templateId: string; connectionId: string | null }): React.ReactElement | null {
+export function OpenAsDashboardButton({ templateId }: { templateId: string }): React.ReactElement | null {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const canCreate = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.DASHBOARDS_EDIT));
@@ -26,7 +25,7 @@ export function OpenAsDashboardButton({ templateId, connectionId }: { templateId
   const open = async (): Promise<void> => {
     setBusy(true);
     try {
-      const created = await instantiateTemplate(templateId, connectionId);
+      const created = await instantiateTemplate(templateId);
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       navigate(`/dashboards/${created.dashboard.id}`);
     } catch (error) {

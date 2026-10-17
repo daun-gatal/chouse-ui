@@ -49,8 +49,9 @@ tool cannot reuse:
 
 ### 1. Model
 
-A **dashboard** has a title, a description, an owner, a default connection, a
-default time range and refresh, variables, panels, shares and pins. A **panel**
+A **dashboard** has a title, a description, an owner, a default time range and
+refresh, variables, panels, shares and pins. It has no connection of its own:
+like every other page, it runs on the caller's active connection (§3). A **panel**
 has a title, one read-only SELECT, a **viz spec**, a position, a width (3, 4, 6,
 8 or 12 of a 12-column grid), a height (`s`, `m`, `l`) and a `fleet` flag.
 
@@ -103,9 +104,16 @@ compiled to **native ClickHouse query parameters** and never concatenated:
 | `{{var.NAME}}` (kind `string`) | `{v_NAME:String}` | the selected value |
 | `{{var.NAME}}` (kind `identifier`) | `{v_NAME:Identifier}` | the selected value, matching `^[A-Za-z_][A-Za-z0-9_]*$` |
 
-- The connection panels run on is not a variable: the dashboard has a default
-  connection and the view bar picks another the viewer may use. It is never
-  substituted into SQL.
+- The connection panels run on is not a variable and is never substituted into
+  SQL. It is the connection the caller is on, stated with `X-Connection-Id` as
+  on every other route (ADR 0010): the dock's active connection in the browser,
+  `-c` in the CLI, the pinned connection or `connection_id` over MCP. A run with
+  none stated is refused rather than sent to the user's default connection. A
+  second picker on the dashboard would let it disagree with the dock about which
+  cluster the page shows.
+- A table a panel reads may not exist on the connection the viewer is on. The
+  panel then shows ClickHouse's error, naming the connection; the other panels
+  still run.
 - Variable options are a static list, or come from a one-column read-only query
   validated like a panel.
 - Variables are single-value.

@@ -9,7 +9,6 @@ function dashboard(overrides: Record<string, unknown> = {}): Record<string, unkn
   return {
     title: "Orders",
     description: "",
-    connectionId: "c1",
     timeRange: "6h",
     refreshSeconds: 60,
     variables: [],

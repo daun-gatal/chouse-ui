@@ -115,7 +115,7 @@ describe("evaluator end to end", () => {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES ('conn-a', 'alpha', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
     dashboardId = await store.createDashboard({
-      title: "Shop", description: "", connectionId: "conn-a", timeRange: "6h", refreshSeconds: 0, variables: [],
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, variables: [],
       panels: [{ id: null, title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null }, width: 6, height: "m", fleet: false }],
     }, OWNER);
     panelId = (await store.getDashboard(dashboardId))!.panels[0].id;
@@ -199,7 +199,7 @@ describe("evaluator end to end", () => {
   it("is removed with its panel when a save drops the panel", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
     const result = await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", connectionId: "conn-a", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [],
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [],
     });
     expect(result.removedAlertIds).toEqual([alertId]);
     expect(await alertStore.getAlert(alertId)).toBeNull();

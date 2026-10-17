@@ -21,6 +21,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
+import { CONNECTION_ID_COOKIE, CONNECTION_ID_HEADER, getCookie } from "../middleware/connectionContext";
 import { rbacAuthMiddleware, getRbacUser, requirePermission } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext, listRoles } from "../rbac/services/rbac";
@@ -88,9 +89,16 @@ function assertValid(input: DashboardInput): void {
   if (problems.length > 0) throw AppError.badRequest(problems[0], { problems });
 }
 
-/** A connection a dashboard names must be one the saver may use. */
-async function assertConnection(c: Context, connectionId: string | null): Promise<void> {
-  if (connectionId !== null) await viewerConnection(viewerOf(c), connectionId);
+/**
+ * The connection the caller is on, as every other route reads it (ADR 0010):
+ * the browser's active connection, the CLI's -c, or the MCP client's pin. A
+ * dashboard has no connection of its own. With none stated we refuse rather
+ * than guess the user's default, so a panel never shows another cluster's data.
+ */
+function currentConnectionId(c: Context): string {
+  const id = c.req.header(CONNECTION_ID_HEADER) || getCookie(c, CONNECTION_ID_COOKIE);
+  if (!id) throw AppError.badRequest("Pick a connection to run this on");
+  return id;
 }
 
 function toInput(detail: store.DashboardDetail): DashboardInput {
@@ -98,7 +106,6 @@ function toInput(detail: store.DashboardDetail): DashboardInput {
   return {
     title: dashboard.title,
     description: dashboard.description,
-    connectionId: dashboard.connectionId,
     timeRange: dashboard.timeRange,
     refreshSeconds: dashboard.refreshSeconds as DashboardInput["refreshSeconds"],
     variables: dashboard.variables,
@@ -174,7 +181,6 @@ dashboards.get("/:id/export", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), as
 dashboards.post("/", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", dashboardInputSchema), async (c) => {
   const input = c.req.valid("json");
   assertValid(input);
-  await assertConnection(c, input.connectionId);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length } });
   return ok(c, await detailResponse(c, id), 201);
@@ -183,21 +189,16 @@ dashboards.post("/", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator(
 dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", dashboardExportSchema), async (c) => {
   const { dashboard: input } = c.req.valid("json");
   assertValid(input);
-  await assertConnection(c, input.connectionId);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_IMPORT, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length } });
   return ok(c, await detailResponse(c, id), 201);
 });
 
-const instantiateSchema = z.object({ connectionId: z.string().min(1).nullable() }).strict();
-
-dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", instantiateSchema), async (c) => {
+dashboards.post("/templates/:templateId/instantiate", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async (c) => {
   const template = findTemplate(requireParam(c, "templateId"));
   if (!template) throw AppError.notFound("Template not found");
-  const { connectionId } = c.req.valid("json");
-  const input: DashboardInput = { ...template.dashboard, connectionId };
+  const input: DashboardInput = template.dashboard;
   assertValid(input);
-  await assertConnection(c, connectionId);
   const id = await store.createDashboard(input, viewerOf(c).id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, template: template.id } });
   return ok(c, await detailResponse(c, id), 201);
@@ -209,7 +210,6 @@ dashboards.put("/:id", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidato
   if (!access.edit) throw AppError.forbidden("You can view this dashboard but not edit it");
   const { version, dashboard: input } = c.req.valid("json");
   assertValid(input);
-  await assertConnection(c, input.connectionId);
   const result = await store.updateDashboard(id, version, input).catch(saveConflict);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
   return ok(c, await detailResponse(c, id));
@@ -277,18 +277,17 @@ const valuesSchema = z.record(z.string().max(500));
 const runSchema = z.object({
   range: timeRangeSchema,
   values: valuesSchema,
-  connectionId: z.string().min(1).nullable(),
 }).strict();
 
 function requireQueryExecute(c: Context): void {
   if (!has(viewerOf(c), PERMISSIONS.QUERY_EXECUTE)) throw AppError.forbidden("Running panels needs query:execute");
 }
 
-async function runQuery(c: Context, query: PanelQuery, fleet: boolean, connectionId: string | null): Promise<unknown> {
+/** A fleet panel runs on every connection the viewer may use; any other on the current one. */
+async function runQuery(c: Context, query: PanelQuery, fleet: boolean): Promise<unknown> {
   markAgentRecorded(c);
   if (fleet) return { kind: "fleet", ...(await runFleet(viewerOf(c), query, agentFor(c))) };
-  if (connectionId === null) throw AppError.badRequest("Pick a connection to run this panel on");
-  return { kind: "single", ...(await runPanel(viewerOf(c), connectionId, query, agentFor(c))) };
+  return { kind: "single", ...(await runPanel(viewerOf(c), currentConnectionId(c), query, agentFor(c))) };
 }
 
 dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", runSchema), async (c) => {
@@ -297,27 +296,24 @@ dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBO
   const { detail } = await visible(c, id);
   const panel = detail.panels.find((p) => p.id === requireParam(c, "panelId"));
   if (!panel) throw AppError.notFound("Panel not found");
-  const { range, values, connectionId } = c.req.valid("json");
+  const { range, values } = c.req.valid("json");
   const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
-  return ok(c, await runQuery(c, query, panel.fleet, connectionId ?? detail.dashboard.connectionId));
+  return ok(c, await runQuery(c, query, panel.fleet));
 });
 
-const optionsSchema = z.object({ connectionId: z.string().min(1).nullable() }).strict();
-
-dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", optionsSchema), async (c) => {
+dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
   requireQueryExecute(c);
   const { detail } = await visible(c, requireParam(c, "id"));
   const variable = detail.dashboard.variables.find((v) => v.name === requireParam(c, "name"));
   if (!variable) throw AppError.notFound("Variable not found");
   if (variable.options.source === "static") return ok(c, { values: variable.options.values });
-  const connectionId = c.req.valid("json").connectionId ?? detail.dashboard.connectionId;
-  if (connectionId === null) throw AppError.badRequest("Pick a connection to list this variable's values");
+  const connectionId = currentConnectionId(c);
   markAgentRecorded(c);
   return ok(c, { values: await runOptions(viewerOf(c), connectionId, variable.options.sql, agentFor(c)) });
 });
 
 // ============================================
-// Editor: lint, preview and option previews for unsaved panels
+// Editor: lint and preview for unsaved panels
 // ============================================
 
 const lintSchema = z.object({ sql: z.string().trim().min(1).max(MAX_SQL_LENGTH), viz: vizSpecSchema }).strict();
@@ -334,7 +330,6 @@ const previewSchema = z.object({
   variables: z.array(variableSchema).max(10),
   values: valuesSchema,
   range: timeRangeSchema,
-  connectionId: z.string().min(1).nullable(),
 }).strict();
 
 dashboards.post("/preview", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", previewSchema), async (c) => {
@@ -343,17 +338,8 @@ dashboards.post("/preview", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zVal
   const problems = panelProblems(body, body.variables);
   if (problems.length > 0) throw AppError.badRequest(problems[0], { problems });
   const query: PanelQuery = { sql: body.sql, variables: body.variables, values: body.values, range: body.range, dashboardId: null, panelId: "preview" };
-  const result = await runQuery(c, query, body.fleet, body.connectionId);
+  const result = await runQuery(c, query, body.fleet);
   return ok(c, { result, lint: lintPanel(body.sql, body.viz) });
-});
-
-const optionPreviewSchema = z.object({ sql: z.string().trim().min(1).max(MAX_SQL_LENGTH), connectionId: z.string().min(1) }).strict();
-
-dashboards.post("/variable-options", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", optionPreviewSchema), async (c) => {
-  requireQueryExecute(c);
-  const { sql, connectionId } = c.req.valid("json");
-  markAgentRecorded(c);
-  return ok(c, { values: await runOptions(viewerOf(c), connectionId, sql, agentFor(c)) });
 });
 
 // ============================================

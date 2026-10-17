@@ -1,20 +1,20 @@
 /**
- * The dashboard view bar (ADR 0021 §3, §12): connection, variables, time range
- * and auto-refresh. Variable options come from the dashboard (static) or its
+ * The dashboard view bar (ADR 0021 §3, §12): variables, time range and
+ * auto-refresh. The connection is the dock's active one, as on every page. Variable options come from the dashboard (static) or its
  * options query, run as the viewer; a value from a link that is not among the
  * options is still shown and selected.
  */
 
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, Database, RefreshCw } from "lucide-react";
+import { Clock, RefreshCw } from "lucide-react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { rbacConnectionsApi } from "@/api";
 import { variableOptions } from "@/api/dashboards";
 import { RELATIVE_RANGE_KEYS, REFRESH_SECONDS, type RefreshSeconds, type RelativeRange, type Variable } from "@/lib/viz/spec";
 import { FIELD } from "@/components/charts/controlStyles";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores";
 
 import type { ViewState } from "../urlState";
 
@@ -32,10 +32,11 @@ const ABSOLUTE = "__absolute__";
 // Radix Select items cannot have an empty value; an empty variable value maps to this.
 const EMPTY = "__empty__";
 
-function VariableSelect({ dashboardId, variable, value, connectionId, onChange }: { dashboardId: string; variable: Variable; value: string; connectionId: string | null; onChange: (value: string) => void }): React.ReactElement {
+function VariableSelect({ dashboardId, variable, value, onChange }: { dashboardId: string; variable: Variable; value: string; onChange: (value: string) => void }): React.ReactElement {
+  const connectionId = useAuthStore((s) => s.activeConnectionId);
   const options = useQuery({
     queryKey: ["dashboards", "options", dashboardId, variable.name, variable.options, connectionId],
-    queryFn: () => variableOptions(dashboardId, variable.name, connectionId),
+    queryFn: () => variableOptions(dashboardId, variable.name),
     enabled: variable.options.source === "query",
     retry: false,
   });
@@ -65,29 +66,14 @@ interface Props {
 }
 
 export function ViewControls({ dashboardId, variables, view, refreshSeconds, onViewChange, onRefreshChange }: Props): React.ReactElement {
-  const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
-  const known = connections.data ?? [];
-  const missingConnection = view.connectionId !== null && connections.isSuccess && !known.some((c) => c.id === view.connectionId);
-
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-ink-500 px-4 py-2 text-xs" data-testid="view-controls">
-      <label className="flex items-center gap-1.5">
-        <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
-        <Select value={view.connectionId ?? ""} onValueChange={(connectionId) => onViewChange({ ...view, connectionId })}>
-          <SelectTrigger className={cn(FIELD, "min-w-36")} aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
-          <SelectContent>
-            {known.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </label>
-      {missingConnection && <span className="text-[11px] text-red-300" role="alert">This dashboard's connection is not one you can use; pick another.</span>}
       {variables.map((v) => (
         <VariableSelect
           key={v.name}
           dashboardId={dashboardId}
           variable={v}
           value={view.values[v.name] ?? v.default}
-          connectionId={view.connectionId}
           onChange={(value) => onViewChange({ ...view, values: { ...view.values, [v.name]: value } })}
         />
       ))}

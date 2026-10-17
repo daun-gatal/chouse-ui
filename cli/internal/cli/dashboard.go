@@ -195,12 +195,12 @@ their alerts. The server validates every panel; nothing is partly applied.`,
 	}
 	apply.Flags().StringVarP(&applyFile, "file", "f", "", "the export to apply (- for stdin)")
 
-	var runRange, runConnection string
+	var runRange string
 	var runVars []string
 	runPanel := &cobra.Command{
 		Use:   "run-panel <dashboardId> <panelId>",
 		Short: "Run one panel's read-only query",
-		Example: `  chouse dashboard run-panel 7c1e… 2b9d… --range 24h
+		Example: `  chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h
   chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv`,
 		Args: cobra.ExactArgs(2),
 		RunE: a.action(needAuth, func(s *Session, args []string) error {
@@ -211,10 +211,8 @@ their alerts. The server validates every panel; nothing is partly applied.`,
 			if err != nil {
 				return err
 			}
-			body := map[string]any{"range": map[string]any{"kind": "relative", "value": runRange}, "values": values, "connectionId": nil}
-			if runConnection != "" {
-				body["connectionId"] = runConnection
-			}
+			// A panel runs on the -c connection (sent as X-Connection-Id); a fleet panel on all of them.
+			body := map[string]any{"range": map[string]any{"kind": "relative", "value": runRange}, "values": values}
 			got, err := s.Client.Post(s.Ctx, "/api/dashboards/"+url.PathEscape(args[0])+"/panels/"+url.PathEscape(args[1])+"/run", body)
 			if err != nil {
 				return err
@@ -227,7 +225,6 @@ their alerts. The server validates every panel; nothing is partly applied.`,
 	}
 	runPanel.Flags().StringVar(&runRange, "range", "1h", "how far back: "+strings.Join(dashboardRanges, ", "))
 	runPanel.Flags().StringArrayVar(&runVars, "var", nil, "a variable value as name=value (repeatable)")
-	runPanel.Flags().StringVar(&runConnection, "connection-id", "", "run on this connection id instead of the dashboard's")
 
 	remove := &cobra.Command{
 		Use:     "delete <id>",

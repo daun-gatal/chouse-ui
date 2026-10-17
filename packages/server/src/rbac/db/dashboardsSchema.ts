@@ -16,7 +16,6 @@ const DASHBOARD_TABLES: string[] = [
     title            TEXT NOT NULL,
     description      TEXT NOT NULL DEFAULT '',
     owner_id         TEXT NOT NULL,
-    connection_id    TEXT,
     time_range       TEXT NOT NULL,
     refresh_seconds  {BIGINT} NOT NULL DEFAULT 0,
     variables        TEXT NOT NULL DEFAULT '[]',

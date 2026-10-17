@@ -68,10 +68,11 @@ async function token(user: UserKey): Promise<string> {
   return generateAccessToken({ sub: u.id, email: `${u.id}@test.local`, username: u.id, roles: u.roles, permissions: u.permissions, sessionId: "s1" });
 }
 
-async function call(user: UserKey, method: string, path: string, body?: unknown): Promise<{ status: number; json: { success: boolean; data?: any; error?: any } }> {
+/** `connection` is the caller's current connection, sent like the browser, CLI and MCP send it. */
+async function call(user: UserKey, method: string, path: string, body?: unknown, connection: string | null = "conn-1"): Promise<{ status: number; json: { success: boolean; data?: any; error?: any } }> {
   const res = await app.request(path, {
     method,
-    headers: { Authorization: `Bearer ${await token(user)}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${await token(user)}`, "Content-Type": "application/json", ...(connection === null ? {} : { "X-Connection-Id": connection }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, json: (await res.json()) as { success: boolean; data?: any; error?: any } };
@@ -82,7 +83,7 @@ function panel(overrides: Record<string, unknown> = {}): Record<string, unknown>
 }
 
 function dashboard(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { title: "Shop", description: "", connectionId: "conn-1", timeRange: "6h", refreshSeconds: 60, variables: [], panels: [panel()], ...overrides };
+  return { title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, variables: [], panels: [panel()], ...overrides };
 }
 
 async function create(user: UserKey = "owner", overrides: Record<string, unknown> = {}): Promise<any> {
@@ -295,15 +296,14 @@ describe("templates", () => {
     const list = await call("viewOnly", "GET", "/dashboards/templates");
     expect(list.status).toBe(200);
     expect(list.json.data.map((t: { id: string }) => t.id)).toContain("clickhouse-overview");
-    expect((await call("viewOnly", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" })).status).toBe(403);
-    const copy = await call("owner", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" });
+    expect((await call("viewOnly", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(403);
+    const copy = await call("owner", "POST", "/dashboards/templates/replication/instantiate");
     expect(copy.status).toBe(201);
     expect(copy.json.data.dashboard.title).toBe("Replication");
     expect(copy.json.data.dashboard.ownerId).toBe("u-owner");
-    expect(copy.json.data.dashboard.connectionId).toBe("conn-1");
     expect(copy.json.data.panels.length).toBeGreaterThan(0);
-    expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate", { connectionId: "conn-1" })).status).toBe(404);
-    expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate", { connectionId: "conn-1" })).status).toBe(403);
+    expect((await call("owner", "POST", "/dashboards/templates/nope/instantiate")).status).toBe(404);
+    expect((await call("outsider", "POST", "/dashboards/templates/replication/instantiate")).status).toBe(403);
   });
 });
 
@@ -311,7 +311,7 @@ describe("running panels", () => {
   it("runs read-only with caps, native parameters and a dashboards log_comment", async () => {
     const created = await create();
     const [p] = created.panels;
-    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${p.id}/run`, { range: RANGE, values: {}, connectionId: null });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${p.id}/run`, { range: RANGE, values: {}});
     expect(res.status).toBe(200);
     expect(res.json.data.kind).toBe("single");
     expect(res.json.data.connectionId).toBe("conn-1");
@@ -332,8 +332,8 @@ describe("running panels", () => {
     const id = created.dashboard.id;
     await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
     const path = `/dashboards/${id}/panels/${created.panels[0].id}/run`;
-    const first = await call("owner", "POST", path, { range: RANGE, values: {}, connectionId: null });
-    const second = await call("peer", "POST", path, { range: RANGE, values: {}, connectionId: null });
+    const first = await call("owner", "POST", path, { range: RANGE, values: {}});
+    const second = await call("peer", "POST", path, { range: RANGE, values: {}});
     expect(first.json.data.cached).toBe(false);
     expect(second.json.data.cached).toBe(true);
     expect(sent).toHaveLength(1);
@@ -344,7 +344,7 @@ describe("running panels", () => {
     const id = created.dashboard.id;
     await call("manager", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
     const path = `/dashboards/${id}/panels/${created.panels[0].id}/run`;
-    const denied = await call("peer", "POST", path, { range: RANGE, values: {}, connectionId: null });
+    const denied = await call("peer", "POST", path, { range: RANGE, values: {}});
     expect(denied.status).toBe(403);
     expect(denied.json.error.message).toContain("secret.payments");
     expect(sent).toHaveLength(0);
@@ -354,14 +354,34 @@ describe("running panels", () => {
     const created = await create();
     const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
     await call("owner", "PUT", `/dashboards/${created.dashboard.id}/shares`, { shares: [{ roleId: "role-c", canEdit: false }] });
-    expect((await call("outsider", "POST", path, { range: RANGE, values: {}, connectionId: null })).status).toBe(403);
-    expect((await call("viewOnly", "POST", path, { range: RANGE, values: {}, connectionId: null })).json.error.message).toContain("query:execute");
+    expect((await call("outsider", "POST", path, { range: RANGE, values: {}})).status).toBe(403);
+    expect((await call("viewOnly", "POST", path, { range: RANGE, values: {}})).json.error.message).toContain("query:execute");
+  });
+
+  it("runs on the caller's current connection and never guesses one", async () => {
+    const created = await create();
+    const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
+    const onBeta = await call("owner", "POST", path, { range: RANGE, values: {} }, "conn-2");
+    expect(onBeta.json.data.connectionId).toBe("conn-2");
+    expect(sent.map((q) => q.connectionId)).toEqual(["conn-2"]);
+    const none = await call("owner", "POST", path, { range: RANGE, values: {} }, null);
+    expect(none.status).toBe(400);
+    expect(none.json.error.message).toBe("Pick a connection to run this on");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("names the connection when a table is not on it", async () => {
+    respond = () => new ClickHouseError({ message: "Table shop.orders does not exist", code: "60", type: "UNKNOWN_TABLE" });
+    const created = await create();
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {} }, "conn-2");
+    expect(res.status).toBe(400);
+    expect(res.json.error.message).toBe("beta does not have this table or database. ClickHouse: Table shop.orders does not exist");
   });
 
   it("says to aggregate further instead of truncating", async () => {
     respond = () => new ClickHouseError({ message: "Limit for result exceeded", code: "396", type: "TOO_MANY_ROWS_OR_BYTES" });
     const created = await create();
-    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {}, connectionId: null });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {}});
     expect(res.status).toBe(400);
     expect(res.json.error.message).toContain("more than 10,000 rows");
   });
@@ -369,7 +389,7 @@ describe("running panels", () => {
   it("runs a fleet panel on every connection and reports each failure on its own", async () => {
     respond = (connectionId) => (connectionId === "conn-2" ? new ClickHouseError({ message: "Table shop.orders does not exist", code: "60", type: "UNKNOWN_TABLE" }) : ROWS);
     const created = await create("owner", { panels: [panel({ fleet: true })] });
-    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {}, connectionId: null });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`, { range: RANGE, values: {}});
     expect(res.status).toBe(200);
     expect(res.json.data.kind).toBe("fleet");
     expect(res.json.data.omitted).toBe(0);
@@ -383,17 +403,17 @@ describe("running panels", () => {
     const variables = [{ name: "table", label: "Table", kind: "identifier", options: { source: "static", values: ["orders", "refunds"] }, default: "orders" }];
     const created = await create("owner", { variables, panels: [panel({ sql: "SELECT now() AS t, count() AS v FROM shop.{{var.table}}" })] });
     const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
-    expect((await call("owner", "POST", path, { range: RANGE, values: { table: "refunds" }, connectionId: null })).status).toBe(200);
+    expect((await call("owner", "POST", path, { range: RANGE, values: { table: "refunds" }})).status).toBe(200);
     expect(sent[0].query).toBe("SELECT now() AS t, count() AS v FROM shop.{v_table:Identifier}");
     expect(sent[0].params).toEqual({ v_table: "refunds" });
-    expect((await call("owner", "POST", path, { range: RANGE, values: { nope: "x" }, connectionId: null })).status).toBe(400);
-    expect((await call("owner", "POST", path, { range: RANGE, values: { table: "x; DROP" }, connectionId: null })).status).toBe(400);
-    const options = await call("owner", "POST", `/dashboards/${created.dashboard.id}/variables/table/options`, { connectionId: null });
+    expect((await call("owner", "POST", path, { range: RANGE, values: { nope: "x" }})).status).toBe(400);
+    expect((await call("owner", "POST", path, { range: RANGE, values: { table: "x; DROP" }})).status).toBe(400);
+    const options = await call("owner", "POST", `/dashboards/${created.dashboard.id}/variables/table/options`);
     expect(options.json.data.values).toEqual(["orders", "refunds"]);
   });
 
   it("previews an unsaved panel with lint, for editors only", async () => {
-    const body = { sql: "SELECT name AS t, value AS v FROM system.events", viz: { ...LINE, unit: "none" }, fleet: false, variables: [], values: {}, range: RANGE, connectionId: "conn-1" };
+    const body = { sql: "SELECT name AS t, value AS v FROM system.events", viz: { ...LINE, unit: "none" }, fleet: false, variables: [], values: {}, range: RANGE };
     expect((await call("viewOnly", "POST", "/dashboards/preview", body)).status).toBe(403);
     const res = await call("manager", "POST", "/dashboards/preview", body);
     expect(res.status).toBe(200);

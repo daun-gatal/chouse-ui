@@ -188,7 +188,6 @@ export type PanelInput = z.infer<typeof panelInputSchema>;
 export const dashboardInputSchema = z.object({
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2_000),
-  connectionId: z.string().min(1).nullable(),
   timeRange: z.enum(RELATIVE_RANGE_KEYS),
   refreshSeconds: z.union([z.literal(0), z.literal(30), z.literal(60), z.literal(300), z.literal(900)]),
   variables: z.array(variableSchema).max(MAX_VARIABLES),

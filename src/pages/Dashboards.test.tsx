@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/mocks/server";
+import { useAuthStore } from "@/stores/auth";
 
 import DashboardsPage from "./Dashboards";
 
@@ -22,7 +23,7 @@ const STAT = { version: 1, type: "stat", x: null, y: ["lag"], series: null, unit
 
 function detail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", connectionId: "c1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
+    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
     panels: [{ id: "p1", dashboardId: "d1", position: 0, title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, width: 6, height: "s", fleet: false, createdAt: 0, updatedAt: 0 }],
     shares: [],
     access: { owner: true, view: true, edit: true, delete: true, share: true },
@@ -43,6 +44,7 @@ function setup(initial = "/dashboards/d1"): void {
   );
   runPanel.mockReset();
   runPanel.mockResolvedValue(RUN);
+  useAuthStore.setState({ activeConnectionId: "c1" });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -62,7 +64,32 @@ describe("Dashboards page", () => {
     setup();
     expect(await screen.findByRole("heading", { name: "Kafka" })).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId("stat-value").textContent).toBe("1K"));
-    expect(runPanel.mock.calls[0].slice(0, 3)).toEqual(["d1", "p1", { range: { kind: "relative", value: "6h" }, values: {}, connectionId: "c1" }]);
+    expect(runPanel.mock.calls[0].slice(0, 3)).toEqual(["d1", "p1", { range: { kind: "relative", value: "6h" }, values: {} }]);
+    expect(screen.queryByRole("combobox", { name: "Connection" })).toBeNull();
+  });
+
+  it("follows the dock's connection and asks for one when there is none", async () => {
+    setup();
+    await waitFor(() => expect(runPanel).toHaveBeenCalledTimes(1));
+    act(() => useAuthStore.setState({ activeConnectionId: "c2" }));
+    await waitFor(() => expect(runPanel).toHaveBeenCalledTimes(2));
+    act(() => useAuthStore.setState({ activeConnectionId: null }));
+    expect(await screen.findByText("Pick a connection in the dock to run this panel")).toBeTruthy();
+    expect(runPanel).toHaveBeenCalledTimes(2);
+  });
+
+  it("titles a fleet panel's footer by time and bytes, and counts failures with the list", async () => {
+    const LINE = { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null };
+    server.use(http.get("/api/dashboards/d1", () => ok(detail({ panels: [{ id: "p1", dashboardId: "d1", position: 0, title: "Per node", sql: "SELECT 1", viz: LINE, width: 6, height: "s", fleet: true, createdAt: 0, updatedAt: 0 }] }))));
+    const data = (elapsedMs: number, readBytes: number) => ({ columns: [{ name: "t", type: "String" }, { name: "v", type: "UInt64" }], rows: [{ t: "a", v: 1 }], elapsedMs, readRows: 1, readBytes, ranAt: 0 });
+    setup();
+    runPanel.mockResolvedValue({ kind: "fleet", window: RUN.window, omitted: 0, connections: [
+      { connectionId: "c1", connectionName: "alpha", ok: true, data: data(4, 1024), cached: false },
+      { connectionId: "c2", connectionName: "beta", ok: true, data: data(9, 1024), cached: false },
+      { connectionId: "c3", connectionName: "gamma", ok: false, error: "ClickHouse did not answer within 40 s" },
+    ] });
+    expect(await screen.findByText("1 of 3 connections failed")).toBeTruthy();
+    expect(screen.getByTestId("panel-meta").textContent).toBe("9 ms · 2 KiB read");
   });
 
   it("shows a panel's error instead of an empty panel", async () => {

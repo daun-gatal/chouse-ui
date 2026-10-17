@@ -892,12 +892,11 @@ chouse dashboard run-panel <dashboardId> <panelId> [flags]
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--connection-id` | `string` |   | run on this connection id instead of the dashboard's |
 | `--range` | `string` | `1h` | how far back: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d |
 | `--var` | `stringArray` |   | a variable value as name=value (repeatable) |
 
 ```bash
-chouse dashboard run-panel 7c1e… 2b9d… --range 24h
+chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h
 chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv
 ```
 

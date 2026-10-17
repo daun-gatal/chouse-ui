@@ -26,7 +26,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { rbacConnectionsApi } from "@/api";
 import { ApiError } from "@/api/client";
 import {
   deleteDashboard,
@@ -110,7 +109,6 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const canAskAi = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
   const [askAi, setAskAi] = useState(false);
   const detail = useQuery({ queryKey: dashboardKeys.detail(id), queryFn: () => getDashboard(id) });
-  const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -184,7 +182,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
     return s && s.sql === panel.sql && s.fleet === panel.fleet && JSON.stringify(settings.variables) === JSON.stringify(data.dashboard.variables) ? s.id : null;
   };
 
-  const setView = (next: ViewState): void => setParams(writeView(params, next, data.dashboard.connectionId), { replace: true });
+  const setView = (next: ViewState): void => setParams(writeView(params, next), { replace: true });
 
   const onDragEnd = (event: DragEndEvent): void => {
     if (!draft || !event.over || event.active.id === event.over.id) return;
@@ -360,7 +358,6 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           open
           onOpenChange={setSettingsOpen}
           settings={draft.settings}
-          connections={(connections.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
           onApply={(next) => setDraft({ ...draft, settings: next })}
         />
       )}

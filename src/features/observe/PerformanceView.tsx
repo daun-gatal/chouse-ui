@@ -141,7 +141,7 @@ export function PerformanceView({ refreshKey }: { refreshKey?: number }): ReactE
           <h2 className="text-[16px] font-semibold tracking-tight text-paper">What got slower, and what changed</h2>
           <p className="mt-1 text-[12px] text-paper-muted">Every query shape is tracked by normalized_query_hash against its own 14-day baseline. Regressions are lined up with the changes around them.</p>
         </div>
-        <OpenAsDashboardButton templateId="query-latency" connectionId={connectionId} />
+        <OpenAsDashboardButton templateId="query-latency" />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Query shapes tracked" value={formatCount(data.fingerprints)} meta="Per replica" />

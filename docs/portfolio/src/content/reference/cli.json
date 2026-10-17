@@ -707,14 +707,9 @@
       "path": "chouse dashboard run-panel",
       "use": "chouse dashboard run-panel <dashboardId> <panelId> [flags]",
       "short": "Run one panel's read-only query",
-      "example": "  chouse dashboard run-panel 7c1e… 2b9d… --range 24h\n  chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv",
+      "example": "  chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h\n  chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv",
       "runnable": true,
       "flags": [
-        {
-          "name": "connection-id",
-          "type": "string",
-          "usage": "run on this connection id instead of the dashboard's"
-        },
         {
           "name": "range",
           "type": "string",

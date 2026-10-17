@@ -19,7 +19,7 @@ describe("dashboards API", () => {
         return HttpResponse.json({ success: true, data: {} });
       }),
     );
-    const input: dashboards.DashboardInput = { title: "T", description: "", connectionId: "c", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] };
+    const input: dashboards.DashboardInput = { title: "T", description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] };
     await dashboards.listDashboards();
     await dashboards.getDashboard("d/1");
     await dashboards.createDashboard(input);
@@ -31,13 +31,12 @@ describe("dashboards API", () => {
     await dashboards.setPinned("d1", true);
     await dashboards.setPinned("d1", false);
     await dashboards.exportDashboard("d1");
-    await dashboards.runPanel("d1", "p1", { range: RANGE, values: {}, connectionId: null });
-    await dashboards.previewPanel({ sql: "SELECT 1", viz: VIZ, fleet: false, variables: [], values: {}, range: RANGE, connectionId: "c" });
+    await dashboards.runPanel("d1", "p1", { range: RANGE, values: {} });
+    await dashboards.previewPanel({ sql: "SELECT 1", viz: VIZ, fleet: false, variables: [], values: {}, range: RANGE });
     await dashboards.lintPanel("SELECT 1", VIZ);
-    await dashboards.variableOptions("d1", "db", null);
-    await dashboards.previewVariableOptions("SELECT 1", "c");
+    await dashboards.variableOptions("d1", "db");
     await dashboards.listTemplates();
-    await dashboards.instantiateTemplate("replication", "c");
+    await dashboards.instantiateTemplate("replication");
     await dashboards.listAlerts("d1");
     await dashboards.listAllAlerts();
     expect(seen).toEqual([
@@ -56,7 +55,6 @@ describe("dashboards API", () => {
       "POST /api/dashboards/preview",
       "POST /api/dashboards/lint",
       "POST /api/dashboards/d1/variables/db/options",
-      "POST /api/dashboards/variable-options",
       "GET /api/dashboards/templates",
       "POST /api/dashboards/templates/replication/instantiate",
       "GET /api/dashboards/d1/alerts",
@@ -67,14 +65,14 @@ describe("dashboards API", () => {
 
   it("surfaces the server's error message", async () => {
     server.use(http.post("/api/dashboards/d1/panels/p1/run", () => HttpResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Access denied to secret.payments", category: "auth" } }, { status: 403 })));
-    await expect(dashboards.runPanel("d1", "p1", { range: RANGE, values: {}, connectionId: null })).rejects.toThrow("Access denied to secret.payments");
+    await expect(dashboards.runPanel("d1", "p1", { range: RANGE, values: {} })).rejects.toThrow("Access denied to secret.payments");
   });
 
   it("maps a detail back to the input a save takes", () => {
     const panel = { id: "p1", dashboardId: "d1", position: 0, title: "P", sql: "SELECT 1", viz: VIZ, width: 6 as const, height: "m" as const, fleet: false, createdAt: 0, updatedAt: 0 };
-    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", connectionId: "c", timeRange: "1h" as const, refreshSeconds: 30 as const, variables: [], version: 2, createdAt: 0, updatedAt: 0 };
+    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", timeRange: "1h" as const, refreshSeconds: 30 as const, variables: [], version: 2, createdAt: 0, updatedAt: 0 };
     expect(dashboards.toInput({ dashboard, panels: [panel] })).toEqual({
-      title: "T", description: "x", connectionId: "c", timeRange: "1h", refreshSeconds: 30, variables: [],
+      title: "T", description: "x", timeRange: "1h", refreshSeconds: 30, variables: [],
       panels: [{ id: "p1", title: "P", sql: "SELECT 1", viz: VIZ, width: 6, height: "m", fleet: false }],
     });
   });

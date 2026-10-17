@@ -146,7 +146,7 @@ export function CapacityView({ refreshKey }: { refreshKey?: number }): ReactElem
           <h2 className="text-[16px] font-semibold tracking-tight text-paper">When you run out, and what to reclaim first</h2>
           <p className="mt-1 text-[12px] text-paper-muted">Forecasts from system.disks and part_log growth. Savings are measured on samples, not guessed.</p>
         </div>
-        <OpenAsDashboardButton templateId="disk-and-tables" connectionId={connectionId} />
+        <OpenAsDashboardButton templateId="disk-and-tables" />
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Disk used" value={total ? formatPercent(used / total) : "—"} meta={total ? `${formatBytes(used)} of ${formatBytes(total)}` : "Waiting for samples"} icon={HardDrive} />

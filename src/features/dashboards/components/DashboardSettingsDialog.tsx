@@ -1,6 +1,6 @@
 /**
- * Dashboard settings (ADR 0021 §1, §3): title, description, default range,
- * refresh and connection, and the variables panels can use. Changes go into
+ * Dashboard settings (ADR 0021 §1, §3): title, description, default range
+ * and refresh, and the variables panels can use. Changes go into
  * the edit session; the dashboard is saved with Save.
  */
 
@@ -41,7 +41,6 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   settings: Settings;
-  connections: Array<{ id: string; name: string }>;
   onApply: (settings: Settings) => void;
 }
 
@@ -51,7 +50,7 @@ function newVariable(existing: Variable[]): Variable {
   return { name: `var${n}`, label: `Variable ${n}`, kind: "string", options: { source: "static", values: [""] }, default: "" };
 }
 
-export function DashboardSettingsDialog({ open, onOpenChange, settings, connections, onApply }: Props): React.ReactElement {
+export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply }: Props): React.ReactElement {
   const [draft, setDraft] = useState<Settings>(settings);
   const problems = draft.variables.flatMap((v) => variableProblems(v, draft.variables).map((p) => `${v.label || v.name}: ${p}`));
   const titleMissing = draft.title.trim() === "";
@@ -84,13 +83,6 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, connecti
               <Select value={String(draft.refreshSeconds)} onValueChange={(v) => setDraft({ ...draft, refreshSeconds: Number(v) as RefreshSeconds })}>
                 <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Default refresh"><SelectValue /></SelectTrigger>
                 <SelectContent>{REFRESH_SECONDS.map((s) => <SelectItem key={s} value={String(s)}>{refreshLabel(s)}</SelectItem>)}</SelectContent>
-              </Select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={FIELD_LABEL}>Default connection</span>
-              <Select value={draft.connectionId ?? ""} onValueChange={(connectionId) => setDraft({ ...draft, connectionId })}>
-                <SelectTrigger className={cn(FIELD, "w-48")} aria-label="Default connection"><SelectValue placeholder="None" /></SelectTrigger>
-                <SelectContent>{connections.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </label>
           </div>

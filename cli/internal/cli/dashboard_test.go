@@ -13,8 +13,8 @@ import (
 )
 
 type dashboardCall struct {
-	method, path string
-	body         map[string]any
+	method, path, connection string
+	body                     map[string]any
 }
 
 // dashboardServer answers the dashboards routes and records each call.
@@ -28,7 +28,7 @@ func dashboardServer(t *testing.T) (*httptest.Server, func() []dashboardCall) {
 		_ = json.Unmarshal(raw, &body)
 		if r.URL.Path != "/api/rbac/connections/my" {
 			mu.Lock()
-			calls = append(calls, dashboardCall{r.Method, r.URL.EscapedPath(), body})
+			calls = append(calls, dashboardCall{r.Method, r.URL.EscapedPath(), r.Header.Get("X-Connection-Id"), body})
 			mu.Unlock()
 		}
 		switch {
@@ -71,7 +71,7 @@ func TestDashboardReadsAndRunPanel(t *testing.T) {
 	for _, args := range [][]string{
 		{"dashboard", "list"},
 		{"dashboard", "get", "d/1"},
-		{"dashboard", "run-panel", "d1", "p1", "--range", "24h", "--var", "db=shop", "--var", "table=a=b", "--connection-id", prodID},
+		{"dashboard", "run-panel", "d1", "p1", "--range", "24h", "--var", "db=shop", "--var", "table=a=b", "-c", "prod"},
 	} {
 		if res := run(t, srv, false, "", args...); res.code != 0 {
 			t.Fatalf("%v failed: %+v", args, res)
@@ -82,9 +82,12 @@ func TestDashboardReadsAndRunPanel(t *testing.T) {
 		t.Fatalf("requests: %+v", got)
 	}
 	body, _ := json.Marshal(got[2].body)
-	want := `{"connectionId":"` + prodID + `","range":{"kind":"relative","value":"24h"},"values":{"db":"shop","table":"a=b"}}`
+	want := `{"range":{"kind":"relative","value":"24h"},"values":{"db":"shop","table":"a=b"}}`
 	if string(body) != want {
 		t.Fatalf("run body %s, want %s", body, want)
+	}
+	if got[2].connection != prodID {
+		t.Fatalf("run-panel ran on %q, want the -c connection %q", got[2].connection, prodID)
 	}
 }
 

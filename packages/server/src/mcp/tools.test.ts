@@ -704,7 +704,8 @@ describe("dashboards tools (ADR 0021)", () => {
       "GET /api/dashboards/d1/export",
       "POST /api/dashboards/d1/panels/p1/run",
     ]);
-    expect(calls[3].body).toEqual({ range: { kind: "relative", value: "6h" }, values: { db: "shop" }, connectionId: "conn-2" });
+    expect(calls[3].body).toEqual({ range: { kind: "relative", value: "6h" }, values: { db: "shop" } });
+    expect(calls[3].headers["x-connection-id"]).toBe("conn-2");
     expect(calls[3].headers["x-chouse-agent-source"]).toBe("mcp");
     await harness.close();
   });
@@ -712,7 +713,7 @@ describe("dashboards tools (ADR 0021)", () => {
   it("applies an export: a new dashboard is imported, an existing one is updated at its current version", async () => {
     const { proxy, calls } = dashboardProxy();
     const harness = await createHarness(buildMcpServer(enable("apply_dashboard"), buildMcpDeps(proxy), ALL));
-    const doc = { title: "Orders", description: "", connectionId: null, timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] };
+    const doc = { title: "Orders", description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] };
     await harness.request("tools/call", { name: "apply_dashboard", arguments: { dashboard: { format: "chouse.dashboard/v1", id: null, dashboard: doc } } }, CTX);
     await harness.request("tools/call", { name: "apply_dashboard", arguments: { dashboard: { format: "chouse.dashboard/v1", id: "d1", dashboard: doc } } }, CTX);
     expect(calls.map((c) => c.call)).toEqual(["POST /api/dashboards/import", "GET /api/dashboards/d1", "PUT /api/dashboards/d1"]);

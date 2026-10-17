@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
-import { argOptionalString, argString, registerChouseTool, runApiTool, toolContext, type McpToolSink } from "./helpers";
+import { apiFor, argOptionalString, argString, registerChouseTool, runApiTool, toolContext, type McpToolSink } from "./helpers";
 
 const RANGES = ["15m", "1h", "3h", "6h", "12h", "24h", "2d", "7d", "30d"] as const;
 
@@ -19,7 +19,7 @@ const runSchema: Record<string, z.ZodTypeAny> = {
   panel_id: z.string().min(1).describe("Panel id (from get_dashboard)"),
   range: z.enum(RANGES).describe("How far back to run the panel"),
   values: z.record(z.string()).optional().describe("Variable values by name; a variable left out uses its default"),
-  connection_id: z.string().min(1).optional().describe("Connection to run on (defaults to the dashboard's connection)"),
+  connection_id: z.string().min(1).optional().describe("Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection"),
 };
 
 const applySchema: Record<string, z.ZodTypeAny> = {
@@ -103,9 +103,10 @@ export function registerDashboardTools(sink: McpToolSink, deps: McpDeps): void {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
       const panelId = argString(args, "panel_id");
-      const body = { range: { kind: "relative", value: argString(args, "range") }, values: argValues(args), connectionId: argOptionalString(args, "connection_id") ?? null };
-      return runApiTool(ctx, deps.clientFor(ctx), "run_dashboard_panel", `${id}/${panelId}`, () =>
-        deps.clientFor(ctx).request("POST", `/api/dashboards/${segment(id)}/panels/${segment(panelId)}/run`, { body }));
+      const body = { range: { kind: "relative", value: argString(args, "range") }, values: argValues(args) };
+      const client = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
+      return runApiTool(ctx, client, "run_dashboard_panel", `${id}/${panelId}`, () =>
+        client.request("POST", `/api/dashboards/${segment(id)}/panels/${segment(panelId)}/run`, { body }));
     },
   });
 

@@ -16,7 +16,7 @@ export interface DashboardTemplate {
   description: string;
   /** Which built-in view offers "Open as dashboard" for this template, if any. */
   openFrom: "performance" | "capacity" | null;
-  dashboard: Omit<DashboardInput, "connectionId">;
+  dashboard: DashboardInput;
 }
 
 const BUCKET = "toStartOfInterval(event_time, INTERVAL {{interval_s}} SECOND)";

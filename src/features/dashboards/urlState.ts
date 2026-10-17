@@ -1,7 +1,8 @@
 /**
- * A dashboard view in the URL (ADR 0021 §12): time range, variable values and
- * connection, so a link — from an alert, a chat or a colleague — opens the
- * exact view. A parameter the dashboard does not understand is reported, and
+ * A dashboard view in the URL (ADR 0021 §12): time range and variable values,
+ * so a link — from an alert, a chat or a colleague — opens the same view. The
+ * connection is not part of it: dashboards follow the active connection, like
+ * every other page. A parameter the dashboard does not understand is reported, and
  * the dashboard's own setting is used for it.
  */
 
@@ -10,7 +11,6 @@ import { RELATIVE_RANGE_KEYS, type RelativeRange, type TimeRange, type Variable 
 export interface ViewState {
   range: TimeRange;
   values: Record<string, string>;
-  connectionId: string | null;
 }
 
 export interface ParsedView {
@@ -26,7 +26,7 @@ function isRelative(value: string): value is RelativeRange {
   return (RELATIVE_RANGE_KEYS as string[]).includes(value);
 }
 
-export function parseView(params: URLSearchParams, dashboard: { timeRange: RelativeRange; connectionId: string | null; variables: Variable[] }): ParsedView {
+export function parseView(params: URLSearchParams, dashboard: { timeRange: RelativeRange; variables: Variable[] }): ParsedView {
   const problems: string[] = [];
   let range: TimeRange = { kind: "relative", value: dashboard.timeRange };
   const rel = params.get("range");
@@ -54,15 +54,14 @@ export function parseView(params: URLSearchParams, dashboard: { timeRange: Relat
     else problems.push(`The link sets ${name}, which is not a variable of this dashboard`);
   }
 
-  const connection = params.get("connection");
-  return { view: { range, values, connectionId: connection ?? dashboard.connectionId }, problems };
+  return { view: { range, values }, problems };
 }
 
 /** The search params for a view, keeping unrelated params (such as `edit`). */
-export function writeView(current: URLSearchParams, view: ViewState, dashboardConnectionId: string | null): URLSearchParams {
+export function writeView(current: URLSearchParams, view: ViewState): URLSearchParams {
   const next = new URLSearchParams();
   for (const [key, value] of current.entries()) {
-    if (key === "range" || key === "from" || key === "to" || key === "connection" || key.startsWith(VAR_PREFIX)) continue;
+    if (key === "range" || key === "from" || key === "to" || key.startsWith(VAR_PREFIX)) continue;
     next.append(key, value);
   }
   if (view.range.kind === "relative") next.set("range", view.range.value);
@@ -71,6 +70,5 @@ export function writeView(current: URLSearchParams, view: ViewState, dashboardCo
     next.set("to", String(view.range.to));
   }
   for (const [name, value] of Object.entries(view.values)) next.set(`${VAR_PREFIX}${name}`, value);
-  if (view.connectionId !== null && view.connectionId !== dashboardConnectionId) next.set("connection", view.connectionId);
   return next;
 }

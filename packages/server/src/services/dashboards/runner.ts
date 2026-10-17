@@ -123,7 +123,9 @@ export async function viewerConnection(viewer: Viewer, connectionId: string): Pr
   return connection;
 }
 
-export function queryError(error: unknown, maxRows: number, timedOut: boolean): AppError {
+const MISSING_OBJECT_TYPES = new Set(["UNKNOWN_TABLE", "UNKNOWN_DATABASE"]);
+
+export function queryError(error: unknown, maxRows: number, timedOut: boolean, connectionName: string | null = null): AppError {
   if (timedOut) {
     return AppError.unavailable(`ClickHouse did not answer within ${REQUEST_TIMEOUT_MS / 1000} s; the server may be down or unreachable.`);
   }
@@ -136,6 +138,11 @@ export function queryError(error: unknown, maxRows: number, timedOut: boolean): 
     }
     if (error.type === "TIMEOUT_EXCEEDED") {
       return AppError.badRequest(`The query ran longer than ${MAX_EXECUTION_SECONDS} s. Narrow the time range or aggregate less.`);
+    }
+    // Following the active connection, a dashboard built on one cluster often
+    // meets another without its tables: say which, so it reads as "not here".
+    if (connectionName !== null && MISSING_OBJECT_TYPES.has(error.type ?? "")) {
+      return AppError.badRequest(`${connectionName} does not have this table or database. ClickHouse: ${error.message}`);
     }
     return AppError.badRequest(`ClickHouse: ${error.message}`);
   }
@@ -167,7 +174,7 @@ function estimator(connectionId: string): { executeQuery<T>(query: string): Prom
 }
 
 /** Step 6: run a compiled statement with the dashboard caps. */
-export async function execute(connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS): Promise<PanelData> {
+export async function execute(connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS, connectionName: string | null = null): Promise<PanelData> {
   const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
     const client = await connectionClient(connectionId);
@@ -197,7 +204,7 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
       ranAt: Date.now(),
     };
   } catch (error) {
-    throw queryError(error, maxRows, deadline.aborted);
+    throw queryError(error, maxRows, deadline.aborted, connectionName);
   }
 }
 
@@ -212,7 +219,7 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   let outcome: Cached<PanelData>;
   try {
     outcome = await cache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
-      const data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }));
+      const data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
   } catch (error) {
@@ -262,7 +269,7 @@ export async function runOptions(viewer: Viewer, connectionId: string, sql: stri
   }
   let data: PanelData;
   try {
-    data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS));
+    data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS, connection.name));
   } catch (error) {
     if (agent && governance) await recordAgentQuery(agent, governance, sql, "error", 0, error instanceof Error ? error.message : String(error));
     throw error;

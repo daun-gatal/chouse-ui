@@ -33,7 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { RELATIVE_RANGE_KEYS, REDUCERS, type RelativeRange } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
-import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { BTN_ICON, BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
@@ -59,11 +59,12 @@ function worstState(alerts: PanelAlertWithStatus[]): AlertState | null {
   return null;
 }
 
-function defaults(panel: PanelInput, view: ViewState, range: RelativeRange): AlertInput {
+/** A new alert watches the dock's active connection: the evaluator runs with no browser to ask. */
+function defaults(panel: PanelInput, view: ViewState, connectionId: string, range: RelativeRange): AlertInput {
   return {
     name: `${panel.title} alert`,
     severity: "warning",
-    connectionId: view.connectionId ?? "",
+    connectionId,
     channelIds: [],
     enabled: true,
     config: { column: panel.viz.y[0] ?? "", reduce: "last", op: ">", value: 0, forEvaluations: 1, everyMinutes: 5, range, values: view.values },
@@ -168,6 +169,7 @@ export function PanelAlertsButton({ detail, panelId, panel, view }: Props): Reac
   const canView = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.ALERTING_VIEW));
   const canEdit = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.ALERTING_EDIT)) && detail.access.edit;
   const canDelete = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.ALERTING_DELETE)) && detail.access.edit;
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
   const alerts = useDashboardAlerts(detail.dashboard.id);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<{ alert: PanelAlertWithStatus | null } | null>(null);
@@ -223,7 +225,7 @@ export function PanelAlertsButton({ detail, panelId, panel, view }: Props): Reac
           {alerts.isError && <p role="alert" className="text-xs text-red-300">{alerts.error.message}</p>}
           {form ? (
             <AlertForm
-              initial={form.alert ? { name: form.alert.name, severity: form.alert.severity, connectionId: form.alert.connectionId, channelIds: form.alert.channelIds, enabled: form.alert.enabled, config: form.alert.config } : defaults(panel, view, "1h")}
+              initial={form.alert ? { name: form.alert.name, severity: form.alert.severity, connectionId: form.alert.connectionId, channelIds: form.alert.channelIds, enabled: form.alert.enabled, config: form.alert.config } : defaults(panel, view, activeConnectionId ?? "", "1h")}
               panel={panel}
               onCancel={() => setForm(null)}
               onSubmit={(input) => save.mutate(input)}
@@ -255,7 +257,7 @@ export function PanelAlertsButton({ detail, panelId, panel, view }: Props): Reac
           )}
           {!form && (
             <DialogFooter>
-              {canEdit && <Button className={BTN_PRIMARY} onClick={() => setForm({ alert: null })} disabled={view.connectionId === null}><Plus className="mr-1.5 h-3.5 w-3.5" /> New alert</Button>}
+              {canEdit && <Button className={BTN_PRIMARY} onClick={() => setForm({ alert: null })} disabled={activeConnectionId === null}><Plus className="mr-1.5 h-3.5 w-3.5" /> New alert</Button>}
             </DialogFooter>
           )}
         </DialogContent>

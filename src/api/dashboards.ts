@@ -13,7 +13,6 @@ export interface DashboardRecord {
   title: string;
   description: string;
   ownerId: string;
-  connectionId: string | null;
   timeRange: RelativeRange;
   refreshSeconds: RefreshSeconds;
   variables: Variable[];
@@ -92,7 +91,6 @@ export interface PanelInput {
 export interface DashboardInput {
   title: string;
   description: string;
-  connectionId: string | null;
   timeRange: RelativeRange;
   refreshSeconds: RefreshSeconds;
   variables: Variable[];
@@ -128,10 +126,10 @@ export type PanelRunResult =
   | { kind: "single"; connectionId: string; window: RunWindow; data: PanelData; cached: boolean }
   | { kind: "fleet"; window: RunWindow; connections: FleetEntry[]; omitted: number };
 
+/** A panel runs on the caller's active connection (the X-Connection-Id every request carries); a fleet panel on all of them. */
 export interface RunRequest {
   range: TimeRange;
   values: Record<string, string>;
-  connectionId: string | null;
 }
 
 export interface DashboardTemplate {
@@ -139,7 +137,7 @@ export interface DashboardTemplate {
   title: string;
   description: string;
   openFrom: "performance" | "capacity" | null;
-  dashboard: Omit<DashboardInput, "connectionId">;
+  dashboard: DashboardInput;
 }
 
 export interface ShareTarget {
@@ -214,20 +212,16 @@ export function lintPanel(sql: string, viz: VizSpec): Promise<{ findings: LintFi
   return api.post<{ findings: LintFinding[] }>(`${base}/lint`, { sql, viz });
 }
 
-export function variableOptions(dashboardId: string, name: string, connectionId: string | null): Promise<{ values: string[] }> {
-  return api.post<{ values: string[] }>(`${base}/${enc(dashboardId)}/variables/${enc(name)}/options`, { connectionId });
-}
-
-export function previewVariableOptions(sql: string, connectionId: string): Promise<{ values: string[] }> {
-  return api.post<{ values: string[] }>(`${base}/variable-options`, { sql, connectionId });
+export function variableOptions(dashboardId: string, name: string): Promise<{ values: string[] }> {
+  return api.post<{ values: string[] }>(`${base}/${enc(dashboardId)}/variables/${enc(name)}/options`);
 }
 
 export function listTemplates(): Promise<DashboardTemplate[]> {
   return api.get<DashboardTemplate[]>(`${base}/templates`);
 }
 
-export function instantiateTemplate(templateId: string, connectionId: string | null): Promise<DashboardDetail> {
-  return api.post<DashboardDetail>(`${base}/templates/${enc(templateId)}/instantiate`, { connectionId });
+export function instantiateTemplate(templateId: string): Promise<DashboardDetail> {
+  return api.post<DashboardDetail>(`${base}/templates/${enc(templateId)}/instantiate`);
 }
 
 /** A detail's stored panels as the input a save takes. */
@@ -236,7 +230,6 @@ export function toInput(detail: Pick<DashboardDetail, "dashboard" | "panels">): 
   return {
     title: dashboard.title,
     description: dashboard.description,
-    connectionId: dashboard.connectionId,
     timeRange: dashboard.timeRange,
     refreshSeconds: dashboard.refreshSeconds,
     variables: dashboard.variables,

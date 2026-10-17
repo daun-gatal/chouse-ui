@@ -18,6 +18,7 @@ import { mergeFleet, type ResultData } from "@/lib/viz/resolve";
 import type { VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores";
 import { BTN_ICON } from "@/components/charts/controlStyles";
 
 import type { ViewState } from "../urlState";
@@ -73,14 +74,31 @@ function FleetStats({ spec, result }: { spec: VizSpec; result: Extract<PanelRunR
   );
 }
 
+/**
+ * The footer: how long the run took and what it read. The legend already names
+ * a fleet panel's connections and the failure list names the rest, so a fleet
+ * run reads like any other: its slowest connection and the total read.
+ */
+function runMeta(result: PanelRunResult): string | null {
+  if (result.kind === "single") return `${result.cached ? "cached · " : ""}${result.data.elapsedMs} ms · ${formatValue(result.data.readBytes, "bytes")} read`;
+  const ok = result.connections.filter((e): e is Extract<typeof e, { ok: true }> => e.ok);
+  if (ok.length === 0) return null;
+  const slowest = Math.max(...ok.map((e) => e.data.elapsedMs));
+  const read = ok.reduce((sum, e) => sum + e.data.readBytes, 0);
+  return `${ok.every((e) => e.cached) ? "cached · " : ""}${slowest} ms · ${formatValue(read, "bytes")} read`;
+}
+
 export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, onEdit, onRemove, dragHandle, actions, wrapped = false, alertLines }: Props): React.ReactElement {
   const height = PANEL_HEIGHTS_PX[panel.height];
+  // Runs on the dock's active connection (sent with every request); a fleet panel on all of them.
+  const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
   const run = useQuery({
-    queryKey: ["dashboards", "run", dashboardId, panelId, panel.sql, panel.fleet, view],
+    queryKey: ["dashboards", "run", dashboardId, panelId, panel.sql, panel.fleet, view, panel.fleet ? null : activeConnectionId],
     queryFn: ({ signal }) => {
       // Disabled below while there is no stored panel to run.
       if (panelId === null) throw new Error("Save the dashboard to run this panel");
-      return runPanel(dashboardId, panelId, { range: view.range, values: view.values, connectionId: view.connectionId }, signal);
+      if (!panel.fleet && activeConnectionId === null) throw new Error("Pick a connection in the dock to run this panel");
+      return runPanel(dashboardId, panelId, { range: view.range, values: view.values }, signal);
     },
     enabled: panelId !== null,
     refetchInterval: refreshSeconds > 0 ? refreshSeconds * 1000 : false,
@@ -95,13 +113,8 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
     return fleetVisual(panel.viz, run.data);
   }, [run.data, panel.viz]);
 
-  const meta = run.data?.kind === "single"
-    ? `${run.data.cached ? "cached · " : ""}${run.data.data.elapsedMs} ms · ${formatValue(run.data.data.readBytes, "bytes")} read`
-    : run.data?.kind === "fleet"
-      ? `${run.data.connections.filter((e) => e.ok).length}/${run.data.connections.length} connections`
-      : null;
-
   const failures = run.data?.kind === "fleet" ? run.data.connections.filter((e): e is Extract<typeof e, { ok: false }> => !e.ok) : [];
+  const meta = run.data ? runMeta(run.data) : null;
 
   return (
     <section className={cn("flex min-w-0 flex-col rounded-md border border-ink-500 bg-ink-100", wrapped ? "h-full" : ["col-span-12", WIDTH_CLASSES[panel.width]])} aria-label={panel.title}>
@@ -146,8 +159,9 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         ) : (
           <PanelMessage tone="error">No connection returned a result</PanelMessage>
         )}
-        {failures.length > 0 && (
+        {failures.length > 0 && run.data?.kind === "fleet" && (
           <ul className="mt-2 space-y-0.5 border-t border-ink-500 pt-2" aria-label="Connections that failed">
+            <li className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">{failures.length} of {run.data.connections.length} connections failed</li>
             {failures.map((f) => (
               <li key={f.connectionId} className="text-[11px] text-red-300"><span className="font-mono">{f.connectionName}</span>: {f.error}</li>
             ))}

@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/mocks/server";
+import { useAuthStore } from "@/stores/auth";
 import type { DashboardDetail, PanelInput } from "@/api/dashboards";
 
 import { PanelAlertsButton } from "./PanelAlerts";
@@ -18,7 +19,7 @@ vi.mock("@/stores", async (importOriginal) => {
 const VIZ = { version: 1 as const, type: "line" as const, x: "t", y: ["lag"], series: null, unit: "count" as const, decimals: 0, thresholds: [], colorScheme: "violet" as const, reduce: null };
 const PANEL: PanelInput = { id: "p1", title: "Consumer lag", sql: "SELECT 1", viz: VIZ, width: 6, height: "m", fleet: false };
 const DETAIL = {
-  dashboard: { id: "d1", title: "Kafka", description: "", ownerId: "u1", connectionId: "c1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 1, createdAt: 0, updatedAt: 0 },
+  dashboard: { id: "d1", title: "Kafka", description: "", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, variables: [], version: 1, createdAt: 0, updatedAt: 0 },
   panels: [], shares: [], pinned: false, lint: {}, alertCounts: { p1: 1 },
   access: { owner: true, view: true, edit: true, delete: true, share: true },
 } as unknown as DashboardDetail;
@@ -31,10 +32,11 @@ const ALERT = {
 
 function setup(alerts: unknown[] = [ALERT]): void {
   server.use(http.get("/api/dashboards/d1/alerts", () => HttpResponse.json({ success: true, data: alerts })));
+  useAuthStore.setState({ activeConnectionId: "c1" });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <PanelAlertsButton detail={DETAIL} panelId="p1" panel={PANEL} view={{ range: { kind: "relative", value: "6h" }, values: {}, connectionId: "c1" }} />
+      <PanelAlertsButton detail={DETAIL} panelId="p1" panel={PANEL} view={{ range: { kind: "relative", value: "6h" }, values: {} }} />
     </QueryClientProvider>,
   );
 }

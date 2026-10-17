@@ -14,9 +14,6 @@ import PermissionGuard from "@/components/common/PermissionGuard";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { rbacConnectionsApi } from "@/api";
-import { getConnectionId } from "@/api/client";
 import {
   createDashboard,
   importDashboard,
@@ -70,33 +67,14 @@ function Section({ title, dashboards, empty }: { title: string; dashboards: Dash
   );
 }
 
-function useConnections(): Array<{ id: string; name: string }> {
-  const connections = useQuery({ queryKey: ["rbac", "my-connections"], queryFn: () => rbacConnectionsApi.getMyConnections() });
-  return (connections.data ?? []).map((c) => ({ id: c.id, name: c.name }));
-}
-
-function ConnectionField({ value, onChange }: { value: string | null; onChange: (id: string) => void }): React.ReactElement {
-  const connections = useConnections();
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={FIELD_LABEL}>Connection</span>
-      <Select value={value ?? ""} onValueChange={onChange}>
-        <SelectTrigger className={FIELD} aria-label="Connection"><SelectValue placeholder="Pick a connection" /></SelectTrigger>
-        <SelectContent>{connections.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-      </Select>
-    </label>
-  );
-}
-
 function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; onOpenChange: (open: boolean) => void; template: DashboardTemplate | null }): React.ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(template?.title ?? "New dashboard");
-  const [connectionId, setConnectionId] = useState<string | null>(getConnectionId());
   const create = useMutation({
     mutationFn: () => template
-      ? instantiateTemplate(template.id, connectionId)
-      : createDashboard({ title: title.trim(), description: "", connectionId, timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] }),
+      ? instantiateTemplate(template.id)
+      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, variables: [], panels: [] }),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       onOpenChange(false);
@@ -117,7 +95,6 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
               <Input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
             </label>
           )}
-          <ConnectionField value={connectionId} onChange={setConnectionId} />
           {create.isError && <p role="alert" className="text-xs text-red-300">{create.error.message}</p>}
         </div>
         <DialogFooter>

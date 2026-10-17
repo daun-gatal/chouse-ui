@@ -17,7 +17,7 @@ describe("dashboard templates", () => {
 
   for (const template of TEMPLATES) {
     describe(template.id, () => {
-      const input = { ...template.dashboard, connectionId: null };
+      const input = template.dashboard;
 
       it("is a valid dashboard document", () => {
         const parsed = dashboardInputSchema.safeParse(input);
