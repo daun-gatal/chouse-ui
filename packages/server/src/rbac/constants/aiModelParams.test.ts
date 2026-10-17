@@ -188,3 +188,21 @@ describe('hasAnyParams', () => {
     expect(hasAnyParams({ temperature: 0 })).toBe(true);
   });
 });
+
+describe("validateAiModelParams · contextWindow (ADR 0022)", () => {
+  it("accepts a window for every provider", () => {
+    for (const provider of ["openai", "anthropic", "google", "ollama", "bedrock", "cohere"] as const) {
+      expect(validateAiModelParams({ contextWindow: 32_768 }, provider)).toEqual([]);
+    }
+  });
+
+  it("enforces bounds and integers", () => {
+    expect(validateAiModelParams({ contextWindow: 512 }, "openai")[0]).toContain("'contextWindow' must be between");
+    expect(validateAiModelParams({ contextWindow: 1.5e4 + 0.5 }, "openai")[0]).toContain("must be an integer");
+  });
+
+  it("requires maxTokens below the window", () => {
+    expect(validateAiModelParams({ contextWindow: 8_192, maxTokens: 9_000 }, "openai")).toContain("'maxTokens' must be smaller than 'contextWindow'");
+    expect(validateAiModelParams({ contextWindow: 8_192, maxTokens: 4_096 }, "openai")).toEqual([]);
+  });
+});

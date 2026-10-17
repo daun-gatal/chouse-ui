@@ -41,6 +41,7 @@ export interface AiModelParams {
   recursionLimit?: number;
   runTimeoutMs?: number;
   structuredOutputPolicy?: StructuredOutputPolicy;
+  contextWindow?: number;
   extra?: Record<string, unknown>;
 }
 
@@ -50,6 +51,7 @@ const ENGINE_KEYS: readonly AiModelParamKey[] = [
   'recursionLimit',
   'runTimeoutMs',
   'structuredOutputPolicy',
+  'contextWindow',
 ];
 
 const COMMON_KEYS: readonly AiModelParamKey[] = [
@@ -104,6 +106,7 @@ export const PARAM_BOUNDS = {
   recursionLimit: { min: 8, max: 1000 },
   runTimeoutMs: { min: 10_000, max: 3_600_000 },
   thinkingBudgetTokens: { min: -1, max: 128_000 },
+  contextWindow: { min: 1_024, max: 10_000_000 },
 } as const;
 
 export const STOP_SEQUENCES_MAX: Record<ProviderType, number> = {
@@ -147,6 +150,7 @@ const INT_KEYS: readonly AiModelParamKey[] = [
   'recursionLimit',
   'runTimeoutMs',
   'thinkingBudgetTokens',
+  'contextWindow',
 ];
 
 function isFiniteNumber(value: unknown): value is number {
@@ -193,6 +197,10 @@ export function validateAiModelParams(params: AiModelParams, providerType: Provi
   if (params.structuredOutputPolicy !== undefined
       && !isStructuredOutputPolicy(params.structuredOutputPolicy)) {
     errors.push(`'structuredOutputPolicy' must be one of: ${STRUCTURED_OUTPUT_POLICIES.join(', ')}`);
+  }
+
+  if (isFiniteNumber(params.maxTokens) && isFiniteNumber(params.contextWindow) && params.maxTokens >= params.contextWindow) {
+    errors.push(`'maxTokens' must be smaller than 'contextWindow'`);
   }
 
   if (providerType === 'anthropic') {
@@ -295,6 +303,7 @@ export const NUMBER_PARAM_FIELDS: NumberParamField[] = [
   { key: 'presencePenalty', label: 'Presence penalty', description: 'Penalize tokens that already appeared.', group: 'Sampling', step: 0.1, min: -2, max: 2, placeholder: '0' },
   { key: 'maxTokens', label: 'Max output tokens', description: 'Hard cap on generated tokens per response.', group: 'Output', step: 1, min: 1, max: 2_000_000, placeholder: 'provider default' },
   { key: 'thinkingBudgetTokens', label: 'Thinking budget (tokens)', description: 'Anthropic: min 1024, requires max tokens above it. Google: -1 = dynamic, 0 = off.', group: 'Reasoning', step: 1, min: -1, max: 128_000, placeholder: 'off' },
+  { key: 'contextWindow', label: 'Context window (tokens)', description: 'Input window of the model. Agents summarize the conversation at 85% of it. Required when the model is not in the built-in model list.', group: 'Output', step: 1024, min: 1_024, max: 10_000_000, placeholder: 'from model profile' },
   { key: 'maxRetries', label: 'Max retries', description: 'Retries on transient provider errors.', group: 'Reliability & agent', step: 1, min: 0, max: 10, placeholder: 'provider default' },
   { key: 'requestTimeoutMs', label: 'Request timeout (ms)', description: 'Per-request timeout to the provider API.', group: 'Reliability & agent', step: 1000, min: 1_000, max: 600_000, placeholder: 'provider default' },
   { key: 'recursionLimit', label: 'Recursion limit', description: 'Max agent graph steps per run. Raise if runs stop with a recursion-limit error.', group: 'Reliability & agent', step: 1, min: 8, max: 1000, placeholder: 'auto (24+)' },

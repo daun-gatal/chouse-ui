@@ -61,7 +61,9 @@ function fakeConfig(
       providerId: "provider-1",
       name: "Test model",
       modelId: providerType === "anthropic" ? "claude-sonnet-5" : providerType === "google" ? "gemini-2.5-pro" : "gpt-4o",
-      params,
+      // Several test model names are not in LangChain's profile table, so they
+      // need a window to be buildable (ADR 0022 §6); it is not a constructor param.
+      params: { contextWindow: 128_000, ...(params ?? {}) },
       createdAt: now,
       updatedAt: now,
     },

@@ -139,4 +139,46 @@ export function registerAiGovernanceTools(sink: McpToolSink, deps: McpDeps): voi
       );
     },
   });
+
+  registerChouseTool(sink, {
+    name: "list_ai_guardrails",
+    title: "AI guardrails",
+    category: "ai_governance",
+    access: "read",
+    permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
+    description:
+      "The guardrails every CHouse AI run (and, where enabled, every MCP tool result) passes through: kind, stages, action, " +
+      "shadow or enforce mode, scope, order, whether it is on, and its triggers in the last 24 hours.",
+    handler: async (_args, extra) => {
+      const ctx = toolContext(extra);
+      const api = deps.clientFor(ctx);
+      return runApiTool(ctx, api, "list_ai_guardrails", undefined, async () => {
+        const data = await api.request<{ guardrails: unknown[] }>("GET", "/api/ai-guardrails");
+        return { guardrails: data.guardrails };
+      });
+    },
+  });
+
+  registerChouseTool(sink, {
+    name: "list_ai_guardrail_triggers",
+    title: "AI guardrail triggers",
+    category: "ai_governance",
+    access: "read",
+    permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
+    description:
+      "Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. " +
+      "Returns the total too; page with limit and offset. Matched values are never stored.",
+    inputSchema: {
+      days: daysArg,
+      guardrailId: z.string().min(1).optional().describe("Only this guardrail's triggers (id from list_ai_guardrails)"),
+      limit: z.number().int().min(1).max(500).optional().describe("Rows to return (default 100)"),
+      offset: z.number().int().min(0).optional().describe("Rows to skip, for paging"),
+    },
+    handler: async (args, extra) => {
+      const ctx = toolContext(extra);
+      const api = deps.clientFor(ctx);
+      const query = params({ days: argOptionalNumber(args, "days"), guardrailId: argOptionalString(args, "guardrailId"), limit: argOptionalNumber(args, "limit"), offset: argOptionalNumber(args, "offset") });
+      return runApiTool(ctx, api, "list_ai_guardrail_triggers", query.guardrailId, () => api.request("GET", "/api/ai-guardrails/events", { query }));
+    },
+  });
 }

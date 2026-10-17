@@ -19,7 +19,7 @@ vi.mock("@/stores", async () => {
 
 vi.mock("@/features/observe/hooks", () => ({ useIncidents: () => ({ data: [{ id: "i1" }, { id: "i2" }] }) }));
 vi.mock("@/features/observe/CollectorStatusChip", () => ({ CollectorStatusChip: () => <span>collector</span> }));
-vi.mock("@/features/dataops-ai", () => ({ DataOpsModelButton: () => null }));
+vi.mock("@/components/common/AiModelButton", () => ({ AiModelButton: () => null }));
 vi.mock("@/features/observe/OverviewTab", () => ({ OverviewTab: () => <p>overview-body</p> }));
 vi.mock("@/features/observe/IncidentsTab", () => ({ IncidentsTab: ({ source, id }: { source?: string; id?: string }) => <p>incidents-body {source} {id}</p> }));
 vi.mock("@/features/observe/LineageTab", () => ({ LineageTab: () => <p>lineage-body</p> }));

@@ -20,6 +20,7 @@ import { COLLECTOR_LOAD_MIGRATIONS } from './collectorLoadMigrations';
 import { AI_REGISTRY_MIGRATIONS } from './aiRegistryMigrations';
 import { AI_USAGE_MIGRATIONS } from './aiUsageMigrations';
 import { DASHBOARDS_MIGRATIONS } from './dashboardsMigrations';
+import { AI_GUARDRAILS_MIGRATIONS } from './aiGuardrailsMigrations';
 
 // ============================================
 // Types
@@ -50,7 +51,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.61.0';
+export const APP_VERSION = '1.62.0';
 
 // ============================================
 // Error Helpers
@@ -4735,6 +4736,7 @@ export const MIGRATIONS: Migration[] = [
   ...COLLECTOR_LOAD_MIGRATIONS,
   ...AI_USAGE_MIGRATIONS,
   ...DASHBOARDS_MIGRATIONS,
+  ...AI_GUARDRAILS_MIGRATIONS,
 ];
 
 // ============================================

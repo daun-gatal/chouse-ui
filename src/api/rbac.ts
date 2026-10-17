@@ -130,6 +130,8 @@ export interface AiBaseModel {
   params: AiModelParams | null;
   /** Null when no price is set: AI activity then shows tokens without cost. */
   pricing: AiModelPricing | null;
+  /** Input window from LangChain's model profile; null when it does not know the model (ADR 0022). */
+  profileContextWindow?: number | null;
   createdAt: string;
   updatedAt: string;
 }

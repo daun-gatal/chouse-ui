@@ -53,6 +53,9 @@ const OPENAI_NAME_HINT_PROVIDERS: ReadonlySet<string> = new Set([
  */
 export async function resolveDeepAgentModel(modelId?: string): Promise<ResolvedModel> {
   const config = await getConfiguration(modelId);
+  if (modelId && !config) {
+    throw AppError.badRequest("The AI model you picked no longer exists. Choose another in the AI model picker.");
+  }
   const validation = validateConfiguration(config);
   if (!validation.valid) {
     throw AppError.badRequest(validation.error || "AI is not configured");

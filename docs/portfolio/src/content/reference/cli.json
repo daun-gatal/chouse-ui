@@ -193,6 +193,47 @@
       ]
     },
     {
+      "path": "chouse ai guardrail-triggers",
+      "use": "chouse ai guardrail-triggers [flags]",
+      "short": "Recent guardrail triggers: stage, action, matches, agent and tool",
+      "long": "Guardrail triggers of the last --days, newest first: the guardrail, the\nstage, the action and mode, how many values matched, the agent and tool, and\nthe AI request. Matched values are never stored.",
+      "example": "  chouse ai guardrail-triggers\n  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7\n  chouse ai guardrail-triggers --limit 50 --offset 50",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "days",
+          "type": "int",
+          "default": "7",
+          "usage": "window in days (capped at the server's retention)"
+        },
+        {
+          "name": "guardrail",
+          "type": "string",
+          "usage": "only this guardrail's triggers (id from `chouse ai guardrails`)"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "100",
+          "usage": "rows to return (1-500)"
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "default": "0",
+          "usage": "rows to skip, for paging"
+        }
+      ]
+    },
+    {
+      "path": "chouse ai guardrails",
+      "use": "chouse ai guardrails",
+      "short": "AI guardrails: what every AI run passes through (ai_guardrails:view)",
+      "long": "The guardrails CHouse applies to its AI runs and, where enabled, to MCP\ntool results (AI Governance › Guardrails): kind, stages, action, shadow or\nenforce mode, whether it is on, and its triggers in the last 24 hours.\nRead-only; guardrails are edited in the UI or the REST API.",
+      "example": "  chouse ai guardrails\n  chouse ai guardrails -o json | jq '.guardrails[] | select(.enabled)'",
+      "runnable": true
+    },
+    {
       "path": "chouse ai models",
       "use": "chouse ai models",
       "short": "Active AI models",

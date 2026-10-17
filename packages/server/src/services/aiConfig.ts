@@ -23,6 +23,7 @@ import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac
 import type { AiConfigWithKey } from "../rbac/services/aiModels";
 import { ProviderType, PROVIDER_TYPES, PROVIDER_REQUIREMENTS, isValidProviderType } from "../rbac/constants/aiProviders";
 import type { AiModelParams } from "../rbac/constants/aiModelParams";
+import { applyContextWindow, profileContextWindow } from "./ai/modelProfile";
 
 // ============================================
 // Types
@@ -472,7 +473,7 @@ export function initializeDeepAgentModel(config: AiConfigWithKey, options: { cal
         );
     }
 
-    return initializer(
+    const model = initializer(
         {
             apiKey: config.provider.apiKey || undefined,
             baseUrl: config.provider.baseUrl || undefined,
@@ -481,6 +482,32 @@ export function initializeDeepAgentModel(config: AiConfigWithKey, options: { cal
         },
         modelName
     );
+    return applyContextWindow(model, config.model.params?.contextWindow, config.model.name || modelName);
+}
+
+// Constructing a LangChain chat model performs no network I/O, so a throwaway
+// instance with placeholder credentials is enough to read its static profile.
+const PROFILE_PROBE_KEY: Partial<Record<ProviderType, string>> = {
+    bedrock: JSON.stringify({ region: "us-east-1", accessKeyId: "profile-probe", secretAccessKey: "profile-probe" }),
+};
+
+/**
+ * The input window LangChain's model profile reports for a provider model, or
+ * null when the profile does not know the model (custom and local models).
+ */
+export function detectProfileContextWindow(providerType: ProviderType, modelId: string, baseUrl?: string | null): number | null {
+    const initializer = providerRegistry[providerType];
+    if (!initializer) return null;
+    try {
+        const model = initializer({
+            apiKey: PROFILE_PROBE_KEY[providerType] ?? "profile-probe",
+            baseUrl: baseUrl || DEFAULT_BASE_URLS[providerType] || "http://profile-probe.invalid",
+        }, modelId);
+        return profileContextWindow(model);
+    } catch {
+        // A provider whose constructor rejects the probe config has no readable profile.
+        return null;
+    }
 }
 
 /**

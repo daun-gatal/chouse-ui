@@ -13,7 +13,7 @@ import type { AgentRunContext, AnyStructuredCapability } from "../services/ai/ty
 
 let aiEnabled = true;
 const answers: Record<string, unknown[]> = {};
-const calls: Array<{ featureId: string; input: unknown }> = [];
+const calls: Array<{ featureId: string; input: unknown; modelId?: string }> = [];
 
 const realAiConfig = await import("../services/aiConfig");
 mock.module("../services/aiConfig", () => ({ ...realAiConfig, isAIEnabled: async () => aiEnabled }));
@@ -24,7 +24,7 @@ mock.module("../services/ai/engine", () => ({
   runStructuredCapability: async (cap: AnyStructuredCapability, input: unknown, ctx: AgentRunContext) => {
     // Same order as the real engine: access checks and evidence before the model.
     const prepared = await cap.prepare(input, ctx);
-    calls.push({ featureId: cap.id, input });
+    calls.push({ featureId: cap.id, input, modelId: ctx.modelId });
     const parsed = answers[cap.id]?.shift();
     if (parsed === undefined) throw new Error(`No canned answer for ${cap.id}`);
     return cap.finalize(cap.outputSchema.parse(parsed), prepared, ctx, { raw: "", steps: [], modelLabel: "fake" });
@@ -192,6 +192,14 @@ describe("drafting", () => {
     expect(Object.values(data.sections).every((s) => s.state === "drafted")).toBe(true);
     expect(data.rounds).toBe(1);
     expect(await registryRows()).toEqual(before);
+  });
+
+  it("runs on the drafter's picked model", async () => {
+    answers["draft-ai-skill"] = [skillAnswer];
+    calls.length = 0;
+    const res = await call("POST", "/ai-agents/draft/skill?modelId=model-7", DRAFTER, { goal: "Triage TOO_MANY_PARTS errors" });
+    expect(res.status).toBe(200);
+    expect(calls[0]?.modelId).toBe("model-7");
   });
 
   it("re-asks only for the failing section and returns the fixed draft", async () => {

@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
@@ -59,7 +59,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canViewLineage = hasPermission(RBAC_PERMISSIONS.OBSERVE_VIEW);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const canProtect = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT);
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const connectionLabel = useConnectionName(job.connectionId) ?? "—";
   const runMutation = useRunScheduledQuery();
   const updateMutation = useUpdateScheduledQuery();

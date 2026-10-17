@@ -37,7 +37,7 @@ import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
 import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
 import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns, useRerunScheduledQueryRun } from "./hooks";
 import { StatusBadge, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
@@ -112,7 +112,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
   const { options: ownerOptions } = useJobOwners(jobs, canViewAll);
   const deleteRunsMut = useDeleteRuns();

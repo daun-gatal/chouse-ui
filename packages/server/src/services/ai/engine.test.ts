@@ -84,6 +84,7 @@ function registry(agents: AgentDef[], bindings: Record<string, string>, harnesse
     harnesses: new Map(harnesses.map((h) => [h.id, h])),
     skills: new Map(),
     bindings: new Map(Object.entries(bindings).map(([featureId, agentId]) => [featureId, { featureId, agentId, updatedBy: null, updatedAt: 0 }])),
+    guardrails: new Map(),
   };
 }
 
@@ -188,7 +189,39 @@ describe("runStructuredCapability", () => {
     invokeResult = { messages: [{ content: "no json" }] };
     const fallbackMessages = mock(() => [{ role: "user" as const, content: "format it" }]);
     await runStructuredCapability(fakeStructuredCapability({ fallbackMessages, onParseFailure: () => ({ foo: "x" }) }), { q: "hi" }, CTX);
-    expect(fallbackMessages).toHaveBeenCalledWith({ q: "hi" }, CTX, "no json", { system: "instructions", core: "instructions" });
+    expect(fallbackMessages).toHaveBeenCalledWith({ q: "hi" }, CTX, "no json", { system: "instructions", core: "instructions" }, { q: "hi" });
+  });
+
+  it("applies guardrails to gathered evidence and to the fallback call, which run outside the agent (ADR 0022)", async () => {
+    const base = { scope: { agents: "all" as const, features: "all" as const, mcp: false }, mode: "enforce" as const, enabled: true, isSystem: false, seedHash: null, customized: false, version: 1, createdBy: null, createdAt: 0, updatedAt: 0, description: "" };
+    snapshot.guardrails = new Map([
+      ["pii", { ...base, id: "pii", slug: "pii", name: "PII", kind: "pattern", config: { detectors: ["email"], patterns: [], strategy: "placeholder" }, stages: ["tool_result", "output"], action: "redact", position: 10 }],
+      ["cap", { ...base, id: "cap", slug: "cap", name: "Cap", kind: "limits", config: { maxToolCalls: null, maxModelCalls: null, maxResultRows: 1, maxResultBytes: null }, stages: ["tool_result"], action: "redact", position: 20 }],
+      ["secrets", { ...base, id: "secrets", slug: "secrets", name: "Secrets", kind: "pattern", config: { detectors: ["aws_key"], patterns: [], strategy: "placeholder" }, stages: ["input"], action: "redact", position: 30 }],
+    ]);
+    const cap = fakeStructuredCapability({
+      variables: { q: { type: "string", description: "question" }, evidence: { type: "json", description: "gathered" } },
+      templateVariables: (prepared) => ({ q: prepared.q, evidence: JSON.stringify({ samples: [{ owner: "dana@acme.io" }, { owner: "lee@acme.io" }] }) }),
+      fallbackMessages: (_p, _c, raw, _prompts, variables) => [{ role: "user", content: `Evidence ${String(variables.evidence)} key AKIAIOSFODNN7EXAMPLE notes ${raw}` }],
+    });
+    snapshot.agents.set("a-test", agent({ taskTemplate: "Question: {{ctx.q}}\nEvidence: {{ctx.evidence}}" }));
+    invokeResult = { messages: [{ content: "no json" }] };
+    fallbackModelResult = { content: '{"foo":"write to dana@acme.io"}' };
+    fallbackModelInvokeMock.mockClear();
+
+    const result = await runStructuredCapability(cap, { q: "who owns it?" }, CTX);
+
+    // Evidence is redacted before rendering, but never cut by limits: both rows survive.
+    const task = lastInvoke().input.messages[0].content;
+    expect(task).toContain('{"samples":[{"owner":"[EMAIL]"},{"owner":"[EMAIL]"}]}');
+    // The fallback call gets the input stage and the guarded evidence; its answer the output stage.
+    const sent = JSON.stringify(fallbackModelInvokeMock.mock.calls[0]);
+    expect(sent).toContain("key [AWS_KEY]");
+    expect(sent).not.toContain("dana@acme.io");
+    expect(result).toEqual({ foo: "write to [EMAIL]" });
+    const events = finishedRuns.at(-1)!.guardrailEvents;
+    expect(events.map((e) => `${e.guardrailName}:${e.stage}:${e.tool ?? "-"}`)).toEqual(["PII:tool_result:evidence:evidence", "Secrets:input:-", "PII:output:-"]);
+    fallbackModelResult = { content: "still not json" };
   });
 
   it("keeps large schemas out of the initial agent prompt", async () => {

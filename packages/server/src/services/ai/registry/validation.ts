@@ -312,6 +312,7 @@ export function withChanges(
     harnesses: new Map(snapshot.harnesses),
     skills: new Map(snapshot.skills),
     bindings: new Map(snapshot.bindings),
+    guardrails: new Map(snapshot.guardrails),
   };
   if (change.agent) next.agents.set(change.agent.id, change.agent);
   if (change.harness) next.harnesses.set(change.harness.id, change.harness);
@@ -331,6 +332,8 @@ export function usagesOf(snapshot: RegistrySnapshot, entity: "agent" | "harness"
       if (binding.agentId === id) uses.push(`feature '${featureMap()[binding.featureId]?.title ?? binding.featureId}'`);
     }
     for (const agent of snapshot.agents.values()) if (agent.subagents.includes(id)) uses.push(`agent '${agent.name}' (subagent)`);
+    // A guardrail scoped to a deleted agent would silently stop applying.
+    for (const g of snapshot.guardrails.values()) if (g.scope.agents !== "all" && g.scope.agents.includes(id)) uses.push(`guardrail '${g.name}'`);
   }
   if (entity === "harness") {
     for (const agent of snapshot.agents.values()) if (agent.harnessId === id) uses.push(`agent '${agent.name}'`);

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { DH_PRIMARY } from "@/features/data-health/lib";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { applyContextDraft, type DraftField } from "./contextDraft";
@@ -91,7 +91,7 @@ function CuratedEditor({ context }: { context: TableContext }): ReactElement {
   const canEdit = hasPermission(RBAC_PERMISSIONS.CONTEXT_EDIT);
   const canDraft = canEdit && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const { save, verify, draft } = useContextMutations();
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const [form, setForm] = useState<CuratedContext>(() => emptyCurated(context));
   const [tags, setTags] = useState((context.curated?.tags ?? []).join(", "));
   const [filled, setFilled] = useState<DraftField[]>([]);
@@ -281,7 +281,7 @@ function Watchers(): ReactElement {
   const { hasPermission } = useRbacStore();
   const canCompile = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT) && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const { compileWatcher } = useContextMutations();
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const [text, setText] = useState("");
   const [compiled, setCompiled] = useState<CompiledWatcher>();
   const [draft, setDraft] = useState<PromiseWizardDraft>();

@@ -69,6 +69,13 @@ export interface StructuredOutputOptions<T> {
   signal?: AbortSignal;
   /** Logging module tag. */
   module?: string;
+  /**
+   * Guardrails for the fallback call (ADR 0022), which runs outside the agent:
+   * applied to its messages before the first attempt, and to its answer.
+   * Neither runs when the agent's raw answer parses.
+   */
+  guardFallbackMessages?: (messages: AgentMessage[]) => Promise<AgentMessage[]>;
+  guardFallbackOutput?: (output: T) => Promise<T>;
 }
 
 type StructuredOutputStrategy = "adapter" | "native" | "tool" | "json" | "plain";
@@ -327,8 +334,10 @@ export async function structuredOutput<T>(
   }
 
   const policy = opts.policy ?? "auto";
-  const messages = formattingMessages(opts);
+  const fallbackMessages = opts.guardFallbackMessages ? await opts.guardFallbackMessages(opts.fallbackMessages) : opts.fallbackMessages;
+  const messages = formattingMessages({ ...opts, fallbackMessages });
   let skipToPlain = false;
+  let result: { output: T } | null = null;
 
   for (const strategy of strategiesFor(policy, opts.strategyCacheKey)) {
     if (skipToPlain && strategy !== "plain") continue;
@@ -346,13 +355,19 @@ export async function structuredOutput<T>(
         },
         "Structured output fallback succeeded",
       );
-      return output;
+      result = { output };
+      break;
     } catch (error) {
       const classification = classifyFailure(error);
       attempts.push({ strategy, classification, error: summarizedError(error) });
       if (classification === "fatal" || classification === "transient") throw error;
       if (classification === "output") skipToPlain = true;
     }
+  }
+
+  if (result) {
+    // Outside the attempt loop: a guardrail block must stop the run, not count as a failed strategy.
+    return opts.guardFallbackOutput ? opts.guardFallbackOutput(result.output) : result.output;
   }
 
   logger.warn(

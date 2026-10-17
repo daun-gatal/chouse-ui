@@ -43,6 +43,8 @@ const cases: Case[] = [
     },
     expectErrors: false,
   },
+  { name: 'context window above maxTokens', providerType: 'openai-compatible', params: { contextWindow: 32_768, maxTokens: 4096 }, expectErrors: false },
+  { name: 'maxTokens at the context window', providerType: 'ollama', params: { contextWindow: 8192, maxTokens: 8192 }, expectErrors: true, errorIncludes: "'contextWindow'" },
   { name: 'anthropic valid thinking config', providerType: 'anthropic', params: { maxTokens: 16_000, thinkingBudgetTokens: 4096, topK: 40 }, expectErrors: false },
   { name: 'google valid set', providerType: 'google', params: { temperature: 1.5, topK: 40, thinkingBudgetTokens: -1, apiVersion: 'v1beta' }, expectErrors: false },
   { name: 'openai rejects topK', providerType: 'openai', params: { topK: 40 }, expectErrors: true, errorIncludes: "'topK'" },

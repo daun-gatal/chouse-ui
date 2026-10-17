@@ -1822,6 +1822,49 @@ chouse ai egress --days 30
 chouse ai egress --search customers
 ```
 
+#### chouse ai guardrail-triggers
+
+Recent guardrail triggers: stage, action, matches, agent and tool.
+
+Guardrail triggers of the last --days, newest first: the guardrail, the
+stage, the action and mode, how many values matched, the agent and tool, and
+the AI request. Matched values are never stored.
+
+```bash
+chouse ai guardrail-triggers [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--days` | `int` | `7` | window in days (capped at the server's retention) |
+| `--guardrail` | `string` |   | only this guardrail's triggers (id from `chouse ai guardrails`) |
+| `--limit` | `int` | `100` | rows to return (1-500) |
+| `--offset` | `int` | `0` | rows to skip, for paging |
+
+```bash
+chouse ai guardrail-triggers
+chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7
+chouse ai guardrail-triggers --limit 50 --offset 50
+```
+
+#### chouse ai guardrails
+
+AI guardrails: what every AI run passes through (ai_guardrails:view).
+
+The guardrails CHouse applies to its AI runs and, where enabled, to MCP
+tool results (AI Governance › Guardrails): kind, stages, action, shadow or
+enforce mode, whether it is on, and its triggers in the last 24 hours.
+Read-only; guardrails are edited in the UI or the REST API.
+
+```bash
+chouse ai guardrails
+```
+
+```bash
+chouse ai guardrails
+chouse ai guardrails -o json | jq '.guardrails[] | select(.enabled)'
+```
+
 #### chouse ai models
 
 Active AI models.

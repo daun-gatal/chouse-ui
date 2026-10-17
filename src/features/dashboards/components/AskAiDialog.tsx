@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CircleAlert, CircleCheck, CircleX, Loader2, Sparkles } from "lucide-react";
 
+import { AiModelButton } from "@/components/common/AiModelButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +29,7 @@ import {
   type DraftPanel,
   type PanelInput,
 } from "@/api/dashboards";
+import { useAiModelId } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, TEXTAREA } from "@/components/charts/controlStyles";
 import type { Variable } from "@/lib/viz/spec";
@@ -67,6 +69,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
   const [goal, setGoal] = useState("");
   const [review, setReview] = useState<{ draft: DashboardDraft; panels: ReviewPanel[] } | null>(null);
   const connectionId = getConnectionId();
+  const modelId = useAiModelId();
 
   const draft = useMutation({
     mutationFn: () => {
@@ -75,7 +78,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
         goal: goal.trim(),
         connectionId,
         existing: existing ? { title: existing.dashboard.title, variables: existing.dashboard.variables, panels: existing.panels.map((p) => ({ title: p.title, sql: p.sql })) } : null,
-      });
+      }, { modelId });
     },
     onSuccess: (result) => setReview({ draft: result, panels: result.panels.map((p) => ({ draft: p, include: p.status !== "blocked" && p.panel !== null })) }),
   });
@@ -123,7 +126,10 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" aria-hidden /> {existing ? `Add panels to ${existing.dashboard.title} with AI` : "Draft a dashboard with AI"}</DialogTitle>
+          <div className="flex items-center justify-between gap-2 pr-6">
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" aria-hidden /> {existing ? `Add panels to ${existing.dashboard.title} with AI` : "Draft a dashboard with AI"}</DialogTitle>
+            <AiModelButton />
+          </div>
           <DialogDescription>
             Chouse AI reads the schemas on your active connection, drafts panels, and every panel is checked and dry-run with your access before you see it. Nothing is saved until you accept.
           </DialogDescription>

@@ -301,6 +301,12 @@ export default function BaseModelsTab() {
         return providers.find(p => p.id === id)?.name || 'Unknown';
     };
 
+    // The detected window is known only for saved models; a new model's is checked when it is saved.
+    const detectedWindow = editingItem?.profileContextWindow;
+    const contextWindowPlaceholder = typeof detectedWindow === 'number'
+        ? `${detectedWindow.toLocaleString()} from model profile`
+        : editingItem ? 'required' : 'required unless known';
+
     const numberFieldsFor = (group: ParamGroup) =>
         NUMBER_PARAM_FIELDS.filter(field => field.group === group && isAllowed(field.key));
 
@@ -381,6 +387,9 @@ export default function BaseModelsTab() {
                                         <TableCell className="max-w-xs font-mono text-[12px] text-paper-dim">
                                             <span className="inline-flex items-center gap-2">
                                                 {item.modelId}
+                                                {item.profileContextWindow === null && item.params?.contextWindow === undefined && (
+                                                    <span className="rounded-xs border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">Context window required</span>
+                                                )}
                                                 {paramsCount(item.params) > 0 && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
@@ -551,7 +560,7 @@ export default function BaseModelsTab() {
                                                                             min={field.min}
                                                                             max={field.max}
                                                                             step={field.step}
-                                                                            placeholder={field.placeholder}
+                                                                            placeholder={field.key === 'contextWindow' ? contextWindowPlaceholder : field.placeholder}
                                                                             value={paramsDraft[field.key] ?? ''}
                                                                             onChange={(e) => setDraftValue(field.key, e.target.value)}
                                                                             className={`h-9 ${inputClass} text-right font-mono text-[13px]`}

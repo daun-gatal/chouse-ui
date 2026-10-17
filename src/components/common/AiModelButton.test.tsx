@@ -6,8 +6,8 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { RBAC_PERMISSIONS, useDataOpsModelStore, useRbacStore } from "@/stores";
-import { DataOpsModelButton } from "./DataOpsModelButton";
+import { RBAC_PERMISSIONS, useAiModelStore, useRbacStore } from "@/stores";
+import { AiModelButton } from "./AiModelButton";
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactElement {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -16,23 +16,23 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactElemen
   };
 }
 
-const triggerName = "Choose AI model for DataOps";
+const triggerName = "Choose AI model";
 
-describe("DataOpsModelButton", () => {
+describe("AiModelButton", () => {
   beforeEach(() => {
-    useDataOpsModelStore.setState({ modelId: null });
+    useAiModelStore.setState({ modelId: null });
     useRbacStore.setState({ roles: [], permissions: [RBAC_PERMISSIONS.AI_OPTIMIZE] });
   });
 
   it("renders nothing without the ai:optimize permission", () => {
     useRbacStore.setState({ roles: [], permissions: [] });
-    const { container } = render(<DataOpsModelButton />, { wrapper: createWrapper() });
+    const { container } = render(<AiModelButton />, { wrapper: createWrapper() });
     expect(container.childElementCount).toBe(0);
   });
 
   it("shows Default and lists the active models with a Default badge", async () => {
     const user = userEvent.setup();
-    render(<DataOpsModelButton />, { wrapper: createWrapper() });
+    render(<AiModelButton />, { wrapper: createWrapper() });
 
     const trigger = screen.getByRole("button", { name: triggerName });
     expect(trigger.textContent).toContain("Default");
@@ -48,27 +48,38 @@ describe("DataOpsModelButton", () => {
 
   it("stores the picked model, closes the dialog, and updates the trigger label", async () => {
     const user = userEvent.setup();
-    render(<DataOpsModelButton />, { wrapper: createWrapper() });
+    render(<AiModelButton />, { wrapper: createWrapper() });
 
     await user.click(screen.getByRole("button", { name: triggerName }));
     await user.click(await screen.findByRole("radio", { name: /Claude/ }));
 
-    expect(useDataOpsModelStore.getState().modelId).toBe("model-2");
+    expect(useAiModelStore.getState().modelId).toBe("model-2");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByRole("button", { name: triggerName }).textContent).toContain("Claude");
 
     // Picking System default clears the selection again.
     await user.click(screen.getByRole("button", { name: triggerName }));
     await user.click(await screen.findByRole("radio", { name: /System default/ }));
-    expect(useDataOpsModelStore.getState().modelId).toBeNull();
+    expect(useAiModelStore.getState().modelId).toBeNull();
   });
 
   it("points to Admin → AI models when no model is configured", async () => {
     server.use(http.get("/api/ai/models", () => HttpResponse.json({ success: true, data: [] })));
     const user = userEvent.setup();
-    render(<DataOpsModelButton />, { wrapper: createWrapper() });
+    render(<AiModelButton />, { wrapper: createWrapper() });
 
     await user.click(screen.getByRole("button", { name: triggerName }));
     expect(await screen.findByText("No AI models are configured. Add one in Admin → AI models.")).toBeDefined();
+  });
+
+  it("marks a stored model that is no longer active as unavailable", async () => {
+    useAiModelStore.setState({ modelId: "ghost-model" });
+    const user = userEvent.setup();
+    render(<AiModelButton />, { wrapper: createWrapper() });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: triggerName }).textContent).toContain("Unavailable"));
+    await user.click(screen.getByRole("button", { name: triggerName }));
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(screen.getByRole("radio", { name: /System default/ }).getAttribute("aria-checked")).toBe("false");
   });
 });

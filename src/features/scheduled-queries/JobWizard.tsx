@@ -51,7 +51,7 @@ import { MacrosHelp } from "./MacrosHelp";
 import { assessScheduledQuery, draftScheduledQuery, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
 import { AssessmentView } from "@/features/dataops-ai";
 import { useConnectionName } from "@/features/observe/hooks";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 
 // Heavy Monaco editor — lazy so its chunk only loads when the builder opens.
 const MonacoSqlInput = lazy(() => import("./MonacoSqlInput"));
@@ -226,7 +226,7 @@ export function JobWizard({ isOpen, onClose, job, prefill, onCreated }: JobWizar
   const { activeConnectionId, activeConnectionName } = useAuthStore();
   const canWrite = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_WRITE);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const createMut = useCreateScheduledQuery();
   const updateMut = useUpdateScheduledQuery();
 

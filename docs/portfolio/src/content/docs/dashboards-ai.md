@@ -5,7 +5,7 @@ permissions: dashboards:edit, ai:optimize
 ---
 # Draft dashboards with AI
 
-**Ask AI** on the [Dashboards](/docs/dashboards/) page drafts a new dashboard from a goal. On a dashboard you can edit, it drafts new panels for that dashboard. Describe what you want to watch, for example *"the orders Kafka to MergeTree pipeline, so I see problems before they hit users"*.
+**Ask AI** on the [Dashboards](/docs/dashboards/) page drafts a new dashboard from a goal. On a dashboard you can edit, it drafts new panels for that dashboard. The model button in the dialog's header picks the AI model, the same pick as on the Data page. Describe what you want to watch, for example *"the orders Kafka to MergeTree pipeline, so I see problems before they hit users"*.
 
 The *Dashboard Drafter* agent reads the schemas it needs on your active connection and drafts a title, variables, and a few panels, each with its SQL, chart settings, size, and a one-line reason.
 

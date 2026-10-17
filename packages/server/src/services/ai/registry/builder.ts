@@ -30,6 +30,8 @@ import { renderTemplate, TemplateError, type TemplateValue } from "./template";
 import { observeQueries } from "../../queryObserver";
 import { currentUsageRun, runInToolStep, type ModelRef, type ToolContext } from "../usage";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
+import { guardrailMiddleware } from "../guardrails/middleware";
+import type { GuardrailRunner } from "../guardrails/runner";
 
 /** Maximum agent-tree depth: root → agent → subagent. */
 export const MAX_AGENT_DEPTH = 3;
@@ -200,6 +202,8 @@ export interface BuildContext {
   resolveModel: (modelConfigId: string) => Promise<ResolvedModelRef>;
   /** Whether a child may join the tree (chat prunes by the user's permissions). */
   includeChild?: (child: AgentDef) => boolean;
+  /** The run's guardrails (ADR 0022); null only where a tree is built without a run (tests). */
+  guardrails: GuardrailRunner | null;
 }
 
 function harnessFor(agent: AgentDef, snapshot: RegistrySnapshot): HarnessDef {
@@ -252,7 +256,10 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
   const generalPurpose = generalPurposeSubagent(harness, tools, sources);
   if (generalPurpose) subagents.push(generalPurpose);
 
-  const middleware = harnessToolMiddleware(harness);
+  const middleware = [
+    harnessToolMiddleware(harness),
+    build.guardrails ? guardrailMiddleware(build.guardrails, { agentId: agent.id, agentSlug: agent.slug, path: node.path, isRoot: node.depth === 0 }) : null,
+  ].filter((m) => m !== null);
   return createDeepAgent({
     model: node.model.model as never,
     tools,
@@ -261,7 +268,7 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
     permissions: FILESYSTEM_PERMISSIONS,
     ...(sources.length > 0 ? { skills: sources } : {}),
     subagents,
-    ...(middleware ? { middleware: [middleware] } : {}),
+    ...(middleware.length > 0 ? { middleware } : {}),
     name: agent.slug,
   }) as DeepAgent;
 }

@@ -264,7 +264,7 @@ describe("AI usage capture through deepagents", () => {
         requestId = run.id;
         const config = {
           provider: { providerType: "openai-compatible", apiKey: "test-key", baseUrl: `http://localhost:${server.port}/v1` },
-          model: { modelId: "fake", params: null },
+          model: { modelId: "fake", params: { contextWindow: 32_768 } },
         } as unknown as Parameters<typeof initializeDeepAgentModel>[0];
         const model = initializeDeepAgentModel(config, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
         const calls: Parameters<typeof guardDuplicateTools>[1] = [];

@@ -4,21 +4,24 @@
  * healthy — plus budget policies, the pause switch, and the MCP endpoint
  * with its tool switches. The Assistant tab (ADR 0019) manages CHouse's own
  * AI agents: the chat and every AI feature; AI activity (ADR 0020) shows what
- * they cost and the data they sent to providers.
+ * they cost and the data they sent to providers; Guardrails (ADR 0022) control
+ * what passes through every AI run and MCP tool result.
  */
 
 import { useState, type ReactElement } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Activity, Bot, ListChecks, Pause, Play, Plug, Shield, Sparkles } from "lucide-react";
+import { Activity, Bot, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
+import { AiModelButton } from "@/components/common/AiModelButton";
 import { NavPill, PageHeader } from "@/components/common/PageShell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
+import { GuardrailsPanel } from "@/features/agents/guardrails/GuardrailsPanel";
 import { AiActivityPanel } from "@/features/agents/usage/AiActivityPanel";
 import { McpPanel } from "@/features/agents/McpPanel";
 import { PoliciesPanel } from "@/features/agents/PoliciesPanel";
@@ -29,7 +32,7 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp" | "assistant" | "usage";
+type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage";
 /**
  * External agents (MCP / tokens) need agents:view; the built-in AI agents need
  * ai_agents:view. AI activity (ADR 0020) shows everyone's usage with
@@ -40,6 +43,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permissions: stri
   { key: "policies", label: "Policies", icon: Shield, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
   { key: "mcp", label: "MCP", icon: Plug, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
   { key: "assistant", label: "Assistant", icon: Sparkles, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
+  { key: "guardrails", label: "Guardrails", icon: ShieldCheck, permissions: [RBAC_PERMISSIONS.AI_GUARDRAILS_VIEW] },
   { key: "usage", label: "AI activity", icon: Activity, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
 ];
 
@@ -195,6 +199,7 @@ export default function Agents(): ReactElement {
         nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink />)}
         actions={
           <>
+            <AiModelButton />
             {canManage && EXTERNAL_TABS.has(active) && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (
@@ -219,6 +224,7 @@ export default function Agents(): ReactElement {
           {active === "policies" && <PoliciesPanel />}
           {active === "mcp" && <McpPanel />}
           {active === "assistant" && <AssistantPanel />}
+          {active === "guardrails" && <GuardrailsPanel />}
           {active === "usage" && <AiActivityPanel />}
         </div>
       </div>

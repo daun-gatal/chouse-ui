@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useDataOpsModelId, useDebounce } from "@/hooks";
+import { useAiModelId, useDebounce } from "@/hooks";
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import { useConnectionName } from "@/features/observe/hooks";
@@ -143,7 +143,7 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
   const promiseConnectionName = useConnectionName(promise?.connectionId);
   const connectionName = promise ? promiseConnectionName : activeConnectionName;
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const createMutation = useCreateDataHealthPromise();
   const updateMutation = useUpdateDataHealthPromise();
   const [step, setStep] = useState(0);

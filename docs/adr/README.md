@@ -46,6 +46,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0019](0019-deepagents-managed-in-the-ui.md) | DeepAgents Managed in the UI: Agent Registry for Every AI Feature, Multi-Agent Chat, Read-Only CHouse Management Agent | Accepted |
 | [0020](0020-ai-usage-and-data-egress-tracking.md) | AI Usage and Data Egress Tracking for CHouse's Own AI Agents | Accepted |
 | [0021](0021-custom-dashboards.md) | Custom Dashboards and AI-Drafted Dashboards | Proposed |
+| [0022](0022-ai-guardrails.md) | AI Guardrails for CHouse's Own Agents and MCP | Proposed |
 
 ## Conventions
 

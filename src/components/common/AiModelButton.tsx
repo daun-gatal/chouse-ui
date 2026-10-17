@@ -1,24 +1,26 @@
 /**
- * DataOpsModelButton — minimal header control that scopes an AI model to the
- * DataOps page. Opens a dialog listing the active models plus a "System
- * default" row; the selection is persisted per user and consumed by every
- * DataOps AI feature via useDataOpsModelId.
+ * AiModelButton — header control for the user's AI model, shared by Data,
+ * Dashboards and AI Governance. Opens a dialog listing the active models plus a
+ * "System default" row; the selection is persisted per user and consumed by
+ * every AI feature on those pages via useAiModelId. A stored model that is no
+ * longer active shows as unavailable: features then fail with the server's
+ * error rather than quietly using another model.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Bot, Check, Loader2 } from "lucide-react";
 
 import { fetchAiModels } from "@/api/ai";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { RBAC_PERMISSIONS, useDataOpsModelStore, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAiModelStore, useRbacStore } from "@/stores";
 
-export function DataOpsModelButton(): React.ReactElement | null {
+export function AiModelButton(): React.ReactElement | null {
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
-  const modelId = useDataOpsModelStore((s) => s.modelId);
-  const setModelId = useDataOpsModelStore((s) => s.setModelId);
+  const modelId = useAiModelStore((s) => s.modelId);
+  const setModelId = useAiModelStore((s) => s.setModelId);
   const [open, setOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
@@ -32,9 +34,8 @@ export function DataOpsModelButton(): React.ReactElement | null {
 
   const models = data ?? [];
   const selected = modelId ? models.find((m) => m.id === modelId) : undefined;
-  // Stale ids (deleted/deactivated configs) present as "Default", matching
-  // what useDataOpsModelId actually sends.
-  const isDefaultSelected = !selected;
+  const unavailable = Boolean(modelId && data && !selected);
+  const label = !modelId ? "Default" : selected?.label ?? (unavailable ? "Unavailable" : "…");
 
   const choose = (id: string | null): void => {
     setModelId(id);
@@ -46,25 +47,36 @@ export function DataOpsModelButton(): React.ReactElement | null {
       <Button
         variant="ghost"
         onClick={() => setOpen(true)}
-        aria-label="Choose AI model for DataOps"
-        className="h-9 gap-2 rounded-xs px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
+        aria-label="Choose AI model"
+        title={unavailable ? "The AI model you picked is no longer available. Choose another." : undefined}
+        className={cn(
+          "h-9 gap-2 rounded-xs px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-ink-200 hover:text-paper",
+          unavailable ? "text-amber-500" : "text-paper-dim",
+        )}
       >
-        <Bot className="h-3.5 w-3.5 text-brand" aria-hidden />
-        <span className="max-w-[140px] truncate">{selected?.label ?? "Default"}</span>
+        {unavailable ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> : <Bot className="h-3.5 w-3.5 text-brand" aria-hidden />}
+        <span className="max-w-[140px] truncate">{label}</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md rounded-xs border-ink-500 bg-ink-100">
           <DialogHeader>
-            <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-brand" /><DialogTitle>AI model for DataOps</DialogTitle></div>
-            <DialogDescription>Applies to all AI features on this page. Stored per user.</DialogDescription>
+            <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-brand" /><DialogTitle>Your AI model</DialogTitle></div>
+            <DialogDescription>Used by AI features on Data, Dashboards and AI Governance. Stored per user.</DialogDescription>
           </DialogHeader>
+
+          {unavailable && (
+            <p role="alert" className="flex items-center gap-2 rounded-xs border border-amber-500/40 bg-amber-500/10 p-2.5 text-[12px] text-amber-500">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              The model you picked was removed or deactivated. AI features fail until you choose another.
+            </p>
+          )}
 
           <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto" role="radiogroup" aria-label="AI model">
             <ModelRow
               title="System default"
               subtitle="Backend chooses the configured default model"
-              selected={isDefaultSelected}
+              selected={!modelId}
               onSelect={() => choose(null)}
             />
 

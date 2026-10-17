@@ -5,6 +5,7 @@
  * database, so no lease is involved; the prune is an idempotent DELETE.
  */
 
+import { randomUUID } from "crypto";
 import { sql, type SQL } from "drizzle-orm";
 
 import { rawRun } from "../../../rbac/db/raw";
@@ -90,6 +91,16 @@ function stepDetail(step: UsageStep): string {
 
 /** Write one finished run. Runs with no steps (a cached result, a failure before any call) are skipped. */
 export async function writeUsageRun(run: UsageRun): Promise<void> {
+  // A run a guardrail stopped before any call still records the trigger.
+  if (run.guardrailEvents.length > 0) {
+    await insertRows("ai_guardrail_events", [
+      "id", "created_at", "guardrail_id", "guardrail_name", "kind", "stage", "action", "mode", "match_count",
+      "source", "user_id", "request_id", "step_id", "agent_path", "tool", "reason",
+    ], run.guardrailEvents.map((e) => [
+      v(randomUUID()), v(e.createdAt), v(e.guardrailId), v(e.guardrailName), v(e.kind), v(e.stage), v(e.action), v(e.mode), v(e.matchCount),
+      v("agent"), v(run.meta.userId), v(run.steps.length > 0 ? run.id : null), v(e.stepId), v(e.agentPath), v(e.tool), v(e.reason),
+    ]));
+  }
   if (run.steps.length === 0) return;
   const totals = runTotals(run);
   const priced = run.steps.some((s) => s.kind === "llm" && s.costUsd !== null);
@@ -171,4 +182,5 @@ export async function pruneAiUsage(now: number = Date.now(), retentionDays: numb
   await rawRun(sql`DELETE FROM ai_usage_steps WHERE request_id IN (${old}) OR started_at < ${cutoff}`);
   await rawRun(sql`DELETE FROM ai_usage_egress WHERE request_id IN (${old}) OR started_at < ${cutoff}`);
   await rawRun(sql`DELETE FROM ai_usage_requests WHERE started_at < ${cutoff}`);
+  await rawRun(sql`DELETE FROM ai_guardrail_events WHERE created_at < ${cutoff}`);
 }

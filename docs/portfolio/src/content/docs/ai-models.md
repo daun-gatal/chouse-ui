@@ -44,7 +44,11 @@ Each provider model can have a **price** in USD per 1M tokens: **Input**, **Outp
 
 ## Models and agents
 
-Every AI feature runs on an [AI agent](/docs/ai-agents/). An agent can name one of these deployments as its model; one that doesn't uses the default deployment, and a model the user picks in the chat or SQL editor wins over both.
+Every AI feature runs on an [AI agent](/docs/ai-agents/). An agent can name one of these deployments as its model; one that doesn't uses the default deployment, and a model the user picks in the chat or SQL editor wins over both. On **Data**, **Dashboards** (*Ask AI*) and **AI Governance**, the model button in the header is each user's own pick for every AI feature there; *System default* uses the default deployment. If the picked deployment is later removed or deactivated, the button says *Unavailable* and AI features fail until you pick another, rather than quietly using a different model.
+
+### Context window
+
+Agents summarize a long conversation before it overflows the model: at 85% of the model's input window they replace older messages with a summary and keep the latest 10%. CHouse knows the window of models in LangChain's built-in model list (the form shows it as *from model profile*). For any other model — most OpenAI-compatible and local models — set **Context window (tokens)** on the provider model; you can't save or run such a model without it. Set it for a known model too, to override the built-in value. **Max output tokens** must be smaller than the window.
 
 The **Reliability & agent** runtime parameters of a provider model — **Recursion limit** and **Run timeout (ms)** — override the step and time limits of every agent run on that model. Leave them empty to use each agent's own [tuning](/docs/ai-agent-editor/#settings).
 

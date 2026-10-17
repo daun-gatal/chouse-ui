@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 66 tools the [MCP server](/docs/mcp/) offers. 52 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 68 tools the [MCP server](/docs/mcp/) offers. 54 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -81,6 +81,8 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`list_ai_requests`](#list_ai_requests) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
 | [`get_ai_request`](#get_ai_request) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
 | [`list_ai_agents`](#list_ai_agents) | Read | Yes | `ai_agents:view` |
+| [`list_ai_guardrails`](#list_ai_guardrails) | Read | Yes | `ai_guardrails:view` |
+| [`list_ai_guardrail_triggers`](#list_ai_guardrail_triggers) | Read | Yes | `ai_guardrails:view` |
 
 ## Identity & connections
 
@@ -782,3 +784,24 @@ One AI request step by step: each LLM call with tokens and cost, each tool call 
 How CHouse's AI is set up: which agent each AI feature runs, and each agent's model, harness, tools, skills, subagents and tuning, whether it is built in or customized and has an update. Prompt templates and skill files are left out.
 
 No parameters.
+
+### list_ai_guardrails
+
+*AI guardrails* — **Read** · on by default · needs any of `ai_guardrails:view`
+
+The guardrails every CHouse AI run (and, where enabled, every MCP tool result) passes through: kind, stages, action, shadow or enforce mode, scope, order, whether it is on, and its triggers in the last 24 hours.
+
+No parameters.
+
+### list_ai_guardrail_triggers
+
+*AI guardrail triggers* — **Read** · on by default · needs any of `ai_guardrails:view`
+
+Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. Returns the total too; page with limit and offset. Matched values are never stored.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `days` | `number` | No | Window in days (default 7; capped at the server's retention) |
+| `guardrailId` | `string` | No | Only this guardrail's triggers (id from list_ai_guardrails) |
+| `limit` | `number` | No | Rows to return (default 100) |
+| `offset` | `number` | No | Rows to skip, for paging |

@@ -13,6 +13,7 @@ import {
     getAiModelById,
     getAiProviderById,
     listAiModels,
+    listAiProviders,
     updateAiModel,
     deleteAiModel,
 } from '../services/aiModels';
@@ -26,6 +27,9 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from 
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { requestLogger } from '../../utils/logger';
+import { detectProfileContextWindow } from '../../services/aiConfig';
+import { missingContextWindowMessage } from '../../services/ai/modelProfile';
+import type { ProviderType } from '../constants/aiProviders';
 
 const aiModelsRoutes = new Hono();
 
@@ -50,6 +54,7 @@ const aiModelParamsSchema = z.object({
     recursionLimit: z.number().int().min(8).max(1000).optional(),
     runTimeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
     structuredOutputPolicy: z.enum(STRUCTURED_OUTPUT_POLICIES).optional(),
+    contextWindow: z.number().int().min(1_024).max(10_000_000).optional(),
     extra: z.record(z.unknown()).optional(),
 }).strict();
 
@@ -74,6 +79,12 @@ function invalidParamsResponse(errors: string[]): { success: false; error: { cod
     return { success: false, error: { code: 'INVALID_PARAMS', message: errors.join('; ') } };
 }
 
+/** A model must have a context window: from LangChain's profile, or set explicitly (ADR 0022 §6). */
+function contextWindowError(provider: { providerType: ProviderType; baseUrl: string | null }, name: string, modelId: string, params: AiModelParams | null | undefined): string | null {
+    if (params?.contextWindow !== undefined) return null;
+    return detectProfileContextWindow(provider.providerType, modelId, provider.baseUrl) === null ? missingContextWindowMessage(name) : null;
+}
+
 function paramsAuditDetails(params: AiModelParams | null | undefined): Record<string, unknown> {
     if (params === null) return { paramsCleared: true };
     if (params === undefined) return {};
@@ -88,8 +99,13 @@ aiModelsRoutes.get(
     async (c) => {
         try {
             const query = c.req.valid('query');
-            const results = await listAiModels(query.providerId);
-            return c.json({ success: true, data: results });
+            const [results, providers] = await Promise.all([listAiModels(query.providerId), listAiProviders()]);
+            const byId = new Map(providers.map((p) => [p.id, p]));
+            const data = results.map((model) => {
+                const provider = byId.get(model.providerId);
+                return { ...model, profileContextWindow: provider ? detectProfileContextWindow(provider.providerType, model.modelId, provider.baseUrl) : null };
+            });
+            return c.json({ success: true, data });
         } catch (error) {
             requestLogger(c.get('requestId')).error({ module: 'AI Models', err: error instanceof Error ? error.message : String(error) }, 'List error');
             return c.json({ success: false, error: { code: 'LIST_FAILED', message: error instanceof Error ? error.message : 'Failed to list models' } }, 500);
@@ -131,6 +147,8 @@ aiModelsRoutes.post(
                 const errors = validateAiModelParams(input.params, provider.providerType);
                 if (errors.length > 0) return c.json(invalidParamsResponse(errors), 400);
             }
+            const windowError = contextWindowError(provider, input.name, input.modelId, input.params);
+            if (windowError) return c.json(invalidParamsResponse([windowError]), 400);
 
             const model = await createAiModel(input);
 
@@ -158,16 +176,23 @@ aiModelsRoutes.patch(
             const id = requireParam(c, 'id');
             const input = c.req.valid('json');
 
+            const existing = await getAiModelById(id);
+            if (!existing) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
+            const provider = await getAiProviderById(existing.providerId);
+            if (!provider) {
+                return c.json({ success: false, error: { code: 'INVALID_PROVIDER', message: 'Provider not found' } }, 400);
+            }
             if (input.params) {
-                const existing = await getAiModelById(id);
-                if (!existing) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
-                const provider = await getAiProviderById(existing.providerId);
-                if (!provider) {
-                    return c.json({ success: false, error: { code: 'INVALID_PROVIDER', message: 'Provider not found' } }, 400);
-                }
                 const errors = validateAiModelParams(input.params, provider.providerType);
                 if (errors.length > 0) return c.json(invalidParamsResponse(errors), 400);
             }
+            const windowError = contextWindowError(
+                provider,
+                input.name ?? existing.name,
+                input.modelId ?? existing.modelId,
+                input.params === undefined ? existing.params : input.params,
+            );
+            if (windowError) return c.json(invalidParamsResponse([windowError]), 400);
 
             const model = await updateAiModel(id, input);
             if (!model) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);

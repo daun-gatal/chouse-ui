@@ -7,6 +7,8 @@
  * anything but these rows.
  */
 
+import type { GuardrailDef } from "../guardrails/types";
+
 /** Run contexts a tool can require and a feature can provide. */
 export type ToolContextKind = "session" | "fleet" | "userApi";
 
@@ -120,7 +122,7 @@ export interface FeatureBinding {
   updatedAt: number;
 }
 
-export type RegistryEntity = "agent" | "harness" | "skill" | "binding";
+export type RegistryEntity = "agent" | "harness" | "skill" | "binding" | "guardrail";
 
 export interface RegistryRevision {
   id: string;
@@ -140,4 +142,6 @@ export interface RegistrySnapshot {
   agents: Map<string, AgentDef>;
   skills: Map<string, SkillDef>;
   bindings: Map<string, FeatureBinding>;
+  /** ADR 0022 guardrails, keyed by id. */
+  guardrails: Map<string, GuardrailDef>;
 }

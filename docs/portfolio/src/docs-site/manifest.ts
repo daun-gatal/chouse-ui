@@ -203,6 +203,7 @@ export const DOC_SECTIONS: DocSection[] = [
         pages: [
           { slug: "agents", title: "AI Governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
           { slug: "ai-usage", title: "AI activity", description: "What CHouse's own AI costs and sends out: tokens, estimated cost, ClickHouse queries and the data sent to LLM providers, per request." },
+          { slug: "ai-guardrails", title: "AI guardrails", description: "Redact PII and secrets, cap results, stop runaway agents, refuse unsafe SQL and judge requests — in every AI run and MCP result, with shadow mode." },
         ],
       },
       {

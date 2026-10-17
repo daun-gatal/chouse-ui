@@ -26,9 +26,12 @@ import {
   type InvokedToolCall,
 } from "./registry/builder";
 import { registerHarnessBaseline } from "./registry/harness";
+import { runnerForRun } from "./guardrails/runtime";
+import { guardrailErrorIn, type GuardrailRunner } from "./guardrails/runner";
 import { currentCaller, persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
 import { userMayUseAgent, chatAgentCandidates } from "./registry/chatAgents";
 import type { AgentDef, RegistrySnapshot } from "./registry/types";
+import type { TemplateValue } from "./registry/template";
 import type {
   AgentMessage,
   AgentRunContext,
@@ -186,7 +189,9 @@ async function collectStructuredRun(
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
     { recursionLimit, signal },
-  );
+  ).catch((error: unknown) => {
+    throw guardrailErrorIn(error) ?? error;
+  });
   return finalTextFromState(result);
 }
 
@@ -215,6 +220,35 @@ export interface RunTrace {
   calls: InvokedToolCall[];
 }
 
+/** Guard the data a feature gathered (its `json` variables) like a tool result (ADR 0022). */
+async function guardGatheredData(
+  guardrails: GuardrailRunner,
+  cap: { variables: Record<string, { type: string }> },
+  variables: Record<string, TemplateValue>,
+  agent: AgentDef,
+): Promise<Record<string, TemplateValue>> {
+  const list = guardrails.at("tool_result", agent.id);
+  if (list.length === 0) return variables;
+  const guarded: Record<string, TemplateValue> = { ...variables };
+  for (const [name, value] of Object.entries(variables)) {
+    if (cap.variables[name]?.type === "json" && typeof value === "string") {
+      guarded[name] = await guardrails.checkGathered(list, name, value, agent.slug);
+    }
+  }
+  return guarded;
+}
+
+/** The fallback's user messages get the input stage, as the agent's task did. */
+async function guardFallbackInput(guardrails: GuardrailRunner, agent: AgentDef, messages: AgentMessage[]): Promise<AgentMessage[]> {
+  const list = guardrails.at("input", agent.id);
+  if (list.length === 0) return messages;
+  const out: AgentMessage[] = [];
+  for (const m of messages) {
+    out.push(m.role === "user" ? { ...m, content: await guardrails.checkText("input", list, m.content, { agentPath: agent.slug, tool: null }) } : m);
+  }
+  return out;
+}
+
 function chosenAgent(snapshot: RegistrySnapshot, featureId: string, agentId: string | undefined): AgentDef {
   if (!agentId) return boundAgent(snapshot, featureId);
   const agent = snapshot.agents.get(agentId);
@@ -238,7 +272,8 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       const cached = await cap.cachedResult?.(prepared, ctx, scope);
       if (cached !== undefined) return cached;
 
-      const variables = cap.templateVariables(prepared, ctx);
+      const guardrails = runnerForRun(snapshot, cap.id, ctx, run);
+      const variables = await guardGatheredData(guardrails, cap, cap.templateVariables(prepared, ctx), agent);
       const prompts = renderAgentPrompts(agent, variables, snapshot);
       const task = renderTaskMessage(agent, variables, snapshot);
       const instructions = structuredInstructions(prompts.system, cap.outputSchema);
@@ -250,6 +285,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
         runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
         variables,
         calls,
+        guardrails,
       });
       const deepAgent = await buildAgentTree(agent, instructions, build);
 
@@ -266,7 +302,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       const meta = { raw, steps, modelLabel: label };
 
       const fallbackMessages: AgentMessage[] = cap.fallbackMessages
-        ? cap.fallbackMessages(prepared, ctx, raw, prompts)
+        ? cap.fallbackMessages(prepared, ctx, raw, prompts, variables)
         : [
             { role: "system", content: instructions },
             {
@@ -287,6 +323,9 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
         strategyCacheKey: structuredOutputCacheKey(config),
         signal,
         module: `AI:${cap.id}`,
+        // The fallback call runs outside the agent, so its guardrails are applied here.
+        guardFallbackMessages: (messages) => guardFallbackInput(guardrails, agent, messages),
+        guardFallbackOutput: (output) => guardrails.checkStructured(guardrails.at("output", agent.id), output, { agentPath: agent.slug, tool: null }),
       });
 
       if (parsed === null) {
@@ -361,6 +400,7 @@ export async function invokeChat(
       variables: {},
       calls,
       includeChild: (child) => userMayUseAgent(child, ctx),
+      guardrails: runnerForRun(snapshot, "chat", ctx, run),
     });
     const deepAgent = await buildAgentTree(agent, prompts.system, build);
     const overrides = runtimeOverrides(resolved.config);
@@ -370,7 +410,9 @@ export async function invokeChat(
         recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
         signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
       },
-    );
+    ).catch((error: unknown) => {
+      throw guardrailErrorIn(error) ?? error;
+    });
     return { content: finalTextFromState(result), toolCalls: calls, agent: { id: agent.id, slug: agent.slug, name: agent.name } };
   });
 }

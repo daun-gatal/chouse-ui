@@ -9,8 +9,12 @@
  * never listed, and the privilege fence never appears as a tool.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { Hono } from "hono";
+
+// Guardrails on MCP results read the registry database, which these tests do
+// not open; ai-guardrails.test.ts covers them against a real database.
+mock.module("./guardrails", () => ({ guardMcpResult: async (_tool: string, result: unknown) => result }));
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -207,6 +211,8 @@ const DEFAULT_TOOL_NAMES = [
   "list_ai_requests",
   "get_ai_request",
   "list_ai_agents",
+  "list_ai_guardrails",
+  "list_ai_guardrail_triggers",
   "list_dashboards",
   "get_dashboard",
   "export_dashboard",
@@ -671,6 +677,8 @@ describe("AI governance tools", () => {
     expect(chat.sort()).toEqual(["get_ai_data_egress", "get_ai_request", "get_ai_usage", "list_ai_requests", "whoami"]);
     const registry = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.AI_AGENTS_VIEW] }));
     expect(registry.sort()).toEqual(["list_ai_agents", "whoami"]);
+    const guardrails = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW] }));
+    expect(guardrails.sort()).toEqual(["list_ai_guardrail_triggers", "list_ai_guardrails", "whoami"]);
   });
 });
 

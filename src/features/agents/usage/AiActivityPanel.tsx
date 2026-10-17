@@ -6,7 +6,7 @@
  */
 
 import { useState, type ReactElement, type ReactNode } from "react";
-import { Link } from "react-router";
+import { useSearchParams, Link } from "react-router";
 import { Activity, AlertTriangle, Search } from "lucide-react";
 
 import { AI_REQUEST_ORIGINS, type AiEgressSource, type AiModelUsage, type AiRequestOrigin, type AiUsageRequest, type AiUsageSummary } from "@/api/aiUsage";
@@ -280,7 +280,17 @@ function RequestsPanel({ days, own, onOpen }: { days: number; own: boolean; onOp
 
 export function AiActivityPanel(): ReactElement {
   const [days, setDays] = useState<number>(7);
-  const [open, setOpen] = useState<string | null>(null);
+  // Guardrail triggers link here with ?request=<id> (ADR 0022).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpenState] = useState<string | null>(() => searchParams.get("request"));
+  const setOpen = (id: string | null): void => {
+    setOpenState(id);
+    if (id === null && searchParams.has("request")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("request");
+      setSearchParams(next, { replace: true });
+    }
+  };
   const summary = useAiUsageSummary(days);
   const canPrice = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_MODELS_UPDATE));
   const own = summary.data?.scope === "own";

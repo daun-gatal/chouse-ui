@@ -12,7 +12,7 @@ import { BookOpen, CalendarClock, Gauge, GitBranch, LayoutDashboard, ShieldCheck
 
 import { NavPill, PageHeader } from "@/components/common/PageShell";
 import NoPermission from "@/components/common/NoPermission";
-import { DataOpsModelButton } from "@/features/dataops-ai";
+import { AiModelButton } from "@/components/common/AiModelButton";
 import { CollectorStatusChip } from "@/features/observe/CollectorStatusChip";
 import { ContextTab } from "@/features/observe/ContextTab";
 import { CoverageTab } from "@/features/observe/CoverageTab";
@@ -106,7 +106,7 @@ export default function Data(): ReactElement {
         actions={
           <>
             {canObserve && <CollectorStatusChip />}
-            <DataOpsModelButton />
+            <AiModelButton />
           </>
         }
       />

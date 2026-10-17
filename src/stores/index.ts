@@ -34,8 +34,8 @@ export { useExplorerStore } from './explorer';
 export type { ExplorerState } from './explorer';
 
 // DataOps model store
-export { useDataOpsModelStore } from './dataOpsModel';
-export type { DataOpsModelState } from './dataOpsModel';
+export { useAiModelStore } from './aiModel';
+export type { AiModelState } from './aiModel';
 
 // Preferences store
 export {

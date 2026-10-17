@@ -74,6 +74,7 @@ describe("management tools through the real API", () => {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES ('conn-ip', 'in-process', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
     const permissions = [
+      "ai_guardrails:view",
       "performance:view", "capacity:view", "upgrades:view", "observe:view", "connections:view", "remediation:approve",
       "doctor:view", "ai_usage:view", "ai_agents:view",
     ];
@@ -92,6 +93,8 @@ describe("management tools through the real API", () => {
       ["get_ai_usage", { part: "egress", q: "orders" }],
       ["list_ai_requests", { origin: "mcp" }],
       ["list_ai_agents", {}],
+      ["list_ai_guardrails", {}],
+      ["list_ai_guardrail_triggers", { days: 7, limit: 10, offset: 0 }],
     ];
     for (const [name, args] of calls) {
       const [tool] = buildGrantedTools([name], { ctx: { bearerToken, permissions, connectionId: "conn-ip" } });
@@ -103,6 +106,9 @@ describe("management tools through the real API", () => {
     const [agents] = buildGrantedTools(["list_ai_agents"], { ctx: { bearerToken, permissions } });
     const registry = (await agents.invoke({})) as Record<string, unknown>;
     expect(Object.keys(registry).sort()).toEqual(["agents", "features", "harnesses", "problems", "skills", "version"]);
+    const [guardrails] = buildGrantedTools(["list_ai_guardrails"], { ctx: { bearerToken, permissions } });
+    // This database has no seeds, so the list is empty; the shape is what the agent relies on.
+    expect(await guardrails.invoke({})).toEqual([]);
     // A route's own refusals come back as tool errors, never as made-up data.
     const [notebook] = buildGrantedTools(["get_investigation_notebook"], { ctx: { bearerToken, permissions } });
     expect(await notebook.invoke({ attachedTo: "doctor_report", ref: "missing" })).toEqual({ error: "This incident or report has no notebook yet" });

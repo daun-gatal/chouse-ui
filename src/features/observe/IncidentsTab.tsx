@@ -13,7 +13,7 @@ import { explainIncident, type ChainStep, type IncidentExplanation, type Inciden
 import { ACTION_TYPES } from "@/api/remediation";
 import { Button } from "@/components/ui/button";
 import { useAcknowledgeIncident, useSnoozeIncident } from "@/features/data-health/hooks";
-import { useDataOpsModelId } from "@/hooks";
+import { useAiModelId } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useAcknowledgeObserveIncident, useIncident, useIncidents, useRecomputeRca } from "./hooks";
@@ -148,7 +148,7 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
   const ackObserve = useAcknowledgeObserveIncident();
   const ackHealth = useAcknowledgeIncident();
   const snoozeHealth = useSnoozeIncident();
-  const modelId = useDataOpsModelId();
+  const modelId = useAiModelId();
   const [explanation, setExplanation] = useState<IncidentExplanation>();
   const [explaining, setExplaining] = useState(false);
 

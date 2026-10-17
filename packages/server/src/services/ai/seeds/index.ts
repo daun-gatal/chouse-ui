@@ -253,6 +253,9 @@ export const SEED_AGENTS: SeedAgent[] = [
   // --- Dashboards (ADR 0021) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-dashboard-drafter", "dashboard-drafter", "Dashboard Drafter", "Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).", "draft-dashboard",
     { stepBudget: 8, maxOutputTokens: 8000 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "validate_sql"]),
+  // --- Guardrails (ADR 0022) ---------------------------------------------------------------
+  evidenceAgent("builtin-agent-guardrail-drafter", "guardrail-drafter", "Guardrail Drafter", "Turns a goal into a guardrail draft for review (AI Governance › Guardrails).", "draft-guardrail",
+    { stepBudget: 3, maxOutputTokens: 3000 }),
   // --- DataOps ----------------------------------------------------------------------------
   evidenceAgent("builtin-agent-scheduled-query-drafter", "scheduled-query-drafter", "Scheduled Query Drafter", "Turns an operator's intent into an editable scheduled query draft.", "draft-scheduled-query",
     { stepBudget: 7, maxOutputTokens: 4500 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "analyze_query"]),
@@ -322,10 +325,10 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-platform-auditor", slug: "platform-auditor", name: "Platform Auditor",
-    description: "Connections, AI models, CHouse's AI agents and their usage, cost and data sent to providers, external agents and MCP settings, and the audit log.",
+    description: "Connections, AI models, CHouse's AI agents and their usage, cost, data sent to providers and guardrails, external agents and MCP settings, and the audit log.",
     kind: "agent", systemPrompt: PLATFORM_AUDITOR_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 8 },
     requiredPermissions: [], skills: [], subagents: [],
-    tools: ["whoami", "list_connections", "list_ai_models", "list_ai_agents", "get_ai_usage", "list_ai_requests", "get_ai_request", "list_agent_sessions", "get_agent_governance", "audit_log"],
+    tools: ["whoami", "list_connections", "list_ai_models", "list_ai_agents", "list_ai_guardrails", "list_ai_guardrail_triggers", "get_ai_usage", "list_ai_requests", "get_ai_request", "list_agent_sessions", "get_agent_governance", "audit_log"],
   },
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",
@@ -366,4 +369,5 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-ai-agent": "agent-author",
   "draft-ai-harness": "harness-author",
   "draft-dashboard": "dashboard-drafter",
+  "draft-guardrail": "guardrail-drafter",
 };

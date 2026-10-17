@@ -111,7 +111,7 @@ chouse agents session <sessionId>     # replay one session's tool calls
 chouse agents policies
 ```
 
-CHouse's own AI ([AI activity](/docs/ai-usage/), [AI agents](/docs/ai-agents/)) — read-only:
+CHouse's own AI ([AI activity](/docs/ai-usage/), [AI agents](/docs/ai-agents/), [AI guardrails](/docs/ai-guardrails/)) — read-only:
 
 ```bash
 chouse ai usage --days 30 --by origin        # UI, MCP agents, tokens, background
@@ -120,6 +120,8 @@ chouse ai egress --search customers          # tables and records sent to LLM pr
 chouse ai requests --origin mcp --limit 20
 chouse ai request <requestId> -o yaml        # every LLM and tool call
 chouse ai agents                             # which agent each AI feature runs
+chouse ai guardrails                         # what every AI run passes through
+chouse ai guardrail-triggers --days 7        # matches: counts only, never the values
 ```
 
 `mcp config` prints the raw snippet; every snippet reads the token from `CH_HOUSE_PAT` or a secret prompt, never inline.
