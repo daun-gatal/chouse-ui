@@ -8,3 +8,6 @@ type: minor
 - **Fleet panels** — a panel can run on every connection the dashboard is assigned to, one series per connection, with each failing connection listed
 - **Draft a dashboard with AI** — Ask AI drafts a dashboard or new panels from a goal; every panel is checked and dry-run with your access before you accept it (built-in *Dashboard Drafter* agent)
 - **Dashboards for agents** — MCP tools `list_dashboards`, `get_dashboard`, `export_dashboard`, `run_dashboard_panel` (on by default), `apply_dashboard` and `delete_dashboard` (off by default); CHouse Admin's Operations Analyst reads dashboards
+
+### Fixed
+- **API errors** — a request with a malformed or missing JSON body now gets 400 with the reason instead of 500 Internal Server Error
