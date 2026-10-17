@@ -2,6 +2,7 @@
 app: AI Governance › Assistant › Draft with AI
 route: /ai/assistant
 permissions: ai_agents:manage, ai:optimize
+screenshot: ai-draft-with-ai
 ---
 # Draft with AI
 
