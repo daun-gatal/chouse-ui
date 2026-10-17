@@ -1,4 +1,0 @@
-type: minor
-
-### Added
-- **Draft with AI for agents, harnesses and skills** — AI Governance › Assistant can draft a custom agent, harness or skill from a plain-language goal (skills also from a pasted runbook). Every editor section comes back drafted with a reason for each pick, empty on purpose with a stated reason, or flagged for attention; failing sections are re-asked on their own up to twice. The server drops unknown tools, skills and subagents, makes slugs unique, works out required permissions from the tools, picks a harness that keeps the tools the agent needs, and clamps tuning. Drafts open in the editor for review and are never saved without the admin — **Redraft this section** and **Refine with AI** (also for existing custom entries) revise them. Needs `ai_agents:manage` and `ai:optimize`
