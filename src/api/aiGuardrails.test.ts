@@ -42,14 +42,15 @@ describe("api/aiGuardrails", () => {
       const url = new URL(request.url);
       const text = request.method === "GET" || request.method === "DELETE" ? "" : await request.text();
       seen.push({ method: request.method, path: url.pathname, search: url.search, body: text ? JSON.parse(text) : null });
-      if (url.pathname.endsWith("/events")) return ok({ events: [] });
+      if (url.pathname.endsWith("/events")) return ok({ events: [], total: 0 });
       if (url.pathname.endsWith("/revisions")) return ok({ revisions: [{ id: "r1" }] });
       if (url.pathname.endsWith("/reorder")) return ok({ guardrails: [] });
       return ok(stored);
     }));
 
     await getGuardrails();
-    await getGuardrailEvents({ days: 7, guardrailId: "g1" });
+    expect(await getGuardrailEvents({ days: 7, guardrailId: "g1" })).toEqual({ events: [], total: 0 });
+    await getGuardrailEvents({ days: 30, mode: "shadow", limit: 25, offset: 50 });
     await createGuardrail(input);
     await updateGuardrail("g1", input, 3);
     await setGuardrailState("g1", { mode: "enforce" }, 3);
@@ -64,6 +65,7 @@ describe("api/aiGuardrails", () => {
     expect(seen.map((s) => `${s.method} ${s.path}${s.search}`)).toEqual([
       "GET /api/ai-guardrails",
       "GET /api/ai-guardrails/events?days=7&guardrailId=g1",
+      "GET /api/ai-guardrails/events?days=30&mode=shadow&limit=25&offset=50",
       "POST /api/ai-guardrails",
       "PUT /api/ai-guardrails/g1",
       "PATCH /api/ai-guardrails/g1/state",
@@ -75,10 +77,10 @@ describe("api/aiGuardrails", () => {
       "POST /api/ai-guardrails/test",
       "POST /api/ai-guardrails/draft?modelId=model-2",
     ]);
-    expect(seen[3].body).toEqual({ ...input, version: 3 });
-    expect(seen[4].body).toEqual({ mode: "enforce", version: 3 });
-    expect(seen[5].body).toEqual({ ids: ["g2", "g1"] });
-    expect(seen[11].body).toEqual({ goal: "Mask employee ids" });
+    expect(seen[4].body).toEqual({ ...input, version: 3 });
+    expect(seen[5].body).toEqual({ mode: "enforce", version: 3 });
+    expect(seen[6].body).toEqual({ ids: ["g2", "g1"] });
+    expect(seen[12].body).toEqual({ goal: "Mask employee ids" });
   });
 
   it("surfaces the server's validation message", async () => {

@@ -167,16 +167,17 @@ export function registerAiGovernanceTools(sink: McpToolSink, deps: McpDeps): voi
     permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
     description:
       "Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. " +
-      "Matched values are never stored.",
+      "Returns the total too; page with limit and offset. Matched values are never stored.",
     inputSchema: {
       days: daysArg,
       guardrailId: z.string().min(1).optional().describe("Only this guardrail's triggers (id from list_ai_guardrails)"),
       limit: z.number().int().min(1).max(500).optional().describe("Rows to return (default 100)"),
+      offset: z.number().int().min(0).optional().describe("Rows to skip, for paging"),
     },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = deps.clientFor(ctx);
-      const query = params({ days: argOptionalNumber(args, "days"), guardrailId: argOptionalString(args, "guardrailId"), limit: argOptionalNumber(args, "limit") });
+      const query = params({ days: argOptionalNumber(args, "days"), guardrailId: argOptionalString(args, "guardrailId"), limit: argOptionalNumber(args, "limit"), offset: argOptionalNumber(args, "offset") });
       return runApiTool(ctx, api, "list_ai_guardrail_triggers", query.guardrailId, () => api.request("GET", "/api/ai-guardrails/events", { query }));
     },
   });

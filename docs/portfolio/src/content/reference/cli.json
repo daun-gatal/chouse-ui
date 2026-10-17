@@ -197,7 +197,7 @@
       "use": "chouse ai guardrail-triggers [flags]",
       "short": "Recent guardrail triggers: stage, action, matches, agent and tool",
       "long": "Guardrail triggers of the last --days, newest first: the guardrail, the\nstage, the action and mode, how many values matched, the agent and tool, and\nthe AI request. Matched values are never stored.",
-      "example": "  chouse ai guardrail-triggers\n  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7",
+      "example": "  chouse ai guardrail-triggers\n  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7\n  chouse ai guardrail-triggers --limit 50 --offset 50",
       "runnable": true,
       "flags": [
         {
@@ -216,6 +216,12 @@
           "type": "int",
           "default": "100",
           "usage": "rows to return (1-500)"
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "default": "0",
+          "usage": "rows to skip, for paging"
         }
       ]
     },

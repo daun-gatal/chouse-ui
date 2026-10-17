@@ -118,10 +118,18 @@ aiGuardrails.get("/", VIEW, async (c) => {
 aiGuardrails.get("/events", VIEW, zValidator("query", z.object({
   days: z.coerce.number().int().min(1).max(365).optional(),
   guardrailId: z.string().min(1).optional(),
+  mode: z.enum(GUARDRAIL_MODES).optional(),
   limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 })), async (c) => {
   const q = c.req.valid("query");
-  return ok(c, { events: await guardrailEvents({ since: Date.now() - (q.days ?? 1) * 24 * 60 * 60 * 1000, guardrailId: q.guardrailId ?? null, limit: q.limit ?? 100 }) });
+  return ok(c, await guardrailEvents({
+    since: Date.now() - (q.days ?? 1) * 24 * 60 * 60 * 1000,
+    guardrailId: q.guardrailId ?? null,
+    mode: q.mode ?? null,
+    limit: q.limit ?? 100,
+    offset: q.offset ?? 0,
+  }));
 });
 
 aiGuardrails.get("/:id/revisions", VIEW, async (c) => ok(c, { revisions: await listRevisions("guardrail", requireParam(c, "id")) }));

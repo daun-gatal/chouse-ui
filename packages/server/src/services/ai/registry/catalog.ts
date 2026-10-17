@@ -488,13 +488,14 @@ const managementTools: CatalogTool[] = [
     name: "list_ai_guardrail_triggers", title: "AI guardrail triggers", category: "ai", permissions: [PERMISSIONS.AI_GUARDRAILS_VIEW],
     description:
       "Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. " +
-      "Matched values are never stored.",
+      "Returns the total too; page with limit and offset. Matched values are never stored.",
     schema: z.object({
       days: z.number().int().min(1).max(365).optional().describe("Window in days (default 1)"),
       guardrailId: z.string().optional().describe("Only this guardrail's triggers (id from list_ai_guardrails)"),
       limit: z.number().int().min(1).max(500).optional().describe("Rows to return (default 100)"),
+      offset: z.number().int().min(0).optional().describe("Rows to skip, for paging"),
     }),
-    request: (a) => ({ path: "/api/ai-guardrails/events", query: { days: optionalInt(a.days), guardrailId: str(a.guardrailId), limit: optionalInt(a.limit) } }),
+    request: (a) => ({ path: "/api/ai-guardrails/events", query: { days: optionalInt(a.days), guardrailId: str(a.guardrailId), limit: optionalInt(a.limit), offset: optionalInt(a.offset) } }),
   }),
 ];
 

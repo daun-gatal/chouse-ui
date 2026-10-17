@@ -118,9 +118,23 @@ export function getGuardrails(): Promise<GuardrailCatalog> {
   return api.get<GuardrailCatalog>(BASE);
 }
 
-export async function getGuardrailEvents(params: { days?: number; guardrailId?: string; limit?: number } = {}): Promise<GuardrailEvent[]> {
-  const data = await api.get<{ events: GuardrailEvent[] }>(`${BASE}/events`, { params });
-  return data.events;
+export interface GuardrailEventPage {
+  events: GuardrailEvent[];
+  /** Every trigger matching the window and filters, across all pages. */
+  total: number;
+}
+
+// A type alias, not an interface, so it fits the client's params record.
+export type GuardrailEventQuery = {
+  days?: number;
+  guardrailId?: string;
+  mode?: GuardrailMode;
+  limit?: number;
+  offset?: number;
+};
+
+export function getGuardrailEvents(params: GuardrailEventQuery = {}): Promise<GuardrailEventPage> {
+  return api.get<GuardrailEventPage>(`${BASE}/events`, { params });
 }
 
 export function createGuardrail(input: GuardrailInput): Promise<Guardrail> {

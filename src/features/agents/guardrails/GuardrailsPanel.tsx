@@ -4,7 +4,7 @@
  * within each stage; drag to reorder.
  */
 
-import { useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -12,7 +12,8 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, ShieldCheck } from "lucide-react";
 
-import { GUARDRAIL_STAGES, type Guardrail, type GuardrailCatalog, type GuardrailStage } from "@/api/aiGuardrails";
+import { GUARDRAIL_STAGES, type Guardrail, type GuardrailCatalog, type GuardrailMode, type GuardrailStage } from "@/api/aiGuardrails";
+import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -75,33 +76,94 @@ function Row({ g, catalog, canManage, sortable, onOpen }: { g: Guardrail; catalo
   );
 }
 
+const PAGE_SIZES = [25, 50, 100] as const;
+const ALL = "all";
+
 function TriggersPanel({ catalog }: { catalog: GuardrailCatalog }): ReactElement {
   const [days, setDays] = useState(1);
-  const events = useGuardrailEvents(days);
+  const [guardrailId, setGuardrailId] = useState<string | null>(null);
+  const [mode, setMode] = useState<GuardrailMode | null>(null);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  // The page belongs to one window, filter set and page size; a new one starts from the first page.
+  const pageKey = `${days}|${guardrailId ?? ALL}|${mode ?? ALL}|${pageSize}`;
+  const [paging, setPaging] = useState({ key: pageKey, page: 0 });
+  const pageIndex = paging.key === pageKey ? paging.page : 0;
+  const setPageIndex = useCallback((next: number): void => setPaging({ key: pageKey, page: next }), [pageKey]);
+  const events = useGuardrailEvents({ days, guardrailId, mode, offset: pageIndex * pageSize, limit: pageSize });
+  const filtered = guardrailId !== null || mode !== null;
+  const total = events.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rows = events.data?.events ?? [];
+
+  // Triggers age out of the window, so a later page can end up past the last one: step back to it.
+  const pastEnd = Boolean(events.data) && !events.isPlaceholderData && pageIndex > 0 && pageIndex >= totalPages;
+  useEffect(() => {
+    if (pastEnd) setPageIndex(totalPages - 1);
+  }, [pastEnd, totalPages, setPageIndex]);
+
   return (
-    <Panel title="Recent triggers" meta="Counts only: matched values are never stored"
+    <Panel title="Recent triggers" meta={events.data ? `Newest first · ${formatCount(total)} in this window · matched values are never stored` : "Counts only: matched values are never stored"}
       actions={
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <SelectTrigger className="h-8 w-32 rounded-xs text-[11px]" aria-label="Trigger window"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="1">Today</SelectItem><SelectItem value="7">7 days</SelectItem><SelectItem value="30">30 days</SelectItem></SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={guardrailId ?? ALL} onValueChange={(v) => setGuardrailId(v === ALL ? null : v)}>
+            <SelectTrigger className="h-8 w-44 rounded-xs text-[11px]" aria-label="Trigger guardrail"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All guardrails</SelectItem>
+              {catalog.guardrails.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={mode ?? ALL} onValueChange={(v) => setMode(v === "shadow" || v === "enforce" ? v : null)}>
+            <SelectTrigger className="h-8 w-32 rounded-xs text-[11px]" aria-label="Trigger mode"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value={ALL}>All modes</SelectItem><SelectItem value="enforce">Enforce</SelectItem><SelectItem value="shadow">Shadow</SelectItem></SelectContent>
+          </Select>
+          <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+            <SelectTrigger className="h-8 w-32 rounded-xs text-[11px]" aria-label="Trigger window"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="1">Today</SelectItem><SelectItem value="7">7 days</SelectItem><SelectItem value="30">30 days</SelectItem></SelectContent>
+          </Select>
+        </div>
       }>
-      {events.isLoading ? <LoadingGrid count={1} /> : events.isError ? <ErrorState title="Triggers could not be loaded." error={events.error} /> : (events.data ?? []).length === 0 ? (
-        <EmptyState icon={ShieldCheck} title="No triggers" body="Guardrails record here whenever they match, in shadow or enforce mode." />
+      {/* Rows but an empty page means the page is past the end and about to step back. */}
+      {events.isLoading || (rows.length === 0 && total > 0) ? <LoadingGrid count={1} /> : events.isError || !events.data ? <ErrorState title="Triggers could not be loaded." error={events.error} /> : rows.length === 0 ? (
+        <EmptyState icon={ShieldCheck} title={filtered ? "No triggers match" : "No triggers"} body={filtered ? "Try another guardrail, mode or window." : "Guardrails record here whenever they match, in shadow or enforce mode."} />
       ) : (
-        <DataTable label="Guardrail triggers" head={["When", "Guardrail", "Stage", "Action", "Matches", "Where", "Request"]}>
-          {(events.data ?? []).map((e) => (
-            <tr key={e.id}>
-              <td className="whitespace-nowrap text-[11px] text-paper-muted">{formatAgo(e.createdAt)}</td>
-              <td className="text-[12px] text-paper">{e.guardrailName}{e.reason && <span className="block text-[10px] text-paper-faint">{e.reason}</span>}</td>
-              <td className="text-[11px] text-paper-muted">{STAGE_LABELS[e.stage] ?? e.stage}</td>
-              <td><StatusPill tone={e.mode === "shadow" ? "muted" : ACTION_TONE[e.action]} dot={false}>{e.mode === "shadow" ? `${e.action} · shadow` : e.action}</StatusPill></td>
-              <td className="tabular-nums text-[11px]">{formatCount(e.matchCount)}</td>
-              <td className="text-[11px] text-paper-muted">{e.source === "mcp" ? "MCP" : e.agentPath ?? "—"}{e.tool && <Mono className="block text-[10px]">{e.tool}</Mono>}</td>
-              <td className="text-[11px]">{e.requestId ? <Link className="text-brand hover:underline" to={`/ai/usage?request=${encodeURIComponent(e.requestId)}`}>Open</Link> : <span className="text-paper-faint">—</span>}</td>
-            </tr>
-          ))}
-        </DataTable>
+        <div className="overflow-hidden rounded-xs border border-ink-500">
+          <DataTable label="Guardrail triggers" head={["When", "Guardrail", "Stage", "Action", "Matches", "Where", "Request"]}>
+            {rows.map((e) => (
+              <tr key={e.id}>
+                <td className="whitespace-nowrap text-[11px] text-paper-muted" title={new Date(e.createdAt).toLocaleString()}>{formatAgo(e.createdAt)}</td>
+                <td className="text-[12px] text-paper">{e.guardrailName}{e.reason && <span className="block text-[10px] text-paper-faint">{e.reason}</span>}</td>
+                <td className="text-[11px] text-paper-muted">{STAGE_LABELS[e.stage] ?? e.stage}</td>
+                <td><StatusPill tone={e.mode === "shadow" ? "muted" : ACTION_TONE[e.action]} dot={false}>{e.mode === "shadow" ? `${e.action} · shadow` : e.action}</StatusPill></td>
+                <td className="tabular-nums text-[11px]">{formatCount(e.matchCount)}</td>
+                <td className="text-[11px] text-paper-muted">{e.source === "mcp" ? "MCP" : e.agentPath ?? "—"}{e.tool && <Mono className="block text-[10px]">{e.tool}</Mono>}</td>
+                <td className="text-[11px]">{e.requestId ? <Link className="text-brand hover:underline" to={`/ai/usage?request=${encodeURIComponent(e.requestId)}`}>Open</Link> : <span className="text-paper-faint">—</span>}</td>
+              </tr>
+            ))}
+          </DataTable>
+          <div className="flex flex-wrap items-center border-t border-ink-500 bg-ink-200/50">
+            <label className="flex items-center gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              Rows
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <SelectTrigger className="h-7 w-20 rounded-xs text-[11px]" aria-label="Rows per page"><SelectValue /></SelectTrigger>
+                <SelectContent>{PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <div className="min-w-0 flex-1 [&>div]:border-t-0 [&>div]:bg-transparent">
+              <PaginationBar
+                page={pageIndex}
+                totalPages={totalPages}
+                startIndex={pageIndex * pageSize}
+                endIndex={pageIndex * pageSize + rows.length}
+                totalRows={total}
+                rowLabel={total === 1 ? "trigger" : "triggers"}
+                onPrev={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                onNext={() => setPageIndex(Math.min(totalPages - 1, pageIndex + 1))}
+                onFirst={() => setPageIndex(0)}
+                onLast={() => setPageIndex(totalPages - 1)}
+              />
+            </div>
+          </div>
+        </div>
       )}
       <p className="mt-2 text-[11px] text-paper-faint">{catalog.guardrails.length} guardrails · triggers are kept as long as AI activity.</p>
     </Panel>

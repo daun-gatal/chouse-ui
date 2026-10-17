@@ -94,7 +94,7 @@ describe("management tools through the real API", () => {
       ["list_ai_requests", { origin: "mcp" }],
       ["list_ai_agents", {}],
       ["list_ai_guardrails", {}],
-      ["list_ai_guardrail_triggers", { days: 7, limit: 10 }],
+      ["list_ai_guardrail_triggers", { days: 7, limit: 10, offset: 0 }],
     ];
     for (const [name, args] of calls) {
       const [tool] = buildGrantedTools([name], { ctx: { bearerToken, permissions, connectionId: "conn-ip" } });

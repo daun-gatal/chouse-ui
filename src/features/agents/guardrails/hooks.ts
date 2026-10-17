@@ -2,7 +2,7 @@
  * Data hooks for AI Governance › Guardrails.
  */
 
-import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 
 import * as api from "@/api/aiGuardrails";
 import { useAiModelId } from "@/hooks/useAiModelId";
@@ -10,7 +10,7 @@ import { useAiModelId } from "@/hooks/useAiModelId";
 export const guardrailKeys = {
   all: ["ai-guardrails"] as const,
   catalog: () => [...guardrailKeys.all, "catalog"] as const,
-  events: (days: number, guardrailId: string | null) => [...guardrailKeys.all, "events", days, guardrailId] as const,
+  events: (filter: GuardrailEventFilter) => [...guardrailKeys.all, "events", filter] as const,
   revisions: (id: string) => [...guardrailKeys.all, "revisions", id] as const,
 };
 
@@ -18,11 +18,22 @@ export function useGuardrails(enabled = true): UseQueryResult<api.GuardrailCatal
   return useQuery({ queryKey: guardrailKeys.catalog(), queryFn: api.getGuardrails, enabled, staleTime: 30_000 });
 }
 
-export function useGuardrailEvents(days: number, guardrailId: string | null = null): UseQueryResult<api.GuardrailEvent[]> {
+export interface GuardrailEventFilter {
+  days: number;
+  guardrailId: string | null;
+  mode: api.GuardrailMode | null;
+  offset: number;
+  limit: number;
+}
+
+export function useGuardrailEvents(filter: GuardrailEventFilter): UseQueryResult<api.GuardrailEventPage> {
+  const { guardrailId, mode, ...rest } = filter;
   return useQuery({
-    queryKey: guardrailKeys.events(days, guardrailId),
-    queryFn: () => api.getGuardrailEvents({ days, limit: 100, ...(guardrailId ? { guardrailId } : {}) }),
+    queryKey: guardrailKeys.events(filter),
+    queryFn: () => api.getGuardrailEvents({ ...rest, ...(guardrailId ? { guardrailId } : {}), ...(mode ? { mode } : {}) }),
     staleTime: 30_000,
+    // Keep the current page on screen while the next page or filter loads.
+    placeholderData: keepPreviousData,
   });
 }
 

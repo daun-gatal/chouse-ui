@@ -186,7 +186,7 @@ enforce mode, whether it is on, and its triggers in the last 24 hours.
 Read-only; guardrails are edited in the UI or the REST API.`
 
 	var guardrailID string
-	var triggerLimit int
+	var triggerLimit, triggerOffset int
 	triggers := &cobra.Command{
 		Use:   "guardrail-triggers",
 		Short: "Recent guardrail triggers: stage, action, matches, agent and tool",
@@ -194,17 +194,22 @@ Read-only; guardrails are edited in the UI or the REST API.`
 stage, the action and mode, how many values matched, the agent and tool, and
 the AI request. Matched values are never stored.`,
 		Example: `  chouse ai guardrail-triggers
-  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7`,
+  chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7
+  chouse ai guardrail-triggers --limit 50 --offset 50`,
 		Args: cobra.NoArgs,
 		RunE: a.action(needAuth, func(s *Session, _ []string) error {
 			if triggerLimit < 1 || triggerLimit > 500 {
 				return usagef("--limit must be between 1 and 500")
+			}
+			if triggerOffset < 0 {
+				return usagef("--offset must be 0 or more")
 			}
 			q, err := windowQuery()
 			if err != nil {
 				return err
 			}
 			q.Set("limit", itoa(triggerLimit))
+			q.Set("offset", itoa(triggerOffset))
 			if guardrailID != "" {
 				q.Set("guardrailId", guardrailID)
 			}
@@ -217,6 +222,7 @@ the AI request. Matched values are never stored.`,
 	}
 	triggers.Flags().StringVar(&guardrailID, "guardrail", "", "only this guardrail's triggers (id from `chouse ai guardrails`)")
 	triggers.Flags().IntVar(&triggerLimit, "limit", 100, "rows to return (1-500)")
+	triggers.Flags().IntVar(&triggerOffset, "offset", 0, "rows to skip, for paging")
 
 	for _, c := range []*cobra.Command{usage, egress, requests, triggers} {
 		c.Flags().IntVar(&days, "days", 7, "window in days (capped at the server's retention)")

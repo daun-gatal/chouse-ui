@@ -5,8 +5,8 @@
 
 import { randomUUID } from "crypto";
 
-import { all, num, run, sql, str, strOrNull } from "../../observe/db";
-import type { GuardrailEvent } from "./types";
+import { all, num, run, sql, str, strOrNull, type Row } from "../../observe/db";
+import type { GuardrailEvent, GuardrailMode } from "./types";
 
 export interface StoredGuardrailEvent {
   id: string;
@@ -44,11 +44,27 @@ export async function triggerCounts(since: number): Promise<Map<string, TriggerC
   return new Map(rows.map((r) => [str(r.guardrail_id), { total: num(r.total), applied: num(r.applied), blocked: num(r.blocked) }]));
 }
 
-export async function guardrailEvents(filter: { since: number; guardrailId: string | null; limit: number }): Promise<StoredGuardrailEvent[]> {
-  const rows = filter.guardrailId
-    ? await all(sql`SELECT * FROM ai_guardrail_events WHERE created_at >= ${filter.since} AND guardrail_id = ${filter.guardrailId} ORDER BY created_at DESC LIMIT ${filter.limit}`)
-    : await all(sql`SELECT * FROM ai_guardrail_events WHERE created_at >= ${filter.since} ORDER BY created_at DESC LIMIT ${filter.limit}`);
-  return rows.map((r) => ({
+export interface GuardrailEventFilter {
+  since: number;
+  guardrailId: string | null;
+  mode: GuardrailMode | null;
+  limit: number;
+  offset: number;
+}
+
+/** One page of triggers, newest first, and how many match in all. */
+export async function guardrailEvents(filter: GuardrailEventFilter): Promise<{ events: StoredGuardrailEvent[]; total: number }> {
+  const where = sql`created_at >= ${filter.since}${filter.guardrailId ? sql` AND guardrail_id = ${filter.guardrailId}` : sql``}${filter.mode ? sql` AND mode = ${filter.mode}` : sql``}`;
+  // id breaks ties so rows written in the same millisecond page stably.
+  const [rows, count] = await Promise.all([
+    all(sql`SELECT * FROM ai_guardrail_events WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ${filter.limit} OFFSET ${filter.offset}`),
+    all(sql`SELECT COUNT(*) AS total FROM ai_guardrail_events WHERE ${where}`),
+  ]);
+  return { events: rows.map(toEvent), total: num(count[0]?.total) };
+}
+
+function toEvent(r: Row): StoredGuardrailEvent {
+  return {
     id: str(r.id),
     createdAt: num(r.created_at),
     guardrailId: str(r.guardrail_id),
@@ -64,7 +80,7 @@ export async function guardrailEvents(filter: { since: number; guardrailId: stri
     agentPath: strOrNull(r.agent_path),
     tool: strOrNull(r.tool),
     reason: strOrNull(r.reason),
-  }));
+  };
 }
 
 /** Write MCP triggers right away: an MCP call has no usage run. */

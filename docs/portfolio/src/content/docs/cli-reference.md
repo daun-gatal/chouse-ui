@@ -1839,10 +1839,12 @@ chouse ai guardrail-triggers [flags]
 | `--days` | `int` | `7` | window in days (capped at the server's retention) |
 | `--guardrail` | `string` |   | only this guardrail's triggers (id from `chouse ai guardrails`) |
 | `--limit` | `int` | `100` | rows to return (1-500) |
+| `--offset` | `int` | `0` | rows to skip, for paging |
 
 ```bash
 chouse ai guardrail-triggers
 chouse ai guardrail-triggers --guardrail builtin-guardrail-pii --days 7
+chouse ai guardrail-triggers --limit 50 --offset 50
 ```
 
 #### chouse ai guardrails

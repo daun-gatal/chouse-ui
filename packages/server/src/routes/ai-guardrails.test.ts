@@ -105,6 +105,28 @@ describe("/api/ai-guardrails", () => {
     expect(audit.map((r) => r.action)).toContain("ai_guardrail.delete");
   });
 
+  it("pages and filters recent triggers, with the total", async () => {
+    const now = Date.now();
+    for (let i = 0; i < 12; i++) {
+      await rawRun(sql`
+        INSERT INTO ai_guardrail_events (id, created_at, guardrail_id, guardrail_name, kind, stage, action, mode, match_count, source)
+        VALUES (${`route-${i}`}, ${now - i * 1000}, ${i < 8 ? "g-route" : "g-other"}, 'Route', 'pattern', 'tool_result', 'redact', ${i % 2 === 0 ? "enforce" : "shadow"}, 1, 'agent')`);
+    }
+    type Page = { events: Array<{ id: string; mode: string }>; total: number };
+    expect((await call("GET", "/ai-guardrails/events", [])).status).toBe(403);
+    const first = await data<Page>(await call("GET", "/ai-guardrails/events?guardrailId=g-route&limit=3", VIEW));
+    expect(first.total).toBe(8);
+    expect(first.events.map((e) => e.id)).toEqual(["route-0", "route-1", "route-2"]);
+    const last = await data<Page>(await call("GET", "/ai-guardrails/events?guardrailId=g-route&limit=3&offset=6", VIEW));
+    expect([last.total, last.events.map((e) => e.id)]).toEqual([8, ["route-6", "route-7"]]);
+    const shadow = await data<Page>(await call("GET", "/ai-guardrails/events?guardrailId=g-route&mode=shadow", VIEW));
+    expect([shadow.total, shadow.events.every((e) => e.mode === "shadow")]).toEqual([4, true]);
+    for (const bad of ["offset=-1", "mode=audit", "limit=0", "limit=501"]) {
+      expect((await call("GET", `/ai-guardrails/events?${bad}`, VIEW)).status).toBe(400);
+    }
+    await rawRun(sql`DELETE FROM ai_guardrail_events WHERE id LIKE 'route-%'`);
+  });
+
   it("explains invalid guardrails", async () => {
     const res = await call("POST", "/ai-guardrails", MANAGE, { ...custom, slug: "bad", action: "redact", stages: ["tool_call"] });
     expect(res.status).toBe(400);

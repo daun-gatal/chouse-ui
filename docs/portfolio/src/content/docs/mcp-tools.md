@@ -797,10 +797,11 @@ No parameters.
 
 *AI guardrail triggers* — **Read** · on by default · needs any of `ai_guardrails:view`
 
-Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. Matched values are never stored.
+Recent guardrail triggers, newest first: guardrail, stage, action, mode, how many values matched, agent and tool, and the AI request. Returns the total too; page with limit and offset. Matched values are never stored.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `days` | `number` | No | Window in days (default 7; capped at the server's retention) |
 | `guardrailId` | `string` | No | Only this guardrail's triggers (id from list_ai_guardrails) |
 | `limit` | `number` | No | Rows to return (default 100) |
+| `offset` | `number` | No | Rows to skip, for paging |
