@@ -451,13 +451,11 @@ This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE
 
 ### Third-Party Code
 
-This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch-ui)** by [Caio Ricciuti](https://github.com/caioricciuti). While significant modifications and additions have been made, we acknowledge the original work and maintain attribution as required by the Apache License 2.0.
+CHouse UI began as a fork of **[CH-UI](https://github.com/caioricciuti/ch-ui)** by [Caio Ricciuti](https://github.com/caioricciuti) (Apache License 2.0) and has since been substantially rewritten. Original attribution is retained in [NOTICE](./NOTICE).
 
 ## Acknowledgments
 
 ### Special Thanks
-
-**[CH-UI](https://github.com/caioricciuti/ch-ui)** by [Caio Ricciuti](https://github.com/caioricciuti) — This project was inspired by CH-UI's design and user experience.
 
 **[QueryDog](https://github.com/benjaminwootton/QueryDog)** by [Benjamin Wootton](https://benjaminwootton.com) (Elastic License 2.0) — The Monitoring deep-dive (Logs sub-views Queries / Patterns / By table / Histogram, Parts, Schema doctor, Cluster activity, and the Query timeline chart) is heavily inspired by QueryDog's chart-plus-table layout and aggregation patterns over ClickHouse system tables. No QueryDog source code is bundled here; every component was rewritten on top of React 19 + shadcn/ui + recharts + the editorial design system. Full attribution and the list of adapted ideas is in [NOTICE](./NOTICE).
 
