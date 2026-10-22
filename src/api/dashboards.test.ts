@@ -46,6 +46,10 @@ describe("dashboards API", () => {
     await dashboards.restorePreview("d1", 2);
     await dashboards.restoreVersion("d1", 2, 5);
     await dashboards.importDashboard({ format: "chouse.dashboard/v1" });
+    await dashboards.createSnapshot("d1", { name: "S", from: 1, to: 2, values: {}, roleIds: [], expiresInDays: 7, incidentId: null });
+    await dashboards.listSnapshots("d1");
+    await dashboards.getSnapshot("d1", "s/1");
+    await dashboards.deleteSnapshot("d1", "s1");
     expect(seen).toEqual([
       "GET /api/dashboards",
       "GET /api/dashboards/d%2F1",
@@ -73,7 +77,12 @@ describe("dashboards API", () => {
       "GET /api/dashboards/d1/versions/2/restore-preview",
       "POST /api/dashboards/d1/versions/2/restore",
       "POST /api/dashboards/import",
+      "POST /api/dashboards/d1/snapshots",
+      "GET /api/dashboards/d1/snapshots",
+      "GET /api/dashboards/d1/snapshots/s%2F1",
+      "DELETE /api/dashboards/d1/snapshots/s1",
     ]);
+    expect(bodies[26]).toEqual({ name: "S", from: 1, to: 2, values: {}, roleIds: [], expiresInDays: 7, incidentId: null });
     expect(bodies[3]).toEqual({ version: 3, dashboard: input });
     expect(bodies[19]).toEqual({ mode: "arrange", sections: [] });
     expect(bodies[20]).toEqual({ mode: "tidy", panels: [] });

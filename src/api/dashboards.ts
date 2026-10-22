@@ -409,6 +409,64 @@ export function restoreVersion(id: string, version: number, currentVersion: numb
 }
 
 // ============================================
+// Snapshots (ADR 0023 §12)
+// ============================================
+
+export const SNAPSHOT_EXPIRY_DAYS = [1, 7, 30, 90, 365] as const;
+
+export interface SnapshotSummary {
+  id: string;
+  dashboardId: string;
+  name: string;
+  createdBy: string;
+  createdByName: string | null;
+  createdAt: number;
+  expiresAt: number;
+  connectionId: string;
+  /** Unix seconds. */
+  range: { from: number; to: number };
+  sizeBytes: number;
+  roleIds: string[];
+  incidentId: string | null;
+}
+
+/** A panel's frozen result, or why there is none ("Access denied" when the viewer may not read it). */
+export type SnapshotResult = ({ ok: true } & PanelRunResult) | { ok: false; error: string };
+
+export interface Snapshot extends SnapshotSummary {
+  document: DashboardInput;
+  values: VariableValues;
+  results: Record<string, SnapshotResult>;
+}
+
+export interface SnapshotRequest {
+  name: string;
+  from: number;
+  to: number;
+  values: VariableValues;
+  roleIds: string[];
+  expiresInDays: number;
+  incidentId: string | null;
+}
+
+/** Runs every chart panel on the active connection (sent with the request) for the range. */
+export function createSnapshot(id: string, request: SnapshotRequest): Promise<SnapshotSummary> {
+  return api.post<SnapshotSummary>(`${base}/${enc(id)}/snapshots`, request);
+}
+
+export function listSnapshots(id: string): Promise<SnapshotSummary[]> {
+  return api.get<SnapshotSummary[]>(`${base}/${enc(id)}/snapshots`);
+}
+
+export function getSnapshot(id: string, snapshotId: string): Promise<Snapshot> {
+  return api.get<Snapshot>(`${base}/${enc(id)}/snapshots/${enc(snapshotId)}`);
+}
+
+export function deleteSnapshot(id: string, snapshotId: string): Promise<{ deleted: string }> {
+  return api.delete<{ deleted: string }>(`${base}/${enc(id)}/snapshots/${enc(snapshotId)}`);
+}
+
+// ============================================
 // Draft with AI (ADR 0021 §10, ADR 0023 §4)
 // ============================================
 

@@ -910,3 +910,91 @@ describe("expected-range bands", () => {
     expect(off.json.error.message).toBe('The alert "Unusual orders" watches this panel\'s expected-range band, which this would turn off. Delete the alert first.');
   });
 });
+
+describe("snapshots", () => {
+  const NOW_S = Math.floor(Date.now() / 1000);
+  const body = (overrides: Record<string, unknown> = {}) => ({ name: "Incident 42", from: NOW_S - 3600, to: NOW_S - 60, values: {}, roleIds: [], expiresInDays: 7, incidentId: null, ...overrides });
+
+  it("freezes each chart panel for the range, and opens only for its creator and roles that still see the dashboard", async () => {
+    const created = await create("owner", { panels: [panel(), { id: null, kind: "text", title: "", markdown: "notes" }, panel({ title: "Broken", sql: "SELECT 1 AS t, 2 AS v FROM shop.missing" })] });
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }, { roleId: "role-c", canEdit: false }] });
+    respond = (_conn, query) => (query.includes("shop.missing") ? new Error("Table shop.missing does not exist") : ROWS);
+    const res = await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b", "role-c"] }));
+    expect(res.status).toBe(201);
+    const snapshotId = res.json.data.id;
+    expect(res.json.data).toMatchObject({ name: "Incident 42", connectionId: "conn-1", range: { from: NOW_S - 3600, to: NOW_S - 60 }, roleIds: ["role-b", "role-c"] });
+    // Both chart panels ran; the range is absolute, so the time-bounded one ran for exactly it.
+    expect(sent).toHaveLength(2);
+    const timed = sent.find((q) => q.query.includes("shop.orders"));
+    expect([timed?.params.chouse_from, timed?.params.chouse_to]).toEqual([NOW_S - 3600, NOW_S - 60]);
+
+    sent.length = 0;
+    const opened = await call("peer", "GET", `/dashboards/${id}/snapshots/${snapshotId}`);
+    expect(opened.status).toBe(200);
+    const [orders, , broken] = opened.json.data.document.panels;
+    expect(opened.json.data.results[orders.id]).toMatchObject({ ok: true, kind: "single", data: { rows: ROWS.data } });
+    expect(opened.json.data.results[broken.id]).toEqual({ ok: false, error: expect.stringContaining("shop.missing") });
+    // Opening never runs anything.
+    expect(sent).toEqual([]);
+
+    // team-c sees the dashboard but may not read shop: the data is withheld, not shown.
+    const denied = await call("outsider", "GET", `/dashboards/${id}/snapshots/${snapshotId}`);
+    expect(denied.json.data.results[orders.id]).toEqual({ ok: false, error: "Access denied" });
+
+    expect((await call("peer", "GET", `/dashboards/${id}/snapshots`)).json.data.map((s: { id: string }) => s.id)).toEqual([snapshotId]);
+    // Unshared, the role no longer sees the dashboard, so not the snapshot either.
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-c", canEdit: false }] });
+    expect((await call("peer", "GET", `/dashboards/${id}/snapshots/${snapshotId}`)).status).toBe(404);
+    // A manager sees the dashboard but holds none of the snapshot's roles.
+    expect((await call("manager", "GET", `/dashboards/${id}/snapshots/${snapshotId}`)).status).toBe(404);
+  });
+
+  it("refuses a range that ends in the future, roles the dashboard is not shared with, and an unknown incident", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ to: NOW_S + 3600 }))).json.error.message).toBe("A snapshot's range cannot end in the future");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ from: NOW_S - 60, to: NOW_S - 3600 }))).json.error.message).toBe("A snapshot's range must end after it starts");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b"] }))).json.error.message).toBe("A snapshot can only be opened by roles the dashboard is shared with");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ incidentId: "nope" }))).json.error.message).toBe("That incident does not exist");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ expiresInDays: 400 }))).status).toBe(400);
+    expect((await call("viewOnly", "POST", `/dashboards/${id}/snapshots`, body())).status).toBe(403);
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses results over 10 MiB whole, instead of cutting them down", async () => {
+    const created = await create();
+    const big = "x".repeat(1_200);
+    respond = () => ({ ...ROWS, data: Array.from({ length: 10_000 }, (_, i) => ({ t: "2026-10-17 00:00:00", v: i, s: big })), rows: 10_000 });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/snapshots`, body());
+    expect(res.status).toBe(413);
+    expect(res.json.error.message).toMatch(/^The snapshot's results are 1\d\.\d MiB; the limit is 10\.0 MiB/);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${created.dashboard.id}`)).toEqual([]);
+  });
+
+  it("hides an expired snapshot, sweeps it, and lets only the creator or an editor delete one", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    const keep = (await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b"] }))).json.data.id;
+    const old = (await call("owner", "POST", `/dashboards/${id}/snapshots`, body())).json.data.id;
+    await rawRun(sql`UPDATE dashboard_snapshots SET expires_at = 1 WHERE id = ${old}`);
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots/${old}`)).json.error.message).toBe("This snapshot has expired");
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots`)).json.data.map((s: { id: string }) => s.id)).toEqual([keep]);
+    const { deleteExpiredSnapshots } = await import("../services/dashboards/snapshots");
+    expect(await deleteExpiredSnapshots()).toBeGreaterThanOrEqual(1);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE id = ${old}`)).toEqual([]);
+
+    expect((await call("peer", "DELETE", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(403);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(200);
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(404);
+  });
+
+  it("goes with its dashboard", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "POST", `/dashboards/${id}/snapshots`, body());
+    expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${id}`)).toEqual([]);
+  });
+});

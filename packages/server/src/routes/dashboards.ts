@@ -60,6 +60,7 @@ import {
   type DashboardInput,
   type Layout,
 } from "../services/dashboards/spec";
+import * as snapshots from "../services/dashboards/snapshots";
 import * as store from "../services/dashboards/store";
 import { findTemplate, TEMPLATES } from "../services/dashboards/templates";
 import { dashboardProblems, panelProblems } from "../services/dashboards/validate";
@@ -529,6 +530,53 @@ dashboards.delete("/:id/notes/:noteId", requirePermission(PERMISSIONS.DASHBOARDS
   await deleteNote(note.id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_NOTE_DELETE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { noteId: note.id } });
   return ok(c, { deleted: note.id });
+});
+
+// ============================================
+// Snapshots (ADR 0023 §12)
+// ============================================
+
+const snapshotSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  /** Unix seconds. */
+  from: z.number().int().positive(),
+  to: z.number().int().positive(),
+  values: variableValuesSchema,
+  roleIds: z.array(z.string().min(1)).max(50),
+  expiresInDays: z.number().int().min(snapshots.MIN_EXPIRY_DAYS).max(snapshots.MAX_EXPIRY_DAYS),
+  incidentId: z.string().min(1).nullable(),
+}).strict();
+
+/** Freeze every chart panel's result for an absolute range, on the connection you are on. */
+dashboards.post("/:id/snapshots", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", snapshotSchema), async (c) => {
+  requireQueryExecute(c);
+  const id = requireParam(c, "id");
+  const { detail } = await visible(c, id);
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
+  markAgentRecorded(c);
+  const body = c.req.valid("json");
+  const snapshot = await snapshots.createSnapshot({ viewer: viewerOf(c), detail, connectionId, ...body, agentFor: agentFor(c) });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_SNAPSHOT_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { snapshotId: snapshot.id, connectionId, sizeBytes: snapshot.sizeBytes, roles: snapshot.roleIds.length, expiresAt: snapshot.expiresAt } });
+  return ok(c, snapshot, 201);
+});
+
+dashboards.get("/:id/snapshots", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
+  const { detail } = await visible(c, requireParam(c, "id"));
+  return ok(c, await snapshots.listSnapshots(viewerOf(c), detail));
+});
+
+dashboards.get("/:id/snapshots/:snapshotId", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
+  const { detail } = await visible(c, requireParam(c, "id"));
+  return ok(c, await snapshots.openSnapshot(viewerOf(c), detail, requireParam(c, "snapshotId")));
+});
+
+dashboards.delete("/:id/snapshots/:snapshotId", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
+  const id = requireParam(c, "id");
+  const { detail } = await visible(c, id);
+  const deleted = await snapshots.deleteSnapshot(viewerOf(c), detail, requireParam(c, "snapshotId"));
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_SNAPSHOT_DELETE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { snapshotId: deleted.id } });
+  return ok(c, { deleted: deleted.id });
 });
 
 dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {

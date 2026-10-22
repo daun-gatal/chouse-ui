@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, BarChart3, Copy, Database, Download, Heading, History, LayoutGrid, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2, Type } from "lucide-react";
+import { ArrowLeft, BarChart3, Copy, Database, Camera, Download, Heading, History, LayoutGrid, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2, Type } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +58,7 @@ import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
 import { AnnotationDialog, ChartActionsDialog, NoteDialog, type ChartActionsTarget } from "./ChartActions";
 import { ExplainSpikeDialog } from "./ExplainSpikeDialog";
+import { SnapshotsDialog } from "./SnapshotsDialog";
 import { VersionHistoryDialog } from "./VersionHistoryDialog";
 import { ConnectionsDialog } from "./ConnectionsDialog";
 import { DashboardCanvas, type CanvasItem } from "./DashboardCanvas";
@@ -125,6 +126,8 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const canRun = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.QUERY_EXECUTE));
   const [tidying, setTidying] = useState(false);
   const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ key: string; title: string; alerts: number } | null>(null);
@@ -436,6 +439,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
                 {canCreate && <DropdownMenuItem onClick={() => void duplicate()}><Copy className="mr-2 h-3.5 w-3.5" /> Duplicate</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => void download()}><Download className="mr-2 h-3.5 w-3.5" /> Export JSON</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setHistoryOpen(true)}><History className="mr-2 h-3.5 w-3.5" /> Version history</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSnapshotsOpen(true)}><Camera className="mr-2 h-3.5 w-3.5" /> Snapshots</DropdownMenuItem>
                 {data.access.delete && <DropdownMenuItem className="text-red-300" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-3.5 w-3.5" /> Delete</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -571,6 +575,16 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
       )}
       {noteAt !== null && (
         <NoteDialog atMs={noteAt} saving={note.isPending} error={note.isError ? note.error.message : null} onSave={(text) => note.mutate({ at: noteAt, text })} onClose={() => setNoteAt(null)} />
+      )}
+      {snapshotsOpen && (
+        <SnapshotsDialog
+          detail={data}
+          range={view.range}
+          values={view.values}
+          canTake={canRun && activeConnectionId !== null && (data.scope.kind === "any" || isAssignedTo(data.scope, activeConnectionId))}
+          userId={userId}
+          onClose={() => setSnapshotsOpen(false)}
+        />
       )}
       {historyOpen && (
         <VersionHistoryDialog

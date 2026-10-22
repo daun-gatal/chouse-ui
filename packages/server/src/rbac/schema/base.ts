@@ -656,6 +656,8 @@ export const AUDIT_ACTIONS = {
   DASHBOARD_RESTORE: 'dashboard.restore',
   DASHBOARD_NOTE_CREATE: 'dashboard.note_create',
   DASHBOARD_NOTE_DELETE: 'dashboard.note_delete',
+  DASHBOARD_SNAPSHOT_CREATE: 'dashboard.snapshot_create',
+  DASHBOARD_SNAPSHOT_DELETE: 'dashboard.snapshot_delete',
   PANEL_ALERT_CREATE: 'panel_alert.create',
   PANEL_ALERT_UPDATE: 'panel_alert.update',
   PANEL_ALERT_DELETE: 'panel_alert.delete',

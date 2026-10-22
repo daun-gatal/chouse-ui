@@ -20,7 +20,7 @@ import { PanelMessage, PanelVisual } from "@/components/charts/PanelVisual";
 import type { PanelOverlays } from "@/components/common/AiChartRenderer";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { getBaseline, runPanel, type AnnotationEvent, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type TextPanelInput } from "@/api/dashboards";
+import { getBaseline, runPanel, type AnnotationEvent, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type SnapshotResult, type TextPanelInput } from "@/api/dashboards";
 import { mergeFleet, type ResolvedChart, type ResultData } from "@/lib/viz/resolve";
 import { TIME_SERIES_TYPES, type VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
@@ -123,13 +123,13 @@ function FleetStats({ spec, result }: { spec: VizSpec; result: Extract<PanelRunR
  * a fleet panel's connections and the failure list names the rest, so a fleet
  * run reads like any other: its slowest connection and the total read.
  */
-function runMeta(result: PanelRunResult): string | null {
-  if (result.kind === "single") return `${result.cached ? "cached · " : ""}${result.data.elapsedMs} ms · ${formatValue(result.data.readBytes, "bytes")} read`;
+function runMeta(result: PanelRunResult, live = true): string | null {
+  if (result.kind === "single") return `${live && result.cached ? "cached · " : ""}${result.data.elapsedMs} ms · ${formatValue(result.data.readBytes, "bytes")} read`;
   const ok = result.connections.filter((e): e is Extract<typeof e, { ok: true }> => e.ok);
   if (ok.length === 0) return null;
   const slowest = Math.max(...ok.map((e) => e.data.elapsedMs));
   const read = ok.reduce((sum, e) => sum + e.data.readBytes, 0);
-  return `${ok.every((e) => e.cached) ? "cached · " : ""}${slowest} ms · ${formatValue(read, "bytes")} read`;
+  return `${live && ok.every((e) => e.cached) ? "cached · " : ""}${slowest} ms · ${formatValue(read, "bytes")} read`;
 }
 
 export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, height, onEdit, onRemove, actions, alertLines, annotations = [], selection = null, onDatum, onSelectRange, onMarker }: ChartProps): React.ReactElement {
@@ -305,6 +305,45 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         )}
       </div>
       {meta && <p className="shrink-0 px-3 pb-1 text-right font-mono text-[10px] text-paper-faint" data-testid="panel-meta">{meta}</p>}
+    </section>
+  );
+}
+
+/** A chart panel drawn from a stored result (a snapshot): nothing runs, nothing refreshes. */
+export function StaticChartCard({ panel, result, height }: { panel: ChartPanelInput; result: SnapshotResult | undefined; height: number }): React.ReactElement {
+  const chartHeight = Math.max(48, height - CHART_CHROME_PX);
+  const run = result?.ok ? result : null;
+  const visual = useMemo(() => {
+    if (!run) return null;
+    if (run.kind === "single") return { spec: panel.viz, data: run.data };
+    return fleetVisual(panel.viz, run);
+  }, [run, panel.viz]);
+  const failures = run?.kind === "fleet" ? run.connections.filter((e): e is Extract<typeof e, { ok: false }> => !e.ok) : [];
+  return (
+    <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100" aria-label={panel.title}>
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-ink-500 px-3">
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-paper" title={panel.title}>{panel.title}</h3>
+        {panel.fleet && <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim"><Zap className="h-3 w-3" aria-hidden /> Fleet</span>}
+      </header>
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-3">
+        {result === undefined ? (
+          <PanelMessage tone="muted">This panel was not in the snapshot</PanelMessage>
+        ) : !result.ok ? (
+          <PanelMessage tone="error">{result.error}</PanelMessage>
+        ) : visual && result.kind === "fleet" && panel.viz.type === "stat" ? (
+          <FleetStats spec={panel.viz} result={result} />
+        ) : visual && (result.kind === "single" || visual.data.rows.length > 0) ? (
+          <PanelVisual spec={visual.spec} data={visual.data} height={chartHeight} title={panel.title} />
+        ) : (
+          <PanelMessage tone="error">No connection returned a result</PanelMessage>
+        )}
+        {failures.length > 0 && (
+          <ul className="mt-2 space-y-0.5 border-t border-ink-500 pt-2" aria-label="Connections that failed">
+            {failures.map((f) => <li key={f.connectionId} className="text-[11px] text-red-300"><span className="font-mono">{f.connectionName}</span>: {f.error}</li>)}
+          </ul>
+        )}
+      </div>
+      {run && <p className="shrink-0 px-3 pb-1 text-right font-mono text-[10px] text-paper-faint">{runMeta(run, false)}</p>}
     </section>
   );
 }

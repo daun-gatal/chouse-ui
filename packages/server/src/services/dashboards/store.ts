@@ -108,7 +108,7 @@ export interface VersionRecord extends VersionSummary {
 
 class CorruptRowError extends Error {}
 
-function parseStored<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, raw: unknown, what: string): T {
+export function parseStored<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, raw: unknown, what: string): T {
   let value: unknown;
   try {
     value = JSON.parse(str(raw));
