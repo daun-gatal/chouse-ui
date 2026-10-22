@@ -252,7 +252,7 @@ Return only JSON matching the requested schema.`;
 
 export const EVIDENCE_PROMPTS: Record<string, string> = {
   "draft-guardrail": GUARDRAIL_PROMPT,
-  "draft-dashboard": dashboardsPrompt(`Draft a monitoring dashboard for the goal: a title, a one-sentence description, optional variables and 2 to 8 panels (each a read-only SELECT, a viz spec, a size and a one-sentence rationale). When evidence.existingDashboard is set, draft only the new panels for it: reuse its variables and do not repeat its panels.`),
+  "draft-dashboard": dashboardsPrompt(`Draft a monitoring dashboard for the goal: a title, a one-sentence description, optional variables and 2 to 8 panels (each a read-only SELECT, a viz spec, its role, its importance, its section and a one-sentence rationale — never a size or position: CHouse lays the panels out by role). When evidence.existingDashboard is set, draft only the new panels for it: reuse its variables and do not repeat its panels.`),
   "summarize-scheduled-query": dataOpsPrompt(`Write a concise operational brief for one scheduled query: purpose, health, meaningful change, and whether action is needed.`),
   "summarize-data-health": dataOpsPrompt(`Write a concise operational brief for one protected dataset: meaning, current health, meaningful change, coverage, and whether action is needed.`),
   "diagnose-scheduled-run": dataOpsPrompt(`Diagnose one scheduled-query run. Rank plausible causes, cite evidence IDs, compare with prior success, explain impact, and give safe next actions.`),

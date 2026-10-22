@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { all, num, one, run, runBatch, str, strOrNull, type Row } from "../observe/db";
-import { RELATIVE_RANGES, REDUCERS, type RelativeRange } from "./spec";
+import { RELATIVE_RANGES, REDUCERS, variableValuesSchema, type RelativeRange } from "./spec";
 
 export const ALERT_OPS = [">", ">=", "<", "<="] as const;
 export type AlertOp = (typeof ALERT_OPS)[number];
@@ -26,6 +26,7 @@ export type AlertState = (typeof ALERT_STATES)[number];
 const RANGE_KEYS = Object.keys(RELATIVE_RANGES) as [RelativeRange, ...RelativeRange[]];
 
 export const alertConfigSchema = z.object({
+  kind: z.literal("threshold"),
   /** The result column the threshold applies to. */
   column: z.string().min(1).max(200),
   /** How the column's values over the evaluated window become one number. */
@@ -38,7 +39,7 @@ export const alertConfigSchema = z.object({
   /** The window each evaluation runs the panel over. */
   range: z.enum(RANGE_KEYS),
   /** Variable values the panel runs with. */
-  values: z.record(z.string().max(500)),
+  values: variableValuesSchema,
 }).strict();
 export type AlertConfig = z.infer<typeof alertConfigSchema>;
 

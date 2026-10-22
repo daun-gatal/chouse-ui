@@ -81,7 +81,7 @@ const NEW_PANEL: PanelInput = {
   id: null,
   title: "New panel",
   sql: "SELECT toStartOfInterval(event_time, INTERVAL {{interval_s}} SECOND) AS t, count() AS queries\nFROM system.query_log\nWHERE event_time >= {{from}} AND event_time < {{to}}\nGROUP BY t ORDER BY t",
-  viz: { version: 1, type: "line", x: "t", y: ["queries"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null },
+  viz: { version: 2, type: "line", x: "t", y: ["queries"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null },
   width: 6,
   height: "m",
   fleet: false,

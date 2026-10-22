@@ -122,6 +122,7 @@ export async function evaluate(alert: PanelAlert, now: number): Promise<Evaluate
   const dashboardTitle = detail.dashboard.title;
   if (!panel) return { outcome: { kind: "error", reason: "The panel no longer exists" }, dashboardTitle, panelTitle: "" };
   const result = (outcome: Outcome): Evaluated => ({ outcome, dashboardTitle, panelTitle: panel.title });
+  if (panel.kind !== "chart") return result({ kind: "error", reason: "The panel is no longer a chart" });
   if (panel.fleet) return result({ kind: "error", reason: "The panel now runs across the fleet; alerts need a panel for one connection" });
   if (!inScope(detail.dashboard.connectionScope, alert.connectionId)) return result({ kind: "error", reason: "The dashboard is no longer assigned to the connection this alert watches" });
   const owner = await ownerViewer(alert.ownerId);

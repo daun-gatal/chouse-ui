@@ -76,7 +76,7 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `list_remediation_actions` | Remediation actions | Your CHouse access | `remediation:propose`, `remediation:approve`, `remediation:approve_high` | Proposed and past fixes on a connection: type, parameters, who proposed it and why, approvals, status and incident. | 1 |
 | `get_investigation_notebook` | Investigation notebook | Your CHouse access | `data_health:view`, `observe:view`, `doctor:view` | The notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. | 1 |
 | `list_dashboards` | Dashboards | Your CHouse access | `dashboards:view` | Custom dashboards the user may view: title, owner, panel count, the connections it is assigned to, the roles it is shared with, and whether the user pinned it. | 1 |
-| `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's title, SQL, chart type and unit. | 1 |
+| `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings. | 1 |
 
 ## Built-in DeepAgents tools
 

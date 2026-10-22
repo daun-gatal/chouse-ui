@@ -33,7 +33,7 @@ export function unitFromName(name: string): Unit {
 }
 
 function base(): Omit<VizSpec, "type" | "x" | "y" | "unit"> {
-  return { version: 1, series: null, decimals: null, thresholds: [], colorScheme: "violet", reduce: null };
+  return { version: 2, series: null, decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null };
 }
 
 export function suggestSpec(columns: ResultColumn[], rowCount: number): VizSpec {

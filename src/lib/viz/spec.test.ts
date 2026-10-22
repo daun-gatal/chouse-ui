@@ -18,12 +18,12 @@ describe("vizSpecSchema (shared fixture with the server)", () => {
 
 describe("vizSpecProblems", () => {
   it("prefixes field errors with their path and keeps shape errors plain", () => {
-    const problems = vizSpecProblems({ version: 1, type: "stat", x: null, y: ["v"], series: null, unit: "kb", decimals: null, thresholds: [], colorScheme: "violet", reduce: null });
+    const problems = vizSpecProblems({ version: 2, type: "stat", x: null, y: ["v"], series: null, unit: "kb", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null });
     expect(problems.some((p) => p.startsWith("unit:"))).toBe(true);
   });
 
   it("reports why a stat panel cannot be drawn", () => {
-    expect(vizSpecProblems({ version: 1, type: "stat", x: null, y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null }))
+    expect(vizSpecProblems({ version: 2, type: "stat", x: null, y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null }))
       .toEqual(["a stat panel needs a reduce (last, max, min, avg or sum)"]);
   });
 });

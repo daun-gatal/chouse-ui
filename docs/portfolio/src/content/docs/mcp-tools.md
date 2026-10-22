@@ -512,7 +512,7 @@ One dashboard: its variables, panels (SQL and chart settings), shares, lint find
 
 *Export a dashboard* — **Read** · on by default · needs any of `dashboards:view`
 
-A dashboard as JSON (format chouse.dashboard/v1) that apply_dashboard and the CLI take — to review or keep in git.
+A dashboard as JSON (format chouse.dashboard/v2) that apply_dashboard and the CLI take — to review or keep in git.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -529,7 +529,7 @@ Run one panel's read-only query for a time range and variable values, with the c
 | `id` | `string` | Yes | Dashboard id |
 | `panel_id` | `string` | Yes | Panel id (from get_dashboard) |
 | `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | How far back to run the panel |
-| `values` | `record` | No | Variable values by name; a variable left out uses its default |
+| `values` | `record` | No | Variable values by name: a string, or a list for a multi-value variable; a variable left out uses its default |
 | `connection_id` | `string` | No | Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection |
 
 ### apply_dashboard
@@ -540,7 +540,7 @@ Create a dashboard from an export, or update the one its id names to match it ex
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `dashboard` | `record` | Yes | A dashboard export ({format: "chouse.dashboard/v1", id, dashboard}) as export_dashboard returns it. With an id, that dashboard is updated in place (its panel ids are kept); with id null, a new dashboard is created. |
+| `dashboard` | `record` | Yes | A dashboard export ({format: "chouse.dashboard/v2", id, dashboard}) as export_dashboard returns it; a chouse.dashboard/v1 export from before CHouse 3.16 is converted. With an id, that dashboard is updated in place (its panel ids are kept); with id null, a new dashboard is created. |
 
 ### delete_dashboard
 

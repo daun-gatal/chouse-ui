@@ -10,11 +10,14 @@
  *     read (they cannot read `{name:Type}`). Identifier values are checked
  *     against IDENTIFIER_RE first, so inlining them cannot change the statement.
  *
+ * A multi-value variable (ADR 0023 §7) compiles to an `Array(String)`
+ * parameter, used as `col IN {{var.NAME}}` or `has({{var.NAME}}, col)`.
+ *
  * A macro inside a quoted string, a quoted identifier or a comment is an
  * error, not a literal.
  */
 
-import { IDENTIFIER_RE, RELATIVE_RANGES, type TimeRange, type Variable } from "./spec";
+import { IDENTIFIER_RE, RELATIVE_RANGES, type TimeRange, type Variable, type VariableValue } from "./spec";
 
 export type Macro =
   | { kind: "from" }
@@ -143,9 +146,11 @@ export function resolveWindow(range: TimeRange, nowMs: number): Window {
 // Compile
 // ============================================
 
+export type ParamValue = string | number | string[];
+
 export interface Compiled {
   sql: string;
-  params: Record<string, string | number>;
+  params: Record<string, ParamValue>;
   validationSql: string;
 }
 
@@ -154,14 +159,15 @@ export type CompileResult = { ok: true; compiled: Compiled } | { ok: false; erro
 /**
  * Compile `sql` for `window`, with `values` chosen for the dashboard's
  * `variables`. Fails on a malformed or unknown macro, a variable the dashboard
- * does not declare, a missing value, or an identifier value that is not an
- * identifier.
+ * does not declare, a missing value, a value of the wrong shape for its
+ * variable (a list for a single-value one, or the reverse), an empty list, or
+ * an identifier value that is not an identifier.
  */
-export function compileSql(sql: string, variables: Variable[], values: Record<string, string>, window: Window): CompileResult {
+export function compileSql(sql: string, variables: Variable[], values: Record<string, VariableValue>, window: Window): CompileResult {
   const scan = scanMacros(sql);
   if (!scan.ok) return scan;
   const byName = new Map(variables.map((v) => [v.name, v]));
-  const params: Record<string, string | number> = {};
+  const params: Record<string, ParamValue> = {};
   let out = "";
   let validation = "";
   let cursor = 0;
@@ -187,6 +193,15 @@ export function compileSql(sql: string, variables: Variable[], values: Record<st
     const value = values[macro.name];
     if (value === undefined) return { ok: false, error: `Variable ${variable.label} has no value` };
     const param = `v_${macro.name}`;
+    if (variable.kind === "multi") {
+      if (!Array.isArray(value)) return { ok: false, error: `Variable ${variable.label} takes a list of values` };
+      if (value.length === 0) return { ok: false, error: `Pick at least one value for ${variable.label}` };
+      params[param] = value;
+      out += `{${param}:Array(String)}`;
+      validation += "('')";
+      continue;
+    }
+    if (Array.isArray(value)) return { ok: false, error: `Variable ${variable.label} takes one value, not a list` };
     if (variable.kind === "identifier") {
       if (!IDENTIFIER_RE.test(value)) return { ok: false, error: `Variable ${variable.label} must be an identifier (letters, digits and _), got "${value}"` };
       params[param] = value;
@@ -205,6 +220,6 @@ export function compileSql(sql: string, variables: Variable[], values: Record<st
 }
 
 /** Each variable's default value, for checks that need some value per variable. */
-export function defaultValues(variables: Variable[]): Record<string, string> {
+export function defaultValues(variables: Variable[]): Record<string, VariableValue> {
   return Object.fromEntries(variables.map((v) => [v.name, v.default]));
 }

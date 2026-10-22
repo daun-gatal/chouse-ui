@@ -575,13 +575,17 @@ const operationsTools: CatalogTool[] = [
   }),
   apiTool<DashboardDetailPayload>({
     name: "get_dashboard", title: "Dashboard", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
-    description: "One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's title, SQL, chart type and unit.",
+    description: "One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings.",
     schema: z.object({ id: z.string().min(1).describe("Dashboard id from list_dashboards") }),
     request: (a) => ({ path: `/api/dashboards/${segment(String(a.id))}` }),
     project: (d) => ({
       id: d.dashboard.id, title: d.dashboard.title, description: d.dashboard.description, connections: scopeNames(d.scope),
       timeRange: d.dashboard.timeRange, variables: d.dashboard.variables,
-      panels: d.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet })),
+      panels: d.panels.map((p) => (p.kind === "chart"
+        ? { id: p.id, kind: p.kind, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet }
+        : p.kind === "text"
+          ? { id: p.id, kind: p.kind, title: p.title, markdown: p.markdown }
+          : { id: p.id, kind: p.kind, title: p.title, description: p.description })),
     }),
   }),
 ];
@@ -601,7 +605,11 @@ interface DashboardRow {
 interface DashboardDetailPayload {
   dashboard: { id: string; title: string; description: string; timeRange: string; variables: unknown[] };
   scope: DashboardScopeView;
-  panels: Array<{ id: string; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }>;
+  panels: Array<
+    | { id: string; kind: "chart"; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }
+    | { id: string; kind: "text"; title: string; markdown: string }
+    | { id: string; kind: "heading"; title: string; description: string }
+  >;
 }
 
 // ============================================

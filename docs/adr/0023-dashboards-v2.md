@@ -55,7 +55,7 @@ A panel is one of three kinds. All three share an `id` and a `layout`.
 | `heading` | `title`, `description` (0–500 characters) |
 
 `layout` is `{x, y, w, h}` on a **24-column grid** with **32 px rows and 8 px
-gaps**. Values are integers, with `0 ≤ x`, `1 ≤ w`, `x + w ≤ 24`, `0 ≤ y ≤ 500` and
+gaps**. Values are integers, with `0 ≤ x`, `1 ≤ w`, `x + w ≤ 24`, `0 ≤ y ≤ 2,400` and
 `1 ≤ h ≤ 40`. Each kind and chart type has a minimum size:
 
 | Panel | Minimum `w × h` |

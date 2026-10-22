@@ -3,7 +3,7 @@
     {
       "name": "line with series",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "line",
         "x": "t",
         "y": [
@@ -19,13 +19,15 @@
           }
         ],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "stacked area, two measures",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "stacked_area",
         "x": "t",
         "y": [
@@ -37,13 +39,15 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "blue",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "horizontal bar",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "horizontal_bar",
         "x": "table",
         "y": [
@@ -59,13 +63,15 @@
           }
         ],
         "colorScheme": "orange",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "pie",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "pie",
         "x": "database",
         "y": [
@@ -76,13 +82,15 @@
         "decimals": 1,
         "thresholds": [],
         "colorScheme": "rainbow",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "histogram",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "histogram",
         "x": "duration_ms",
         "y": [],
@@ -91,13 +99,15 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "green",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "stat",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "stat",
         "x": null,
         "y": [
@@ -117,13 +127,15 @@
           }
         ],
         "colorScheme": "violet",
-        "reduce": "last"
+        "reduce": "last",
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "table",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "table",
         "x": null,
         "y": [],
@@ -132,13 +144,15 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "scatter",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "scatter",
         "x": "rows",
         "y": [
@@ -149,13 +163,216 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "line with an expected-range band",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 4
+        }
+      }
+    },
+    {
+      "name": "bar with links to a dashboard, a filter and Explorer",
+      "spec": {
+        "version": 2,
+        "type": "bar",
+        "x": "table",
+        "y": [
+          "parts"
+        ],
+        "series": null,
+        "unit": "count",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "dashboard",
+            "label": "Table detail",
+            "dashboardId": "6f1c2a8e-3b7d-4c55-9a1e-2f0b9d4c7e11",
+            "values": {
+              "table": {
+                "from": "column",
+                "column": "table"
+              },
+              "db": {
+                "from": "value",
+                "value": "orders"
+              }
+            }
+          },
+          {
+            "kind": "filter",
+            "label": "Only this table",
+            "variable": "table",
+            "column": "table"
+          },
+          {
+            "kind": "explorer",
+            "label": "Open in Explorer",
+            "database": {
+              "from": "value",
+              "value": "orders"
+            },
+            "table": {
+              "from": "column",
+              "column": "table"
+            }
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "table linking any column",
+      "spec": {
+        "version": 2,
+        "type": "table",
+        "x": null,
+        "y": [],
+        "series": null,
+        "unit": "none",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "filter",
+            "label": "Pick user",
+            "variable": "user",
+            "column": "user"
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "stat with a fixed-value link",
+      "spec": {
+        "version": 2,
+        "type": "stat",
+        "x": null,
+        "y": [
+          "lag"
+        ],
+        "series": null,
+        "unit": "count",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": "last",
+        "links": [
+          {
+            "kind": "dashboard",
+            "label": "Details",
+            "dashboardId": "6f1c2a8e-3b7d-4c55-9a1e-2f0b9d4c7e11",
+            "values": {}
+          }
+        ],
+        "baseline": null
       }
     }
   ],
   "invalid": [
     {
       "name": "unknown field",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "stacked": true,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "unknown chart type",
+      "spec": {
+        "version": 2,
+        "type": "sparkline",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "unknown unit",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "kb",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "unknown color scheme",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "pink",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "version 1 (a v1 spec is converted, never stored)",
       "spec": {
         "version": 1,
         "type": "line",
@@ -169,15 +386,34 @@
         "thresholds": [],
         "colorScheme": "violet",
         "reduce": null,
-        "stacked": true
+        "links": [],
+        "baseline": null
       }
     },
     {
-      "name": "unknown chart type",
+      "name": "missing field",
       "spec": {
-        "version": 1,
-        "type": "sparkline",
+        "version": 2,
+        "type": "line",
         "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "line without x",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": null,
         "y": [
           "v"
         ],
@@ -186,45 +422,185 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
-      "name": "unknown unit",
+      "name": "bar without y",
       "spec": {
-        "version": 1,
-        "type": "line",
+        "version": 2,
+        "type": "bar",
         "x": "t",
-        "y": [
-          "v"
-        ],
+        "y": [],
         "series": null,
-        "unit": "kb",
+        "unit": "ms",
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
-      "name": "unknown color scheme",
+      "name": "series with two measures",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "line",
         "x": "t",
         "y": [
-          "v"
+          "a",
+          "b"
+        ],
+        "series": "user",
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "series equal to x",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "a"
+        ],
+        "series": "t",
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "x is also y",
+      "spec": {
+        "version": 2,
+        "type": "bar",
+        "x": "t",
+        "y": [
+          "t"
         ],
         "series": null,
         "unit": "ms",
         "decimals": null,
         "thresholds": [],
-        "colorScheme": "pink",
-        "reduce": null
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
-      "name": "version 2",
+      "name": "duplicate y",
+      "spec": {
+        "version": 2,
+        "type": "bar",
+        "x": "t",
+        "y": [
+          "a",
+          "a"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "pie with two measures",
+      "spec": {
+        "version": 2,
+        "type": "pie",
+        "x": "d",
+        "y": [
+          "a",
+          "b"
+        ],
+        "series": null,
+        "unit": "bytes",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "histogram with y",
+      "spec": {
+        "version": 2,
+        "type": "histogram",
+        "x": "ms",
+        "y": [
+          "n"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "stat without reduce",
+      "spec": {
+        "version": 2,
+        "type": "stat",
+        "x": null,
+        "y": [
+          "lag"
+        ],
+        "series": null,
+        "unit": "count",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "stat with x",
+      "spec": {
+        "version": 2,
+        "type": "stat",
+        "x": "t",
+        "y": [
+          "lag"
+        ],
+        "series": null,
+        "unit": "count",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": "max",
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "reduce outside stat",
       "spec": {
         "version": 2,
         "type": "line",
@@ -237,217 +613,15 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "missing field",
-      "spec": {
-        "version": 1,
-        "type": "line",
-        "x": "t",
-        "y": [
-          "v"
-        ],
-        "series": null,
-        "unit": "ms",
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "line without x",
-      "spec": {
-        "version": 1,
-        "type": "line",
-        "x": null,
-        "y": [
-          "v"
-        ],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "bar without y",
-      "spec": {
-        "version": 1,
-        "type": "bar",
-        "x": "t",
-        "y": [],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "series with two measures",
-      "spec": {
-        "version": 1,
-        "type": "line",
-        "x": "t",
-        "y": [
-          "a",
-          "b"
-        ],
-        "series": "user",
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "series equal to x",
-      "spec": {
-        "version": 1,
-        "type": "line",
-        "x": "t",
-        "y": [
-          "a"
-        ],
-        "series": "t",
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "x is also y",
-      "spec": {
-        "version": 1,
-        "type": "bar",
-        "x": "t",
-        "y": [
-          "t"
-        ],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "duplicate y",
-      "spec": {
-        "version": 1,
-        "type": "bar",
-        "x": "t",
-        "y": [
-          "a",
-          "a"
-        ],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "pie with two measures",
-      "spec": {
-        "version": 1,
-        "type": "pie",
-        "x": "d",
-        "y": [
-          "a",
-          "b"
-        ],
-        "series": null,
-        "unit": "bytes",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "histogram with y",
-      "spec": {
-        "version": 1,
-        "type": "histogram",
-        "x": "ms",
-        "y": [
-          "n"
-        ],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "stat without reduce",
-      "spec": {
-        "version": 1,
-        "type": "stat",
-        "x": null,
-        "y": [
-          "lag"
-        ],
-        "series": null,
-        "unit": "count",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": null
-      }
-    },
-    {
-      "name": "stat with x",
-      "spec": {
-        "version": 1,
-        "type": "stat",
-        "x": "t",
-        "y": [
-          "lag"
-        ],
-        "series": null,
-        "unit": "count",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": "max"
-      }
-    },
-    {
-      "name": "reduce outside stat",
-      "spec": {
-        "version": 1,
-        "type": "line",
-        "x": "t",
-        "y": [
-          "v"
-        ],
-        "series": null,
-        "unit": "ms",
-        "decimals": null,
-        "thresholds": [],
-        "colorScheme": "violet",
-        "reduce": "max"
+        "reduce": "max",
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "table with y",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "table",
         "x": null,
         "y": [
@@ -458,13 +632,15 @@
         "decimals": null,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "decimals out of range",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "line",
         "x": "t",
         "y": [
@@ -475,13 +651,15 @@
         "decimals": 9,
         "thresholds": [],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "threshold with unknown severity",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "line",
         "x": "t",
         "y": [
@@ -497,13 +675,15 @@
           }
         ],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "too many thresholds",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "line",
         "x": "t",
         "y": [
@@ -535,13 +715,15 @@
           }
         ],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
       }
     },
     {
       "name": "thresholds on a pie",
       "spec": {
-        "version": 1,
+        "version": 2,
         "type": "pie",
         "x": "d",
         "y": [
@@ -557,7 +739,342 @@
           }
         ],
         "colorScheme": "violet",
-        "reduce": null
+        "reduce": null,
+        "links": [],
+        "baseline": null
+      }
+    },
+    {
+      "name": "band on a bar chart",
+      "spec": {
+        "version": 2,
+        "type": "bar",
+        "x": "table",
+        "y": [
+          "parts"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 4
+        }
+      }
+    },
+    {
+      "name": "band with two measures",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "a",
+          "b"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 4
+        }
+      }
+    },
+    {
+      "name": "band split by series",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": "user",
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 4
+        }
+      }
+    },
+    {
+      "name": "band over one week",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 1
+        }
+      }
+    },
+    {
+      "name": "band over nine weeks",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [],
+        "baseline": {
+          "weeks": 9
+        }
+      }
+    },
+    {
+      "name": "missing links",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "baseline": null
+      }
+    },
+    {
+      "name": "missing baseline",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": []
+      }
+    },
+    {
+      "name": "link reading a column the chart does not plot",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "filter",
+            "label": "x",
+            "variable": "user",
+            "column": "user"
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "stat link reading a column",
+      "spec": {
+        "version": 2,
+        "type": "stat",
+        "x": null,
+        "y": [
+          "lag"
+        ],
+        "series": null,
+        "unit": "count",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": "last",
+        "links": [
+          {
+            "kind": "filter",
+            "label": "x",
+            "variable": "user",
+            "column": "lag"
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "link to a dashboard id that is not a uuid",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "dashboard",
+            "label": "x",
+            "dashboardId": "nope",
+            "values": {}
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "unknown link kind",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "url",
+            "label": "x",
+            "href": "https://example.com"
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "link with an empty label",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "filter",
+            "label": " ",
+            "variable": "user",
+            "column": "t"
+          }
+        ],
+        "baseline": null
+      }
+    },
+    {
+      "name": "seven links",
+      "spec": {
+        "version": 2,
+        "type": "line",
+        "x": "t",
+        "y": [
+          "v"
+        ],
+        "series": null,
+        "unit": "ms",
+        "decimals": null,
+        "thresholds": [],
+        "colorScheme": "violet",
+        "reduce": null,
+        "links": [
+          {
+            "kind": "filter",
+            "label": "l0",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l1",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l2",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l3",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l4",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l5",
+            "variable": "user",
+            "column": "t"
+          },
+          {
+            "kind": "filter",
+            "label": "l6",
+            "variable": "user",
+            "column": "t"
+          }
+        ],
+        "baseline": null
       }
     }
   ]

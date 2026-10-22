@@ -12,7 +12,7 @@ mock.module("../scheduledQueries/chClient", () => ({
   clientForConnection: async () => ({
     query: async () => {
       queries += 1;
-      return { json: async () => ({ meta: [{ name: "t", type: "DateTime" }, { name: "v", type: "UInt64" }], data: rows.map((r) => ({ t: "2026-10-17 00:00:00", ...r })), statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 } }) };
+      return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => ({ meta: [{ name: "t", type: "DateTime" }, { name: "v", type: "UInt64" }], data: rows.map((r) => ({ t: "2026-10-17 00:00:00", ...r })), statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 } }) };
     },
   }),
 }));
@@ -115,14 +115,14 @@ describe("evaluator end to end", () => {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES ('conn-a', 'alpha', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
     dashboardId = await store.createDashboard({
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [],
-      panels: [{ id: null, title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null }, width: 6, height: "m", fleet: false }],
-    }, OWNER);
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], annotations: [],
+      panels: [{ id: null, kind: "chart", title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 2, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null }, fleet: false, layout: { x: 0, y: 0, w: 12, h: 9 } }],
+    }, OWNER, { userId: OWNER, source: "ui" });
     panelId = (await store.getDashboard(dashboardId))!.panels[0].id;
     channelId = await createChannel({ name: "ops-hook", type: ChannelType.Webhook, config: { url: "https://hooks.test/ops" }, enabled: true });
     alertId = await alertStore.createAlert(dashboardId, panelId, OWNER, {
       name: "Too many orders", severity: "critical", connectionId: "conn-a", channelIds: [channelId], enabled: true,
-      config: { column: "v", reduce: "max", op: ">", value: 5, forEvaluations: 2, everyMinutes: 1, range: "15m", values: {} },
+      config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 5, forEvaluations: 2, everyMinutes: 1, range: "15m", values: {} },
     });
   });
 
@@ -198,10 +198,9 @@ describe("evaluator end to end", () => {
 
   it("goes to error when the dashboard is no longer assigned to the alert's connection", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
-    const panels = detail.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet }));
     await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-b"] }, variables: [], panels,
-    });
+      ...store.toInput(detail), connectionScope: { kind: "only", connectionIds: ["conn-b"] },
+    }, { userId: OWNER, source: "ui" });
     rows = [{ v: 1 }];
     const status = await tick();
     expect(status.state).toBe("error");
@@ -211,8 +210,8 @@ describe("evaluator end to end", () => {
   it("is removed with its panel when a save drops the panel", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
     const result = await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], panels: [],
-    });
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], annotations: [], panels: [],
+    }, { userId: OWNER, source: "ui" });
     expect(result.removedAlertIds).toEqual([alertId]);
     expect(await alertStore.getAlert(alertId)).toBeNull();
     expect(await rawAll(sql`SELECT 1 FROM dashboard_alert_channels WHERE alert_id = ${alertId}`)).toEqual([]);
