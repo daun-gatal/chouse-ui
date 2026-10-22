@@ -652,6 +652,10 @@ export const AUDIT_ACTIONS = {
   DASHBOARD_DELETE: 'dashboard.delete',
   DASHBOARD_SHARE: 'dashboard.share',
   DASHBOARD_IMPORT: 'dashboard.import',
+  // Dashboards v2 (ADR 0023)
+  DASHBOARD_RESTORE: 'dashboard.restore',
+  DASHBOARD_NOTE_CREATE: 'dashboard.note_create',
+  DASHBOARD_NOTE_DELETE: 'dashboard.note_delete',
   PANEL_ALERT_CREATE: 'panel_alert.create',
   PANEL_ALERT_UPDATE: 'panel_alert.update',
   PANEL_ALERT_DELETE: 'panel_alert.delete',

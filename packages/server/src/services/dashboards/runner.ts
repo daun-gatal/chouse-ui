@@ -253,9 +253,24 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
 }
 
 /** Run one panel on one connection, as `viewer`. */
-export async function runPanel(viewer: Viewer, connectionId: string, query: PanelQuery, agentFor: AgentFor, nowMs: number = Date.now()): Promise<PanelRun> {
+/** The windows Compare can look back by (ADR 0023 §8): one day, one week. */
+export const SHIFT_SECONDS = [86_400, 604_800] as const;
+export type ShiftSeconds = (typeof SHIFT_SECONDS)[number];
+
+/** `window` moved back by `shiftSeconds`, keeping its bucket size so buckets line up with the current window's. */
+export function shiftWindow(window: Window, shiftSeconds: number): Window {
+  return { from: window.from - shiftSeconds, to: window.to - shiftSeconds, intervalSeconds: window.intervalSeconds };
+}
+
+/**
+ * Run one panel on one connection, as `viewer`. With `shiftSeconds`, the
+ * panel runs for the same window that long ago (Compare); every check runs as
+ * for any run.
+ */
+export async function runPanel(viewer: Viewer, connectionId: string, query: PanelQuery, agentFor: AgentFor, nowMs: number = Date.now(), shiftSeconds: ShiftSeconds | 0 = 0): Promise<PanelRun> {
   const connection = await viewerConnection(viewer, connectionId);
-  const window = resolveWindow(query.range, nowMs);
+  const current = resolveWindow(query.range, nowMs);
+  const window = shiftSeconds === 0 ? current : shiftWindow(current, shiftSeconds);
   const { data, cached } = await runOn(viewer, connection, query, window, agentFor);
   return { connectionId, window, data, cached };
 }

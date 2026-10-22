@@ -31,10 +31,12 @@ import * as alertStore from "../services/dashboards/alertStore";
 import { evaluate } from "../services/dashboards/alerts";
 import { getConnectionById, type ConnectionResponse } from "../rbac/services/connections";
 import { dashboardAccess, has, viewerConnections, type DashboardAccess, type Viewer } from "../services/dashboards/access";
+import { addNote, deleteNote, getNote, loadAnnotations, MAX_NOTE_LENGTH } from "../services/dashboards/annotations";
 import { arrange, IMPORTANCES, ROLES, roleProblem, tidy, type ArrangeSection } from "../services/dashboards/layout";
 import { parseDashboardDocument, parseDashboardExport } from "../services/dashboards/legacy";
 import { chartFit, lintPanel, type LintFinding } from "../services/dashboards/lint";
-import { resolveValues, runFleet, runOptions, runPanel, viewerConnection, type AgentFor, type FleetRun, type PanelQuery, type PanelRun } from "../services/dashboards/runner";
+import { resolveWindow } from "../services/dashboards/macros";
+import { resolveValues, runFleet, runOptions, runPanel, SHIFT_SECONDS, viewerConnection, type AgentFor, type FleetRun, type PanelQuery, type PanelRun, type ShiftSeconds } from "../services/dashboards/runner";
 import {
   CHART_TYPES,
   DASHBOARD_EXPORT_FORMAT,
@@ -46,6 +48,8 @@ import {
   inScope,
   MAX_SQL_LENGTH,
   PANEL_KINDS,
+  TIME_SERIES_TYPES,
+  annotationSourcesSchema,
   timeRangeSchema,
   variableSchema,
   variableValuesSchema,
@@ -402,7 +406,17 @@ dashboards.delete("/:id/pin", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), as
 const runSchema = z.object({
   range: timeRangeSchema,
   values: variableValuesSchema,
+  /** Compare: run the same window this many seconds ago (ADR 0023 §8). */
+  shiftSeconds: z.union([z.literal(SHIFT_SECONDS[0]), z.literal(SHIFT_SECONDS[1])]).optional(),
 }).strict();
+
+/** Why a panel cannot be compared with an earlier window (null when it can). */
+function compareProblem(panel: store.ChartPanelRecord): string | null {
+  if (panel.fleet) return "Compare runs on one connection; this panel runs across the fleet";
+  if (!TIME_SERIES_TYPES.has(panel.viz.type)) return "Compare needs a line or area chart";
+  if (panel.viz.series !== null) return "Compare needs a chart without a split by series";
+  return null;
+}
 
 function requireQueryExecute(c: Context): void {
   if (!has(viewerOf(c), PERMISSIONS.QUERY_EXECUTE)) throw AppError.forbidden("Running panels needs query:execute");
@@ -414,12 +428,12 @@ function requireQueryExecute(c: Context): void {
  */
 type RunResult = ({ kind: "fleet" } & FleetRun) | ({ kind: "single" } & PanelRun);
 
-async function runQuery(c: Context, query: PanelQuery, fleet: boolean, scope: ConnectionScope): Promise<RunResult> {
+async function runQuery(c: Context, query: PanelQuery, fleet: boolean, scope: ConnectionScope, shiftSeconds: ShiftSeconds | 0 = 0): Promise<RunResult> {
   markAgentRecorded(c);
   if (fleet) return { kind: "fleet", ...(await runFleet(viewerOf(c), query, agentFor(c), scope)) };
   const connectionId = currentConnectionId(c);
   await assertInScope(c, scope, connectionId);
-  return { kind: "single", ...(await runPanel(viewerOf(c), connectionId, query, agentFor(c))) };
+  return { kind: "single", ...(await runPanel(viewerOf(c), connectionId, query, agentFor(c), Date.now(), shiftSeconds)) };
 }
 
 dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", runSchema), async (c) => {
@@ -427,9 +441,65 @@ dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBO
   const id = requireParam(c, "id");
   const { detail } = await visible(c, id);
   const panel = chartPanel(detail, requireParam(c, "panelId"));
-  const { range, values } = c.req.valid("json");
+  const { range, values, shiftSeconds } = c.req.valid("json");
+  if (shiftSeconds !== undefined) {
+    const problem = compareProblem(panel);
+    if (problem) throw AppError.badRequest(problem);
+  }
   const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
-  return ok(c, await runQuery(c, query, panel.fleet, detail.dashboard.connectionScope));
+  return ok(c, await runQuery(c, query, panel.fleet, detail.dashboard.connectionScope, shiftSeconds ?? 0));
+});
+
+// ============================================
+// Annotations and notes (ADR 0023 §5)
+// ============================================
+
+const annotationsSchema = z.object({
+  range: timeRangeSchema,
+  sources: annotationSourcesSchema,
+}).strict();
+
+/** What changed in the range, per source, on the connection the caller is on. */
+dashboards.post("/:id/annotations", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", annotationsSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const { detail } = await visible(c, id);
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
+  await viewerConnection(viewerOf(c), connectionId);
+  const { range, sources } = c.req.valid("json");
+  const window = resolveWindow(range, Date.now());
+  return ok(c, { sources: await loadAnnotations({ viewer: viewerOf(c), connectionId, dashboardId: id, fromMs: window.from * 1000, toMs: window.to * 1000 }, sources) });
+});
+
+const noteSchema = z.object({
+  /** Unix milliseconds. */
+  at: z.number().int().positive(),
+  text: z.string().trim().min(1).max(MAX_NOTE_LENGTH),
+}).strict();
+
+dashboards.post("/:id/notes", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidator("json", noteSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const { detail, access } = await visible(c, id);
+  if (!access.edit) throw AppError.forbidden("Notes on a dashboard need edit access to it");
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
+  await viewerConnection(viewerOf(c), connectionId);
+  const { at, text } = c.req.valid("json");
+  const note = await addNote(id, connectionId, at, text, viewerOf(c).id);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_NOTE_CREATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { noteId: note.id, connectionId } });
+  return ok(c, note, 201);
+});
+
+/** A note's author may delete it, as may anyone who can edit the dashboard. */
+dashboards.delete("/:id/notes/:noteId", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
+  const id = requireParam(c, "id");
+  const { access } = await visible(c, id);
+  const note = await getNote(id, requireParam(c, "noteId"));
+  if (!note) throw AppError.notFound("Note not found");
+  if (!access.edit && note.authorId !== viewerOf(c).id) throw AppError.forbidden("Only the note's author or an editor of the dashboard can delete it");
+  await deleteNote(note.id);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_NOTE_DELETE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { noteId: note.id } });
+  return ok(c, { deleted: note.id });
 });
 
 dashboards.post("/:id/variables/:name/options", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), async (c) => {
@@ -594,7 +664,7 @@ dashboards.post("/:id/versions/:version/restore", requirePermission(PERMISSIONS.
   await assertAlertsInScope(id, input);
   await assertLinks(c, input);
   const result = await store.updateDashboard(id, c.req.valid("json").currentVersion, input, saveContext(c, "restore")).catch(saveConflict);
-  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, restoredFrom: old.version, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_RESTORE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, restoredFrom: old.version, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
   return ok(c, await detailResponse(c, id));
 });
 

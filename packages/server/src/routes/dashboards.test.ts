@@ -54,6 +54,7 @@ const USERS = {
   manager: { id: "u-mgr", roles: ["team-a"], permissions: [...ALL, "dashboards:manage"] },
   nobody: { id: "u-none", roles: ["team-d"], permissions: ["metrics:view"] },
   viewOnly: { id: "u-view", roles: ["team-d"], permissions: ["dashboards:view"] },
+  observer: { id: "u-obs", roles: ["team-a"], permissions: [...ALL, "observe:view"] },
 };
 type UserKey = keyof typeof USERS;
 
@@ -116,7 +117,7 @@ beforeAll(async () => {
   for (const [id, name] of [["role-a", "team-a"], ["role-b", "team-b"], ["role-c", "team-c"], ["role-d", "team-d"]]) {
     await rawRun(sql`INSERT INTO rbac_roles (id, name, display_name, is_system, is_default, priority, created_at, updated_at) VALUES (${id}, ${name}, ${name}, 0, 0, 1, unixepoch(), unixepoch())`);
   }
-  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-d"], ["u-view", "role-d"]];
+  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-d"], ["u-view", "role-d"], ["u-obs", "role-a"]];
   for (const [user, role] of membership) {
     await rawRun(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${`${user}-${role}`}, ${user}, ${role}, unixepoch())`);
   }
@@ -784,5 +785,90 @@ describe("version history", () => {
     expect(kept).toHaveLength(50);
     expect(kept[0].version).toBe(52);
     expect(kept[49].version).toBe(3);
+  });
+});
+
+describe("compare with an earlier window", () => {
+  it("runs a line chart a day or a week earlier, with every check, and refuses what cannot be compared", async () => {
+    const created = await create();
+    const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
+    const now = await call("owner", "POST", path, { range: RANGE, values: {} });
+    const week = await call("owner", "POST", path, { range: RANGE, values: {}, shiftSeconds: 604_800 });
+    expect(week.status).toBe(200);
+    expect(week.json.data.window.from).toBe(now.json.data.window.from - 604_800);
+    expect(week.json.data.window.intervalSeconds).toBe(now.json.data.window.intervalSeconds);
+    expect(sent[1].params.chouse_to).toBe(Number(sent[0].params.chouse_to) - 604_800);
+    expect((await call("owner", "POST", path, { range: RANGE, values: {}, shiftSeconds: 3_600 })).status).toBe(400);
+    const stat = await create("owner", { panels: [panel({ viz: { ...LINE, type: "stat", x: null, reduce: "last" } })] });
+    const refused = await call("owner", "POST", `/dashboards/${stat.dashboard.id}/panels/${stat.panels[0].id}/run`, { range: RANGE, values: {}, shiftSeconds: 86_400 });
+    expect(refused.json.error.message).toBe("Compare needs a line or area chart");
+    const fleet = await create("owner", { panels: [panel({ fleet: true })] });
+    expect((await call("owner", "POST", `/dashboards/${fleet.dashboard.id}/panels/${fleet.panels[0].id}/run`, { range: RANGE, values: {}, shiftSeconds: 86_400 })).json.error.message)
+      .toBe("Compare runs on one connection; this panel runs across the fleet");
+  });
+});
+
+describe("annotations and notes", () => {
+  it("reads each source on its own: events, or why not, never a silent gap", async () => {
+    const created = await create("observer");
+    await call("observer", "PUT", `/dashboards/${created.dashboard.id}/shares`, { shares: [{ roleId: "role-a", canEdit: false }] });
+    const id = created.dashboard.id;
+    const at = Date.now() - 60_000;
+    await rawRun(sql`INSERT INTO obs_change_events (id, connection_id, kind, occurred_at, node, object_ref, summary, details)
+      VALUES ('ddl:1', 'conn-1', 'ddl', ${at}, NULL, 'shop.orders', 'ALTER TABLE shop.orders ADD COLUMN x UInt8', '{"kind":"Alter","user":"alice"}'),
+             ('ddl:2', 'conn-1', 'ddl', ${at}, NULL, 'secret.payments', 'ALTER TABLE secret.payments DROP COLUMN card', '{"kind":"Alter","user":"bob"}'),
+             ('ddl:3', 'conn-2', 'ddl', ${at}, NULL, 'shop.orders', 'ALTER on beta', '{"kind":"Alter"}'),
+             ('ver:1', 'conn-1', 'version', ${at}, 'ch-1', NULL, '25.3 → 25.8', '{}')`);
+    const res = await call("observer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["ddl", "upgrades", "notes"] });
+    expect(res.status).toBe(200);
+    const [ddl, upgrades, notes] = res.json.data.sources;
+    expect(ddl).toMatchObject({ source: "ddl", ok: true, truncated: false });
+    // secret.payments is not readable by team-a, and conn-2's events are not on view.
+    expect(ddl.events.map((e: { title: string; detail: string }) => [e.title, e.detail])).toEqual([["ALTER shop.orders", "ALTER TABLE shop.orders ADD COLUMN x UInt8 — by alice"]]);
+    expect(upgrades.events[0].title).toBe("Upgraded ch-1: 25.3 → 25.8");
+    expect(notes).toEqual({ source: "notes", ok: true, events: [], truncated: false });
+    // Without observe:view the change sources say why.
+    const owner = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["ddl", "alerts"] });
+    expect(owner.json.data.sources).toEqual([
+      { source: "ddl", ok: false, error: "Needs observe:view" },
+      { source: "alerts", ok: true, events: [], truncated: false },
+    ]);
+    expect((await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["tweets"] })).status).toBe(400);
+  });
+
+  it("shows this dashboard's alert events on the connection they watch", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const channel = await createChannel({ name: "notes-ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/n" }, enabled: true });
+    const alert = await call("owner", "POST", `/dashboards/${id}/panels/${created.panels[0].id}/alerts`, {
+      name: "Orders spike", severity: "warning", connectionId: "conn-1", channelIds: [channel], enabled: true,
+      config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
+    });
+    const at = Date.now() - 120_000;
+    await rawRun(sql`INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to) VALUES ('ev-1', ${alert.json.data.id}, 'warning', ${at}, ${JSON.stringify({ title: "🟠 Orders spike", text: "max of v is 120" })}, '[]')`);
+    const onAlpha = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["alerts"] });
+    expect(onAlpha.json.data.sources[0].events).toEqual([{ id: "alert:ev-1", source: "alerts", at, title: "🟠 Orders spike", detail: "max of v is 120", objectRef: null }]);
+    const onBeta = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["alerts"] }, "conn-2");
+    expect(onBeta.json.data.sources[0].events).toEqual([]);
+  });
+
+  it("adds notes for editors, on the connection on view, and lets the author or an editor delete them", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    const at = Date.now() - 30_000;
+    expect((await call("peer", "POST", `/dashboards/${id}/notes`, { at, text: "x" })).status).toBe(403);
+    expect((await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "  " })).status).toBe(400);
+    expect((await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "x".repeat(501) })).status).toBe(400);
+    const note = await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "Backfill finished" });
+    expect(note.status).toBe(201);
+    const listed = await call("peer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["notes"] });
+    expect(listed.json.data.sources[0].events).toEqual([{ id: note.json.data.id, source: "notes", at, title: "Backfill finished", detail: null, objectRef: null, authorId: "u-owner", authorName: "u-owner" }]);
+    expect((await call("peer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["notes"] }, "conn-2")).json.data.sources[0].events).toEqual([]);
+    expect((await call("peer", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(403);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(200);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(404);
+    const audit = await rawAll(sql`SELECT action FROM rbac_audit_logs WHERE resource_id = ${id} AND action LIKE 'dashboard.note%' ORDER BY created_at`);
+    expect(audit.map((a) => a.action)).toEqual(["dashboard.note_create", "dashboard.note_delete"]);
   });
 });
