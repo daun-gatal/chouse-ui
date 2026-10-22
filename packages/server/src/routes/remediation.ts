@@ -17,7 +17,7 @@ import { zValidator } from "@hono/zod-validator";
 import { rbacAuthMiddleware, requireAnyPermission, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
-import { ACTION_TYPES, REQUIRED_GRANTS, actionParamsSchema, buildAction } from "../services/remediation/catalog";
+import { ACTION_TYPES, CONTEXT_ONLY_TYPES, REQUIRED_GRANTS, actionParamsSchema, buildAction } from "../services/remediation/catalog";
 import { approveAction, executeAction, proposeAction, rejectAction, rollbackAction, RemediationError } from "../services/remediation/executor";
 import { postApprovalRequest } from "../services/remediation/slack";
 import * as store from "../services/remediation/store";
@@ -84,6 +84,9 @@ remediation.get("/actions/:id", requireAnyPermission(ANY_REMEDIATION), async (c)
   return ok(c, { action, approvals: await store.listApprovals(action.id), executions: await store.listExecutions(action.id) });
 });
 
+/** A rollup is proposed from its dashboard panel, which checks access to the dashboard and the panel's query. */
+const contextOnly = "A panel rollup is proposed from the dashboard panel's cost view";
+
 const proposeSchema = z.object({
   connectionId: z.string().min(1),
   params: z.record(z.unknown()),
@@ -97,11 +100,14 @@ const proposeSchema = z.object({
 remediation.post("/actions/preview", requireAnyPermission(ANY_REMEDIATION), zValidator("json", z.object({ params: z.record(z.unknown()) })), (c) => {
   const parsed = actionParamsSchema.safeParse(c.req.valid("json").params);
   if (!parsed.success) throw AppError.badRequest(parsed.error.issues.map((i) => i.message).join("; "));
+  if (CONTEXT_ONLY_TYPES.has(parsed.data.type)) throw AppError.badRequest(contextOnly);
   return ok(c, buildAction(parsed.data));
 });
 
 remediation.post("/actions", requirePermission(PERMISSIONS.REMEDIATION_PROPOSE), zValidator("json", proposeSchema), async (c) => {
   const body = c.req.valid("json");
+  const requested = ACTION_TYPES.find((t) => t === body.params.type);
+  if (requested && CONTEXT_ONLY_TYPES.has(requested)) throw AppError.badRequest(contextOnly);
   await assertConnectionAccess(c, body.connectionId);
   const p = body.params as { database?: unknown; table?: unknown };
   if (typeof p.database === "string") {

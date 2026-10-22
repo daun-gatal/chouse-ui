@@ -27,6 +27,7 @@ import { ClientManager } from "../clientManager";
 import { clientForConnection } from "../scheduledQueries/chClient";
 import { setJobEnabled, getJob } from "../scheduledQueries/store";
 import { acquireLease } from "../observe/lease";
+import { RollupPrecondition, readRollupPrior, switchPanelToRollup } from "../dashboards/rollupAction";
 import { actionParamsSchema, buildAction, compare, quoteString, type ActionParams, type PriorState } from "./catalog";
 import * as store from "./store";
 
@@ -126,6 +127,15 @@ export function extractTtl(createQuery: string): string {
 }
 
 export async function readPriorState(connectionId: string, params: ActionParams): Promise<PriorState> {
+  if (params.type === "create_panel_rollup") {
+    const client = await readClient(connectionId);
+    try {
+      return await readRollupPrior(connectionId, params, (query) => queryRows(client, query));
+    } catch (error) {
+      if (error instanceof RollupPrecondition) throw new RemediationError(error.message, "precondition");
+      throw error;
+    }
+  }
   if (params.type !== "set_profile_setting" && params.type !== "modify_ttl" && params.type !== "modify_column_codec") return {};
   const client = await readClient(connectionId);
   if (params.type === "set_profile_setting") {
@@ -243,7 +253,8 @@ export async function rejectAction(actionId: string, actor: Actor, channel: stor
 // --- execution ---------------------------------------------------------------
 
 function samePrior(a: PriorState, b: PriorState): boolean {
-  return (a.settingsList ?? "") === (b.settingsList ?? "") && (a.ttl ?? "") === (b.ttl ?? "") && (a.codec ?? "") === (b.codec ?? "");
+  return (a.settingsList ?? "") === (b.settingsList ?? "") && (a.ttl ?? "") === (b.ttl ?? "") && (a.codec ?? "") === (b.codec ?? "")
+    && JSON.stringify(a.rollup ?? null) === JSON.stringify(b.rollup ?? null);
 }
 
 async function runInternal(action: store.RemediationAction, internal: NonNullable<ReturnType<typeof buildAction>["internal"]>): Promise<void> {
@@ -322,6 +333,15 @@ export async function verifyAction(action: store.RemediationAction, nowMs = Date
       ok = compare(value, spec.comparator, spec.threshold);
     } catch (error) {
       logger.warn({ module: "Remediation", actionId: action.id, err: error instanceof Error ? error.message : String(error) }, "Verification probe failed");
+    }
+  }
+  if (ok && action.params.type === "create_panel_rollup") {
+    // Only an exact match switches the panel; a panel changed meanwhile fails the action and keeps its query.
+    const problem = await switchPanelToRollup(action.params, action.prior, action.proposedBy);
+    if (problem) {
+      await store.recordVerification(execution.id, { ok: false, value, checkedAt: nowMs, message: problem });
+      await store.transitionStatus(action.id, ["executed"], "failed_verification");
+      return true;
     }
   }
   if (ok) {

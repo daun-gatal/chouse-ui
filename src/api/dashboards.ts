@@ -7,6 +7,7 @@ import type { ResultColumn } from "@/lib/viz/resolve";
 
 import { invokeAI, type InvokeOptions } from "./ai";
 import { api } from "./client";
+import type { RemediationAction } from "./remediation";
 
 /** The connections a dashboard is assigned to (ADR 0021 §3). */
 export type ConnectionScope = { kind: "any" } | { kind: "only"; connectionIds: string[] };
@@ -377,7 +378,7 @@ export function tidyPanels(panels: Array<{ key: string; kind: PanelInput["kind"]
 // Version history (ADR 0023 §11)
 // ============================================
 
-export type VersionSource = "ui" | "token" | "import" | "template" | "duplicate" | "restore" | "migration";
+export type VersionSource = "ui" | "token" | "import" | "template" | "duplicate" | "restore" | "migration" | "rollup";
 
 export interface VersionSummary {
   version: number;
@@ -464,6 +465,38 @@ export function getSnapshot(id: string, snapshotId: string): Promise<Snapshot> {
 
 export function deleteSnapshot(id: string, snapshotId: string): Promise<{ deleted: string }> {
   return api.delete<{ deleted: string }>(`${base}/${enc(id)}/snapshots/${enc(snapshotId)}`);
+}
+
+// ============================================
+// Panel cost and rollups (ADR 0023 §10)
+// ============================================
+
+export interface PanelCost {
+  readBytes: number;
+  readRows: number;
+  elapsedMs: number;
+  cached: boolean;
+  refreshSeconds: number;
+  /** Runs per hour for each open viewer at the dashboard's refresh (0 without auto-refresh). */
+  readsPerHour: number;
+  bytesPerHour: number;
+  /** Over 1 GiB a run, or 100 GiB an hour. */
+  heavy: boolean;
+  rollup: { eligible: true; target: string; source: string } | { eligible: false; reason: string };
+}
+
+export function getPanelCost(dashboardId: string, panelId: string, body: { range: TimeRange; values: VariableValues }): Promise<PanelCost> {
+  return api.post<PanelCost>(`${base}/${enc(dashboardId)}/panels/${enc(panelId)}/cost`, body);
+}
+
+/** Propose the panel's rollup as a remediation action; it runs only once approved. */
+export function proposeRollup(dashboardId: string, panelId: string, body: { backfillDays: number; cluster: string | null }): Promise<RemediationAction> {
+  return api.post<RemediationAction>(`${base}/${enc(dashboardId)}/panels/${enc(panelId)}/rollup`, body);
+}
+
+/** Whether a panel reads a rollup this feature made (it then has 1-minute resolution). */
+export function readsRollup(sql: string): boolean {
+  return /\bchouse_rollup_[0-9a-f]{12}\b/.test(sql);
 }
 
 // ============================================

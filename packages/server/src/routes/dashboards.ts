@@ -37,7 +37,7 @@ import { arrange, IMPORTANCES, ROLES, roleProblem, tidy, type ArrangeSection } f
 import { parseDashboardDocument, parseDashboardExport } from "../services/dashboards/legacy";
 import { chartFit, lintPanel, type LintFinding } from "../services/dashboards/lint";
 import { resolveWindow } from "../services/dashboards/macros";
-import { resolveValues, runFleet, runOptions, runPanel, SHIFT_SECONDS, viewerConnection, type AgentFor, type FleetRun, type PanelQuery, type PanelRun, type ShiftSeconds } from "../services/dashboards/runner";
+import { assertDataAccess, compilePanel, resolveValues, runFleet, runOptions, runPanel, SHIFT_SECONDS, viewerConnection, type AgentFor, type FleetRun, type PanelQuery, type PanelRun, type ShiftSeconds } from "../services/dashboards/runner";
 import {
   CHART_TYPES,
   DASHBOARD_EXPORT_FORMAT,
@@ -61,6 +61,9 @@ import {
   type Layout,
 } from "../services/dashboards/spec";
 import { convertGrafana } from "../services/dashboards/grafana";
+import { analyzeRollup, readsRollup, rollupTarget } from "../services/dashboards/rollup";
+import { proposeAction, RemediationError } from "../services/remediation/executor";
+import { postApprovalRequest } from "../services/remediation/slack";
 import { reportRangeSchema, reportScheduleSchema } from "../services/dashboards/reportDigest";
 import * as reports from "../services/dashboards/reports";
 import * as snapshots from "../services/dashboards/snapshots";
@@ -473,6 +476,74 @@ dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBO
   }
   const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
   return ok(c, await runQuery(c, query, panel.fleet, detail.dashboard.connectionScope, shiftSeconds ?? 0));
+});
+
+// ============================================
+// Panel cost and rollups (ADR 0023 §10)
+// ============================================
+
+const GIB = 1024 ** 3;
+const costSchema = z.object({ range: timeRangeSchema, values: variableValuesSchema }).strict();
+
+/** What one run of the panel reads, what that comes to per hour at the dashboard's refresh, and whether a rollup could serve it. */
+dashboards.post("/:id/panels/:panelId/cost", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", costSchema), async (c) => {
+  requireQueryExecute(c);
+  const id = requireParam(c, "id");
+  const { detail } = await visible(c, id);
+  const panel = chartPanel(detail, requireParam(c, "panelId"));
+  const { range, values } = c.req.valid("json");
+  const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
+  const result = await runQuery(c, query, panel.fleet, detail.dashboard.connectionScope);
+  const runs = result.kind === "single" ? [result.data] : result.connections.flatMap((e) => (e.ok ? [e.data] : []));
+  const readBytes = runs.reduce((sum, d) => sum + d.readBytes, 0);
+  const readRows = runs.reduce((sum, d) => sum + d.readRows, 0);
+  const elapsedMs = Math.max(0, ...runs.map((d) => d.elapsedMs));
+  const refreshSeconds = detail.dashboard.refreshSeconds;
+  const readsPerHour = refreshSeconds > 0 ? 3600 / refreshSeconds : 0;
+  const bytesPerHour = readBytes * readsPerHour;
+  const analysis = readsRollup(panel.sql) ? { ok: false as const, reason: "it already reads a rollup" } : panel.fleet ? { ok: false as const, reason: "it runs across the fleet; a rollup is made on one connection" } : analyzeRollup(panel.sql);
+  return ok(c, {
+    readBytes, readRows, elapsedMs, cached: result.kind === "single" ? result.cached : false, refreshSeconds, readsPerHour, bytesPerHour,
+    heavy: readBytes > GIB || bytesPerHour > 100 * GIB,
+    rollup: analysis.ok ? { eligible: true, target: `${analysis.plan.database}.${rollupTarget(analysis.plan)}`, source: `${analysis.plan.database}.${analysis.plan.table}` } : { eligible: false, reason: analysis.reason },
+  });
+});
+
+const rollupSchema = z.object({ backfillDays: z.number().int().min(1).max(30), cluster: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).nullable() }).strict();
+
+/** Propose the panel's rollup as a remediation action (approval class 2); nothing runs until it is approved. */
+dashboards.post("/:id/panels/:panelId/rollup", requirePermission(PERMISSIONS.REMEDIATION_PROPOSE), zValidator("json", rollupSchema), async (c) => {
+  requireQueryExecute(c);
+  const id = requireParam(c, "id");
+  const { detail, access } = await visible(c, id);
+  if (!access.edit) throw AppError.forbidden("Rolling up a panel changes its query, which needs edit access to the dashboard");
+  const panel = chartPanel(detail, requireParam(c, "panelId"));
+  if (panel.fleet) throw AppError.badRequest("A fleet panel runs on many connections; a rollup is made on one");
+  const analysis = analyzeRollup(panel.sql);
+  if (!analysis.ok) throw AppError.badRequest(`This panel cannot be rolled up: ${analysis.reason}`);
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
+  const connection = await viewerConnection(viewerOf(c), connectionId);
+  // The proposer must be able to read the table the rollup copies.
+  await assertDataAccess(viewerOf(c), compilePanel({ sql: panel.sql, variables: detail.dashboard.variables, values: {}, range: { kind: "relative", value: "1h" }, dashboardId: id, panelId: panel.id }, resolveWindow({ kind: "relative", value: "1h" }, Date.now())), connection);
+  const { backfillDays, cluster } = c.req.valid("json");
+  const params = { type: "create_panel_rollup" as const, dashboardId: id, panelId: panel.id, ...analysis.plan, target: rollupTarget(analysis.plan), backfillDays, cluster };
+  let action: Awaited<ReturnType<typeof proposeAction>>;
+  try {
+    action = await proposeAction({
+      connectionId,
+      params,
+      title: `Roll up "${panel.title}" on ${detail.dashboard.title}`,
+      rationale: `Serve the panel from 1-minute pre-aggregates of ${analysis.plan.database}.${analysis.plan.table} instead of scanning it on every refresh.`,
+      proposedBy: viewerOf(c).id,
+      proposedSource: c.get("authMethod") === "pat" ? "mcp" : "user",
+    });
+  } catch (error) {
+    if (error instanceof RemediationError) throw error.code === "forbidden" ? AppError.forbidden(error.message) : AppError.badRequest(error.message);
+    throw error;
+  }
+  void postApprovalRequest(action);
+  return ok(c, action, 201);
 });
 
 // ============================================

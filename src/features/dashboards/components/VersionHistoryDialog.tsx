@@ -18,7 +18,7 @@ import { BTN_OUTLINE, BTN_PRIMARY } from "@/components/charts/controlStyles";
 import { diffVersions, isEmptyDiff, type VersionDiff } from "../versionDiff";
 
 const SOURCE_LABELS: Record<VersionSource, string> = {
-  ui: "Saved", token: "API token", import: "Imported", template: "From a template", duplicate: "Duplicated", restore: "Restored", migration: "Converted to v2",
+  ui: "Saved", token: "API token", import: "Imported", template: "From a template", duplicate: "Duplicated", restore: "Restored", migration: "Converted to v2", rollup: "Switched to a rollup",
 };
 
 interface Props {

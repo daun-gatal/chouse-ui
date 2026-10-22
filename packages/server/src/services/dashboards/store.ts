@@ -88,7 +88,7 @@ export interface DashboardSummary extends DashboardRecord {
 }
 
 /** Where a version came from (ADR 0023 §11). */
-export const VERSION_SOURCES = ["ui", "token", "import", "template", "duplicate", "restore", "migration"] as const;
+export const VERSION_SOURCES = ["ui", "token", "import", "template", "duplicate", "restore", "migration", "rollup"] as const;
 export type VersionSource = (typeof VERSION_SOURCES)[number];
 /** How many versions a dashboard keeps. */
 export const MAX_VERSIONS = 50;

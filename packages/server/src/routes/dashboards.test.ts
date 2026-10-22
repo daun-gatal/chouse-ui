@@ -56,7 +56,7 @@ const { default: dashboards } = await import("./dashboards");
 const { createChannel } = await import("../services/alerting/store");
 const { ChannelType } = await import("../services/alerting/types");
 
-const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select", "alerting:view", "alerting:edit", "alerting:delete"];
+const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select", "alerting:view", "alerting:edit", "alerting:delete", "remediation:propose"];
 const USERS = {
   owner: { id: "u-owner", roles: ["team-a"], permissions: ALL },
   peer: { id: "u-peer", roles: ["team-b"], permissions: ["dashboards:view", "dashboards:edit", "query:execute", "table:select"] },
@@ -1006,6 +1006,68 @@ describe("snapshots", () => {
     await call("owner", "POST", `/dashboards/${id}/snapshots`, body());
     expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
     expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${id}`)).toEqual([]);
+  });
+});
+
+describe("panel cost and rollups", () => {
+  const ROLLABLE = "SELECT toStartOfInterval(ts, INTERVAL {{interval_s}} SECOND) AS t, count() AS v FROM shop.orders WHERE ts >= {{from}} AND ts < {{to}} GROUP BY t ORDER BY t";
+  const TYPES = [{ name: "bucket", type: "DateTime" }, { name: "a_v", type: "AggregateFunction(count)" }];
+  const clickhouse = (_conn: string, query: string): unknown => {
+    if (query.startsWith("DESCRIBE")) return TYPES;
+    if (query.includes("system.tables")) return [{ value: 0 }];
+    return ROWS;
+  };
+
+  it("reports what a run reads, per hour at the refresh, and whether a rollup can serve it", async () => {
+    const created = await create("owner", { panels: [panel({ sql: ROLLABLE }), panel({ title: "Raw", sql: "SELECT 1 AS t, 2 AS v" })] });
+    const [rollable, raw] = created.panels;
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${rollable.id}/cost`, { range: RANGE, values: {} });
+    expect(res.json.data).toMatchObject({ readBytes: 100, readRows: 10, refreshSeconds: 60, readsPerHour: 60, bytesPerHour: 6000, heavy: false, rollup: { eligible: true, source: "shop.orders" } });
+    expect(res.json.data.rollup.target).toMatch(/^shop\.chouse_rollup_[0-9a-f]{12}$/);
+    const other = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${raw.id}/cost`, { range: RANGE, values: {} });
+    expect(other.json.data.rollup).toEqual({ eligible: false, reason: "it reads no table" });
+  });
+
+  it("proposes the rollup as a class 2 action, and switches the panel only while its query is unchanged", async () => {
+    respond = clickhouse;
+    const created = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    const res = await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/rollup`, { backfillDays: 7, cluster: null });
+    expect(res.status).toBe(201);
+    const action = res.json.data;
+    expect(action).toMatchObject({ type: "create_panel_rollup", approvalClass: 2, status: "proposed", connectionId: "conn-1" });
+    expect(action.prior.rollup).toEqual({ panelSql: ROLLABLE, types: { bucket: "DateTime", a_v: "AggregateFunction(count)" } });
+    expect(sent.some((q) => q.query.startsWith("DESCRIBE TABLE (SELECT toStartOfMinute(`ts`) AS `bucket`, countState() AS `a_v` FROM `shop`.`orders`"))).toBe(true);
+
+    const { switchPanelToRollup } = await import("../services/dashboards/rollupAction");
+    expect(await switchPanelToRollup(action.params, action.prior, "u-owner")).toBeNull();
+    const after = (await call("owner", "GET", `/dashboards/${id}`)).json.data;
+    expect(after.panels[0].sql).toContain(`FROM \`shop\`.\`${action.params.target}\``);
+    expect(after.dashboard.version).toBe(2);
+    expect((await call("owner", "GET", `/dashboards/${id}/versions`)).json.data[0].source).toBe("rollup");
+    // A second verification of the same action finds it switched already.
+    expect(await switchPanelToRollup(action.params, action.prior, "u-owner")).toBeNull();
+    // The panel now reads a rollup: no second one.
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/cost`, { range: RANGE, values: {} })).json.data.rollup).toEqual({ eligible: false, reason: "it already reads a rollup" });
+
+    const edited = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    const proposed = (await call("owner", "POST", `/dashboards/${edited.dashboard.id}/panels/${edited.panels[0].id}/rollup`, { backfillDays: 1, cluster: null })).json.data;
+    await call("owner", "PUT", `/dashboards/${edited.dashboard.id}`, { version: 1, dashboard: dashboard({ panels: [panel({ id: edited.panels[0].id, sql: ROLLABLE.replace("count()", "count() + 0") })] }) });
+    expect(await switchPanelToRollup(proposed.params, proposed.prior, "u-owner")).toBe("The panel's query changed after the rollup was proposed; it was left as it is");
+  });
+
+  it("refuses an ineligible panel, a viewer without edit access, an existing target, and the generic catalog route", async () => {
+    respond = clickhouse;
+    const rollable = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    await call("owner", "PUT", `/dashboards/${rollable.dashboard.id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    expect((await call("peer", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).status).toBe(403);
+    respond = (conn, query) => (query.includes("system.tables") ? [{ value: 1 }] : clickhouse(conn, query));
+    expect((await call("owner", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toMatch(/already exists; drop it or use it$/);
+    respond = (conn, query) => (query.startsWith("DESCRIBE") ? [{ name: "bucket", type: "DateTime" }, { name: "a_v", type: "AggregateFunction(sum, Float64)" }] : clickhouse(conn, query));
+    expect((await call("owner", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toBe("v sums a Float column, which a rollup cannot reproduce exactly");
+    const bare = await create("owner", { panels: [panel({ sql: "SELECT 1 AS t, 2 AS v" })] });
+    expect((await call("owner", "POST", `/dashboards/${bare.dashboard.id}/panels/${bare.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toBe("This panel cannot be rolled up: it reads no table");
   });
 });
 

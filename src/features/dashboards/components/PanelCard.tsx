@@ -14,13 +14,13 @@ import React, { useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, GitCompare, GripVertical, Pencil, RefreshCw, Trash2, Waves, Zap } from "lucide-react";
+import { AlertTriangle, GitCompare, GripVertical, Layers, Pencil, RefreshCw, Trash2, Waves, Zap } from "lucide-react";
 
 import { PanelMessage, PanelVisual } from "@/components/charts/PanelVisual";
 import type { PanelOverlays } from "@/components/common/AiChartRenderer";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { getBaseline, runPanel, type AnnotationEvent, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type SnapshotResult, type TextPanelInput } from "@/api/dashboards";
+import { getBaseline, readsRollup, runPanel, type AnnotationEvent, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type SnapshotResult, type TextPanelInput } from "@/api/dashboards";
 import { mergeFleet, type ResolvedChart, type ResultData } from "@/lib/viz/resolve";
 import { TIME_SERIES_TYPES, type VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
@@ -255,6 +255,7 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         {editing && <DragHandle title={panel.title} />}
         <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-paper" title={panel.title}>{panel.title}</h3>
         {panel.fleet && <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim"><Zap className="h-3 w-3" aria-hidden /> Fleet</span>}
+        {readsRollup(panel.sql) && <Chip icon={<Layers className="h-3 w-3" aria-hidden />} tone="muted" text="1-min rollup" title="Reads a pre-aggregated rollup: 1-minute resolution" testId="rollup-chip" />}
         {notComparable && <Chip icon={<GitCompare className="h-3 w-3" aria-hidden />} tone="muted" text="Compare n/a" title={notComparable} testId="compare-na" />}
         {earlier.isError && <Chip icon={<GitCompare className="h-3 w-3" aria-hidden />} tone="error" text="Compare failed" title={earlier.error.message} testId="compare-error" />}
         {band.data?.state === "learning" && <Chip icon={<Waves className="h-3 w-3" aria-hidden />} tone="muted" text="Band learning" title={band.data.reason} testId="band-learning" />}
