@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, BarChart3, Copy, Database, Download, Heading, LayoutGrid, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2, Type } from "lucide-react";
+import { ArrowLeft, BarChart3, Copy, Database, Download, Heading, History, LayoutGrid, MoreHorizontal, Pencil, Pin, PinOff, Plus, Settings2, Share2, Sparkles, Trash2, Type } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +58,7 @@ import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
 import { AnnotationDialog, ChartActionsDialog, NoteDialog, type ChartActionsTarget } from "./ChartActions";
 import { ExplainSpikeDialog } from "./ExplainSpikeDialog";
+import { VersionHistoryDialog } from "./VersionHistoryDialog";
 import { ConnectionsDialog } from "./ConnectionsDialog";
 import { DashboardCanvas, type CanvasItem } from "./DashboardCanvas";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
@@ -123,6 +124,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [shareOpen, setShareOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [tidying, setTidying] = useState(false);
   const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ key: string; title: string; alerts: number } | null>(null);
@@ -433,6 +435,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
               <DropdownMenuContent align="end">
                 {canCreate && <DropdownMenuItem onClick={() => void duplicate()}><Copy className="mr-2 h-3.5 w-3.5" /> Duplicate</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => void download()}><Download className="mr-2 h-3.5 w-3.5" /> Export JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setHistoryOpen(true)}><History className="mr-2 h-3.5 w-3.5" /> Version history</DropdownMenuItem>
                 {data.access.delete && <DropdownMenuItem className="text-red-300" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-3.5 w-3.5" /> Delete</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -568,6 +571,19 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
       )}
       {noteAt !== null && (
         <NoteDialog atMs={noteAt} saving={note.isPending} error={note.isError ? note.error.message : null} onSave={(text) => note.mutate({ at: noteAt, text })} onClose={() => setNoteAt(null)} />
+      )}
+      {historyOpen && (
+        <VersionHistoryDialog
+          detail={data}
+          canRestore={data.access.edit}
+          onRestored={(next) => {
+            queryClient.setQueryData(dashboardKeys.detail(id), next);
+            void queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
+            void queryClient.invalidateQueries({ queryKey: dashboardKeys.alerts(id) });
+            setHistoryOpen(false);
+          }}
+          onClose={() => setHistoryOpen(false)}
+        />
       )}
       {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
       {connectionsOpen && <ConnectionsDialog open onOpenChange={setConnectionsOpen} detail={data} />}
