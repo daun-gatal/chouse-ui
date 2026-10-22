@@ -786,13 +786,15 @@ chouse collectors status -c prod
 
 ### chouse dashboard
 
-Dashboards: list, show, run a panel, export, apply, delete.
+Dashboards: list, show, run a panel, export, apply, versions, snapshots, Grafana import.
 
-Custom dashboards (ADR 0021) as code. export writes a dashboard as JSON;
-apply creates a dashboard from that JSON, or updates the dashboard its id
-names so it matches the file exactly (panels left out are removed with
-their alerts). run-panel runs one panel's read-only query with your own
-data access. delete asks first (or needs --yes).
+Custom dashboards (ADR 0021, ADR 0023) as code. export writes a dashboard as
+JSON; apply creates a dashboard from that JSON, or updates the dashboard its
+id names so it matches the file exactly (panels left out are removed with
+their alerts). run-panel runs one panel's read-only query with your own data
+access. versions and restore read and roll back its history; snapshot freezes
+its results for a range. import-grafana converts a Grafana dashboard. delete
+and restore ask first (or need --yes).
 
 ```bash
 chouse dashboard
@@ -805,6 +807,7 @@ chouse dashboard list
 chouse dashboard export 7c1e… > orders.json
 chouse dashboard apply -f orders.json
 chouse dashboard run-panel 7c1e… 2b9d… --range 24h --var db=shop
+chouse dashboard import-grafana -f grafana.json --apply
 ```
 
 #### chouse dashboard apply
@@ -815,6 +818,7 @@ With "id": null in the file, a new dashboard is created (yours, with new
 panel ids). With an id, that dashboard is updated to match the file: panels
 keep their ids, panels missing from the file are removed together with
 their alerts. The server validates every panel; nothing is partly applied.
+An export from before CHouse 3.16 (chouse.dashboard/v1) is converted.
 
 ```bash
 chouse dashboard apply -f FILE [flags]
@@ -870,6 +874,31 @@ chouse dashboard get <id>
 chouse dashboard get 7c1e…
 ```
 
+#### chouse dashboard import-grafana
+
+Convert a Grafana dashboard, and with --apply import it.
+
+Prints what converts: each Grafana panel is ready, changed (with what
+changed) or skipped (with why). Only ClickHouse panels convert. Nothing is
+saved without --apply, which imports the convertible panels like apply -f.
+The dashboard is assigned to the -c connection, or to every connection with
+--all-connections.
+
+```bash
+chouse dashboard import-grafana -f FILE [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--all-connections` |   |   | assign the dashboard to every connection instead of -c |
+| `--apply` |   |   | import the convertible panels |
+| `-f, --file` | `string` |   | the Grafana dashboard JSON (- for stdin) |
+
+```bash
+chouse dashboard import-grafana -f grafana.json -c prod
+chouse dashboard import-grafana -f grafana.json -c prod --apply
+```
+
 #### chouse dashboard list
 
 List the dashboards you may view.
@@ -880,6 +909,23 @@ chouse dashboard list
 
 ```bash
 chouse dashboard list -o json
+```
+
+#### chouse dashboard restore
+
+Save an old version as the newest one.
+
+Restoring saves the old version's document as a new version, so it can be
+undone by restoring the version before it. Panels the old version does not
+have are removed with their alerts; restore lists those alerts and asks
+first (or needs --yes).
+
+```bash
+chouse dashboard restore <id> <version>
+```
+
+```bash
+chouse dashboard restore 7c1e… 12 --yes
 ```
 
 #### chouse dashboard run-panel
@@ -893,11 +939,91 @@ chouse dashboard run-panel <dashboardId> <panelId> [flags]
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--range` | `string` | `1h` | how far back: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d |
-| `--var` | `stringArray` |   | a variable value as name=value (repeatable) |
+| `--var` | `stringArray` |   | a variable value as name=value (repeatable; repeat a name for a multi-value variable) |
 
 ```bash
 chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h
 chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv
+chouse dashboard run-panel 7c1e… 2b9d… --var status=ok --var status=err
+```
+
+#### chouse dashboard snapshot
+
+Freeze a dashboard's results for a range, and read them back.
+
+A snapshot stores every chart panel's result for a range ending now, run as
+you on the -c connection (at most 10 MiB). You, and the shared roles you name
+with --role, can open it until it expires; whoever opens it still only sees
+what their own access allows.
+
+```bash
+chouse dashboard snapshot
+```
+
+```bash
+chouse dashboard snapshot create 7c1e… --name "Incident 42" --range 6h -c prod
+chouse dashboard snapshot list 7c1e…
+chouse dashboard snapshot get 7c1e… 9a0f… --out incident-42.json
+```
+
+#### chouse dashboard snapshot create
+
+Take a snapshot.
+
+```bash
+chouse dashboard snapshot create <dashboardId> --name NAME [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--expires-days` | `int` | `30` | days until it expires (1 to 365) |
+| `--name` | `string` |   | the snapshot's name |
+| `--range` | `string` | `1h` | the range to freeze, ending now: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d |
+| `--role` | `stringArray` |   | a role id the dashboard is shared with that may open it (repeatable) |
+| `--var` | `stringArray` |   | a variable value as name=value (repeatable) |
+
+```bash
+chouse dashboard snapshot create 7c1e… --name "Incident 42" --range 6h -c prod --role team-b-role-id --expires-days 90
+```
+
+#### chouse dashboard snapshot get
+
+Write a snapshot (document and results) as JSON.
+
+```bash
+chouse dashboard snapshot get <dashboardId> <snapshotId> [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--out` | `string` |   | write to this file instead of stdout |
+
+```bash
+chouse dashboard snapshot get 7c1e… 9a0f… --out incident-42.json
+```
+
+#### chouse dashboard snapshot list
+
+List the snapshots you may open.
+
+```bash
+chouse dashboard snapshot list <dashboardId>
+```
+
+```bash
+chouse dashboard snapshot list 7c1e…
+```
+
+#### chouse dashboard versions
+
+List a dashboard's last 50 saves.
+
+```bash
+chouse dashboard versions <id>
+```
+
+```bash
+chouse dashboard versions 7c1e…
 ```
 
 ### chouse fleet

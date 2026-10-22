@@ -224,8 +224,9 @@ bucket that contains the event. Hovering a marker shows its details.
 - `explorer`: open the table named by `{column}` or `{value}` database and table
   references in Explorer.
 
-On a chart, a `{column}` reference may name only the x, series or y columns. On a
-table it may name any column. Saving checks that a target dashboard exists and
+Links are followed from bar, line, area and table panels; other chart types keep
+their links in the document but offer no click. On a chart, a `{column}` reference
+may name only the x, series or y columns. On a table it may name any column. Saving checks that a target dashboard exists and
 that every key is one of its variables; an import naming an unknown dashboard is
 refused, never dropped. When the user clicks, a value missing from the clicked
 datum, or a target the user cannot view, is an error message. The link is not
@@ -318,16 +319,28 @@ A panel is **eligible for a rollup** when its SQL is:
 - a single SELECT from one table, with no JOIN, subquery, UNION or WITH;
 - with a `toStartOfInterval(<time column>, INTERVAL {{interval_s}} SECOND)` bucket;
 - bounded by `<time column> >= {{from}} AND <time column> < {{to}}`;
-- with other WHERE conditions that use no macros;
+- with other WHERE conditions that are ANDed comparisons (`=`, `!=`, `<`, `<=`, `>`,
+  `>=`) of a plain column with a literal, and no dashboard variables anywhere;
 - grouped by the bucket and plain columns;
-- selecting only the bucket, those columns, and aggregate function calls with no
-  macros in their arguments.
+- selecting only the bucket, those columns, and `count()`, `sum`, `min`, `max`,
+  `avg` or `uniqExact` of one plain column. These are the aggregates whose merged
+  state equals the direct result exactly; `uniq`, quantiles and `count(column)`
+  are not eligible.
 
 Anything else gets "not eligible", with the first reason. Parsing uses
 `node-sql-parser`, the parser the read-only validator already uses.
 
 An eligible panel can **propose a rollup**. This adds a new remediation catalog
-action, `create_panel_rollup`, with typed parameters only. It creates:
+action, `create_panel_rollup`, with typed parameters only: the analysed plan
+(table, time column, groups, aggregates, comparisons), the target name, the
+backfill days and an optional cluster. Its prior state re-analyses the panel's
+current SQL and must equal the parameters, reads the target's column types with
+`DESCRIBE` (no query runs), and refuses a target that exists or a `sum`/`avg` of a
+`Float` column (float addition depends on order, so it could never match exactly).
+Execution re-reads that prior state and refuses on any change. The action is
+proposed only from its panel (`POST …/panels/:panelId/rollup`, which also needs
+edit access to the dashboard and read access to the table); the generic catalog
+route and the AI fix drafter refuse it. It creates:
 
 - an `AggregatingMergeTree` table `<db>.chouse_rollup_<hash>`, ordered by the group
   columns and `bucket`, with each aggregate as `AggregateFunction(...)` and a
@@ -336,12 +349,15 @@ action, `create_panel_rollup`, with typed parameters only. It creates:
 - a backfill `INSERT … SELECT` for the chosen number of days (1–30), up to the
   minute the view was created.
 
-On a cluster connection, the statements use `ON CLUSTER` and a `Replicated`
-engine, following ADR 0015. The action goes through the existing approval flow,
-with approval class 2. After it runs, verification compares the original and the
+With a cluster named, the statements use `ON CLUSTER` and a `Replicated` engine,
+following ADR 0015; the cluster must have one shard (a sharded source would leave
+each shard's rows on its own hosts). The action goes through the existing approval
+flow, with approval class 2, and runs in the maintenance window because the
+backfill can be heavy. Rollback drops the view and the table. After it runs, verification compares the original and the
 rollup panel queries over the backfilled hours, excluding the last 10 minutes. Only
 an exact match switches the panel's SQL to read the rollup (`-Merge`, re-bucketed
-by `{{interval_s}}`, at least 60 s). A mismatch stops the action as failed, leaves
+by `{{interval_s}}`, at least 60 s), as a dashboard version with source `rollup`,
+and only if the panel's SQL is still the one the action was proposed for. A mismatch stops the action as failed, leaves
 the panel unchanged, and leaves the objects for the user to drop. The rollup has
 1-minute resolution, and the panel says so.
 
@@ -350,7 +366,7 @@ the panel unchanged, and leaves the objects for the user to drop. The rollup has
 Every create, save, import, restore and template copy writes a `dashboard_versions`
 row inside the save's own transaction. The row holds the dashboard version number,
 the v2 document, who saved it, when, and the source: `ui`, `token`, `import`,
-`template`, `duplicate`, `restore` or `migration`. A dashboard keeps its last 50
+`template`, `duplicate`, `restore`, `migration` or `rollup`. A dashboard keeps its last 50
 versions; older ones are deleted in the same transaction.
 
 The UI shows the versions and a diff that separates settings, layout, panels added
@@ -446,12 +462,23 @@ There are no new permissions:
 
 MCP gets `list_dashboard_versions`, `get_dashboard_annotations` and
 `create_dashboard_snapshot` (write, off by default). The chat agent gets
-`get_dashboard_annotations`. The CLI gets:
+`get_dashboard_annotations`, through `GET …/annotations?range=&sources=`, since
+chat tools only make GET requests. The CLI gets:
 
 - `chouse dashboard versions` and `restore`;
 - `snapshot create`, `snapshot list` and `snapshot get`;
 - `import-grafana -f`, which prints the preview, and with `--apply` imports the
   convertible panels.
+
+### 16. The dashboards list
+
+A card grid with every section on one page does not scale to many dashboards. The
+list is one table (title and description, owner, connections, panels, updated) with
+tabs for All, Mine, Shared with me, Pinned and Templates, a search over title,
+description and owner, a sort (recently updated, name, most panels; pinned rows
+first), and pages of 25. The tab, search, sort and page are in the URL. Rows pin and
+unpin in place. Filtering happens in the browser over the list the server already
+returns, which is bounded by what one user may view.
 
 ## Consequences
 

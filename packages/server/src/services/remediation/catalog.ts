@@ -442,7 +442,7 @@ export const REQUIRED_GRANTS: Record<ActionType, string | null> = {
   reload_dictionary: "SYSTEM RELOAD DICTIONARY",
   refresh_view: "SYSTEM VIEWS",
   flush_distributed: "SYSTEM FLUSH DISTRIBUTED",
-  create_panel_rollup: "CREATE TABLE, CREATE VIEW, INSERT and DROP TABLE on the rollup's database; SELECT on the panel's table",
+  create_panel_rollup: "CREATE TABLE, CREATE VIEW, INSERT, DROP TABLE and DROP VIEW on the rollup's database; SELECT on the panel's table",
 };
 
 /** Action types that can only be proposed from where they apply, never from the generic catalog or by AI. */

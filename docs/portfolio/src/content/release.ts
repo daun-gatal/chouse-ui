@@ -28,15 +28,15 @@ export interface Release {
 }
 
 export const RELEASE: Release = {
-  version: "3.15",
+  version: "3.16",
   kind: "minor",
-  summary: "Build your own dashboards or draft them with AI, see what your AI costs and sends out, guard what it sees, and tune observability load.",
+  summary: "Dashboards on a free canvas that show what changed, what is normal and why it spiked — with snapshots, reports and Grafana import.",
   highlights: [
-    { label: "Dashboards", href: "/docs/dashboards/" },
-    { label: "Draft with AI", href: "/docs/ai-draft-with-ai/" },
-    { label: "AI activity", href: "/docs/ai-usage/" },
-    { label: "AI guardrails", href: "/docs/ai-guardrails/" },
-    { label: "Collection schedule", href: "/docs/connections/#collection-schedule" },
+    { label: "Dashboard canvas", href: "/docs/dashboards/#the-canvas" },
+    { label: "Explain this spike", href: "/docs/dashboards/#annotations-and-notes" },
+    { label: "Expected ranges", href: "/docs/dashboards/#compare-and-expected-ranges" },
+    { label: "Scheduled reports", href: "/docs/dashboards/#scheduled-reports" },
+    { label: "Grafana import", href: "/docs/dashboards/#import-from-grafana" },
   ],
 };
 
