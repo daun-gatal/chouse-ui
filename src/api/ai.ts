@@ -33,7 +33,8 @@ export type AiCapabilityId =
   | "explain-incident"
   | "compile-watcher"
   | "draft-table-context"
-  | "draft-dashboard";
+  | "draft-dashboard"
+  | "explain-spike";
 
 export interface InvokeOptions {
   modelId?: string;

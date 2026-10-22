@@ -451,6 +451,34 @@ export function draftDashboard(request: DraftRequest, opts?: InvokeOptions): Pro
 }
 
 // ============================================
+// Explain this spike (ADR 0023 §9)
+// ============================================
+
+export interface ExplainRequest {
+  dashboardId: string;
+  panelId: string;
+  fromMs: number;
+  toMs: number;
+  values: VariableValues;
+  /** The active connection: evidence is read there. */
+  connectionId: string;
+}
+
+export interface SpikeExplanation {
+  summary: string;
+  likelyCause: string;
+  confidence: "low" | "medium" | "high";
+  evidence: Array<{ kind: "panel" | "change" | "query" | "mutation" | "merge" | "alert" | "incident" | "other"; text: string }>;
+  nextSteps: string[];
+  /** Evidence that could not be read, and why. */
+  unavailable: Array<{ part: string; reason: string }>;
+}
+
+export function explainSpike(request: ExplainRequest, opts?: InvokeOptions): Promise<SpikeExplanation> {
+  return invokeAI<SpikeExplanation>("explain-spike", { ...request }, opts);
+}
+
+// ============================================
 // Panel alerts (ADR 0021 §7)
 // ============================================
 

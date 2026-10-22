@@ -32,7 +32,7 @@ import {
 } from "./dataOps";
 import { compileWatcherCapability, draftTableContextCapability, explainIncidentCapability } from "./observe";
 import { draftAiAgentCapability, draftAiHarnessCapability, draftAiSkillCapability } from "./authoring";
-import { draftDashboardCapability } from "./dashboards";
+import { draftDashboardCapability, explainSpikeCapability } from "./dashboards";
 import { draftGuardrailCapability } from "./guardrails";
 
 export const CAPABILITIES = {
@@ -62,6 +62,7 @@ export const CAPABILITIES = {
   "draft-ai-agent": draftAiAgentCapability,
   "draft-ai-harness": draftAiHarnessCapability,
   "draft-dashboard": draftDashboardCapability,
+  "explain-spike": explainSpikeCapability,
   "draft-guardrail": draftGuardrailCapability,
 } as const satisfies Record<string, AnyCapability>;
 

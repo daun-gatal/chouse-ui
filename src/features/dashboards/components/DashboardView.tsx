@@ -57,6 +57,7 @@ import { isAssignedTo, scopeLabel } from "../scope";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
 import { AnnotationDialog, ChartActionsDialog, NoteDialog, type ChartActionsTarget } from "./ChartActions";
+import { ExplainSpikeDialog } from "./ExplainSpikeDialog";
 import { ConnectionsDialog } from "./ConnectionsDialog";
 import { DashboardCanvas, type CanvasItem } from "./DashboardCanvas";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
@@ -132,6 +133,7 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [selected, setSelected] = useState<{ key: string; span: TimeSpan } | null>(null);
   const [marker, setMarker] = useState<AnnotationEvent | null>(null);
   const [noteAt, setNoteAt] = useState<number | null>(null);
+  const [explaining, setExplaining] = useState<{ panelId: string; panel: ChartPanelInput; span: TimeSpan } | null>(null);
 
   const data = detail.data;
   const parsed = useMemo(() => (data ? parseView(params, data.dashboard) : null), [params, data]);
@@ -528,13 +530,31 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
         <ChartActionsDialog
           target={actions}
           canNote={data.access.edit}
-          canExplain={false}
+          canExplain={canAskAi && actions.panel.id !== null && activeConnectionId !== null}
           onClose={() => { setActions(null); setSelected(null); }}
           onLink={(index) => { if (actions.kind === "datum") followLink(actions, index); }}
           onQueries={openQueries}
           onNote={(at) => { setActions(null); setSelected(null); setNoteAt(at); }}
           onZoom={zoomTo}
-          onExplain={() => undefined}
+          onExplain={(span) => {
+            const panelId = actions.panel.id;
+            setActions(null);
+            setSelected(null);
+            if (panelId !== null) setExplaining({ panelId, panel: actions.panel, span });
+          }}
+        />
+      )}
+      {explaining && activeConnectionId !== null && parsed && (
+        <ExplainSpikeDialog
+          dashboardId={id}
+          panelId={explaining.panelId}
+          panel={explaining.panel}
+          span={explaining.span}
+          values={parsed.view.values}
+          connectionId={activeConnectionId}
+          canNote={data.access.edit}
+          onNoted={() => void queryClient.invalidateQueries({ queryKey: ["dashboards", "annotations", id] })}
+          onClose={() => setExplaining(null)}
         />
       )}
       {marker && (

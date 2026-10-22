@@ -253,6 +253,8 @@ export const SEED_AGENTS: SeedAgent[] = [
   // --- Dashboards (ADR 0021) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-dashboard-drafter", "dashboard-drafter", "Dashboard Drafter", "Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).", "draft-dashboard",
     { stepBudget: 8, maxOutputTokens: 8000 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "validate_sql"]),
+  evidenceAgent("builtin-agent-spike-explainer", "spike-explainer", "Spike Explainer", "Explains what most likely caused a spike on a dashboard panel, from evidence gathered as the viewer (Dashboards › Explain this spike).", "explain-spike",
+    { stepBudget: 3, maxOutputTokens: 3000 }),
   // --- Guardrails (ADR 0022) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-guardrail-drafter", "guardrail-drafter", "Guardrail Drafter", "Turns a goal into a guardrail draft for review (AI Governance › Guardrails).", "draft-guardrail",
     { stepBudget: 3, maxOutputTokens: 3000 }),
@@ -369,5 +371,6 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-ai-agent": "agent-author",
   "draft-ai-harness": "harness-author",
   "draft-dashboard": "dashboard-drafter",
+  "explain-spike": "spike-explainer",
   "draft-guardrail": "guardrail-drafter",
 };
