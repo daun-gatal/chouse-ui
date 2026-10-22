@@ -60,6 +60,7 @@ import {
   type DashboardInput,
   type Layout,
 } from "../services/dashboards/spec";
+import { convertGrafana } from "../services/dashboards/grafana";
 import { reportRangeSchema, reportScheduleSchema } from "../services/dashboards/reportDigest";
 import * as reports from "../services/dashboards/reports";
 import * as snapshots from "../services/dashboards/snapshots";
@@ -322,6 +323,21 @@ dashboards.post("/import", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async
   const id = await store.createDashboard(input, viewerOf(c).id, saveContext(c, "import"));
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_IMPORT, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { title: input.title, panels: input.panels.length, format: parsed.format } });
   return ok(c, await detailResponse(c, id), 201);
+});
+
+const grafanaImportSchema = z.object({ grafana: z.unknown(), connectionScope: connectionScopeSchema }).strict();
+
+/**
+ * A Grafana dashboard converted for review (ADR 0023 §14). Nothing is saved:
+ * the user imports the returned document through POST /import.
+ */
+dashboards.post("/import/grafana", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), async (c) => {
+  const body = grafanaImportSchema.safeParse(await jsonBody(c));
+  if (!body.success) throw AppError.badRequest(`${body.error.issues[0]?.path.join(".") || "body"}: ${body.error.issues[0]?.message ?? "invalid"}`);
+  await assertScope(c, body.data.connectionScope, null);
+  const result = convertGrafana(body.data.grafana, body.data.connectionScope);
+  if (!result.ok) throw AppError.badRequest(result.error);
+  return ok(c, result.preview);
 });
 
 /** A template copy is assigned to the connections its maker picks. */

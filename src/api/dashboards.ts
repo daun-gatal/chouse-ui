@@ -467,6 +467,25 @@ export function deleteSnapshot(id: string, snapshotId: string): Promise<{ delete
 }
 
 // ============================================
+// Grafana import (ADR 0023 §14)
+// ============================================
+
+export type GrafanaStatus = "ready" | "changed" | "skipped";
+
+export interface GrafanaPreview {
+  /** The convertible panels and variables, ready for importDashboard. */
+  dashboard: DashboardInput;
+  panels: Array<{ title: string; grafanaType: string; status: GrafanaStatus; changes: string[]; reason: string | null }>;
+  variables: Array<{ name: string; status: GrafanaStatus; changes: string[]; reason: string | null }>;
+  notes: string[];
+}
+
+/** Convert a Grafana dashboard JSON for review; nothing is saved. */
+export function previewGrafana(grafana: unknown, connectionScope: ConnectionScope): Promise<GrafanaPreview> {
+  return api.post<GrafanaPreview>(`${base}/import/grafana`, { grafana, connectionScope });
+}
+
+// ============================================
 // Scheduled reports (ADR 0023 §13)
 // ============================================
 

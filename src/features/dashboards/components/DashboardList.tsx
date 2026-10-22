@@ -36,6 +36,7 @@ import { LIST_SORTS, LIST_TABS, PAGE_SIZE, listPage, parseListParams, tabCounts,
 import { isAssignedTo, scopeLabel } from "../scope";
 import { ConnectionsField, scopeProblem } from "./ConnectionsField";
 import { AskAiDialog } from "./AskAiDialog";
+import { GrafanaImportDialog, isGrafanaDashboard } from "./GrafanaImportDialog";
 
 const TAB_LABELS: Record<ListTab, string> = { all: "All", mine: "Mine", shared: "Shared with me", pinned: "Pinned", templates: "Templates" };
 const SORT_LABELS: Record<ListSort, string> = { updated: "Recently updated", title: "Name", panels: "Most panels" };
@@ -162,11 +163,14 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
 /** Export formats import takes: format 2, and format 1 from before CHouse 3.16 (the server converts it). */
 export const EXPORT_FORMATS = ["chouse.dashboard/v2", "chouse.dashboard/v1"] as const;
 
+export type ImportFile = { kind: "chouse"; body: Record<string, unknown> } | { kind: "grafana"; json: unknown };
+
 /**
- * Read an exported dashboard file; a file that is not one says why. The
- * server checks the rest and converts a format 1 export.
+ * Read a file to import: a CHouse export, or a Grafana dashboard (reviewed
+ * before importing). A file that is neither says why. The server checks the
+ * rest and converts a format 1 export.
  */
-export async function readExport(file: File): Promise<Record<string, unknown>> {
+export async function readImport(file: File): Promise<ImportFile> {
   const text = await file.text();
   let parsed: unknown;
   try {
@@ -174,12 +178,13 @@ export async function readExport(file: File): Promise<Record<string, unknown>> {
   } catch {
     throw new Error(`${file.name} is not JSON`);
   }
+  if (isGrafanaDashboard(parsed)) return { kind: "grafana", json: parsed };
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${file.name} is not a CHouse dashboard export`);
-  const format = (parsed as { format?: unknown }).format;
+  const format = "format" in parsed ? parsed.format : undefined;
   if (typeof format !== "string" || !(EXPORT_FORMATS as readonly string[]).includes(format)) {
-    throw new Error(`${file.name} is not a CHouse dashboard export (format ${EXPORT_FORMATS.join(" or ")})`);
+    throw new Error(`${file.name} is not a CHouse dashboard export (format ${EXPORT_FORMATS.join(" or ")}) or a Grafana dashboard`);
   }
-  return parsed as Record<string, unknown>;
+  return { kind: "chouse", body: { ...parsed } };
 }
 
 export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React.ReactElement {
@@ -190,13 +195,18 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
   const templates = useQuery({ queryKey: dashboardKeys.templates(), queryFn: listTemplates });
   const [creating, setCreating] = useState<{ template: DashboardTemplate | null } | null>(null);
   const [askAi, setAskAi] = useState(false);
+  const [grafana, setGrafana] = useState<{ file: string; json: unknown } | null>(null);
   const canAskAi = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onImport = async (file: File): Promise<void> => {
     try {
-      const body = await readExport(file);
-      const created = await importDashboard(body);
+      const read = await readImport(file);
+      if (read.kind === "grafana") {
+        setGrafana({ file: file.name, json: read.json });
+        return;
+      }
+      const created = await importDashboard(read.body);
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       toast.success(`Imported ${created.dashboard.title}`);
       navigate(`/dashboards/${created.dashboard.id}`);
@@ -252,7 +262,7 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
           type="file"
           accept="application/json,.json"
           className="hidden"
-          aria-label="Import a dashboard file"
+          aria-label="Import a dashboard file (CHouse export or Grafana JSON)"
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
@@ -341,6 +351,7 @@ export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React
         )}
       </div>
       {askAi && <AskAiDialog open onOpenChange={setAskAi} existing={null} />}
+      {grafana && <GrafanaImportDialog file={grafana.file} json={grafana.json} onClose={() => setGrafana(null)} />}
       {creating && <NewDashboardDialog open onOpenChange={(open) => { if (!open) setCreating(null); }} template={creating.template} />}
     </div>
   );

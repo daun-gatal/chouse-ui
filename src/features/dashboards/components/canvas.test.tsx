@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { CanvasItem } from "./DashboardCanvas";
 import { DashboardCanvas, readingOrder } from "./DashboardCanvas";
-import { readExport } from "./DashboardList";
+import { readImport } from "./DashboardList";
 import { HeadingPanelCard, TextPanelCard } from "./PanelCard";
 
 afterEach(() => cleanup());
@@ -62,18 +62,24 @@ describe("DashboardCanvas", () => {
   });
 });
 
-describe("readExport", () => {
-  // jsdom's File has no text(); readExport only needs the name and the text.
+describe("readImport", () => {
+  // jsdom's File has no text(); readImport only needs the name and the text.
   const file = (body: unknown): File => ({ name: "board.json", text: async () => (typeof body === "string" ? body : JSON.stringify(body)) }) as unknown as File;
 
   it("takes format 2 and format 1 exports as they are", async () => {
-    expect(await readExport(file({ format: "chouse.dashboard/v2", id: null, dashboard: {} }))).toEqual({ format: "chouse.dashboard/v2", id: null, dashboard: {} });
-    expect(await readExport(file({ format: "chouse.dashboard/v1", id: "x", dashboard: {} }))).toEqual({ format: "chouse.dashboard/v1", id: "x", dashboard: {} });
+    expect(await readImport(file({ format: "chouse.dashboard/v2", id: null, dashboard: {} }))).toEqual({ kind: "chouse", body: { format: "chouse.dashboard/v2", id: null, dashboard: {} } });
+    expect(await readImport(file({ format: "chouse.dashboard/v1", id: "x", dashboard: {} }))).toEqual({ kind: "chouse", body: { format: "chouse.dashboard/v1", id: "x", dashboard: {} } });
+  });
+
+  it("recognises a Grafana dashboard, bare or wrapped by the HTTP API", async () => {
+    const grafana = { schemaVersion: 39, title: "G", panels: [] };
+    expect(await readImport(file(grafana))).toEqual({ kind: "grafana", json: grafana });
+    expect((await readImport(file({ dashboard: grafana, meta: {} }))).kind).toBe("grafana");
   });
 
   it("says why a file is not an export", async () => {
-    await expect(readExport(file("nope"))).rejects.toThrow("board.json is not JSON");
-    await expect(readExport(file([1]))).rejects.toThrow("board.json is not a CHouse dashboard export");
-    await expect(readExport(file({ format: "grafana" }))).rejects.toThrow("board.json is not a CHouse dashboard export (format chouse.dashboard/v2 or chouse.dashboard/v1)");
+    await expect(readImport(file("nope"))).rejects.toThrow("board.json is not JSON");
+    await expect(readImport(file([1]))).rejects.toThrow("board.json is not a CHouse dashboard export");
+    await expect(readImport(file({ format: "grafana" }))).rejects.toThrow("board.json is not a CHouse dashboard export (format chouse.dashboard/v2 or chouse.dashboard/v1) or a Grafana dashboard");
   });
 });

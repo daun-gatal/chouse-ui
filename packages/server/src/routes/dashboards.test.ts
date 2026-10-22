@@ -1009,6 +1009,38 @@ describe("snapshots", () => {
   });
 });
 
+describe("Grafana import", () => {
+  const GRAFANA = {
+    schemaVersion: 39,
+    title: "From Grafana",
+    time: { from: "now-6h", to: "now" },
+    templating: { list: [] },
+    panels: [
+      { type: "timeseries", title: "Orders", datasource: { type: "grafana-clickhouse-datasource", uid: "x" }, gridPos: { x: 0, y: 0, w: 12, h: 8 }, targets: [{ rawSql: "SELECT $__timeInterval(ts) AS t, count() AS v FROM shop.orders WHERE $__timeFilter(ts) GROUP BY t ORDER BY t" }] },
+      { type: "graph", title: "Old", datasource: "Prometheus", gridPos: { x: 12, y: 0, w: 12, h: 8 }, targets: [{ expr: "up" }] },
+    ],
+  };
+
+  it("previews without saving, and the preview imports through the normal import", async () => {
+    const before = (await rawAll(sql`SELECT COUNT(*) AS c FROM dashboards`))[0].c;
+    const res = await call("owner", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
+    expect(res.status).toBe(200);
+    expect(res.json.data.panels.map((p: { status: string }) => p.status)).toEqual(["changed", "skipped"]);
+    expect((await rawAll(sql`SELECT COUNT(*) AS c FROM dashboards`))[0].c).toBe(before);
+    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v2", id: null, dashboard: res.json.data.dashboard });
+    expect(imported.status).toBe(201);
+    expect(imported.json.data.panels[0]).toMatchObject({ kind: "chart", title: "Orders" });
+    const run = await call("owner", "POST", `/dashboards/${imported.json.data.dashboard.id}/panels/${imported.json.data.panels[0].id}/run`, { range: RANGE, values: {} });
+    expect(run.status).toBe(200);
+  });
+
+  it("refuses an old schema, connections the caller cannot use, and callers who cannot edit", async () => {
+    expect((await call("owner", "POST", "/dashboards/import/grafana", { grafana: { ...GRAFANA, schemaVersion: 16 }, connectionScope: { kind: "any" } })).json.error.message).toContain("schema 30 or later");
+    expect((await call("owner", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "only", connectionIds: ["conn-3"] } })).status).toBe(400);
+    expect((await call("viewOnly", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "any" } })).status).toBe(403);
+  });
+});
+
 describe("scheduled reports", () => {
   const BASE = "https://chouse.example";
   const schedule = { kind: "daily", dayOfWeek: null, hour: 9, minute: 0, timezone: "UTC" };

@@ -56,6 +56,7 @@ describe("dashboards API", () => {
     await dashboards.updateReport("d1", "r1", report);
     await dashboards.deleteReport("d1", "r1");
     await dashboards.sendReport("d1", "r/1");
+    await dashboards.previewGrafana({ panels: [] }, { kind: "any" });
     expect(seen).toEqual([
       "GET /api/dashboards",
       "GET /api/dashboards/d%2F1",
@@ -92,6 +93,7 @@ describe("dashboards API", () => {
       "PUT /api/dashboards/d1/reports/r1",
       "DELETE /api/dashboards/d1/reports/r1",
       "POST /api/dashboards/d1/reports/r%2F1/send",
+      "POST /api/dashboards/import/grafana",
     ]);
     expect(bodies[26]).toEqual({ name: "S", from: 1, to: 2, values: {}, roleIds: [], expiresInDays: 7, incidentId: null });
     expect(bodies[3]).toEqual({ version: 3, dashboard: input });
