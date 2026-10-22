@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 2.0.3](https://img.shields.io/badge/Version-2.0.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.15.0](https://img.shields.io/badge/AppVersion-3.15.0-informational?style=flat-square)
+![Version: 2.0.4](https://img.shields.io/badge/Version-2.0.4-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.15.0](https://img.shields.io/badge/AppVersion-3.15.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -203,7 +203,7 @@ Kubernetes: `>=1.25.0-0`
 | database.sqlite.persistence.size | string | `"1Gi"` | PVC size. |
 | database.sqlite.persistence.storageClass | string | `""` | StorageClass. Empty string uses the cluster default. |
 | database.type | string | `"sqlite"` | RBAC database backend: `sqlite` (single replica + PVC) or `postgres` (external PostgreSQL; required for HA / more than one replica). |
-| dedicatedScheduler.enabled | bool | `false` | Run the scheduled-queries scheduler and the dashboard panel alert evaluator on a dedicated single-replica Deployment instead of the web pods. Requires `database.type: postgres`. |
+| dedicatedScheduler.enabled | bool | `false` | Run the scheduled-queries scheduler, the dashboard panel alert evaluator and the scheduled-report sender on a dedicated single-replica Deployment instead of the web pods. Requires `database.type: postgres`. |
 | dedicatedScheduler.resources | object | `{}` | Resources for the scheduler pod. |
 | extraEnv | list | `[]` | Extra environment variables for the web pods (list of EnvVar). Useful for referencing SSO client secrets from Secrets via `valueFrom`. |
 | extraEnvFrom | list | `[]` | Extra `envFrom` sources (ConfigMap/Secret refs) for the web pods. |
@@ -259,14 +259,14 @@ Kubernetes: `>=1.25.0-0`
 | probes.liveness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"periodSeconds":20,"timeoutSeconds":5}` | Liveness probe — dependency-free endpoint. |
 | probes.readiness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/rbac/health","port":"http"},"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe — 503 until the RBAC database is healthy and migrations have applied. |
 | probes.startup | object | `{"failureThreshold":60,"httpGet":{"path":"/api/rbac/health","port":"http"},"periodSeconds":5,"timeoutSeconds":5}` | Startup probe — generous budget (5 min) so long upgrade migrations don't get the pod killed. |
-| publicBaseUrl | string | `""` | External URL of CHouse UI (`PUBLIC_BASE_URL`), used in Slack messages to link back to incidents and fixes. Empty: links are omitted. |
+| publicBaseUrl | string | `""` | External URL of CHouse UI (`PUBLIC_BASE_URL`), e.g. `https://chouse.example.com`. Slack messages use it to link back to incidents and fixes (empty: those links are omitted). Scheduled dashboard reports require it: each report links to the dashboard at the reported range, so reports cannot be saved while it is empty. |
 | remediation.maintenanceWindow | string | `""` | UTC window `HH:MM-HH:MM` for window-only fixes such as codec or TTL changes (`REMEDIATION_MAINTENANCE_WINDOW`, app default `02:00-04:00`). |
 | remediation.slackChannel | string | `""` | Slack channel id that receives approval requests (`REMEDIATION_SLACK_CHANNEL`). Needs `slack.*`. |
 | replicaCount | int | `1` | Number of web pods. Must be 1 when `database.type` is `sqlite` (the chart refuses to render otherwise). When >1, the chart sets `CHOUSE_HA=true` on the pods automatically. |
 | resources.limits.memory | string | `"1Gi"` |  |
 | resources.requests.cpu | string | `"250m"` |  |
 | resources.requests.memory | string | `"256Mi"` |  |
-| scheduledQueries.enabled | bool | `true` | Run the in-process scheduled-queries scheduler, and the dashboard panel alert evaluator that runs with it, on the web pods. Redundant ticks across pods are harmless (per-job and per-alert atomic leases on PostgreSQL). Ignored (forced off on web pods) when `dedicatedScheduler.enabled` is true. |
+| scheduledQueries.enabled | bool | `true` | Run the in-process scheduled-queries scheduler, and the dashboard panel alert evaluator and scheduled-report sender that run with it, on the web pods. Redundant ticks across pods are harmless (per-job, per-alert and per-report atomic leases on PostgreSQL). Ignored (forced off on web pods) when `dedicatedScheduler.enabled` is true. |
 | secrets.encryptionKey | string | `""` | AES-256 key for stored connection passwords, 64 hex chars. Generate: `openssl rand -hex 32`. |
 | secrets.encryptionSalt | string | `""` | Key-derivation salt, exactly 64 hex chars. Generate: `openssl rand -hex 32`. |
 | secrets.existingSecret | string | `""` | Name of an existing Secret with keys `JWT_SECRET`, `RBAC_ENCRYPTION_KEY`, and `RBAC_ENCRYPTION_SALT` (recommended). When empty, the three inline values below are required and rendered into a chart-managed Secret. The chart never auto-generates these: the encryption key/salt protect stored ClickHouse passwords, and a regenerated key makes them unrecoverable. |
