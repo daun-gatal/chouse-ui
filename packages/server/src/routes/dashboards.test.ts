@@ -35,6 +35,16 @@ mock.module("../services/scheduledQueries/chClient", () => ({
   }),
 }));
 
+const delivered: Array<{ title: string; text: string }> = [];
+let deliveryError: string | null = null;
+mock.module("../services/alerting/deliver", () => ({
+  sendChannelMessage: async (_type: string, _config: unknown, message: { title: string; text: string }) => {
+    if (deliveryError) throw new Error(deliveryError);
+    delivered.push(message);
+  },
+  sendChannelTest: async () => undefined,
+}));
+
 const { Hono: HonoApp } = await import("hono");
 const { closeDatabase } = await import("../rbac/db");
 const { runMigrations } = await import("../rbac/db/migrations");
@@ -996,5 +1006,105 @@ describe("snapshots", () => {
     await call("owner", "POST", `/dashboards/${id}/snapshots`, body());
     expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
     expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${id}`)).toEqual([]);
+  });
+});
+
+describe("scheduled reports", () => {
+  const BASE = "https://chouse.example";
+  const schedule = { kind: "daily", dayOfWeek: null, hour: 9, minute: 0, timezone: "UTC" };
+  let channel = "";
+  const reportBody = (overrides: Record<string, unknown> = {}) => ({ name: "Daily shop", connectionId: "conn-1", schedule, range: "24h", onlyIfAlert: false, enabled: true, channelIds: [channel], ...overrides });
+
+  beforeAll(async () => {
+    channel = await createChannel({ name: "reports", type: ChannelType.Webhook, config: { url: "https://hooks.test/r" }, enabled: true });
+  });
+  beforeEach(() => {
+    process.env.PUBLIC_BASE_URL = `${BASE}/`;
+    delivered.length = 0;
+    deliveryError = null;
+  });
+  afterAll(() => {
+    delete process.env.PUBLIC_BASE_URL;
+  });
+
+  it("refuses a report without PUBLIC_BASE_URL, with an unknown channel, or on a connection outside the dashboard", async () => {
+    const created = await create("owner", { connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
+    const id = created.dashboard.id;
+    delete process.env.PUBLIC_BASE_URL;
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody())).json.error.message).toBe("Reports link back to the dashboard, which needs PUBLIC_BASE_URL set on the server");
+    process.env.PUBLIC_BASE_URL = BASE;
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ channelIds: ["nope"] }))).json.error.message).toBe("Unknown notification channel: nope");
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ connectionId: "conn-2" }))).json.error.message).toContain("not assigned to the connection");
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ schedule: { ...schedule, kind: "weekly" } }))).status).toBe(400);
+    // Reports need alerting:edit and edit access to the dashboard.
+    expect((await call("peer", "POST", `/dashboards/${id}/reports`, reportBody())).status).toBe(403);
+  });
+
+  it("schedules, sends a digest with a link to the range as its owner, and records the run", async () => {
+    const created = await create("owner", { panels: [panel(), panel({ title: "Broken", sql: "SELECT 1 AS t, 2 AS v FROM shop.missing" })] });
+    const id = created.dashboard.id;
+    respond = (_conn, query) => (query.includes("shop.missing") ? new Error("Table shop.missing does not exist") : ROWS);
+    const made = await call("owner", "POST", `/dashboards/${id}/reports`, reportBody());
+    expect(made.status).toBe(201);
+    const report = made.json.data;
+    expect(report).toMatchObject({ ownerId: "u-owner", channelIds: [channel], lastStatus: null });
+    expect(new Date(report.nextRunAt).toISOString()).toMatch(/T09:00:00\.000Z$/);
+    expect((await call("owner", "GET", `/dashboards/${id}/reports`)).json.data).toMatchObject({ reports: [{ id: report.id }], publicBaseUrl: true });
+
+    const sentNow = await call("owner", "POST", `/dashboards/${id}/reports/${report.id}/send`);
+    expect(sentNow.json.data.status).toBe("sent");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].title).toBe("📊 Daily shop");
+    expect(delivered[0].text).toContain("*Orders*\n  v: min 5 · avg 6 · max 7 · last 7");
+    expect(delivered[0].text).toContain("*Broken* — error:");
+    expect(delivered[0].text).toMatch(new RegExp(`Open: ${BASE}/dashboards/${id}\\?from=\\d+&to=\\d+$`));
+    const [from, to] = /from=(\d+)&to=(\d+)/.exec(delivered[0].text)?.slice(1).map(Number) ?? [];
+    expect(to - from).toBe(86_400);
+    const after = (await call("owner", "GET", `/dashboards/${id}/reports`)).json.data.reports[0];
+    expect(after).toMatchObject({ lastStatus: "sent", lastError: null, nextRunAt: report.nextRunAt });
+    const events = await rawAll(sql`SELECT payload, delivered_to FROM alert_events WHERE rule_id = ${report.id}`);
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(String(events[0].payload))).toMatchObject({ source: "dashboard_report", status: "sent", dashboardId: id });
+  });
+
+  it("runs due reports from the scheduler once, skips one with no alert when asked, and fails without sending when the owner may no longer see the dashboard", async () => {
+    const { DashboardReportScheduler } = await import("../services/dashboards/reports");
+    const created = await create();
+    const id = created.dashboard.id;
+    const quiet = (await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ name: "Only on alerts", onlyIfAlert: true }))).json.data;
+    const shared = await create("owner");
+    await call("owner", "PUT", `/dashboards/${shared.dashboard.id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
+    const theirs = (await call("peer", "POST", `/dashboards/${shared.dashboard.id}/reports`, reportBody({ name: "Peer report" })));
+    // peer has no alerting:edit.
+    expect(theirs.status).toBe(403);
+    const lost = (await call("manager", "POST", `/dashboards/${shared.dashboard.id}/reports`, reportBody({ name: "Manager report" }))).json.data;
+    // Its owner becomes someone the dashboard is not shared with, as when a share is withdrawn.
+    await rawRun(sql`UPDATE dashboard_reports SET owner_id = 'u-out' WHERE id = ${lost.id}`);
+    await rawRun(sql`UPDATE dashboard_reports SET next_run_at = 1 WHERE id IN (${quiet.id}, ${lost.id})`);
+    await DashboardReportScheduler.getInstance().tick(Date.now());
+    const reportsNow = [
+      ...(await call("owner", "GET", `/dashboards/${id}/reports`)).json.data.reports,
+      ...(await call("owner", "GET", `/dashboards/${shared.dashboard.id}/reports`)).json.data.reports,
+    ];
+    const byName = new Map(reportsNow.map((r: { name: string }) => [r.name, r]));
+    expect(byName.get("Only on alerts")).toMatchObject({ lastStatus: "skipped", lastError: "No panel alert fired in the range" });
+    expect(byName.get("Manager report")).toMatchObject({ lastStatus: "failed", lastError: "The report's owner can no longer view this dashboard" });
+    for (const r of reportsNow) expect((r as { nextRunAt: number }).nextRunAt).toBeGreaterThan(Date.now());
+    expect(delivered).toEqual([]);
+    // Nothing is due any more: a second tick sends nothing.
+    await DashboardReportScheduler.getInstance().tick(Date.now());
+    expect(await rawAll(sql`SELECT 1 FROM alert_events WHERE rule_id IN (${quiet.id}, ${lost.id})`)).toHaveLength(2);
+  });
+
+  it("records a failed delivery, and goes with its dashboard", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const report = (await call("owner", "POST", `/dashboards/${id}/reports`, reportBody())).json.data;
+    deliveryError = "webhook returned 500";
+    const res = await call("owner", "POST", `/dashboards/${id}/reports/${report.id}/send`);
+    expect(res.json.data).toMatchObject({ status: "failed", error: "reports: webhook returned 500" });
+    expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_reports WHERE dashboard_id = ${id}`)).toEqual([]);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_report_channels WHERE report_id = ${report.id}`)).toEqual([]);
   });
 });

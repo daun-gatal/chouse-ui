@@ -26,6 +26,7 @@ import {
 } from "../services/alerting/types";
 import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
+import { countReportsUsingChannel } from "../services/dashboards/reports";
 import { sendChannelTest } from "../services/alerting/deliver";
 
 const alerting = new Hono();
@@ -175,10 +176,12 @@ alerting.delete("/channels/:id", requirePermission(PERMISSIONS.ALERTING_DELETE),
   if (!existing) return c.json({ success: false, error: "Channel not found" }, 404);
   const usage = await store.countRulesUsingChannel(id);
   const panelAlerts = await countAlertsUsingChannel(id);
-  if (usage > 0 || panelAlerts > 0) {
+  const dashboardReports = await countReportsUsingChannel(id);
+  if (usage > 0 || panelAlerts > 0 || dashboardReports > 0) {
     const parts = [
       ...(usage > 0 ? [`${usage} rule${usage === 1 ? "" : "s"}`] : []),
       ...(panelAlerts > 0 ? [`${panelAlerts} dashboard panel alert${panelAlerts === 1 ? "" : "s"}`] : []),
+      ...(dashboardReports > 0 ? [`${dashboardReports} dashboard report${dashboardReports === 1 ? "" : "s"}`] : []),
     ];
     return c.json(
       { success: false, error: `Channel is used by ${parts.join(" and ")}; detach it first.` },

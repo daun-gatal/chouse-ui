@@ -467,6 +467,76 @@ export function deleteSnapshot(id: string, snapshotId: string): Promise<{ delete
 }
 
 // ============================================
+// Scheduled reports (ADR 0023 §13)
+// ============================================
+
+export interface ReportSchedule {
+  kind: "daily" | "weekly";
+  /** 0 = Sunday … 6 = Saturday; weekly only. */
+  dayOfWeek: number | null;
+  hour: number;
+  minute: number;
+  /** IANA zone the hour and minute are in. */
+  timezone: string;
+}
+
+export interface ReportInput {
+  name: string;
+  connectionId: string;
+  schedule: ReportSchedule;
+  range: RelativeRange;
+  onlyIfAlert: boolean;
+  enabled: boolean;
+  channelIds: string[];
+}
+
+export type ReportStatus = "sent" | "skipped" | "failed";
+
+export interface Report extends ReportInput {
+  id: string;
+  dashboardId: string;
+  ownerId: string;
+  ownerName: string | null;
+  nextRunAt: number;
+  lastRunAt: number | null;
+  lastStatus: ReportStatus | null;
+  lastError: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ReportRun {
+  status: ReportStatus;
+  error: string | null;
+  title: string | null;
+  text: string | null;
+  deliveredTo: string[];
+  failed: Array<{ channelId: string; error: string }>;
+}
+
+/** The reports, and whether the server can send any (reports need PUBLIC_BASE_URL). */
+export function listReports(id: string): Promise<{ reports: Report[]; publicBaseUrl: boolean }> {
+  return api.get<{ reports: Report[]; publicBaseUrl: boolean }>(`${base}/${enc(id)}/reports`);
+}
+
+export function createReport(id: string, input: ReportInput): Promise<Report> {
+  return api.post<Report>(`${base}/${enc(id)}/reports`, input);
+}
+
+export function updateReport(id: string, reportId: string, input: ReportInput): Promise<Report> {
+  return api.put<Report>(`${base}/${enc(id)}/reports/${enc(reportId)}`, input);
+}
+
+export function deleteReport(id: string, reportId: string): Promise<{ deleted: string }> {
+  return api.delete<{ deleted: string }>(`${base}/${enc(id)}/reports/${enc(reportId)}`);
+}
+
+/** Send a report now to its channels; its schedule is unchanged. */
+export function sendReport(id: string, reportId: string): Promise<ReportRun> {
+  return api.post<ReportRun>(`${base}/${enc(id)}/reports/${enc(reportId)}/send`);
+}
+
+// ============================================
 // Draft with AI (ADR 0021 §10, ADR 0023 §4)
 // ============================================
 

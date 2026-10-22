@@ -60,6 +60,8 @@ import {
   type DashboardInput,
   type Layout,
 } from "../services/dashboards/spec";
+import { reportRangeSchema, reportScheduleSchema } from "../services/dashboards/reportDigest";
+import * as reports from "../services/dashboards/reports";
 import * as snapshots from "../services/dashboards/snapshots";
 import * as store from "../services/dashboards/store";
 import { findTemplate, TEMPLATES } from "../services/dashboards/templates";
@@ -827,6 +829,84 @@ dashboards.post("/:id/alerts/:alertId/check", requirePermission(PERMISSIONS.ALER
   await editableForAlerts(c, id);
   const alert = await alertOf(c, id);
   const { outcome } = await evaluate(alert, Date.now());
+  return ok(c, outcome);
+});
+
+// ============================================
+// Scheduled reports (ADR 0023 §13)
+// ============================================
+
+const reportInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  connectionId: z.string().min(1),
+  schedule: reportScheduleSchema,
+  range: reportRangeSchema,
+  onlyIfAlert: z.boolean(),
+  enabled: z.boolean(),
+  channelIds: z.array(z.string().min(1)).min(1).max(20),
+}).strict();
+
+/** Refuse a report that could never send, before it is saved. */
+async function assertReportValid(c: Context, detail: store.DashboardDetail, input: reports.ReportInput): Promise<void> {
+  if (!reports.publicBaseUrl()) throw AppError.badRequest("Reports link back to the dashboard, which needs PUBLIC_BASE_URL set on the server");
+  await assertInScope(c, detail.dashboard.connectionScope, input.connectionId);
+  await viewerConnection(viewerOf(c), input.connectionId);
+  if (!has(viewerOf(c), PERMISSIONS.QUERY_EXECUTE)) throw AppError.forbidden("A report runs the dashboard's panels as you, which needs query:execute");
+  if (new Set(input.channelIds).size !== input.channelIds.length) throw AppError.badRequest("A channel is listed twice");
+  for (const channelId of input.channelIds) {
+    if (!(await getChannel(channelId))) throw AppError.badRequest(`Unknown notification channel: ${channelId}`);
+  }
+}
+
+async function reportOf(c: Context, dashboardId: string): Promise<reports.Report> {
+  const report = await reports.getReport(dashboardId, requireParam(c, "reportId"));
+  if (!report) throw AppError.notFound("Report not found");
+  return report;
+}
+
+dashboards.get("/:id/reports", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const id = requireParam(c, "id");
+  await visible(c, id);
+  return ok(c, { reports: await reports.listReports(id), publicBaseUrl: reports.publicBaseUrl() !== null });
+});
+
+dashboards.post("/:id/reports", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", reportInputSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const detail = await editableForAlerts(c, id);
+  const input = c.req.valid("json");
+  await assertReportValid(c, detail, input);
+  const report = await reports.createReport(id, viewerOf(c).id, input);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_REPORT_CREATE, viewerOf(c).id, { resourceType: "dashboard_report", resourceId: report.id, details: { dashboardId: id, name: input.name, channels: input.channelIds.length } });
+  return ok(c, report, 201);
+});
+
+dashboards.put("/:id/reports/:reportId", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", reportInputSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const detail = await editableForAlerts(c, id);
+  const report = await reportOf(c, id);
+  const input = c.req.valid("json");
+  await assertReportValid(c, detail, input);
+  const updated = await reports.updateReport(id, report.id, viewerOf(c).id, input);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_REPORT_UPDATE, viewerOf(c).id, { resourceType: "dashboard_report", resourceId: report.id, details: { dashboardId: id, name: input.name, enabled: input.enabled } });
+  return ok(c, updated);
+});
+
+dashboards.delete("/:id/reports/:reportId", requirePermission(PERMISSIONS.ALERTING_DELETE), async (c) => {
+  const id = requireParam(c, "id");
+  await editableForAlerts(c, id);
+  const report = await reportOf(c, id);
+  await reports.deleteReport(report.id);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_REPORT_DELETE, viewerOf(c).id, { resourceType: "dashboard_report", resourceId: report.id, details: { dashboardId: id, name: report.name } });
+  return ok(c, { deleted: report.id });
+});
+
+/** Send a report now, as its owner, to its channels. The schedule is left as it is. */
+dashboards.post("/:id/reports/:reportId/send", requirePermission(PERMISSIONS.ALERTING_EDIT), async (c) => {
+  const id = requireParam(c, "id");
+  await editableForAlerts(c, id);
+  const report = await reportOf(c, id);
+  const outcome = await reports.runReport(report, Date.now(), false);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_REPORT_SEND, viewerOf(c).id, { resourceType: "dashboard_report", resourceId: report.id, details: { dashboardId: id, status: outcome.status } });
   return ok(c, outcome);
 });
 

@@ -50,6 +50,12 @@ describe("dashboards API", () => {
     await dashboards.listSnapshots("d1");
     await dashboards.getSnapshot("d1", "s/1");
     await dashboards.deleteSnapshot("d1", "s1");
+    const report = { name: "R", connectionId: "c1", schedule: { kind: "daily" as const, dayOfWeek: null, hour: 9, minute: 0, timezone: "UTC" }, range: "24h" as const, onlyIfAlert: false, enabled: true, channelIds: ["ch1"] };
+    await dashboards.listReports("d1");
+    await dashboards.createReport("d1", report);
+    await dashboards.updateReport("d1", "r1", report);
+    await dashboards.deleteReport("d1", "r1");
+    await dashboards.sendReport("d1", "r/1");
     expect(seen).toEqual([
       "GET /api/dashboards",
       "GET /api/dashboards/d%2F1",
@@ -81,6 +87,11 @@ describe("dashboards API", () => {
       "GET /api/dashboards/d1/snapshots",
       "GET /api/dashboards/d1/snapshots/s%2F1",
       "DELETE /api/dashboards/d1/snapshots/s1",
+      "GET /api/dashboards/d1/reports",
+      "POST /api/dashboards/d1/reports",
+      "PUT /api/dashboards/d1/reports/r1",
+      "DELETE /api/dashboards/d1/reports/r1",
+      "POST /api/dashboards/d1/reports/r%2F1/send",
     ]);
     expect(bodies[26]).toEqual({ name: "S", from: 1, to: 2, values: {}, roleIds: [], expiresInDays: 7, incidentId: null });
     expect(bodies[3]).toEqual({ version: 3, dashboard: input });
