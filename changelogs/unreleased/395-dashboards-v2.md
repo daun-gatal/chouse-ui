@@ -18,3 +18,4 @@ type: minor
 
 ### Fixed
 - **MCP `run_dashboard_panel`** — accepts a list for a multi-value variable, as its schema documents
+- **MCP SDK** — updated `@modelcontextprotocol/sdk` to 1.32.0 for two high-severity advisories (GHSA-22jm-h49p-29qw, GHSA-46jr-4wx8-v453)
