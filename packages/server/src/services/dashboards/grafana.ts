@@ -25,6 +25,7 @@ import {
   MAX_Y_COLUMNS,
   REFRESH_SECONDS,
   RELATIVE_RANGES,
+  RELATIVE_RANGE_KEYS,
   VARIABLE_NAME_RE,
   dashboardInputSchema,
   overlaps,
@@ -286,6 +287,8 @@ export function convertSql(sql: string, variables: Map<string, Variable>): SqlRe
  */
 export function selectColumns(sql: string): string[] | null {
   const code = sql.replace(/--[^\n]*/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+  // With a WITH clause the first SELECT is a CTE's, not the result's.
+  if (/^\s*WITH\b/i.test(code)) return null;
   const start = /\bSELECT\b/i.exec(code);
   if (!start) return null;
   let depth = 0;
@@ -396,18 +399,19 @@ export function settle(layouts: Layout[]): Layout[] {
   return placed;
 }
 
+const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3_600, d: 86_400, w: 604_800 };
+
 function nearestRange(from: string): RelativeRange | null {
   const m = /^now-(\d+)([mhdw])$/.exec(from.trim());
   if (!m) return null;
-  const seconds = Number(m[1]) * { m: 60, h: 3_600, d: 86_400, w: 604_800 }[m[2] as "m" | "h" | "d" | "w"];
-  const match = (Object.entries(RELATIVE_RANGES) as Array<[RelativeRange, number]>).find(([, s]) => s === seconds);
-  return match ? match[0] : null;
+  const seconds = Number(m[1]) * (UNIT_SECONDS[m[2]] ?? 0);
+  return RELATIVE_RANGE_KEYS.find((key) => RELATIVE_RANGES[key] === seconds) ?? null;
 }
 
 function refreshOf(refresh: unknown): (typeof REFRESH_SECONDS)[number] | null {
   const m = /^(\d+)([smh])$/.exec(text(refresh));
   if (!m) return null;
-  const seconds = Number(m[1]) * { s: 1, m: 60, h: 3_600 }[m[2] as "s" | "m" | "h"];
+  const seconds = Number(m[1]) * (UNIT_SECONDS[m[2]] ?? 0);
   return REFRESH_SECONDS.find((r) => r === seconds) ?? null;
 }
 

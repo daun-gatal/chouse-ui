@@ -104,6 +104,8 @@ export interface VerificationSpec {
   comparator: "eq" | "lt" | "lte" | "gt" | "gte";
   threshold: number;
   withinSeconds: number;
+  /** How long one probe may run (default 15 s; under the client's 300 s request timeout). A rollup's comparison reads its whole backfill. */
+  probeSeconds?: number;
 }
 
 export interface BuiltAction {
@@ -196,7 +198,8 @@ export function rollupPanelSql(p: Pick<RollupParams, "database" | "target" | "ti
 function rollupVerificationSql(p: RollupParams): string {
   const columns = rollupColumns(p);
   const keys = columns.slice(0, 1 + p.groups.length);
-  const lo = `(SELECT min(bucket) FROM ${table(p.database, p.target)})`;
+  // NULL for an empty rollup: both sides are then empty, instead of the source's whole history.
+  const lo = `(SELECT minOrNull(bucket) FROM ${table(p.database, p.target)})`;
   const hi = "toStartOfMinute(now() - INTERVAL 10 MINUTE)";
   const original = `SELECT ${keys.map((c) => `${c.source} AS ${quoteIdent(c.name)}`).join(", ")}, ${p.aggregates.map((a) => `${a.fn}(${a.column === null ? "" : quoteIdent(a.column)}) AS ${quoteIdent(`a_${a.alias}`)}`).join(", ")}`
     + ` FROM ${table(p.database, p.table)} WHERE ${[...rollupFilters(p), `${quoteIdent(p.timeColumn)} >= ${lo}`, `${quoteIdent(p.timeColumn)} < ${hi}`].join(" AND ")}`
@@ -236,7 +239,8 @@ function buildRollup(params: RollupParams, prior: PriorState): BuiltAction {
       sql: rollupVerificationSql(params),
       comparator: "eq",
       threshold: 0,
-      withinSeconds: 900,
+      withinSeconds: 1800,
+      probeSeconds: 280,
     },
     internal: null,
   };

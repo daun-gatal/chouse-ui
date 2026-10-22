@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 
-import { RELATIVE_RANGE_KEYS, TIME_SERIES_TYPES, type ChartType, type Unit } from "./spec";
+import { RELATIVE_RANGE_KEYS, TIME_SERIES_TYPES, type ChartType, type REDUCERS, type Unit } from "./spec";
 
 export const REPORT_KINDS = ["daily", "weekly"] as const;
 
@@ -103,6 +103,8 @@ export function scheduleText(s: ReportSchedule): string {
 /** Longer messages are refused or cut by chat webhooks; the link carries the rest. */
 export const MAX_DIGEST_CHARS = 3_800;
 const TABLE_ROWS = 5;
+/** Series of a split chart listed before the rest are counted. */
+const MAX_SERIES = 5;
 
 export interface DigestData {
   columns: Array<{ name: string }>;
@@ -110,7 +112,14 @@ export interface DigestData {
 }
 
 export type DigestPanel =
-  | { title: string; type: ChartType; unit: Unit; x: string | null; y: string[]; ok: true; connections: Array<{ name: string | null; data: DigestData }>; failed: Array<{ name: string; error: string }> }
+  | {
+    title: string; type: ChartType; unit: Unit; x: string | null; y: string[];
+    /** A split chart's series column: each series is summarised on its own. */
+    series: string | null;
+    /** A stat panel's reduce, as the dashboard shows it. */
+    reduce: (typeof REDUCERS)[number] | null;
+    ok: true; connections: Array<{ name: string | null; data: DigestData }>; failed: Array<{ name: string; error: string }>;
+  }
   | { title: string; ok: false; error: string };
 
 export interface DigestInput {
@@ -161,14 +170,39 @@ function cell(value: unknown): string {
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
+/** The stat value the dashboard shows: the panel's reduce over the column (last row without one). */
+export function reduceStat(values: number[], reduce: (typeof REDUCERS)[number] | null): number {
+  switch (reduce) {
+    case "max": return Math.max(...values);
+    case "min": return Math.min(...values);
+    case "sum": return values.reduce((a, b) => a + b, 0);
+    case "avg": return values.reduce((a, b) => a + b, 0) / values.length;
+    default: return values[values.length - 1];
+  }
+}
+
+function summary(label: string, rows: Array<Record<string, unknown>>, column: string, unit: Unit): string {
+  const values = rows.map((r) => toNumber(r[column])).filter((n): n is number => n !== null);
+  if (values.length === 0) return `${label}: no numeric values`;
+  const f = (n: number): string => formatNumber(n, unit);
+  return `${label}: min ${f(Math.min(...values))} · avg ${f(reduceStat(values, "avg"))} · max ${f(Math.max(...values))} · last ${f(values[values.length - 1])}`;
+}
+
 function seriesLines(panel: Extract<DigestPanel, { ok: true }>, data: DigestData): string[] {
-  return panel.y.map((column) => {
-    const values = data.rows.map((r) => toNumber(r[column])).filter((n): n is number => n !== null);
-    if (values.length === 0) return `${column}: no numeric values`;
-    const sum = values.reduce((a, b) => a + b, 0);
-    const f = (n: number): string => formatNumber(n, panel.unit);
-    return `${column}: min ${f(Math.min(...values))} · avg ${f(sum / values.length)} · max ${f(Math.max(...values))} · last ${f(values[values.length - 1])}`;
-  });
+  const split = panel.series;
+  if (split === null) return panel.y.map((column) => summary(column, data.rows, column, panel.unit));
+  // One line per series, in first-seen order; the rest are counted.
+  const groups = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of data.rows) {
+    const key = cell(row[split]);
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+  const column = panel.y[0] ?? "";
+  const lines = [...groups.entries()].slice(0, MAX_SERIES).map(([key, rows]) => summary(`${column} ${split}=${key}`, rows, column, panel.unit));
+  if (groups.size > MAX_SERIES) lines.push(`… ${groups.size - MAX_SERIES} more ${split} values`);
+  return lines;
 }
 
 function panelLines(panel: DigestPanel): string[] {
@@ -181,8 +215,8 @@ function panelLines(panel: DigestPanel): string[] {
       out.push(`${prefix}no rows`);
     } else if (panel.type === "stat") {
       const column = panel.y[0] ?? data.columns[0]?.name ?? "";
-      const value = toNumber(data.rows[data.rows.length - 1][column]);
-      out.push(`${prefix}${value === null ? cell(data.rows[data.rows.length - 1][column]) : formatNumber(value, panel.unit)}`);
+      const values = data.rows.map((r) => toNumber(r[column])).filter((n): n is number => n !== null);
+      out.push(`${prefix}${values.length === 0 ? cell(data.rows[data.rows.length - 1][column]) : formatNumber(reduceStat(values, panel.reduce), panel.unit)}`);
     } else if (panel.x !== null && TIME_SERIES_TYPES.has(panel.type)) {
       out.push(...seriesLines(panel, data).map((l) => `${prefix}${l}`));
     } else {

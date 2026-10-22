@@ -176,18 +176,18 @@ export async function createSnapshot(input: CreateSnapshot): Promise<SnapshotSum
   return summaryRow(created);
 }
 
-/** Role names of the snapshot's roles, for matching against a viewer (whose roles are names). */
-async function roleNames(roleIds: string[]): Promise<Set<string>> {
-  if (roleIds.length === 0) return new Set();
-  const rows = await all(sql`SELECT id, name FROM rbac_roles`);
-  return new Set(rows.filter((r) => roleIds.includes(str(r.id))).map((r) => str(r.name)));
+/** Role id → name, read once per request: a snapshot stores role ids, a viewer carries role names. */
+async function roleNameMap(): Promise<Map<string, string>> {
+  return new Map((await all(sql`SELECT id, name FROM rbac_roles`)).map((r) => [str(r.id), str(r.name)]));
 }
 
-async function mayOpen(viewer: Viewer, snapshot: SnapshotSummary, detail: store.DashboardDetail): Promise<boolean> {
+function mayOpen(viewer: Viewer, snapshot: SnapshotSummary, detail: store.DashboardDetail, roleNames: Map<string, string>): boolean {
   if (!dashboardAccess(viewer, detail.dashboard, detail.shares).view) return false;
   if (snapshot.createdBy === viewer.id) return true;
-  const names = await roleNames(snapshot.roleIds);
-  return viewer.roles.some((r) => names.has(r));
+  return snapshot.roleIds.some((id) => {
+    const name = roleNames.get(id);
+    return name !== undefined && viewer.roles.includes(name);
+  });
 }
 
 /** The snapshots of a dashboard this viewer may open, newest first (no results). */
@@ -195,12 +195,8 @@ export async function listSnapshots(viewer: Viewer, detail: store.DashboardDetai
   const rows = await all(sql`SELECT s.id, s.dashboard_id, s.name, s.created_by, s.created_at, s.expires_at, s.connection_id, s.range_from_s, s.range_to_s, s.size_bytes, s.role_ids, s.incident_id, u.username AS created_by_name
     FROM dashboard_snapshots s LEFT JOIN rbac_users u ON u.id = s.created_by
     WHERE s.dashboard_id = ${detail.dashboard.id} AND s.expires_at > ${nowMs} ORDER BY s.created_at DESC`);
-  const out: SnapshotSummary[] = [];
-  for (const row of rows) {
-    const summary = summaryRow(row);
-    if (await mayOpen(viewer, summary, detail)) out.push(summary);
-  }
-  return out;
+  const roleNames = await roleNameMap();
+  return rows.map(summaryRow).filter((summary) => mayOpen(viewer, summary, detail, roleNames));
 }
 
 /** Re-check one stored run as the viewer; what they may not read becomes "Access denied". */
@@ -231,7 +227,7 @@ export async function openSnapshot(viewer: Viewer, detail: store.DashboardDetail
   if (!row) throw AppError.notFound("Snapshot not found");
   const summary = summaryRow(row);
   if (summary.expiresAt <= nowMs) throw AppError.notFound("This snapshot has expired");
-  if (!(await mayOpen(viewer, summary, detail))) throw AppError.notFound("Snapshot not found");
+  if (!mayOpen(viewer, summary, detail, await roleNameMap())) throw AppError.notFound("Snapshot not found");
   const document = store.parseStored(dashboardInputSchema, row.document, `document of snapshot ${snapshotId}`);
   const stored = store.parseStored(storedResultsSchema, row.results, `results of snapshot ${snapshotId}`);
   // The connection check is per connection, not per panel: one lookup each.
@@ -244,13 +240,13 @@ export async function openSnapshot(viewer: Viewer, detail: store.DashboardDetail
     }
     return known;
   };
-  const results: Record<string, SnapshotResult> = {};
-  for (const panel of document.panels) {
-    if (panel.kind !== "chart" || panel.id === null) continue;
+  const checked = await Promise.all(document.panels.map(async (panel): Promise<[string, SnapshotResult] | null> => {
+    if (panel.kind !== "chart" || panel.id === null) return null;
     const result = stored.panels[panel.id];
-    if (!result) continue;
-    results[panel.id] = await recheck(viewer, result, { sql: panel.sql, variables: document.variables, values: stored.values, dashboardId: detail.dashboard.id, panelId: panel.id }, allowed);
-  }
+    if (!result) return null;
+    return [panel.id, await recheck(viewer, result, { sql: panel.sql, variables: document.variables, values: stored.values, dashboardId: detail.dashboard.id, panelId: panel.id }, allowed)];
+  }));
+  const results: Record<string, SnapshotResult> = Object.fromEntries(checked.filter((entry): entry is [string, SnapshotResult] => entry !== null));
   return { ...summary, document, values: stored.values, results };
 }
 
@@ -260,7 +256,7 @@ export async function deleteSnapshot(viewer: Viewer, detail: store.DashboardDeta
   if (!row) throw AppError.notFound("Snapshot not found");
   const summary = summaryRow(row);
   const access = dashboardAccess(viewer, detail.dashboard, detail.shares);
-  if (!(await mayOpen(viewer, summary, detail))) throw AppError.notFound("Snapshot not found");
+  if (!mayOpen(viewer, summary, detail, await roleNameMap())) throw AppError.notFound("Snapshot not found");
   if (summary.createdBy !== viewer.id && !access.edit) throw AppError.forbidden("Only its creator or an editor of the dashboard can delete a snapshot");
   await run(sql`DELETE FROM dashboard_snapshots WHERE id = ${snapshotId}`);
   return summary;

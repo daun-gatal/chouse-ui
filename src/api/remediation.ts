@@ -45,6 +45,8 @@ export interface VerificationSpec {
   comparator: "eq" | "lt" | "lte" | "gt" | "gte";
   threshold: number;
   withinSeconds: number;
+  /** How long one probe may run, when not the default 15 s. */
+  probeSeconds?: number;
 }
 
 export interface RemediationAction {

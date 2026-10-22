@@ -81,9 +81,8 @@ function rangeOf(value: unknown, id: string): RelativeRange {
   return parsed.data;
 }
 
-async function reportRow(r: Record<string, unknown>): Promise<Report> {
+function reportRow(r: Record<string, unknown>, channels: string[]): Report {
   const id = str(r.id);
-  const channels = (await all(sql`SELECT channel_id FROM dashboard_report_channels WHERE report_id = ${id} ORDER BY channel_id`)).map((c) => str(c.channel_id));
   return {
     id,
     dashboardId: str(r.dashboard_id),
@@ -107,14 +106,26 @@ async function reportRow(r: Record<string, unknown>): Promise<Report> {
 
 const SELECT = sql`SELECT r.*, u.username AS owner_name FROM dashboard_reports r LEFT JOIN rbac_users u ON u.id = r.owner_id`;
 
+/** Each report's channels, in one query. */
+async function channelsOf(reportIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>(reportIds.map((id) => [id, []]));
+  if (reportIds.length === 0) return out;
+  const rows = await all(sql`SELECT report_id, channel_id FROM dashboard_report_channels
+    WHERE report_id IN (${sql.join(reportIds.map((id) => sql`${id}`), sql`, `)}) ORDER BY channel_id`);
+  for (const row of rows) out.get(str(row.report_id))?.push(str(row.channel_id));
+  return out;
+}
+
 export async function listReports(dashboardId: string): Promise<Report[]> {
   const rows = await all(sql`${SELECT} WHERE r.dashboard_id = ${dashboardId} ORDER BY r.name, r.id`);
-  return Promise.all(rows.map(reportRow));
+  const channels = await channelsOf(rows.map((r) => str(r.id)));
+  return rows.map((r) => reportRow(r, channels.get(str(r.id)) ?? []));
 }
 
 export async function getReport(dashboardId: string, id: string): Promise<Report | null> {
   const row = await one(sql`${SELECT} WHERE r.id = ${id} AND r.dashboard_id = ${dashboardId}`);
-  return row ? reportRow(row) : null;
+  if (!row) return null;
+  return reportRow(row, (await channelsOf([id])).get(id) ?? []);
 }
 
 export async function createReport(dashboardId: string, ownerId: string, input: ReportInput, nowMs: number = Date.now()): Promise<Report> {
@@ -216,7 +227,7 @@ async function compose(report: Report, nowMs: number): Promise<{ title: string; 
   for (const panel of detail.panels) {
     if (panel.kind !== "chart") continue;
     const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values: {}, range: { kind: "absolute", from: window.from, to: window.to }, dashboardId: detail.dashboard.id, panelId: panel.id };
-    const shape = { title: panel.title, type: panel.viz.type, unit: panel.viz.unit, x: panel.viz.x, y: panel.viz.y };
+    const shape = { title: panel.title, type: panel.viz.type, unit: panel.viz.unit, x: panel.viz.x, y: panel.viz.y, series: panel.viz.series, reduce: panel.viz.reduce };
     try {
       if (panel.fleet) {
         const fleet = await runFleet(owner, query, () => null, detail.dashboard.connectionScope, nowMs);
@@ -339,7 +350,11 @@ export class DashboardReportScheduler {
         try {
           await runReport(fresh, now);
         } catch (error) {
-          logger.error({ module: "DashboardReports", reportId: id, err: error instanceof Error ? error.message : String(error) }, "Dashboard report run failed");
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error({ module: "DashboardReports", reportId: id, err: message }, "Dashboard report run failed");
+          // Move on to the next run regardless, so a failure after sending never repeats the send every lease.
+          await run(sql`UPDATE dashboard_reports SET last_run_at = ${now}, last_status = 'failed', last_error = ${message.slice(0, 2000)}, next_run_at = ${nextRunAt(fresh.schedule, now)} WHERE id = ${id}`)
+            .catch((e: unknown) => logger.error({ module: "DashboardReports", reportId: id, err: e instanceof Error ? e.message : String(e) }, "Could not record the failed report run"));
         }
       }
     } catch (error) {

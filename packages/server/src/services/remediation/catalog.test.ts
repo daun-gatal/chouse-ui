@@ -125,6 +125,9 @@ describe("create_panel_rollup", () => {
     expect(built).toMatchObject({ approvalClass: 2, windowOnly: true, rollback: ["DROP TABLE IF EXISTS `shop`.`chouse_rollup_0123456789ab_mv` SYNC", "DROP TABLE IF EXISTS `shop`.`chouse_rollup_0123456789ab` SYNC"] });
     expect(built.verification).toMatchObject({ comparator: "eq", threshold: 0 });
     expect(built.verification.sql).toContain("EXCEPT");
+    // An empty rollup compares nothing, rather than the source table's whole history.
+    expect(built.verification.sql).toContain("minOrNull(bucket)");
+    expect(built.verification.probeSeconds).toBe(280);
     expect(rollupPanelSql(params)).toBe("SELECT toStartOfInterval(bucket, toIntervalSecond(greatest({{interval_s}}, 60))) AS `t`, `g_status` AS `status`, countMerge(`a_n`) AS `n`, sumMerge(`a_b`) AS `b`\nFROM `shop`.`chouse_rollup_0123456789ab`\nWHERE bucket >= toStartOfMinute({{from}}) AND bucket < {{to}}\nGROUP BY `t`, `status`\nORDER BY `t`");
   });
 

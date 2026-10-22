@@ -95,8 +95,8 @@ async function readClient(connectionId: string): Promise<ClickHouseClient> {
   return clientForConnection(connectionId, JSON.stringify({ source: "remediation_preflight" }));
 }
 
-async function queryRows(client: ClickHouseClient, query: string): Promise<Array<Record<string, unknown>>> {
-  const result = await client.query({ query, format: "JSONEachRow", clickhouse_settings: { readonly: "1", max_execution_time: 15 } });
+async function queryRows(client: ClickHouseClient, query: string, maxSeconds = 15): Promise<Array<Record<string, unknown>>> {
+  const result = await client.query({ query, format: "JSONEachRow", clickhouse_settings: { readonly: "1", max_execution_time: maxSeconds } });
   return (await result.json()) as Array<Record<string, unknown>>;
 }
 
@@ -328,7 +328,7 @@ export async function verifyAction(action: store.RemediationAction, nowMs = Date
     }
   } else {
     try {
-      const rows = await queryRows(await readClient(action.connectionId), spec.sql);
+      const rows = await queryRows(await readClient(action.connectionId), spec.sql, spec.probeSeconds ?? 15);
       value = rows.length === 0 ? 0 : Number(rows[0].value ?? 0);
       ok = compare(value, spec.comparator, spec.threshold);
     } catch (error) {

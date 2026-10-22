@@ -52,9 +52,9 @@ describe("reportScheduleSchema", () => {
 
 describe("buildDigest", () => {
   const cols = (...names: string[]): Array<{ name: string }> => names.map((name) => ({ name }));
-  const stat: DigestPanel = { title: "Lag", type: "stat", unit: "count", x: null, y: ["lag"], ok: true, connections: [{ name: null, data: { columns: cols("lag"), rows: [{ lag: 10 }, { lag: 1234 }] } }], failed: [] };
-  const series: DigestPanel = { title: "Rate", type: "line", unit: "per_s", x: "t", y: ["v"], ok: true, connections: [{ name: null, data: { columns: cols("t", "v"), rows: [{ t: "a", v: 2 }, { t: "b", v: "4" }, { t: "c", v: 6 }] } }], failed: [] };
-  const table: DigestPanel = { title: "Top", type: "table", unit: "none", x: null, y: [], ok: true, connections: [{ name: null, data: { columns: cols("db", "rows"), rows: Array.from({ length: 7 }, (_, i) => ({ db: `d${i}`, rows: i })) } }], failed: [] };
+  const stat: DigestPanel = { title: "Lag", type: "stat", unit: "count", x: null, y: ["lag"], series: null, reduce: "last", ok: true, connections: [{ name: null, data: { columns: cols("lag"), rows: [{ lag: 10 }, { lag: 1234 }] } }], failed: [] };
+  const series: DigestPanel = { title: "Rate", type: "line", unit: "per_s", x: "t", y: ["v"], series: null, reduce: null, ok: true, connections: [{ name: null, data: { columns: cols("t", "v"), rows: [{ t: "a", v: 2 }, { t: "b", v: "4" }, { t: "c", v: 6 }] } }], failed: [] };
+  const table: DigestPanel = { title: "Top", type: "table", unit: "none", x: null, y: [], series: null, reduce: null, ok: true, connections: [{ name: null, data: { columns: cols("db", "rows"), rows: Array.from({ length: 7 }, (_, i) => ({ db: `d${i}`, rows: i })) } }], failed: [] };
   const broken: DigestPanel = { title: "Disk", ok: false, error: "Access denied to system.disks" };
   const input = { reportName: "Daily ops", dashboardTitle: "Shop", from: 1_800_000_000, to: 1_800_086_400, timezone: "UTC", firedAlerts: ["Slow inserts"], link: "https://chouse.example/dashboards/d1?from=1800000000&to=1800086400" };
 
@@ -84,6 +84,21 @@ describe("buildDigest", () => {
     expect(text.length).toBeLessThanOrEqual(MAX_DIGEST_CHARS);
     expect(text).toMatch(/… \d+ more panels — open the dashboard for them\./);
     expect(text.endsWith(`Open: ${input.link}`)).toBe(true);
+  });
+
+  it("shows a stat panel's value with its reduce, as the dashboard does", () => {
+    const peak: DigestPanel = { ...stat, title: "Peak lag", reduce: "max", connections: [{ name: null, data: { columns: cols("lag"), rows: [{ lag: 900 }, { lag: 12 }] } }] };
+    expect(buildDigest({ ...input, panels: [peak] }).text).toContain("*Peak lag*: 900");
+  });
+
+  it("summarises each series of a split chart on its own", () => {
+    const split: DigestPanel = {
+      ...series, series: "table",
+      connections: [{ name: null, data: { columns: cols("t", "table", "v"), rows: [{ t: "a", table: "orders", v: 1 }, { t: "a", table: "items", v: 100 }, { t: "b", table: "orders", v: 3 }, { t: "b", table: "items", v: 300 }] } }],
+    };
+    const { text } = buildDigest({ ...input, panels: [split] });
+    expect(text).toContain("v table=orders: min 1/s · avg 2/s · max 3/s · last 3/s");
+    expect(text).toContain("v table=items: min 100/s · avg 200/s · max 300/s · last 300/s");
   });
 
   it("formats units", () => {

@@ -134,6 +134,7 @@ describe("helpers", () => {
     expect(selectColumns("SELECT 'a, b' AS s FROM y")).toEqual(["s"]);
     expect(selectColumns("SELECT count() FROM y")).toBeNull();
     expect(selectColumns("SELECT * FROM y")).toBeNull();
+    expect(selectColumns("WITH x AS (SELECT a FROM z) SELECT a AS t, count() AS c FROM x GROUP BY t")).toBeNull();
   });
 
   it("names variables", () => {
