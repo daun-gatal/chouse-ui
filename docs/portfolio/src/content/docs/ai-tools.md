@@ -1,7 +1,7 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 63 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 64 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
@@ -77,6 +77,7 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `get_investigation_notebook` | Investigation notebook | Your CHouse access | `data_health:view`, `observe:view`, `doctor:view` | The notebook of an incident or Doctor report: Chouse AI findings, query snapshots, notes and actions, in order. | 1 |
 | `list_dashboards` | Dashboards | Your CHouse access | `dashboards:view` | Custom dashboards the user may view: title, owner, panel count, the connections it is assigned to, the roles it is shared with, and whether the user pinned it. | 1 |
 | `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings. | 1 |
+| `get_dashboard_annotations` | Dashboard annotations | Your CHouse access | `dashboards:view` | What changed around a dashboard's charts on the active connection over a recent range: DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes, newest first. Each kind says if it could not be read and why. | 1 |
 
 ## Built-in DeepAgents tools
 

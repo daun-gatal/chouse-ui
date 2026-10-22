@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 68 tools the [MCP server](/docs/mcp/) offers. 54 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 71 tools the [MCP server](/docs/mcp/) offers. 56 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -56,6 +56,9 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`get_dashboard`](#get_dashboard) | Read | Yes | `dashboards:view` |
 | [`export_dashboard`](#export_dashboard) | Read | Yes | `dashboards:view` |
 | [`run_dashboard_panel`](#run_dashboard_panel) | Read | Yes | `dashboards:view` |
+| [`list_dashboard_versions`](#list_dashboard_versions) | Read | Yes | `dashboards:view` |
+| [`get_dashboard_annotations`](#get_dashboard_annotations) | Read | Yes | `dashboards:view` |
+| [`create_dashboard_snapshot`](#create_dashboard_snapshot) | Write | No | `dashboards:view`, `query:execute` |
 | [`apply_dashboard`](#apply_dashboard) | Write | No | `dashboards:edit` |
 | [`delete_dashboard`](#delete_dashboard) | Destructive | No | `dashboards:delete` |
 | [`metrics_overview`](#metrics_overview) | Read | Yes | `metrics:view` |
@@ -530,6 +533,45 @@ Run one panel's read-only query for a time range and variable values, with the c
 | `panel_id` | `string` | Yes | Panel id (from get_dashboard) |
 | `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | How far back to run the panel |
 | `values` | `record` | No | Variable values by name: a string, or a list for a multi-value variable; a variable left out uses its default |
+| `connection_id` | `string` | No | Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection |
+
+### list_dashboard_versions
+
+*List dashboard versions* — **Read** · on by default · needs any of `dashboards:view`
+
+The last 50 saves of a dashboard, newest first: version number, who saved it, when, and how (UI, token, import, restore, rollup…).
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+
+### get_dashboard_annotations
+
+*Get dashboard annotations* — **Read** · on by default · needs any of `dashboards:view`
+
+What changed around a dashboard's charts in a range — DDL, upgrades, settings, new writers, panel alerts, incidents, fixes and notes — read with the caller's own access. Each kind says whether it could be read and why not.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id |
+| `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | How far back to look |
+| `sources` | `array` | No | Which kinds of event to read (default: every kind): DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes, notes |
+| `connection_id` | `string` | No | Connection whose events to read (defaults to the request/header connection) |
+
+### create_dashboard_snapshot
+
+*Snapshot a dashboard* — **Write** · off by default · needs any of `dashboards:view`, `query:execute`
+
+Freeze every chart panel's result for a range ending now, as the caller, so it can be shared after the data moves on (at most 10 MiB). Whoever opens it still only sees what their own access allows.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id |
+| `name` | `string` | Yes | Snapshot name |
+| `range` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | Yes | The range to freeze, ending now |
+| `values` | `record` | No | Variable values by name: a string, or a list for a multi-value variable; a variable left out uses its default |
+| `role_ids` | `array` | No | Roles (from the dashboard's shares) that may open it besides you; default none |
+| `expires_in_days` | `number` | No | Days until it expires (default 30) |
 | `connection_id` | `string` | No | Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection |
 
 ### apply_dashboard

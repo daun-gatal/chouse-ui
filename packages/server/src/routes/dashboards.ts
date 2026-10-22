@@ -39,6 +39,7 @@ import { chartFit, lintPanel, type LintFinding } from "../services/dashboards/li
 import { resolveWindow } from "../services/dashboards/macros";
 import { assertDataAccess, compilePanel, resolveValues, runFleet, runOptions, runPanel, SHIFT_SECONDS, viewerConnection, type AgentFor, type FleetRun, type PanelQuery, type PanelRun, type ShiftSeconds } from "../services/dashboards/runner";
 import {
+  ANNOTATION_SOURCES,
   CHART_TYPES,
   DASHBOARD_EXPORT_FORMAT,
   GRID_COLUMNS,
@@ -49,12 +50,14 @@ import {
   inScope,
   MAX_SQL_LENGTH,
   PANEL_KINDS,
+  RELATIVE_RANGE_KEYS,
   TIME_SERIES_TYPES,
   annotationSourcesSchema,
   timeRangeSchema,
   variableSchema,
   variableValuesSchema,
   vizSpecSchema,
+  type AnnotationSource,
   type ConnectionScope,
   type DashboardExport,
   type DashboardInput,
@@ -579,15 +582,32 @@ const annotationsSchema = z.object({
 }).strict();
 
 /** What changed in the range, per source, on the connection the caller is on. */
-dashboards.post("/:id/annotations", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", annotationsSchema), async (c) => {
-  const id = requireParam(c, "id");
+async function annotationsResponse(c: Context, id: string, range: z.infer<typeof timeRangeSchema>, sources: AnnotationSource[]): Promise<Response> {
   const { detail } = await visible(c, id);
   const connectionId = currentConnectionId(c);
   await assertInScope(c, detail.dashboard.connectionScope, connectionId);
   await viewerConnection(viewerOf(c), connectionId);
-  const { range, sources } = c.req.valid("json");
   const window = resolveWindow(range, Date.now());
   return ok(c, { sources: await loadAnnotations({ viewer: viewerOf(c), connectionId, dashboardId: id, fromMs: window.from * 1000, toMs: window.to * 1000 }, sources) });
+}
+
+dashboards.post("/:id/annotations", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", annotationsSchema), async (c) => {
+  const { range, sources } = c.req.valid("json");
+  return annotationsResponse(c, requireParam(c, "id"), range, sources);
+});
+
+const annotationsQuerySchema = z.object({
+  range: z.enum(RELATIVE_RANGE_KEYS),
+  /** Comma-separated; every source when left out. */
+  sources: z.string().optional(),
+}).strict();
+
+/** The same read as a GET (`?range=6h&sources=ddl,alerts`), for read-only callers such as the chat agent. */
+dashboards.get("/:id/annotations", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("query", annotationsQuerySchema), async (c) => {
+  const { range, sources } = c.req.valid("query");
+  const parsed = annotationSourcesSchema.safeParse(sources === undefined ? [...ANNOTATION_SOURCES] : sources.split(",").map((s) => s.trim()).filter((s) => s !== ""));
+  if (!parsed.success) throw AppError.badRequest(`sources: ${parsed.error.issues[0]?.message ?? "invalid"} (use ${ANNOTATION_SOURCES.join(", ")})`);
+  return annotationsResponse(c, requireParam(c, "id"), { kind: "relative", value: range }, parsed.data);
 });
 
 const noteSchema = z.object({

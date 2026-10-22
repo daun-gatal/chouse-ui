@@ -921,6 +921,20 @@ describe("expected-range bands", () => {
   });
 });
 
+describe("annotations as a GET", () => {
+  it("reads the same sources from query parameters, and refuses an unknown source", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const res = await call("owner", "GET", `/dashboards/${id}/annotations?range=6h&sources=notes,alerts`);
+    expect(res.status).toBe(200);
+    expect(res.json.data.sources.map((s: { source: string }) => s.source).sort()).toEqual(["alerts", "notes"]);
+    const every = await call("owner", "GET", `/dashboards/${id}/annotations?range=1h`);
+    expect(every.json.data.sources).toHaveLength(8);
+    expect((await call("owner", "GET", `/dashboards/${id}/annotations?range=1h&sources=gossip`)).status).toBe(400);
+    expect((await call("owner", "GET", `/dashboards/${id}/annotations?range=5h`)).status).toBe(400);
+  });
+});
+
 describe("snapshots", () => {
   const NOW_S = Math.floor(Date.now() / 1000);
   const body = (overrides: Record<string, unknown> = {}) => ({ name: "Incident 42", from: NOW_S - 3600, to: NOW_S - 60, values: {}, roleIds: [], expiresInDays: 7, incidentId: null, ...overrides });

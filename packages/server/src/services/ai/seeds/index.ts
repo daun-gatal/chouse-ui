@@ -322,7 +322,7 @@ export const SEED_AGENTS: SeedAgent[] = [
       "list_scheduled_jobs", "get_scheduled_job", "list_scheduled_runs", "list_health_checks", "get_health_check", "list_health_incidents", "list_alerting",
       "list_observe_incidents", "list_remediation_actions", "get_investigation_notebook", "list_doctor_reports", "fleet_snapshots",
       "get_query_regressions", "get_capacity", "list_upgrade_assessments", "get_upgrade_rollout", "get_collector_status", "get_collector_schedule",
-      "list_dashboards", "get_dashboard",
+      "list_dashboards", "get_dashboard", "get_dashboard_annotations",
     ],
   },
   {
