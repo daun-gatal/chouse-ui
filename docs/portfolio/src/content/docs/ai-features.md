@@ -40,6 +40,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
 | [Draft a dashboard](#draft-a-dashboard) | Dashboards | `ai:optimize` | ClickHouse session | [Dashboard Drafter](#dashboard-drafter) |
+| [Explain this spike](#explain-this-spike) | Dashboards | `ai:optimize` | ClickHouse session | [Spike Explainer](#spike-explainer) |
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
 | [Draft an agent](#draft-an-agent) | AI Governance | `ai:optimize` | Evidence only | [Agent Author](#agent-author) |
 | [Draft a harness](#draft-a-harness) | AI Governance | `ai:optimize` | Evidence only | [Harness Author](#harness-author) |
@@ -356,6 +357,18 @@ Dashboards › Ask AI: drafts a dashboard, or panels to add to one, from a goal;
 | --- | --- | --- |
 | `ctx.evidence` | json | The goal, the dashboard being added to, and the panel rules (JSON). |
 
+### Explain this spike
+
+ID `explain-spike` · needs `ai:optimize` · structured answer (JSON contract)
+
+Dashboards › Explain this spike: reads a panel's selected range, the changes around it, slow queries, mutations and merges, and explains the likely cause.
+
+**Tools may use:** ClickHouse session. **Built-in agent:** [Spike Explainer](#spike-explainer).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The panel, the selected range and the evidence gathered around it (JSON). |
+
 ## AI Governance features
 
 ### Draft a skill
@@ -408,7 +421,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 32 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 33 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -534,6 +547,20 @@ Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).
 | Harness | Focused |
 | Tuning | 8 steps · 8,000 output tokens |
 | Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `validate_sql` |
+| Skills | all built-in skills on demand |
+
+### Spike Explainer
+
+Explains what most likely caused a spike on a dashboard panel, from evidence gathered as the viewer (Dashboards › Explain this spike).
+
+| Setting | Value |
+| --- | --- |
+| Slug | `spike-explainer` |
+| Kind | Feature agent |
+| Used by | [Explain this spike](#explain-this-spike) |
+| Harness | Focused |
+| Tuning | 3 steps · 3,000 output tokens |
+| Tools | none |
 | Skills | all built-in skills on demand |
 
 ### Guardrail Drafter
@@ -828,7 +855,7 @@ Scheduled jobs and runs, Data Health promises and incidents, alerting, observabi
 | Used by | subagent of CHouse Admin |
 | Harness | Focused |
 | Tuning | 8 steps |
-| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard` |
+| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
 | Skills | none |
 
 ### Platform Auditor

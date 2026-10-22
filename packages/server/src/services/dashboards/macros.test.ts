@@ -68,6 +68,29 @@ describe("compileSql", () => {
   it("passes SQL without macros through", () => {
     expect(compileSql("SELECT 1", [], {}, WINDOW)).toEqual({ ok: true, compiled: { sql: "SELECT 1", params: {}, validationSql: "SELECT 1" } });
   });
+
+  describe("multi-value variables", () => {
+    const TABLES = { name: "tables", label: "Tables", kind: "multi" as const, options: { source: "static" as const, values: ["a", "b"] }, default: ["a"] };
+    const USER = { name: "user", label: "User", kind: "string" as const, options: { source: "static" as const, values: ["a"] }, default: "a" };
+
+    it("compile to an Array(String) parameter, never into the SQL", () => {
+      const result = compileSql("SELECT 1 FROM t WHERE table IN {{var.tables}}", [TABLES], { tables: ["orders", "x' OR 1=1 --"] }, WINDOW);
+      expect(result).toEqual({
+        ok: true,
+        compiled: {
+          sql: "SELECT 1 FROM t WHERE table IN {v_tables:Array(String)}",
+          params: { v_tables: ["orders", "x' OR 1=1 --"] },
+          validationSql: "SELECT 1 FROM t WHERE table IN ('')",
+        },
+      });
+    });
+
+    it("refuse an empty list, and a value of the wrong shape either way", () => {
+      expect(compileSql("SELECT {{var.tables}}", [TABLES], { tables: [] }, WINDOW)).toEqual({ ok: false, error: "Pick at least one value for Tables" });
+      expect(compileSql("SELECT {{var.tables}}", [TABLES], { tables: "orders" }, WINDOW)).toEqual({ ok: false, error: "Variable Tables takes a list of values" });
+      expect(compileSql("SELECT {{var.user}}", [USER], { user: ["a"] }, WINDOW)).toEqual({ ok: false, error: "Variable User takes one value, not a list" });
+    });
+  });
 });
 
 describe("windows", () => {

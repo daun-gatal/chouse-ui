@@ -1,6 +1,22 @@
 import { describe, expect, it } from "bun:test";
 
-import { ACTION_TYPES, actionParamsSchema, buildAction, compare, mergeSettingsList, quoteIdent, quoteString, REQUIRED_GRANTS } from "./catalog";
+import { ACTION_TYPES, CONTEXT_ONLY_TYPES, actionParamsSchema, buildAction, compare, mergeSettingsList, quoteIdent, quoteString, REQUIRED_GRANTS, rollupPanelSql } from "./catalog";
+
+const ROLLUP = {
+  dashboardId: "0b6f3c1e-7a51-4f2e-9a43-5d8e6f1b2c3d",
+  panelId: "1c7e4d2f-8b62-4a3f-8b54-6e9f7a2c3d4e",
+  database: "shop",
+  table: "orders",
+  timeColumn: "ts",
+  bucketAlias: "t",
+  target: "chouse_rollup_0123456789ab",
+  groups: [{ column: "status", alias: "status" }],
+  aggregates: [{ fn: "count", column: null, alias: "n" }, { fn: "sum", column: "bytes", alias: "b" }],
+  filters: [{ column: "env", op: "=", value: "it's prod" }],
+  backfillDays: 7,
+  cluster: null,
+};
+const TYPES = { bucket: "DateTime", g_status: "LowCardinality(String)", a_n: "AggregateFunction(count)", a_b: "AggregateFunction(sum, UInt64)" };
 
 describe("actionParamsSchema", () => {
   it("rejects free-form SQL in identifiers and expressions", () => {
@@ -26,6 +42,7 @@ describe("actionParamsSchema", () => {
       reload_dictionary: { database: "d", name: "dict" },
       refresh_view: { database: "d", view: "v" },
       flush_distributed: { database: "d", table: "dist" },
+      create_panel_rollup: ROLLUP,
     };
     for (const type of ACTION_TYPES) {
       const parsed = actionParamsSchema.safeParse({ type, ...(samples[type] as object) });
@@ -92,5 +109,41 @@ describe("helpers", () => {
     expect(compare(2, "lte", 2)).toBe(true);
     expect(compare(3, "gt", 2)).toBe(true);
     expect(compare(2, "gte", 3)).toBe(false);
+  });
+});
+
+describe("create_panel_rollup", () => {
+  const params = actionParamsSchema.parse({ type: "create_panel_rollup", ...ROLLUP });
+
+  it("builds the table, view and backfill from typed parameters and the types read at proposal", () => {
+    const built = buildAction(params, { rollup: { panelSql: "x", types: TYPES } });
+    expect(built.statements).toEqual([
+      "CREATE TABLE `shop`.`chouse_rollup_0123456789ab` (`bucket` DateTime, `g_status` LowCardinality(String), `a_n` AggregateFunction(count), `a_b` AggregateFunction(sum, UInt64)) ENGINE = AggregatingMergeTree ORDER BY (`g_status`, bucket)",
+      "CREATE MATERIALIZED VIEW `shop`.`chouse_rollup_0123456789ab_mv` TO `shop`.`chouse_rollup_0123456789ab` AS SELECT toStartOfMinute(`ts`) AS `bucket`, `status` AS `g_status`, countState() AS `a_n`, sumState(`bytes`) AS `a_b` FROM `shop`.`orders` WHERE `env` = 'it\\'s prod' GROUP BY `bucket`, `g_status`",
+      "INSERT INTO `shop`.`chouse_rollup_0123456789ab` SELECT toStartOfMinute(`ts`) AS `bucket`, `status` AS `g_status`, countState() AS `a_n`, sumState(`bytes`) AS `a_b` FROM `shop`.`orders` WHERE `env` = 'it\\'s prod' AND `ts` >= toStartOfMinute(now()) - INTERVAL 7 DAY AND `ts` < toStartOfMinute(now()) GROUP BY `bucket`, `g_status`",
+    ]);
+    expect(built).toMatchObject({ approvalClass: 2, windowOnly: true, rollback: ["DROP TABLE IF EXISTS `shop`.`chouse_rollup_0123456789ab_mv` SYNC", "DROP TABLE IF EXISTS `shop`.`chouse_rollup_0123456789ab` SYNC"] });
+    expect(built.verification).toMatchObject({ comparator: "eq", threshold: 0 });
+    expect(built.verification.sql).toContain("EXCEPT");
+    // An empty rollup compares nothing, rather than the source table's whole history.
+    expect(built.verification.sql).toContain("minOrNull(bucket)");
+    expect(built.verification.probeSeconds).toBe(280);
+    expect(rollupPanelSql(params)).toBe("SELECT toStartOfInterval(bucket, toIntervalSecond(greatest({{interval_s}}, 60))) AS `t`, `g_status` AS `status`, countMerge(`a_n`) AS `n`, sumMerge(`a_b`) AS `b`\nFROM `shop`.`chouse_rollup_0123456789ab`\nWHERE bucket >= toStartOfMinute({{from}}) AND bucket < {{to}}\nGROUP BY `t`, `status`\nORDER BY `t`");
+  });
+
+  it("goes ON CLUSTER with a replicated engine on a cluster", () => {
+    const built = buildAction({ ...params, cluster: "main" }, { rollup: { panelSql: "x", types: TYPES } });
+    expect(built.statements[0]).toContain("ON CLUSTER `main`");
+    expect(built.statements[0]).toContain("ReplicatedAggregatingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')");
+    expect(built.statements[1]).toContain("ON CLUSTER `main`");
+    expect(built.rollback?.every((s) => s.includes("ON CLUSTER `main`"))).toBe(true);
+  });
+
+  it("refuses to build without usable types, and is never proposed from the generic catalog", () => {
+    expect(() => buildAction(params)).toThrow("A rollup is built from the column types read when it was proposed");
+    expect(() => buildAction(params, { rollup: { panelSql: "x", types: { ...TYPES, a_b: "AggregateFunction(sum, UInt64); DROP TABLE x" } } })).toThrow("The rollup column a_b has no usable type");
+    expect(CONTEXT_ONLY_TYPES.has("create_panel_rollup")).toBe(true);
+    expect(actionParamsSchema.safeParse({ type: "create_panel_rollup", ...ROLLUP, target: "orders" }).success).toBe(false);
+    expect(actionParamsSchema.safeParse({ type: "create_panel_rollup", ...ROLLUP, backfillDays: 90 }).success).toBe(false);
   });
 });

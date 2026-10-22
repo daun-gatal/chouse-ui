@@ -25,8 +25,10 @@ import { logger } from "../../utils/logger";
 import { acquireLease } from "../observe/lease";
 import { dashboardAccess, has, type Viewer } from "./access";
 import * as alertStore from "./alertStore";
-import type { AlertConfig, AlertState, AlertStatus, PanelAlert } from "./alertStore";
+import type { AlertConfig, AlertState, AlertStatus, PanelAlert, ThresholdConfig } from "./alertStore";
+import { runBaseline } from "./baseline";
 import { runPanel } from "./runner";
+import type { Baseline, TimeSeries } from "./baseline";
 import { inScope, type REDUCERS } from "./spec";
 import * as store from "./store";
 
@@ -40,7 +42,7 @@ const HOLDER = `dashboards-${hostname()}-${process.pid}-${randomUUID().slice(0, 
 // ============================================
 
 export type Outcome =
-  | { kind: "value"; value: number }
+  | { kind: "value"; value: number; breached: boolean; band?: { lo: number; hi: number } }
   | { kind: "no_data"; reason: string }
   | { kind: "error"; reason: string };
 
@@ -56,7 +58,7 @@ export function reduceValues(values: number[], reduce: (typeof REDUCERS)[number]
   }
 }
 
-export function breaches(value: number, config: Pick<AlertConfig, "op" | "value">): boolean {
+export function breaches(value: number, config: Pick<ThresholdConfig, "op" | "value">): boolean {
   switch (config.op) {
     case ">": return value > config.value;
     case ">=": return value >= config.value;
@@ -66,7 +68,7 @@ export function breaches(value: number, config: Pick<AlertConfig, "op" | "value"
 }
 
 /** The next status after `outcome`, and the notice it calls for (null when none). */
-export function nextStatus(prev: AlertStatus, outcome: Outcome, config: Pick<AlertConfig, "op" | "value" | "forEvaluations">, now: number): { status: AlertStatus; notice: Notice | null } {
+export function nextStatus(prev: AlertStatus, outcome: Outcome, config: Pick<AlertConfig, "forEvaluations">, now: number): { status: AlertStatus; notice: Notice | null } {
   const since = (state: AlertState): number => (prev.state === state ? prev.since : now);
   if (outcome.kind === "error") {
     return {
@@ -80,7 +82,7 @@ export function nextStatus(prev: AlertStatus, outcome: Outcome, config: Pick<Ale
       notice: prev.state === "firing" ? "resolved" : prev.state === "error" ? "recovered" : null,
     };
   }
-  if (breaches(outcome.value, config)) {
+  if (outcome.breached) {
     const count = prev.state === "pending" || prev.state === "firing" ? prev.breaches + 1 : 1;
     const state: AlertState = count >= config.forEvaluations ? "firing" : "pending";
     const notice: Notice | null = state === "firing" && prev.state !== "firing" ? "firing" : prev.state === "error" ? "recovered" : null;
@@ -122,28 +124,42 @@ export async function evaluate(alert: PanelAlert, now: number): Promise<Evaluate
   const dashboardTitle = detail.dashboard.title;
   if (!panel) return { outcome: { kind: "error", reason: "The panel no longer exists" }, dashboardTitle, panelTitle: "" };
   const result = (outcome: Outcome): Evaluated => ({ outcome, dashboardTitle, panelTitle: panel.title });
+  if (panel.kind !== "chart") return result({ kind: "error", reason: "The panel is no longer a chart" });
   if (panel.fleet) return result({ kind: "error", reason: "The panel now runs across the fleet; alerts need a panel for one connection" });
   if (!inScope(detail.dashboard.connectionScope, alert.connectionId)) return result({ kind: "error", reason: "The dashboard is no longer assigned to the connection this alert watches" });
   const owner = await ownerViewer(alert.ownerId);
   if (typeof owner === "string") return result({ kind: "error", reason: owner });
   if (!dashboardAccess(owner, detail.dashboard, detail.shares).view) return result({ kind: "error", reason: "The alert's owner can no longer view this dashboard" });
   if (!has(owner, PERMISSIONS.QUERY_EXECUTE)) return result({ kind: "error", reason: "The alert's owner can no longer run queries (query:execute)" });
+  const query = {
+    sql: panel.sql,
+    variables: detail.dashboard.variables,
+    values: alert.config.values,
+    range: { kind: "relative" as const, value: alert.config.range },
+    dashboardId: detail.dashboard.id,
+    panelId: panel.id,
+  };
+  const config = alert.config;
+  if (config.kind === "outside_band") {
+    if (panel.viz.baseline === null || panel.viz.x === null) return result({ kind: "error", reason: "The panel no longer draws an expected range" });
+    if (panel.viz.y[0] !== config.column) return result({ kind: "error", reason: `The panel's band is for ${panel.viz.y[0] ?? "no column"}, not ${config.column}` });
+    try {
+      const { current, baseline } = await runBaseline({ viewer: owner, connectionId: alert.connectionId, query, xColumn: panel.viz.x, yColumn: config.column, weeks: panel.viz.baseline.weeks, agentFor: () => null, nowMs: now });
+      return result(bandOutcome(current, baseline));
+    } catch (error) {
+      return result({ kind: "error", reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
   try {
-    const run = await runPanel(owner, alert.connectionId, {
-      sql: panel.sql,
-      variables: detail.dashboard.variables,
-      values: alert.config.values,
-      range: { kind: "relative", value: alert.config.range },
-      dashboardId: detail.dashboard.id,
-      panelId: panel.id,
-    }, () => null, now);
-    const column = alert.config.column;
+    const run = await runPanel(owner, alert.connectionId, query, () => null, now);
+    const column = config.column;
     if (!run.data.columns.some((c) => c.name === column)) return result({ kind: "error", reason: `The panel's result has no column ${column}` });
     if (run.data.rows.length === 0) return result({ kind: "no_data", reason: "The panel returned no rows" });
     const values = run.data.rows.map((row) => row[column]);
     const numbers = values.map((v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN));
     if (numbers.some((n) => !Number.isFinite(n))) return result({ kind: "error", reason: `Column ${column} has values that are not numbers (NULL or text)` });
-    return result({ kind: "value", value: reduceValues(numbers, alert.config.reduce) });
+    const value = reduceValues(numbers, config.reduce);
+    return result({ kind: "value", value, breached: breaches(value, config) });
   } catch (error) {
     const reason = error instanceof AppError || error instanceof Error ? error.message : String(error);
     return result({ kind: "error", reason });
@@ -158,15 +174,38 @@ function formatValue(value: number): string {
   return Number.isInteger(value) ? value.toLocaleString("en-US") : value.toLocaleString("en-US", { maximumFractionDigits: 3 });
 }
 
+/**
+ * A band alert's outcome: the latest complete bucket (the second-newest by
+ * time; the newest is still filling) against its expected range.
+ */
+export function bandOutcome(current: TimeSeries, baseline: Baseline): Outcome {
+  if (baseline.state === "learning") return { kind: "no_data", reason: `The expected range is still learning: ${baseline.reason}` };
+  const order = current.xsMs
+    .map((ms, i) => ({ ms, i }))
+    .filter((e): e is { ms: number; i: number } => e.ms !== null && current.values[e.i] !== null)
+    .sort((a, b) => a.ms - b.ms);
+  if (order.length < 2) return { kind: "no_data", reason: "The panel has no complete bucket yet" };
+  const { i } = order[order.length - 2];
+  const point = baseline.points.find((p) => p.x === current.xs[i]);
+  if (!point) return { kind: "no_data", reason: `No expected range for ${current.xs[i]}: fewer than 2 earlier weeks have that bucket` };
+  const value = current.values[i] as number;
+  return { kind: "value", value, breached: value < point.lo || value > point.hi, band: { lo: point.lo, hi: point.hi } };
+}
+
 export function noticeMessage(alert: PanelAlert, notice: Notice, evaluated: Evaluated, status: AlertStatus): { title: string; text: string } {
   const where = `${evaluated.panelTitle || "(panel)"} on dashboard ${evaluated.dashboardTitle || "(deleted)"}`;
-  const measure = `${alert.config.reduce} of ${alert.config.column}`;
+  const config = alert.config;
+  const measure = config.kind === "threshold" ? `${config.reduce} of ${config.column}` : `${config.column} in the latest complete bucket`;
+  const band = evaluated.outcome.kind === "value" ? evaluated.outcome.band : undefined;
+  const rule = config.kind === "threshold"
+    ? `alert when ${config.op} ${formatValue(config.value)}`
+    : band ? `expected ${formatValue(band.lo)} to ${formatValue(band.hi)}` : "outside the expected range";
   const icon = alert.severity === "critical" ? "🔴" : "🟠";
   switch (notice) {
     case "firing":
       return {
         title: `${icon} ${alert.name}`,
-        text: `${where}: ${measure} is ${formatValue(status.lastValue ?? Number.NaN)} (alert when ${alert.config.op} ${formatValue(alert.config.value)}, ${alert.config.forEvaluations} evaluation${alert.config.forEvaluations === 1 ? "" : "s"} in a row).`,
+        text: `${where}: ${measure} is ${formatValue(status.lastValue ?? Number.NaN)} (${rule}, ${config.forEvaluations} evaluation${config.forEvaluations === 1 ? "" : "s"} in a row).`,
       };
     case "resolved":
       return {

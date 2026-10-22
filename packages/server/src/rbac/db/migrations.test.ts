@@ -22,6 +22,8 @@ import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
 import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
+import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
+import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -427,6 +429,20 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       const admin = role === "super_admin" || role === "admin";
       for (const p of ["ai_guardrails:view", "ai_guardrails:manage"]) expect(await h.roleHasPermission(role, p)).toBe(admin);
     }
+  },
+  "1.63.0": async () => {
+    // ADR 0023: the canvas columns, annotation sources and the notes, versions, snapshots and reports tables.
+    expect(DASHBOARD_V2_TABLE_NAMES).toEqual(["dashboard_notes", "dashboard_versions", "dashboard_snapshots", "dashboard_reports", "dashboard_report_channels"]);
+    for (const t of DASHBOARD_V2_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of DASHBOARD_V2_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["kind", "x", "y", "w", "h", "markdown", "description"]) expect(await h.columnExists("dashboard_panels", c)).toBe(true);
+    expect(await h.columnExists("dashboards", "annotations")).toBe(true);
+  },
+  "1.64.0": async () => {
+    // ADR 0023: the format 1 sizes are gone once every panel has a layout.
+    expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
+    expect(await h.columnExists("dashboard_panels", "height")).toBe(false);
+    expect(await h.columnExists("dashboard_panels", "position")).toBe(true);
   },
 };
 
@@ -1214,7 +1230,8 @@ for (const dialect of DIALECTS) {
       await h.rawRun(sql`DELETE FROM rbac_permissions WHERE name LIKE 'dashboards:%'`);
       for (const t of DASHBOARD_TABLE_NAMES) expect(await h.tableExists(t)).toBe(false);
       viewerBefore = await grantsOf("viewer");
-      await runMigrations();
+      // Through 1.62.0: the rows below are 1.61.0's format 1 shape, which 1.63.0 converts and 1.64.0 drops.
+      await runMigrations({ through: "1.62.0" });
     }, 60_000);
 
     it("creates the tables and grants the defaults per role", async () => {
@@ -1266,7 +1283,7 @@ for (const dialect of DIALECTS) {
         JOIN rbac_roles r ON r.id = rp.role_id
         WHERE r.name = 'admin' AND p.name = 'dashboards:manage'`);
       expect(Number(grants[0].c)).toBe(1);
-      expect((await runMigrations()).migrationsApplied).toEqual([]);
+      expect((await runMigrations({ through: "1.62.0" })).migrationsApplied).toEqual([]);
     });
   });
 
@@ -1299,6 +1316,126 @@ for (const dialect of DIALECTS) {
         WHERE r.name = 'admin' AND p.name = 'ai_guardrails:manage'`);
       expect(Number(grants[0].c)).toBe(1);
       expect((await runMigrations()).migrationsApplied).toEqual([]);
+    });
+  });
+
+  // ADR 0023: every format 1 dashboard is converted in place — layout, chart
+  // settings, alert configs and one history entry — exactly as a format 1 file
+  // converts; unreadable rows are left as they are; re-running changes nothing.
+  describe(`migrations · ADR 0023 dashboards v2 conversion [${dialect}]`, () => {
+    const LINE_V1 = { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null };
+    const TABLE_V1 = { ...LINE_V1, type: "table", x: null, y: [], unit: "none" };
+    const VARIABLES = [{ name: "db", label: "DB", kind: "identifier", options: { source: "static", values: ["shop"] }, default: "shop" }];
+    const THRESHOLD = { column: "v", reduce: "max", op: ">", value: 5, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} };
+    const SQL_A = "SELECT now() AS t, 1 AS v";
+    const at = 1_800_000_000_000;
+    const P1 = "11111111-1111-4111-8111-111111111111";
+    const P2 = "22222222-2222-4222-8222-222222222222";
+    const P3 = "33333333-3333-4333-8333-333333333333";
+    const Q1 = "44444444-4444-4444-8444-444444444444";
+
+    const snapshot = async (): Promise<unknown> => ({
+      panels: await h.rawAll(sql`SELECT id, kind, viz, x, y, w, h FROM dashboard_panels ORDER BY id`),
+      versions: await h.rawAll(sql`SELECT dashboard_id, version, document, source FROM dashboard_versions ORDER BY dashboard_id, version`),
+      alerts: await h.rawAll(sql`SELECT id, config FROM dashboard_alerts ORDER BY id`),
+    });
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ through: "1.62.0" });
+      const dashboard = async (id: string, version: number): Promise<void> => {
+        await h.rawRun(sql`INSERT INTO dashboards (id, title, description, owner_id, time_range, refresh_seconds, variables, version, created_at, updated_at)
+          VALUES (${id}, ${`Dash ${id}`}, 'Old', 'u1', '6h', 60, ${JSON.stringify(id === "d1" ? VARIABLES : [])}, ${version}, ${at}, ${at})`);
+      };
+      const panel = async (id: string, dashboardId: string, position: number, viz: unknown, width: number, height: string, fleet = 0): Promise<void> => {
+        await h.rawRun(sql`INSERT INTO dashboard_panels (id, dashboard_id, position, title, sql, viz, width, height, fleet, created_at, updated_at)
+          VALUES (${id}, ${dashboardId}, ${position}, ${`Panel ${id}`}, ${SQL_A}, ${typeof viz === "string" ? viz : JSON.stringify(viz)}, ${width}, ${height}, ${fleet}, ${at}, ${at})`);
+      };
+      await dashboard("d1", 3);
+      // Inserted out of order: the conversion follows `position`, not insertion.
+      await panel(P3, "d1", 2, TABLE_V1, 12, "m", 1);
+      await panel(P1, "d1", 0, LINE_V1, 6, "s");
+      await panel(P2, "d1", 1, LINE_V1, 6, "l");
+      await dashboard("d2", 1);
+      await panel(Q1, "d2", 0, "{}", 6, "m");
+      await dashboard("d3", 1);
+      const alert = async (id: string, config: string): Promise<void> => {
+        await h.rawRun(sql`INSERT INTO dashboard_alerts (id, dashboard_id, panel_id, name, owner_id, connection_id, severity, config, created_at, updated_at)
+          VALUES (${id}, 'd1', ${P1}, ${`Alert ${id}`}, 'u1', 'c1', 'warning', ${config}, ${at}, ${at})`);
+      };
+      await alert("a1", JSON.stringify(THRESHOLD));
+      await alert("a2", "not json");
+      await alert("a3", JSON.stringify({ kind: "threshold", ...THRESHOLD }));
+      await runMigrations({ through: "1.63.0" });
+    }, 60_000);
+
+    it("lays panels out as the old grid placed them and converts their chart settings", async () => {
+      const rows = await h.rawAll(sql`SELECT id, kind, viz, x, y, w, h FROM dashboard_panels WHERE dashboard_id = 'd1' ORDER BY position`);
+      expect(rows.map((r) => [r.id, r.kind, Number(r.x), Number(r.y), Number(r.w), Number(r.h)])).toEqual([
+        [P1, "chart", 0, 0, 12, 12],
+        [P2, "chart", 12, 0, 12, 12],
+        [P3, "chart", 0, 12, 24, 9],
+      ]);
+      expect(JSON.parse(String(rows[0].viz))).toEqual({ ...LINE_V1, version: 2, links: [], baseline: null });
+      const annotations = await h.rawAll(sql`SELECT annotations FROM dashboards WHERE id = 'd1'`);
+      expect(JSON.parse(String(annotations[0].annotations))).toEqual(["ddl", "upgrades", "settings", "writers", "alerts", "incidents", "fixes", "notes"]);
+    });
+
+    it("records the converted document as the dashboard's current version, identical to converting a format 1 file", async () => {
+      const versions = await h.rawAll(sql`SELECT dashboard_id, version, document, saved_by, source FROM dashboard_versions ORDER BY dashboard_id`);
+      expect(versions.map((v) => [v.dashboard_id, Number(v.version), v.saved_by, v.source])).toEqual([["d1", 3, "u1", "migration"], ["d3", 1, "u1", "migration"]]);
+      const file = parseDashboardDocument({
+        title: "Dash d1", description: "Old", timeRange: "6h", refreshSeconds: 60, connectionScope: { kind: "any" }, variables: VARIABLES,
+        panels: [
+          { id: P1, title: `Panel ${P1}`, sql: SQL_A, viz: LINE_V1, width: 6, height: "s", fleet: false },
+          { id: P2, title: `Panel ${P2}`, sql: SQL_A, viz: LINE_V1, width: 6, height: "l", fleet: false },
+          { id: P3, title: `Panel ${P3}`, sql: SQL_A, viz: TABLE_V1, width: 12, height: "m", fleet: true },
+        ],
+      });
+      expect(file.ok).toBe(true);
+      expect(JSON.parse(String(versions[0].document))).toEqual(file.ok ? file.input : null);
+      expect(JSON.parse(String(versions[1].document)).panels).toEqual([]);
+    });
+
+    it("leaves a dashboard whose stored data cannot be read as it was", async () => {
+      const rows = await h.rawAll(sql`SELECT viz, w, h FROM dashboard_panels WHERE id = ${Q1}`);
+      expect(rows[0].viz).toBe("{}");
+      expect(Number(rows[0].w)).toBe(0);
+      expect(await h.rawAll(sql`SELECT 1 FROM dashboard_versions WHERE dashboard_id = 'd2'`)).toEqual([]);
+    });
+
+    it("gives panel alerts kind threshold, leaving unreadable and converted configs alone", async () => {
+      const rows = await h.rawAll(sql`SELECT id, config FROM dashboard_alerts ORDER BY id`);
+      expect(JSON.parse(String(rows[0].config))).toEqual({ kind: "threshold", ...THRESHOLD });
+      expect(rows[1].config).toBe("not json");
+      expect(JSON.parse(String(rows[2].config))).toEqual({ kind: "threshold", ...THRESHOLD });
+    });
+
+    it("is idempotent when re-run", async () => {
+      const before = await snapshot();
+      const migration = MIGRATIONS.find((m) => m.version === "1.63.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await snapshot()).toEqual(before);
+    });
+
+    it("then drops the old sizes, and the store reads every converted dashboard", async () => {
+      expect((await runMigrations()).migrationsApplied).toEqual(["1.64.0"]);
+      expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
+      const migration = MIGRATIONS.find((m) => m.version === "1.64.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      const store = await import("../../services/dashboards/store");
+      const d1 = await store.getDashboard("d1");
+      expect(d1?.panels.map((p) => [p.id, p.kind, p.layout])).toEqual([
+        [P1, "chart", { x: 0, y: 0, w: 12, h: 12 }],
+        [P2, "chart", { x: 12, y: 0, w: 12, h: 12 }],
+        [P3, "chart", { x: 0, y: 12, w: 24, h: 9 }],
+      ]);
+      expect((await store.getDashboard("d3"))?.panels).toEqual([]);
+      // Unreadable before, unreadable after — an explicit error, never a default.
+      await expect(store.getDashboard("d2")).rejects.toThrow(`Stored layout of panel ${Q1} is not a place on the canvas`);
+      expect((await store.listVersions("d1")).map((v) => [v.version, v.source])).toEqual([[3, "migration"]]);
     });
   });
 }

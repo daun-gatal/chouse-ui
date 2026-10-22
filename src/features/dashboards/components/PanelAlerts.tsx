@@ -24,11 +24,12 @@ import {
   deleteAlert,
   listAlerts,
   updateAlert,
+  type AlertConfig,
   type AlertInput,
   type AlertState,
   type DashboardDetail,
   type PanelAlertWithStatus,
-  type PanelInput,
+  type ChartPanelInput,
 } from "@/api/dashboards";
 import { cn } from "@/lib/utils";
 import { RELATIVE_RANGE_KEYS, REDUCERS, type RelativeRange } from "@/lib/viz/spec";
@@ -60,22 +61,40 @@ function worstState(alerts: PanelAlertWithStatus[]): AlertState | null {
 }
 
 /** A new alert watches the dock's active connection: the evaluator runs with no browser to ask. */
-function defaults(panel: PanelInput, view: ViewState, connectionId: string, range: RelativeRange): AlertInput {
+function defaults(panel: ChartPanelInput, view: ViewState, connectionId: string, range: RelativeRange): AlertInput {
   return {
     name: `${panel.title} alert`,
     severity: "warning",
     connectionId,
     channelIds: [],
     enabled: true,
-    config: { column: panel.viz.y[0] ?? "", reduce: "last", op: ">", value: 0, forEvaluations: 1, everyMinutes: 5, range, values: view.values },
+    config: { kind: "threshold", column: panel.viz.y[0] ?? "", reduce: "last", op: ">", value: 0, forEvaluations: 1, everyMinutes: 5, range, values: view.values },
   };
 }
 
-function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { initial: AlertInput; panel: PanelInput; onCancel: () => void; onSubmit: (input: AlertInput) => void; saving: boolean; error: string | null }): React.ReactElement {
+/** The config as the other kind, keeping what both kinds share. */
+export function withAlertKind(config: AlertConfig, kind: AlertConfig["kind"]): AlertConfig {
+  const { column, forEvaluations, everyMinutes, range, values } = config;
+  const common = { column, forEvaluations, everyMinutes, range, values };
+  if (kind === "outside_band") return { ...common, kind };
+  return config.kind === "threshold" ? config : { ...common, kind, reduce: "last", op: ">", value: 0 };
+}
+
+/** The alert's rule in words, for its row. */
+export function ruleText(config: AlertConfig, panel: ChartPanelInput): string {
+  if (config.kind === "outside_band") return `${config.column} outside its expected range (latest complete bucket)`;
+  return `${config.reduce} of ${config.column} over ${config.range} ${config.op} ${formatValue(config.value, panel.viz.unit, panel.viz.decimals)}`;
+}
+
+function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { initial: AlertInput; panel: ChartPanelInput; onCancel: () => void; onSubmit: (input: AlertInput) => void; saving: boolean; error: string | null }): React.ReactElement {
   const [draft, setDraft] = useState<AlertInput>(initial);
   const channels = useQuery({ queryKey: ["alerting", "channels"], queryFn: listChannels });
-  const setConfig = (patch: Partial<AlertInput["config"]>): void => setDraft({ ...draft, config: { ...draft.config, ...patch } });
-  const invalid = draft.name.trim() === "" || draft.channelIds.length === 0 || draft.connectionId === "" || !Number.isFinite(draft.config.value) || draft.config.column === "";
+  const config = draft.config;
+  const setConfig = (next: AlertConfig): void => setDraft({ ...draft, config: next });
+  const setCommon = (patch: Partial<Pick<AlertConfig, "column" | "range" | "everyMinutes" | "forEvaluations">>): void => setConfig({ ...config, ...patch });
+  const banded = panel.viz.baseline !== null;
+  const invalid = draft.name.trim() === "" || draft.channelIds.length === 0 || draft.connectionId === "" || config.column === ""
+    || (config.kind === "threshold" && !Number.isFinite(config.value)) || (config.kind === "outside_band" && !banded);
   return (
     <div className="flex flex-col gap-3 text-sm" data-testid="alert-form">
       <div className="flex flex-wrap gap-3">
@@ -91,38 +110,61 @@ function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { init
           </Select>
         </label>
       </div>
-      <div className="flex flex-wrap items-end gap-2">
-        <span className="pb-2 text-xs text-paper-dim">Alert when the</span>
-        <Select value={draft.config.reduce} onValueChange={(v) => setConfig({ reduce: v as AlertInput["config"]["reduce"] })}>
-          <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Reduce"><SelectValue /></SelectTrigger>
-          <SelectContent>{REDUCERS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+      <label className="flex flex-col gap-1">
+        <span className={FIELD_LABEL}>Kind</span>
+        <Select value={config.kind} onValueChange={(v) => setConfig(withAlertKind(config, v as AlertConfig["kind"]))}>
+          <SelectTrigger className={cn(FIELD, "w-64")} aria-label="Alert kind"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="threshold">Above or below a value</SelectItem>
+            <SelectItem value="outside_band" disabled={!banded}>Outside the expected range</SelectItem>
+          </SelectContent>
         </Select>
-        <span className="pb-2 text-xs text-paper-dim">of</span>
-        <Select value={draft.config.column} onValueChange={(column) => setConfig({ column })}>
-          <SelectTrigger className={cn(FIELD, "w-40")} aria-label="Column"><SelectValue placeholder="Column" /></SelectTrigger>
-          <SelectContent>{panel.viz.y.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-        </Select>
-        <span className="pb-2 text-xs text-paper-dim">over the last</span>
-        <Select value={draft.config.range} onValueChange={(v) => setConfig({ range: v as RelativeRange })}>
-          <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Window"><SelectValue /></SelectTrigger>
-          <SelectContent>{RELATIVE_RANGE_KEYS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-        </Select>
-        <span className="pb-2 text-xs text-paper-dim">is</span>
-        <Select value={draft.config.op} onValueChange={(v) => setConfig({ op: v as AlertInput["config"]["op"] })}>
-          <SelectTrigger className={cn(FIELD, "w-20")} aria-label="Comparison"><SelectValue /></SelectTrigger>
-          <SelectContent>{[">", ">=", "<", "<="].map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-        </Select>
-        <Input type="number" className={cn(FIELD, "w-28")} aria-label="Threshold" value={Number.isFinite(draft.config.value) ? draft.config.value : ""} onChange={(e) => setConfig({ value: e.target.valueAsNumber })} />
-        <span className="pb-2 text-xs text-paper-faint">{formatValue(draft.config.value, panel.viz.unit, panel.viz.decimals)}</span>
-      </div>
+        {!banded && <span className="text-[11px] text-paper-faint">Turn on the expected-range band in the panel's chart settings to alert on it.</span>}
+      </label>
+      {config.kind === "threshold" ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <span className="pb-2 text-xs text-paper-dim">Alert when the</span>
+          <Select value={config.reduce} onValueChange={(v) => setConfig({ ...config, reduce: v as typeof config.reduce })}>
+            <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Reduce"><SelectValue /></SelectTrigger>
+            <SelectContent>{REDUCERS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+          </Select>
+          <span className="pb-2 text-xs text-paper-dim">of</span>
+          <Select value={config.column} onValueChange={(column) => setCommon({ column })}>
+            <SelectTrigger className={cn(FIELD, "w-40")} aria-label="Column"><SelectValue placeholder="Column" /></SelectTrigger>
+            <SelectContent>{panel.viz.y.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+          </Select>
+          <span className="pb-2 text-xs text-paper-dim">over the last</span>
+          <Select value={config.range} onValueChange={(v) => setCommon({ range: v as RelativeRange })}>
+            <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Window"><SelectValue /></SelectTrigger>
+            <SelectContent>{RELATIVE_RANGE_KEYS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+          </Select>
+          <span className="pb-2 text-xs text-paper-dim">is</span>
+          <Select value={config.op} onValueChange={(v) => setConfig({ ...config, op: v as typeof config.op })}>
+            <SelectTrigger className={cn(FIELD, "w-20")} aria-label="Comparison"><SelectValue /></SelectTrigger>
+            <SelectContent>{[">", ">=", "<", "<="].map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+          </Select>
+          <Input type="number" className={cn(FIELD, "w-28")} aria-label="Threshold" value={Number.isFinite(config.value) ? config.value : ""} onChange={(e) => setConfig({ ...config, value: e.target.valueAsNumber })} />
+          <span className="pb-2 text-xs text-paper-faint">{formatValue(config.value, panel.viz.unit, panel.viz.decimals)}</span>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <span className="pb-2 text-xs text-paper-dim">Alert when</span>
+          <span className="pb-2 font-mono text-xs text-paper">{config.column}</span>
+          <span className="pb-2 text-xs text-paper-dim">leaves its expected range in the latest complete bucket, looking at the last</span>
+          <Select value={config.range} onValueChange={(v) => setCommon({ range: v as RelativeRange })}>
+            <SelectTrigger className={cn(FIELD, "w-24")} aria-label="Window"><SelectValue /></SelectTrigger>
+            <SelectContent>{RELATIVE_RANGE_KEYS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Check every (minutes)</span>
-          <Input type="number" min={1} max={1440} className={cn(FIELD, "w-28")} value={draft.config.everyMinutes} onChange={(e) => setConfig({ everyMinutes: Math.max(1, Math.min(1440, Math.round(e.target.valueAsNumber || 1))) })} />
+          <Input type="number" min={1} max={1440} className={cn(FIELD, "w-28")} value={config.everyMinutes} onChange={(e) => setCommon({ everyMinutes: Math.max(1, Math.min(1440, Math.round(e.target.valueAsNumber || 1))) })} />
         </label>
         <label className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Fire after (checks in a row)</span>
-          <Input type="number" min={1} max={60} className={cn(FIELD, "w-28")} value={draft.config.forEvaluations} onChange={(e) => setConfig({ forEvaluations: Math.max(1, Math.min(60, Math.round(e.target.valueAsNumber || 1))) })} />
+          <Input type="number" min={1} max={60} className={cn(FIELD, "w-28")} value={config.forEvaluations} onChange={(e) => setCommon({ forEvaluations: Math.max(1, Math.min(60, Math.round(e.target.valueAsNumber || 1))) })} />
         </label>
         <label className="flex items-center gap-2 pb-2 text-xs text-paper-dim">
           <Switch checked={draft.enabled} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} aria-label="Enabled" /> Enabled
@@ -137,7 +179,7 @@ function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { init
             <label key={ch.id} className="flex items-center gap-1.5 text-xs">
               <Checkbox
                 checked={draft.channelIds.includes(ch.id)}
-                onCheckedChange={(c) => setDraft({ ...draft, channelIds: c === true ? [...draft.channelIds, ch.id] : draft.channelIds.filter((id) => id !== ch.id) })}
+                onCheckedChange={(c) => setDraft({ ...draft, channelIds: c === true ? [...draft.channelIds, ch.id] : draft.channelIds.filter((channelId) => channelId !== ch.id) })}
                 aria-label={`Notify ${ch.name}`}
               />
               {ch.name}{ch.enabled ? "" : " (disabled)"}
@@ -146,7 +188,7 @@ function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { init
         </div>
       </div>
       <p className="text-[11px] text-paper-faint">
-        Runs on the current connection with the current variable values ({Object.entries(draft.config.values).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}), with your access.
+        Runs on the current connection with the current variable values ({Object.entries(config.values).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join("|") : v}`).join(", ") || "none"}), with your access.
       </p>
       {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -160,7 +202,7 @@ function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { init
 interface Props {
   detail: DashboardDetail;
   panelId: string;
-  panel: PanelInput;
+  panel: ChartPanelInput;
   view: ViewState;
 }
 
@@ -195,7 +237,11 @@ export function PanelAlertsButton({ detail, panelId, panel, view }: Props): Reac
   const check = async (alertId: string): Promise<void> => {
     try {
       const outcome = await checkAlert(id, alertId);
-      setChecks((c) => ({ ...c, [alertId]: outcome.kind === "value" ? `Now: ${formatValue(outcome.value, panel.viz.unit, panel.viz.decimals)}` : outcome.reason }));
+      setChecks((c) => ({
+        ...c,
+        [alertId]: outcome.kind !== "value" ? outcome.reason
+          : `Now: ${formatValue(outcome.value, panel.viz.unit, panel.viz.decimals)}${outcome.band ? ` (expected ${formatValue(outcome.band.lo, panel.viz.unit, panel.viz.decimals)} to ${formatValue(outcome.band.hi, panel.viz.unit, panel.viz.decimals)})` : ""}${outcome.breached ? " — breaches" : ""}`,
+      }));
     } catch (e) {
       setChecks((c) => ({ ...c, [alertId]: e instanceof Error ? e.message : String(e) }));
     }
@@ -246,7 +292,7 @@ export function PanelAlertsButton({ detail, panelId, panel, view }: Props): Reac
                     {canDelete && <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Delete ${a.name}`} onClick={() => remove.mutate(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button>}
                   </div>
                   <span className="font-mono text-[10px] text-paper-dim">
-                    {a.config.reduce} of {a.config.column} over {a.config.range} {a.config.op} {formatValue(a.config.value, panel.viz.unit, panel.viz.decimals)} · every {a.config.everyMinutes} min · {a.severity}
+                    {ruleText(a.config, panel)} · every {a.config.everyMinutes} min · {a.severity}
                   </span>
                   {a.status?.lastValue !== null && a.status?.lastValue !== undefined && <span className="text-[11px] text-paper-muted">Last value {formatValue(a.status.lastValue, panel.viz.unit, panel.viz.decimals)}{a.status.lastEvalAt ? ` at ${new Date(a.status.lastEvalAt).toLocaleString()}` : ""}</span>}
                   {a.status?.lastError && <span role="alert" className="text-[11px] text-red-300">{a.status.lastError}</span>}

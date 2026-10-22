@@ -62,6 +62,8 @@ import {
     LabelList,
     Brush,
     ReferenceLine,
+    ReferenceArea,
+    ComposedChart,
 } from 'recharts';
 
 /**
@@ -191,7 +193,31 @@ export type ChartViewOptions =
          * scale so they stay comparable.
          */
         seriesMeasure: string | null;
+        /** Line and area charts only: what is drawn over the series (ADR 0023). */
+        overlays?: PanelOverlays;
+        /** Bar charts: a bar was clicked (the index of its row). */
+        onDatumClick?: (index: number) => void;
     };
+
+/**
+ * What a dashboard panel draws over a line or area chart. Every x value names
+ * a category of the chart's x column; the panel maps times to them.
+ */
+export interface PanelOverlays {
+    /** Vertical markers (annotations), each at a category. */
+    markers: Array<{ id: string; x: string; color: string; label: string }>;
+    /** Extra dashed series (compare); the rows already carry their values under `key`. */
+    compare: Array<{ key: string; label: string }>;
+    /** The expected range: row keys holding each bucket's low and high (null: none). */
+    band: { lo: string; hi: string } | null;
+    /** The range the user selected, drawn as a shaded area. */
+    selection: { from: string; to: string } | null;
+    /** Dragging across the chart selects a range; a click without a drag is a point click. */
+    onSelect?: (from: string, to: string) => void;
+    onPointClick?: (x: string, index: number) => void;
+    /** A marker was clicked. */
+    onMarkerClick?: (id: string) => void;
+}
 
 const CARD_OPTIONS: ChartViewOptions = { variant: 'card' };
 
@@ -224,6 +250,10 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
     const { chartType, title, rows, xAxis, yAxis, colorScheme } = spec;
     const [containerRef, containerWidth] = useContainerWidth();
     const panel = options.variant === 'panel' ? options : null;
+    const overlays = panel?.overlays ?? null;
+    // A press on the chart starts a selection; releasing on another category ends it, on the same one is a click.
+    const [dragFrom, setDragFrom] = useState<{ x: string; index: number } | null>(null);
+    const [dragTo, setDragTo] = useState<string | null>(null);
     const isPanel = panel !== null;
     const fmt = panel ? panel.formatValue : formatAxisValue;
     const thresholds = panel ? panel.thresholds : [];
@@ -427,6 +457,67 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
     // ============================================
 
     let chartElement: React.ReactElement;
+    const barClick = panel?.onDatumClick ? (_: unknown, index: number): void => panel.onDatumClick?.(index) : undefined;
+
+    const label = (state: { activeLabel?: string | number; activeTooltipIndex?: unknown } | null | undefined): { x: string; index: number } | null => {
+        if (!state || state.activeLabel === undefined) return null;
+        const index = typeof state.activeTooltipIndex === 'number' ? state.activeTooltipIndex : Number(state.activeTooltipIndex);
+        return Number.isInteger(index) ? { x: String(state.activeLabel), index } : null;
+    };
+    const overlayHandlers = overlays && (overlays.onSelect || overlays.onPointClick) ? {
+        onMouseDown: (state: Parameters<typeof label>[0]) => { const at = label(state); setDragFrom(at); setDragTo(at ? at.x : null); },
+        onMouseMove: (state: Parameters<typeof label>[0]) => { if (dragFrom) { const at = label(state); if (at) setDragTo(at.x); } },
+        onMouseUp: (state: Parameters<typeof label>[0]) => {
+            const at = label(state);
+            const start = dragFrom;
+            setDragFrom(null);
+            setDragTo(null);
+            if (!start || !at) return;
+            if (at.index === start.index) { overlays.onPointClick?.(start.x, start.index); return; }
+            const [a, b] = at.index > start.index ? [start.x, at.x] : [at.x, start.x];
+            overlays.onSelect?.(a, b);
+        },
+    } : {};
+    const overlayChildren = overlays ? (
+        <>
+            {overlays.band && (
+                <Area
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey={(row: Record<string, unknown>) => {
+                        const lo = row[overlays.band?.lo ?? ''];
+                        const hi = row[overlays.band?.hi ?? ''];
+                        return typeof lo === 'number' && typeof hi === 'number' ? [lo, hi] : null;
+                    }}
+                    name="Expected range"
+                    stroke="rgba(167,139,250,0.35)"
+                    strokeDasharray="2 3"
+                    fill="rgba(167,139,250,0.12)"
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType="none"
+                />
+            )}
+            {overlays.compare.map((c) => (
+                <Line key={c.key} yAxisId="left" type="monotone" dataKey={c.key} name={c.label} stroke="#71717a" strokeDasharray="5 4" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />
+            ))}
+            {overlays.markers.map((m) => (
+                <ReferenceLine
+                    key={m.id}
+                    yAxisId="left"
+                    x={m.x}
+                    stroke={m.color}
+                    strokeDasharray="3 3"
+                    ifOverflow="extendDomain"
+                    label={{ value: '◆', position: 'top', fill: m.color, fontSize: 10 }}
+                    onClick={() => overlays.onMarkerClick?.(m.id)}
+                    style={{ cursor: overlays.onMarkerClick ? 'pointer' : undefined }}
+                />
+            ))}
+            {overlays.selection && <ReferenceArea yAxisId="left" x1={overlays.selection.from} x2={overlays.selection.to} fill="rgba(255,204,1,0.10)" stroke="#ffcc01" strokeOpacity={0.6} />}
+            {dragFrom && dragTo && dragTo !== dragFrom.x && <ReferenceArea yAxisId="left" x1={dragFrom.x} x2={dragTo} fill="rgba(255,204,1,0.08)" />}
+        </>
+    ) : null;
 
     switch (chartType) {
 
@@ -445,6 +536,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             yAxisId={axisForSeries(col)}
@@ -472,6 +565,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             yAxisId={axisForSeries(col)}
@@ -517,6 +612,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             fill={palette[i % palette.length]}
@@ -533,13 +630,14 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
         case 'line':
         case 'multi_line': {
             chartElement = (
-                <LineChart data={rows} accessibilityLayer margin={chartMargin}>
+                <ComposedChart data={rows} accessibilityLayer margin={chartMargin} {...overlayHandlers}>
                     {sharedGrid}
                     {sharedXAxis}
                     {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
                     {thresholdLines}
+                    {overlayChildren}
                     {yAxes.map((col, i) => (
                         <Line
                             key={col}
@@ -564,7 +662,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                             tickFormatter={() => ''}
                         />
                     )}
-                </LineChart>
+                </ComposedChart>
             );
             break;
         }
@@ -574,7 +672,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
         case 'stacked_area': {
             const isStacked = chartType === 'stacked_area';
             chartElement = (
-                <AreaChart data={rows} accessibilityLayer margin={chartMargin}>
+                <ComposedChart data={rows} accessibilityLayer margin={chartMargin} {...overlayHandlers}>
                     <defs>
                         {yAxes.map((col, i) => (
                             <linearGradient key={col} id={`grad-${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -589,6 +687,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {sharedTooltip}
                     {sharedLegend}
                     {thresholdLines}
+                    {overlayChildren}
                     {yAxes.map((col, i) => (
                         <Area
                             key={col}
@@ -612,7 +711,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                             tickFormatter={() => ''}
                         />
                     )}
-                </AreaChart>
+                </ComposedChart>
             );
             break;
         }

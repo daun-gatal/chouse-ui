@@ -6,6 +6,7 @@
  */
 
 import { scanMacros } from "./macros";
+import { isTimeType } from "./time";
 import { NUMERIC_TYPES, TIME_SERIES_TYPES, type VizSpec } from "./spec";
 
 export type LintCode =
@@ -13,13 +14,19 @@ export type LintCode =
   | "missing_unit"
   | "avg_of_quantiles"
   | "unbounded_log_scan"
-  | "pie_without_limit";
+  | "pie_without_limit"
+  | ChartFitCode;
+
+/** Chart-fit findings (ADR 0023 §4): read from a result, not from the SQL. */
+export type ChartFitCode = "too_many_slices" | "time_axis_not_time" | "too_many_series" | "too_many_categories";
 
 export interface LintFinding {
   code: LintCode;
   message: string;
   /** The panel SQL with the fix applied, when the fix is mechanical. */
   fixedSql?: string;
+  /** The chart settings with the fix applied, when the fix is mechanical. */
+  fixedViz?: VizSpec;
 }
 
 /** The SQL with quoted strings, quoted identifiers and comments blanked out. */
@@ -118,5 +125,67 @@ export function lintPanel(sql: string, viz: VizSpec): LintFinding[] {
     });
   }
 
+  return findings;
+}
+
+// ============================================
+// Chart fit (ADR 0023 §4)
+// ============================================
+
+const SLICE_TYPES = new Set<VizSpec["type"]>(["pie", "donut", "treemap", "funnel"]);
+const BAR_TYPES = new Set<VizSpec["type"]>(["bar", "horizontal_bar", "grouped_bar", "stacked_bar"]);
+export const MAX_SLICES = 8;
+export const MAX_FIT_SERIES = 12;
+export const MAX_CATEGORIES = 50;
+
+export { isTimeType };
+
+export interface FitResult {
+  columns: Array<{ name: string; type: string }>;
+  rows: Array<Record<string, unknown>>;
+}
+
+/**
+ * Whether the chart suits what the query returned: too many slices, a trend
+ * over something that is not time, too many series, too many bars. Run on a
+ * real result (the AI draft's dry run, the editor's preview), so it never
+ * guesses from the SQL.
+ */
+export function chartFit(viz: VizSpec, result: FitResult): LintFinding[] {
+  const findings: LintFinding[] = [];
+  const rows = result.rows.length;
+  if (SLICE_TYPES.has(viz.type) && rows > MAX_SLICES) {
+    findings.push({
+      code: "too_many_slices",
+      message: `The query returned ${rows} rows: a ${viz.type} with more than ${MAX_SLICES} slices is unreadable. Show them as horizontal bars.`,
+      fixedViz: { ...viz, type: "horizontal_bar" },
+    });
+  }
+  if (TIME_SERIES_TYPES.has(viz.type) && viz.x !== null) {
+    const x = result.columns.find((c) => c.name === viz.x);
+    if (x && !isTimeType(x.type)) {
+      findings.push({
+        code: "time_axis_not_time",
+        message: `${viz.x} is ${x.type}, not a date or time, so a ${viz.type} draws a trend that is not there. Show it as bars.`,
+        fixedViz: { ...viz, type: "bar", baseline: null },
+      });
+    }
+  }
+  const series = viz.series;
+  if (series !== null) {
+    const distinct = new Set(result.rows.map((row) => String(row[series]))).size;
+    if (distinct > MAX_FIT_SERIES) {
+      findings.push({
+        code: "too_many_series",
+        message: `Splitting by ${series} makes ${distinct} series; keep the top ${MAX_FIT_SERIES} with a subquery and LIMIT, or filter with a variable.`,
+      });
+    }
+  }
+  if (BAR_TYPES.has(viz.type) && rows > MAX_CATEGORIES) {
+    findings.push({
+      code: "too_many_categories",
+      message: `The query returned ${rows} bars; aggregate further or keep the top ${MAX_CATEGORIES} with ORDER BY … LIMIT.`,
+    });
+  }
   return findings;
 }

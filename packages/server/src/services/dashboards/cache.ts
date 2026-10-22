@@ -16,7 +16,7 @@ export const CACHE_MAX_ENTRIES = 500;
 export const CACHE_MAX_BYTES = 64 * 1024 * 1024;
 export const MAX_CONCURRENT_PER_CONNECTION = 4;
 
-export function cacheKey(connectionId: string, sql: string, params: Record<string, string | number>): string {
+export function cacheKey(connectionId: string, sql: string, params: Record<string, string | number | string[]>): string {
   const sorted = Object.keys(params).sort().map((k) => [k, params[k]]);
   return createHash("sha256").update(JSON.stringify([connectionId, sql, sorted])).digest("hex");
 }

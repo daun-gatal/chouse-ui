@@ -684,9 +684,9 @@
     {
       "path": "chouse dashboard",
       "use": "chouse dashboard",
-      "short": "Dashboards: list, show, run a panel, export, apply, delete",
-      "long": "Custom dashboards (ADR 0021) as code. export writes a dashboard as JSON;\napply creates a dashboard from that JSON, or updates the dashboard its id\nnames so it matches the file exactly (panels left out are removed with\ntheir alerts). run-panel runs one panel's read-only query with your own\ndata access. delete asks first (or needs --yes).",
-      "example": "  chouse dashboard list\n  chouse dashboard export 7c1e… > orders.json\n  chouse dashboard apply -f orders.json\n  chouse dashboard run-panel 7c1e… 2b9d… --range 24h --var db=shop",
+      "short": "Dashboards: list, show, run a panel, export, apply, versions, snapshots, Grafana import",
+      "long": "Custom dashboards (ADR 0021, ADR 0023) as code. export writes a dashboard as\nJSON; apply creates a dashboard from that JSON, or updates the dashboard its\nid names so it matches the file exactly (panels left out are removed with\ntheir alerts). run-panel runs one panel's read-only query with your own data\naccess. versions and restore read and roll back its history; snapshot freezes\nits results for a range. import-grafana converts a Grafana dashboard. delete\nand restore ask first (or need --yes).",
+      "example": "  chouse dashboard list\n  chouse dashboard export 7c1e… > orders.json\n  chouse dashboard apply -f orders.json\n  chouse dashboard run-panel 7c1e… 2b9d… --range 24h --var db=shop\n  chouse dashboard import-grafana -f grafana.json --apply",
       "aliases": [
         "dashboards"
       ],
@@ -697,7 +697,7 @@
       "path": "chouse dashboard apply",
       "use": "chouse dashboard apply -f FILE [flags]",
       "short": "Create or update a dashboard from an export",
-      "long": "With \"id\": null in the file, a new dashboard is created (yours, with new\npanel ids). With an id, that dashboard is updated to match the file: panels\nkeep their ids, panels missing from the file are removed together with\ntheir alerts. The server validates every panel; nothing is partly applied.",
+      "long": "With \"id\": null in the file, a new dashboard is created (yours, with new\npanel ids). With an id, that dashboard is updated to match the file: panels\nkeep their ids, panels missing from the file are removed together with\ntheir alerts. The server validates every panel; nothing is partly applied.\nAn export from before CHouse 3.16 (chouse.dashboard/v1) is converted.",
       "example": "  chouse dashboard apply -f orders.json\n  chouse dashboard export 7c1e… | chouse dashboard apply -f -",
       "runnable": true,
       "flags": [
@@ -738,6 +738,32 @@
       "runnable": true
     },
     {
+      "path": "chouse dashboard import-grafana",
+      "use": "chouse dashboard import-grafana -f FILE [flags]",
+      "short": "Convert a Grafana dashboard, and with --apply import it",
+      "long": "Prints what converts: each Grafana panel is ready, changed (with what\nchanged) or skipped (with why). Only ClickHouse panels convert. Nothing is\nsaved without --apply, which imports the convertible panels like apply -f.\nThe dashboard is assigned to the -c connection, or to every connection with\n--all-connections.",
+      "example": "  chouse dashboard import-grafana -f grafana.json -c prod\n  chouse dashboard import-grafana -f grafana.json -c prod --apply",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "all-connections",
+          "type": "bool",
+          "usage": "assign the dashboard to every connection instead of -c"
+        },
+        {
+          "name": "apply",
+          "type": "bool",
+          "usage": "import the convertible panels"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "the Grafana dashboard JSON (- for stdin)"
+        }
+      ]
+    },
+    {
       "path": "chouse dashboard list",
       "use": "chouse dashboard list",
       "short": "List the dashboards you may view",
@@ -745,10 +771,18 @@
       "runnable": true
     },
     {
+      "path": "chouse dashboard restore",
+      "use": "chouse dashboard restore <id> <version>",
+      "short": "Save an old version as the newest one",
+      "long": "Restoring saves the old version's document as a new version, so it can be\nundone by restoring the version before it. Panels the old version does not\nhave are removed with their alerts; restore lists those alerts and asks\nfirst (or needs --yes).",
+      "example": "  chouse dashboard restore 7c1e… 12 --yes",
+      "runnable": true
+    },
+    {
       "path": "chouse dashboard run-panel",
       "use": "chouse dashboard run-panel <dashboardId> <panelId> [flags]",
       "short": "Run one panel's read-only query",
-      "example": "  chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h\n  chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv",
+      "example": "  chouse dashboard run-panel 7c1e… 2b9d… -c prod --range 24h\n  chouse dashboard run-panel 7c1e… 2b9d… --var db=shop -o csv\n  chouse dashboard run-panel 7c1e… 2b9d… --var status=ok --var status=err",
       "runnable": true,
       "flags": [
         {
@@ -760,9 +794,81 @@
         {
           "name": "var",
           "type": "stringArray",
+          "usage": "a variable value as name=value (repeatable; repeat a name for a multi-value variable)"
+        }
+      ]
+    },
+    {
+      "path": "chouse dashboard snapshot",
+      "use": "chouse dashboard snapshot",
+      "short": "Freeze a dashboard's results for a range, and read them back",
+      "long": "A snapshot stores every chart panel's result for a range ending now, run as\nyou on the -c connection (at most 10 MiB). You, and the shared roles you name\nwith --role, can open it until it expires; whoever opens it still only sees\nwhat their own access allows.",
+      "example": "  chouse dashboard snapshot create 7c1e… --name \"Incident 42\" --range 6h -c prod\n  chouse dashboard snapshot list 7c1e…\n  chouse dashboard snapshot get 7c1e… 9a0f… --out incident-42.json",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard snapshot create",
+      "use": "chouse dashboard snapshot create <dashboardId> --name NAME [flags]",
+      "short": "Take a snapshot",
+      "example": "  chouse dashboard snapshot create 7c1e… --name \"Incident 42\" --range 6h -c prod --role team-b-role-id --expires-days 90",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "expires-days",
+          "type": "int",
+          "default": "30",
+          "usage": "days until it expires (1 to 365)"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "usage": "the snapshot's name"
+        },
+        {
+          "name": "range",
+          "type": "string",
+          "default": "1h",
+          "usage": "the range to freeze, ending now: 15m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d"
+        },
+        {
+          "name": "role",
+          "type": "stringArray",
+          "usage": "a role id the dashboard is shared with that may open it (repeatable)"
+        },
+        {
+          "name": "var",
+          "type": "stringArray",
           "usage": "a variable value as name=value (repeatable)"
         }
       ]
+    },
+    {
+      "path": "chouse dashboard snapshot get",
+      "use": "chouse dashboard snapshot get <dashboardId> <snapshotId> [flags]",
+      "short": "Write a snapshot (document and results) as JSON",
+      "example": "  chouse dashboard snapshot get 7c1e… 9a0f… --out incident-42.json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "out",
+          "type": "string",
+          "usage": "write to this file instead of stdout"
+        }
+      ]
+    },
+    {
+      "path": "chouse dashboard snapshot list",
+      "use": "chouse dashboard snapshot list <dashboardId>",
+      "short": "List the snapshots you may open",
+      "example": "  chouse dashboard snapshot list 7c1e…",
+      "runnable": true
+    },
+    {
+      "path": "chouse dashboard versions",
+      "use": "chouse dashboard versions <id>",
+      "short": "List a dashboard's last 50 saves",
+      "example": "  chouse dashboard versions 7c1e…",
+      "runnable": true
     },
     {
       "path": "chouse doctor",

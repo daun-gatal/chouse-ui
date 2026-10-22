@@ -217,6 +217,8 @@ const DEFAULT_TOOL_NAMES = [
   "get_dashboard",
   "export_dashboard",
   "run_dashboard_panel",
+  "list_dashboard_versions",
+  "get_dashboard_annotations",
 ];
 
 const WRITE_TOOLS = [
@@ -227,6 +229,7 @@ const WRITE_TOOLS = [
   "test_alert_channel",
   "propose_remediation",
   "apply_dashboard",
+  "create_dashboard_snapshot",
 ];
 
 const DESTRUCTIVE_TOOLS = ["kill_query", "query_raw", "delete_saved_query", "delete_scheduled_job", "delete_dashboard"];
@@ -701,7 +704,9 @@ describe("dashboards tools (ADR 0021)", () => {
       ["list_dashboards", {}],
       ["get_dashboard", { id: "d/1" }],
       ["export_dashboard", { id: "d1" }],
-      ["run_dashboard_panel", { id: "d1", panel_id: "p1", range: "6h", values: { db: "shop" }, connection_id: "conn-2" }],
+      ["run_dashboard_panel", { id: "d1", panel_id: "p1", range: "6h", values: { db: "shop", status: ["ok", "err"] }, connection_id: "conn-2" }],
+      ["list_dashboard_versions", { id: "d1" }],
+      ["get_dashboard_annotations", { id: "d1", range: "24h", sources: ["ddl", "alerts"] }],
     ] as Array<[string, Record<string, unknown>]>) {
       const { result } = await harness.request("tools/call", { name, arguments: args }, CTX);
       expect({ name, isError: result?.isError ?? false }).toEqual({ name, isError: false });
@@ -711,8 +716,11 @@ describe("dashboards tools (ADR 0021)", () => {
       "GET /api/dashboards/d%2F1",
       "GET /api/dashboards/d1/export",
       "POST /api/dashboards/d1/panels/p1/run",
+      "GET /api/dashboards/d1/versions",
+      "POST /api/dashboards/d1/annotations",
     ]);
-    expect(calls[3].body).toEqual({ range: { kind: "relative", value: "6h" }, values: { db: "shop" } });
+    expect(calls[3].body).toEqual({ range: { kind: "relative", value: "6h" }, values: { db: "shop", status: ["ok", "err"] } });
+    expect(calls[5].body).toEqual({ range: { kind: "relative", value: "24h" }, sources: ["ddl", "alerts"] });
     expect(calls[3].headers["x-connection-id"]).toBe("conn-2");
     expect(calls[3].headers["x-chouse-agent-source"]).toBe("mcp");
     await harness.close();
@@ -730,9 +738,26 @@ describe("dashboards tools (ADR 0021)", () => {
     await harness.close();
   });
 
+  it("snapshots a range ending now, as the caller, only once an administrator turns it on", async () => {
+    const { proxy, calls } = dashboardProxy();
+    const off = await createHarness(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    const refused = await off.request("tools/call", { name: "create_dashboard_snapshot", arguments: { id: "d1", name: "Spike", range: "1h" } }, CTX);
+    expect(refused.result?.isError ?? refused.error !== undefined).toBe(true);
+    await off.close();
+    const harness = await createHarness(buildMcpServer(enable("create_dashboard_snapshot"), buildMcpDeps(proxy), ALL));
+    const before = Math.floor(Date.now() / 1000);
+    await harness.request("tools/call", { name: "create_dashboard_snapshot", arguments: { id: "d1", name: "Spike", range: "1h", role_ids: ["r1"], expires_in_days: 7 } }, CTX);
+    const call = calls.find((c) => c.call === "POST /api/dashboards/d1/snapshots");
+    const body = call?.body as { from: number; to: number };
+    expect(call?.body).toMatchObject({ name: "Spike", values: {}, roleIds: ["r1"], expiresInDays: 7, incidentId: null });
+    expect(body.to - body.from).toBe(3_600);
+    expect(body.to).toBeGreaterThanOrEqual(before);
+    await harness.close();
+  });
+
   it("lists dashboard tools only for tokens with dashboards:view, and deleting needs dashboards:delete", async () => {
     const { proxy } = makeProxy({});
     const names = await listToolNames(buildMcpServer(enable("apply_dashboard", "delete_dashboard"), buildMcpDeps(proxy), { permissions: [PERMISSIONS.DASHBOARDS_VIEW] }));
-    expect(names.sort()).toEqual(["export_dashboard", "get_dashboard", "list_dashboards", "run_dashboard_panel", "whoami"]);
+    expect(names.sort()).toEqual(["export_dashboard", "get_dashboard", "get_dashboard_annotations", "list_dashboard_versions", "list_dashboards", "run_dashboard_panel", "whoami"]);
   });
 });

@@ -11,7 +11,7 @@
 import { validateReadOnlySelect } from "../scheduledQueries/validation";
 import { codeOnly } from "./lint";
 import { compileSql, defaultValues, resolveWindow, scanMacros } from "./macros";
-import type { DashboardInput, PanelInput, Variable, VizSpec } from "./spec";
+import { panelLabel, type ChartPanelInput, type DashboardInput, type Variable, type VizSpec } from "./spec";
 
 /** Chart types a fleet panel can draw: one series (or row, or stat) per connection. */
 const FLEET_TYPES = new Set<VizSpec["type"]>([
@@ -23,13 +23,14 @@ export function fleetProblems(viz: VizSpec): string[] {
   if (!FLEET_TYPES.has(viz.type)) return [`a ${viz.type} chart cannot run across the fleet; use a line, area, bar, stat or table`];
   if (viz.series !== null) return ["a fleet panel splits by connection, so it cannot also split by series"];
   if (viz.type !== "table" && viz.y.length !== 1) return ["a fleet panel plots exactly one y column per connection"];
+  if (viz.baseline !== null) return ["a fleet panel has one series per connection, so it cannot draw an expected-range band"];
   return [];
 }
 
 const FORMAT_RE = /\bformat\s+\w+\s*;?\s*$/i;
 
 /** Problems with one panel's SQL and shape (empty when it can be saved). */
-export function panelProblems(panel: Pick<PanelInput, "sql" | "viz" | "fleet">, variables: Variable[]): string[] {
+export function panelProblems(panel: Pick<ChartPanelInput, "sql" | "viz" | "fleet">, variables: Variable[]): string[] {
   const problems: string[] = [];
   const compiled = compileSql(panel.sql, variables, defaultValues(variables), resolveWindow({ kind: "relative", value: "1h" }, Date.now()));
   if (FORMAT_RE.test(codeOnly(panel.sql))) problems.push("Remove the FORMAT clause: panels always read the result as JSON");
@@ -58,7 +59,8 @@ export function dashboardProblems(input: DashboardInput): string[] {
   const problems: string[] = [];
   for (const variable of input.variables) problems.push(...variableProblems(variable));
   input.panels.forEach((panel, i) => {
-    for (const problem of panelProblems(panel, input.variables)) problems.push(`Panel ${i + 1} (${panel.title}): ${problem}`);
+    if (panel.kind !== "chart") return;
+    for (const problem of panelProblems(panel, input.variables)) problems.push(`${panelLabel(panel, i)}: ${problem}`);
   });
   return problems;
 }

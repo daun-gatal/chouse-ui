@@ -364,6 +364,9 @@ initializeRbac().then(async () => {
     // with a row lease, so redundant ticks across pods are harmless.
     const { DashboardAlertEvaluator } = await import("./services/dashboards/alerts");
     DashboardAlertEvaluator.getInstance().start();
+    // Scheduled dashboard reports (ADR 0023 §13), claimed per report with a row lease the same way.
+    const { DashboardReportScheduler } = await import("./services/dashboards/reports");
+    DashboardReportScheduler.getInstance().start();
   }
   // Warm the SSO config so the provider summary (or a config error) is logged
   // at boot rather than lazily on the first login request. Isolated so an SSO
@@ -449,6 +452,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
       DashboardAlertEvaluator.getInstance().stop();
     } catch (error) {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Panel alert evaluator stop failed");
+    }
+
+    try {
+      const { DashboardReportScheduler } = await import("./services/dashboards/reports");
+      DashboardReportScheduler.getInstance().stop();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Dashboard report scheduler stop failed");
     }
 
     try {

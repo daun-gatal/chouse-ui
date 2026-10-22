@@ -1,11 +1,45 @@
 import { describe, expect, it } from "bun:test";
 
-import { codeOnly, lintPanel } from "./lint";
+import { chartFit, codeOnly, isTimeType, lintPanel } from "./lint";
 import type { VizSpec } from "./spec";
 
 function viz(overrides: Partial<VizSpec> = {}): VizSpec {
-  return { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "ms", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, ...overrides };
+  return { version: 2, type: "line", x: "t", y: ["v"], series: null, unit: "ms", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null, ...overrides };
 }
+
+describe("chartFit", () => {
+  const rows = (n: number, extra: (i: number) => Record<string, unknown> = () => ({})): Array<Record<string, unknown>> => Array.from({ length: n }, (_, i) => ({ t: `k${i}`, v: i, ...extra(i) }));
+  const text = [{ name: "t", type: "String" }, { name: "v", type: "UInt64" }];
+  const time = [{ name: "t", type: "DateTime('UTC')" }, { name: "v", type: "UInt64" }];
+
+  it("turns a pie with more than 8 slices into horizontal bars, and leaves 8 alone", () => {
+    const pie = viz({ type: "pie", unit: "count" });
+    expect(chartFit(pie, { columns: text, rows: rows(8) })).toEqual([]);
+    const [finding] = chartFit(pie, { columns: text, rows: rows(9) });
+    expect(finding.code).toBe("too_many_slices");
+    expect(finding.fixedViz).toEqual({ ...pie, type: "horizontal_bar" });
+  });
+
+  it("turns a trend over something that is not time into bars, dropping a band that would no longer apply", () => {
+    const banded = viz({ baseline: { weeks: 4 } });
+    const [finding] = chartFit(banded, { columns: text, rows: rows(3) });
+    expect(finding).toMatchObject({ code: "time_axis_not_time", fixedViz: { ...banded, type: "bar", baseline: null } });
+    expect(chartFit(banded, { columns: time, rows: rows(3) })).toEqual([]);
+  });
+
+  it("flags too many series and too many bars without a mechanical fix", () => {
+    const split = viz({ series: "user" });
+    const many = chartFit(split, { columns: [...time, { name: "user", type: "String" }], rows: rows(13, (i) => ({ user: `u${i}` })) });
+    expect(many).toEqual([expect.objectContaining({ code: "too_many_series" })]);
+    expect(many[0].fixedViz).toBeUndefined();
+    expect(chartFit(viz({ type: "bar" }), { columns: text, rows: rows(51) }).map((f) => f.code)).toEqual(["too_many_categories"]);
+  });
+
+  it("knows date and time types through Nullable and LowCardinality", () => {
+    for (const t of ["Date", "Date32", "DateTime", "DateTime('UTC')", "DateTime64(3)", "Nullable(DateTime)", "LowCardinality(Nullable(Date))"]) expect(isTimeType(t)).toBe(true);
+    for (const t of ["String", "UInt32", "Nullable(String)", "Array(DateTime)"]) expect(isTimeType(t)).toBe(false);
+  });
+});
 
 const codes = (sql: string, spec: VizSpec): string[] => lintPanel(sql, spec).map((f) => f.code);
 

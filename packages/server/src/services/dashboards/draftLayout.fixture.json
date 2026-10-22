@@ -1,0 +1,150 @@
+{
+  "description": "AI-draft layout eval (ADR 0023 §4): realistic drafts, as roles, charts, importance and sections, for monitoring goals. The layout engine must place every one with KPIs on top, nothing overlapping, nothing under its minimum and every chart allowed for its role.",
+  "goals": [
+    {
+      "goal": "Kafka ingestion health for the orders topic: throughput, lag, errors, and whether inserts keep up",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Throughput" },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Throughput" },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Throughput" },
+        { "role": "trend", "chart": "line", "importance": "primary", "section": "Throughput" },
+        { "role": "breakdown", "chart": "horizontal_bar", "importance": "secondary", "section": "Where it is slow" },
+        { "role": "ranking", "chart": "bar", "importance": "secondary", "section": "Where it is slow" },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": "Where it is slow" }
+      ]
+    },
+    {
+      "goal": "Why are merges slow on events_local",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "line", "importance": "primary", "section": null },
+        { "role": "trend", "chart": "line", "importance": "secondary", "section": null },
+        { "role": "distribution", "chart": "histogram", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Query latency for the analytics user, p50 p95 p99, and the slowest query shapes",
+      "panels": [
+        { "role": "trend", "chart": "line", "importance": "primary", "section": null },
+        { "role": "ranking", "chart": "table", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Disk usage per database and when the default disk fills up",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "area", "importance": "primary", "section": null },
+        { "role": "breakdown", "chart": "donut", "importance": "secondary", "section": null },
+        { "role": "ranking", "chart": "horizontal_bar", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Replication health across shards",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Now" },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Now" },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Now" },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": "Now" },
+        { "role": "trend", "chart": "line", "importance": "primary", "section": "Queues" },
+        { "role": "breakdown", "chart": "bar", "importance": "secondary", "section": "Queues" },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": "Queues" }
+      ]
+    },
+    {
+      "goal": "Failed queries by error code and user over the last day",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "stacked_area", "importance": "primary", "section": null },
+        { "role": "breakdown", "chart": "pie", "importance": "secondary", "section": null },
+        { "role": "ranking", "chart": "horizontal_bar", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Memory pressure: tracked memory, the biggest queries and OOM kills",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "area", "importance": "primary", "section": null },
+        { "role": "ranking", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "S3Queue file processing for the landing bucket",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "breakdown", "chart": "bar", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "line", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Insert sizes per writer so we can spot small batches",
+      "panels": [
+        { "role": "distribution", "chart": "histogram", "importance": "secondary", "section": null },
+        { "role": "ranking", "chart": "horizontal_bar", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "line", "importance": "primary", "section": null }
+      ]
+    },
+    {
+      "goal": "Busy hours: queries by hour of day and day of week",
+      "panels": [
+        { "role": "distribution", "chart": "heatmap", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "bar", "importance": "primary", "section": null }
+      ]
+    },
+    {
+      "goal": "Everything an on-call needs at 3am for the orders cluster",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "trend", "chart": "line", "importance": "primary", "section": "Queries" },
+        { "role": "trend", "chart": "line", "importance": "secondary", "section": "Queries" },
+        { "role": "trend", "chart": "area", "importance": "secondary", "section": "Ingestion" },
+        { "role": "breakdown", "chart": "stacked_bar", "importance": "secondary", "section": "Ingestion" },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": "Errors" }
+      ]
+    },
+    {
+      "goal": "Compression ratio per table and column codecs",
+      "panels": [
+        { "role": "ranking", "chart": "horizontal_bar", "importance": "secondary", "section": null },
+        { "role": "breakdown", "chart": "treemap", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Mutations still running and how long they take",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "secondary", "section": null },
+        { "role": "distribution", "chart": "scatter", "importance": "secondary", "section": null },
+        { "role": "detail", "chart": "table", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "Distributed table send queues",
+      "panels": [
+        { "role": "trend", "chart": "multi_line", "importance": "primary", "section": null },
+        { "role": "breakdown", "chart": "grouped_bar", "importance": "secondary", "section": null },
+        { "role": "breakdown", "chart": "radar", "importance": "secondary", "section": null },
+        { "role": "breakdown", "chart": "funnel", "importance": "secondary", "section": null }
+      ]
+    },
+    {
+      "goal": "A single number: rows inserted today",
+      "panels": [
+        { "role": "kpi", "chart": "stat", "importance": "primary", "section": null }
+      ]
+    }
+  ]
+}

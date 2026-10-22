@@ -22,7 +22,7 @@ import { clip, normalizeTags, redactQueryLiterals, tableStem, validMetrics, type
 import { PROFILE_MAX_ROWS, profileTable, type TableProfile } from "../../context/profile";
 import { all, num, one, sql, str, strOrNull } from "../../observe/db";
 import { incidentConnection, incidentDetail } from "../../observe/views";
-import { actionParamsSchema, buildAction } from "../../remediation/catalog";
+import { CONTEXT_ONLY_TYPES, actionParamsSchema, buildAction } from "../../remediation/catalog";
 import { compileDataHealthQuery, DataHealthCompileError } from "../../dataHealth/compiler";
 import { dataHealthCheckDefinitionSchema, type DataHealthCheckDefinition } from "../../dataHealth/types";
 import type { AgentRunContext, StructuredCapability } from "../types";
@@ -92,7 +92,7 @@ export const explainIncidentCapability: StructuredCapability<{ source: "data_hea
     let dropped = 0;
     for (const draft of parsed.actionDrafts.slice(0, 3)) {
       const valid = actionParamsSchema.safeParse({ ...draft.params, type: draft.type });
-      if (!valid.success) {
+      if (!valid.success || CONTEXT_ONLY_TYPES.has(valid.data.type)) {
         dropped++;
         continue;
       }

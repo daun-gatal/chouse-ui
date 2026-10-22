@@ -12,7 +12,7 @@ mock.module("../scheduledQueries/chClient", () => ({
   clientForConnection: async () => ({
     query: async () => {
       queries += 1;
-      return { json: async () => ({ meta: [{ name: "t", type: "DateTime" }, { name: "v", type: "UInt64" }], data: rows.map((r) => ({ t: "2026-10-17 00:00:00", ...r })), statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 } }) };
+      return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => ({ meta: [{ name: "t", type: "DateTime" }, { name: "v", type: "UInt64" }], data: rows.map((r) => ({ t: "2026-10-17 00:00:00", ...r })), statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 } }) };
     },
   }),
 }));
@@ -42,30 +42,30 @@ const CONFIG = { op: ">" as const, value: 5, forEvaluations: 2 };
 
 describe("nextStatus", () => {
   it("goes pending, then fires once, then stays quiet while firing", () => {
-    const a = nextStatus(OK, { kind: "value", value: 9 }, CONFIG, 1);
+    const a = nextStatus(OK, { kind: "value", value: 9, breached: 9 > CONFIG.value }, CONFIG, 1);
     expect(a).toEqual({ status: { state: "pending", breaches: 1, since: 1, lastEvalAt: 1, lastValue: 9, lastError: null }, notice: null });
-    const b = nextStatus(a.status, { kind: "value", value: 8 }, CONFIG, 2);
+    const b = nextStatus(a.status, { kind: "value", value: 8, breached: 8 > CONFIG.value }, CONFIG, 2);
     expect(b.status.state).toBe("firing");
     expect(b.status.since).toBe(2);
     expect(b.notice).toBe("firing");
-    const c = nextStatus(b.status, { kind: "value", value: 7 }, CONFIG, 3);
+    const c = nextStatus(b.status, { kind: "value", value: 7, breached: 7 > CONFIG.value }, CONFIG, 3);
     expect(c.status).toMatchObject({ state: "firing", breaches: 3, since: 2 });
     expect(c.notice).toBeNull();
   });
 
   it("resolves when the value drops back, and a pending breach just clears", () => {
     const firing: Status = { ...OK, state: "firing", breaches: 2, since: 5 };
-    expect(nextStatus(firing, { kind: "value", value: 1 }, CONFIG, 9)).toEqual({ status: { state: "ok", breaches: 0, since: 9, lastEvalAt: 9, lastValue: 1, lastError: null }, notice: "resolved" });
+    expect(nextStatus(firing, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 9)).toEqual({ status: { state: "ok", breaches: 0, since: 9, lastEvalAt: 9, lastValue: 1, lastError: null }, notice: "resolved" });
     const pending: Status = { ...OK, state: "pending", breaches: 1, since: 5 };
-    expect(nextStatus(pending, { kind: "value", value: 1 }, CONFIG, 9).notice).toBeNull();
+    expect(nextStatus(pending, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 9).notice).toBeNull();
   });
 
   it("notifies once when it starts failing, and when it recovers", () => {
     const failing = nextStatus(OK, { kind: "error", reason: "boom" }, CONFIG, 1);
     expect(failing).toEqual({ status: { state: "error", breaches: 0, since: 1, lastEvalAt: 1, lastValue: null, lastError: "boom" }, notice: "error" });
     expect(nextStatus(failing.status, { kind: "error", reason: "still" }, CONFIG, 2).notice).toBeNull();
-    expect(nextStatus(failing.status, { kind: "value", value: 1 }, CONFIG, 3).notice).toBe("recovered");
-    expect(nextStatus(failing.status, { kind: "value", value: 9 }, { ...CONFIG, forEvaluations: 1 }, 3).notice).toBe("firing");
+    expect(nextStatus(failing.status, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 3).notice).toBe("recovered");
+    expect(nextStatus(failing.status, { kind: "value", value: 9, breached: 9 > CONFIG.value }, { ...CONFIG, forEvaluations: 1 }, 3).notice).toBe("firing");
   });
 
   it("treats no rows as not breaching, resolving a firing alert", () => {
@@ -115,14 +115,14 @@ describe("evaluator end to end", () => {
     await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, database, is_default, is_active, ssl_enabled, created_at, updated_at)
       VALUES ('conn-a', 'alpha', 'localhost', 8123, 'default', NULL, 'default', 0, 1, 0, unixepoch(), unixepoch())`);
     dashboardId = await store.createDashboard({
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [],
-      panels: [{ id: null, title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null }, width: 6, height: "m", fleet: false }],
-    }, OWNER);
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], annotations: [],
+      panels: [{ id: null, kind: "chart", title: "Orders", sql: "SELECT now() AS t, count() AS v FROM shop.orders", viz: { version: 2, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null }, fleet: false, layout: { x: 0, y: 0, w: 12, h: 9 } }],
+    }, OWNER, { userId: OWNER, source: "ui" });
     panelId = (await store.getDashboard(dashboardId))!.panels[0].id;
     channelId = await createChannel({ name: "ops-hook", type: ChannelType.Webhook, config: { url: "https://hooks.test/ops" }, enabled: true });
     alertId = await alertStore.createAlert(dashboardId, panelId, OWNER, {
       name: "Too many orders", severity: "critical", connectionId: "conn-a", channelIds: [channelId], enabled: true,
-      config: { column: "v", reduce: "max", op: ">", value: 5, forEvaluations: 2, everyMinutes: 1, range: "15m", values: {} },
+      config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 5, forEvaluations: 2, everyMinutes: 1, range: "15m", values: {} },
     });
   });
 
@@ -198,10 +198,9 @@ describe("evaluator end to end", () => {
 
   it("goes to error when the dashboard is no longer assigned to the alert's connection", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
-    const panels = detail.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet }));
     await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-b"] }, variables: [], panels,
-    });
+      ...store.toInput(detail), connectionScope: { kind: "only", connectionIds: ["conn-b"] },
+    }, { userId: OWNER, source: "ui" });
     rows = [{ v: 1 }];
     const status = await tick();
     expect(status.state).toBe("error");
@@ -211,8 +210,8 @@ describe("evaluator end to end", () => {
   it("is removed with its panel when a save drops the panel", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
     const result = await store.updateDashboard(dashboardId, detail.dashboard.version, {
-      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], panels: [],
-    });
+      title: "Shop", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "only", connectionIds: ["conn-a"] }, variables: [], annotations: [], panels: [],
+    }, { userId: OWNER, source: "ui" });
     expect(result.removedAlertIds).toEqual([alertId]);
     expect(await alertStore.getAlert(alertId)).toBeNull();
     expect(await rawAll(sql`SELECT 1 FROM dashboard_alert_channels WHERE alert_id = ${alertId}`)).toEqual([]);
@@ -222,8 +221,14 @@ describe("evaluator end to end", () => {
 
 describe("noticeMessage", () => {
   it("uses the warning icon for warning alerts and names the panel and dashboard", () => {
-    const alert = { name: "Lag", severity: "warning", config: { reduce: "last", column: "lag", op: ">=", value: 1000, forEvaluations: 1 } } as never;
-    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 1500 }, dashboardTitle: "Kafka", panelTitle: "Consumer lag" }, { ...OK, state: "firing", lastValue: 1500 });
+    const alert = { name: "Lag", severity: "warning", config: { kind: "threshold", reduce: "last", column: "lag", op: ">=", value: 1000, forEvaluations: 1 } } as never;
+    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 1500, breached: true }, dashboardTitle: "Kafka", panelTitle: "Consumer lag" }, { ...OK, state: "firing", lastValue: 1500 });
     expect(message).toEqual({ title: "🟠 Lag", text: "Consumer lag on dashboard Kafka: last of lag is 1,500 (alert when >= 1,000, 1 evaluation in a row)." });
+  });
+
+  it("names the expected range for a band alert", () => {
+    const alert = { name: "Inserts", severity: "critical", config: { kind: "outside_band", column: "rows", forEvaluations: 2 } } as never;
+    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 12, breached: true, band: { lo: 100, hi: 180.5 } }, dashboardTitle: "Orders", panelTitle: "Insert rate" }, { ...OK, state: "firing", lastValue: 12 });
+    expect(message).toEqual({ title: "🔴 Inserts", text: "Insert rate on dashboard Orders: rows in the latest complete bucket is 12 (expected 100 to 180.5, 2 evaluations in a row)." });
   });
 });

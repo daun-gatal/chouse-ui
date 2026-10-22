@@ -30,9 +30,19 @@ mock.module("../services/scheduledQueries/chClient", () => ({
       sent.push({ connectionId, query: args.query, params: args.query_params ?? {}, settings: args.clickhouse_settings ?? {} });
       const result = respond(connectionId, args.query);
       if (result instanceof Error) throw result;
-      return { json: async () => result };
+      return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => result };
     },
   }),
+}));
+
+const delivered: Array<{ title: string; text: string }> = [];
+let deliveryError: string | null = null;
+mock.module("../services/alerting/deliver", () => ({
+  sendChannelMessage: async (_type: string, _config: unknown, message: { title: string; text: string }) => {
+    if (deliveryError) throw new Error(deliveryError);
+    delivered.push(message);
+  },
+  sendChannelTest: async () => undefined,
 }));
 
 const { Hono: HonoApp } = await import("hono");
@@ -46,7 +56,7 @@ const { default: dashboards } = await import("./dashboards");
 const { createChannel } = await import("../services/alerting/store");
 const { ChannelType } = await import("../services/alerting/types");
 
-const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select", "alerting:view", "alerting:edit", "alerting:delete"];
+const ALL = ["dashboards:view", "dashboards:edit", "dashboards:delete", "dashboards:share", "query:execute", "table:select", "alerting:view", "alerting:edit", "alerting:delete", "remediation:propose"];
 const USERS = {
   owner: { id: "u-owner", roles: ["team-a"], permissions: ALL },
   peer: { id: "u-peer", roles: ["team-b"], permissions: ["dashboards:view", "dashboards:edit", "query:execute", "table:select"] },
@@ -54,10 +64,12 @@ const USERS = {
   manager: { id: "u-mgr", roles: ["team-a"], permissions: [...ALL, "dashboards:manage"] },
   nobody: { id: "u-none", roles: ["team-d"], permissions: ["metrics:view"] },
   viewOnly: { id: "u-view", roles: ["team-d"], permissions: ["dashboards:view"] },
+  observer: { id: "u-obs", roles: ["team-a"], permissions: [...ALL, "observe:view"] },
 };
 type UserKey = keyof typeof USERS;
 
-const LINE = { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null };
+const LINE = { version: 2, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null };
+const LINE_V1 = { version: 1, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null };
 const ORDERS_SQL = "SELECT toStartOfInterval(ts, INTERVAL {{interval_s}} SECOND) AS t, count() AS v FROM shop.orders WHERE ts >= {{from}} AND ts < {{to}} GROUP BY t ORDER BY t";
 const RANGE = { kind: "relative", value: "6h" };
 
@@ -78,12 +90,24 @@ async function call(user: UserKey, method: string, path: string, body?: unknown,
   return { status: res.status, json: (await res.json()) as { success: boolean; data?: any; error?: any } };
 }
 
+/** A chart panel; dashboard() stacks panels without a layout one under the other. */
 function panel(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { id: null, title: "Orders", sql: ORDERS_SQL, viz: LINE, width: 6, height: "m", fleet: false, ...overrides };
+  return { id: null, kind: "chart", title: "Orders", sql: ORDERS_SQL, viz: LINE, fleet: false, ...overrides };
 }
 
 function dashboard(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, connectionScope: { kind: "any" }, variables: [], panels: [panel()], ...overrides };
+  const panels = ((overrides.panels as Array<Record<string, unknown>> | undefined) ?? [panel()])
+    .map((p, i) => ("layout" in p ? p : { ...p, layout: { x: 0, y: i * 9, w: 12, h: 9 } }));
+  return { title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, connectionScope: { kind: "any" }, variables: [], annotations: [], ...overrides, panels };
+}
+
+/** The same dashboard as a format 1 document (CHouse 3.15 and before). */
+function dashboardV1(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    title: "Shop", description: "", timeRange: "6h", refreshSeconds: 60, connectionScope: { kind: "any" }, variables: [],
+    panels: [{ id: null, title: "Orders", sql: ORDERS_SQL, viz: LINE_V1, width: 6, height: "m", fleet: false }],
+    ...overrides,
+  };
 }
 
 async function create(user: UserKey = "owner", overrides: Record<string, unknown> = {}): Promise<any> {
@@ -103,7 +127,7 @@ beforeAll(async () => {
   for (const [id, name] of [["role-a", "team-a"], ["role-b", "team-b"], ["role-c", "team-c"], ["role-d", "team-d"]]) {
     await rawRun(sql`INSERT INTO rbac_roles (id, name, display_name, is_system, is_default, priority, created_at, updated_at) VALUES (${id}, ${name}, ${name}, 0, 0, 1, unixepoch(), unixepoch())`);
   }
-  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-d"], ["u-view", "role-d"]];
+  const membership: Array<[string, string]> = [["u-owner", "role-a"], ["u-peer", "role-b"], ["u-out", "role-c"], ["u-mgr", "role-a"], ["u-none", "role-d"], ["u-view", "role-d"], ["u-obs", "role-a"]];
   for (const [user, role] of membership) {
     await rawRun(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${`${user}-${role}`}, ${user}, ${role}, unixepoch())`);
   }
@@ -281,7 +305,7 @@ describe("delete, pin, duplicate, export and import", () => {
   it("exports and re-imports as a new dashboard with new panel ids", async () => {
     const created = await create();
     const exported = await call("owner", "GET", `/dashboards/${created.dashboard.id}/export`);
-    expect(exported.json.data.format).toBe("chouse.dashboard/v1");
+    expect(exported.json.data.format).toBe("chouse.dashboard/v2");
     expect(exported.json.data.id).toBe(created.dashboard.id);
     expect(exported.json.data.dashboard.panels[0].id).toBe(created.panels[0].id);
     const imported = await call("owner", "POST", "/dashboards/import", exported.json.data);
@@ -461,14 +485,14 @@ describe("connection assignments", () => {
     const gamma = await call("owner", "POST", "/dashboards", dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-3"] } }));
     expect(gamma.status).toBe(400);
     expect(gamma.json.error.message).toBe("You cannot use the connection gamma, so you cannot assign the dashboard to it");
-    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v1", id: null, dashboard: dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-9"] } }) });
+    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v1", id: null, dashboard: dashboardV1({ connectionScope: { kind: "only", connectionIds: ["conn-9"] } }) });
     expect(imported.status).toBe(400);
     expect(imported.json.error.message).toBe("There is no connection conn-9 to assign the dashboard to");
   });
 
   it("keeps a connection an editor cannot use, counted but not named", async () => {
     const { createDashboard } = await import("../services/dashboards/store");
-    const id = await createDashboard(dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-1", "conn-3"] } }) as never, "u-owner");
+    const id = await createDashboard(dashboard({ connectionScope: { kind: "only", connectionIds: ["conn-1", "conn-3"] } }) as never, "u-owner", { userId: "u-owner", source: "ui" });
     await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
     const seen = await call("peer", "GET", `/dashboards/${id}`);
     expect(seen.json.data.scope).toEqual({ kind: "only", connections: [{ id: "conn-1", name: "alpha" }], hidden: 1 });
@@ -491,7 +515,7 @@ describe("panel alerts", () => {
     connectionId: "conn-1",
     channelIds: [channelId],
     enabled: true,
-    config: { column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
+    config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
     ...overrides,
   });
 
@@ -508,7 +532,7 @@ describe("panel alerts", () => {
     const all = await call("owner", "GET", "/dashboards/alerts");
     expect(all.json.data.find((a: { id: string }) => a.id === made.json.data.id).dashboardTitle).toBe("Shop");
     const check = await call("owner", "POST", `/dashboards/${id}/alerts/${made.json.data.id}/check`);
-    expect(check.json.data).toEqual({ kind: "value", value: 7 });
+    expect(check.json.data).toEqual({ kind: "value", value: 7, breached: false });
     expect((await call("owner", "DELETE", `/dashboards/${id}/alerts/${made.json.data.id}`)).status).toBe(200);
     expect((await call("owner", "GET", `/dashboards/${id}/alerts`)).json.data).toEqual([]);
   });
@@ -530,7 +554,7 @@ describe("panel alerts", () => {
     const id = created.dashboard.id;
     const panelId = created.panels[0].id;
     expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody({ connectionId: "conn-2" }))).status).toBe(201);
-    const narrowed = await call("owner", "PUT", `/dashboards/${id}`, { version: created.dashboard.version, dashboard: { ...dashboard(), panels: [{ ...panel(), id: panelId }], connectionScope: { kind: "only", connectionIds: ["conn-1"] } } });
+    const narrowed = await call("owner", "PUT", `/dashboards/${id}`, { version: created.dashboard.version, dashboard: dashboard({ panels: [{ ...panel(), id: panelId }], connectionScope: { kind: "only", connectionIds: ["conn-1"] } }) });
     expect(narrowed.status).toBe(400);
     expect(narrowed.json.error.message).toBe('The alert "Orders spike" watches a connection this would remove from the dashboard. Delete the alert or keep that connection.');
     const onlyAlpha = await create("owner", { connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
@@ -570,5 +594,625 @@ describe("panel alerts", () => {
     await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody());
     await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
     expect((await call("peer", "GET", `/dashboards/${id}`)).json.data.alertCounts).toEqual({ [panelId]: 1 });
+  });
+
+  it("refuses a save that turns a watched panel into a text panel", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, alertBody());
+    const asText = await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ panels: [{ id: panelId, kind: "text", title: "", markdown: "gone", layout: { x: 0, y: 0, w: 6, h: 4 } }] }) });
+    expect(asText.status).toBe(400);
+    expect(asText.json.error.message).toBe('The alert "Orders spike" watches a panel this would turn into a text panel. Delete the alert first.');
+  });
+});
+
+describe("format 1 documents (CHouse 3.15 and before)", () => {
+  it("creates from a format 1 body, laid out as the old grid placed it", async () => {
+    const res = await call("owner", "POST", "/dashboards", dashboardV1({ panels: [
+      { id: null, title: "A", sql: ORDERS_SQL, viz: LINE_V1, width: 6, height: "s", fleet: false },
+      { id: null, title: "B", sql: ORDERS_SQL, viz: LINE_V1, width: 6, height: "l", fleet: false },
+      { id: null, title: "C", sql: ORDERS_SQL, viz: LINE_V1, width: 12, height: "m", fleet: false },
+    ] }));
+    expect(res.status).toBe(201);
+    expect(res.json.data.panels.map((p: { title: string; layout: unknown }) => [p.title, p.layout])).toEqual([
+      ["A", { x: 0, y: 0, w: 12, h: 12 }],
+      ["B", { x: 12, y: 0, w: 12, h: 12 }],
+      ["C", { x: 0, y: 12, w: 24, h: 9 }],
+    ]);
+    expect(res.json.data.panels[0].viz).toEqual(LINE);
+    expect(res.json.data.dashboard.annotations).toEqual(["ddl", "upgrades", "settings", "writers", "alerts", "incidents", "fixes", "notes"]);
+  });
+
+  it("updates in place from a format 1 body, keeping panel ids (and so their alerts)", async () => {
+    const created = await create();
+    const panelId = created.panels[0].id;
+    const res = await call("owner", "PUT", `/dashboards/${created.dashboard.id}`, { version: 1, dashboard: dashboardV1({ title: "Renamed", panels: [{ id: panelId, title: "Orders", sql: ORDERS_SQL, viz: LINE_V1, width: 12, height: "l", fleet: false }] }) });
+    expect(res.status).toBe(200);
+    expect(res.json.data.panels[0]).toMatchObject({ id: panelId, layout: { x: 0, y: 0, w: 24, h: 12 } });
+  });
+
+  it("imports a format 1 export file as it was written, and the export comes back as format 2", async () => {
+    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v1", id: "old-id", dashboard: dashboardV1() });
+    expect(imported.status).toBe(201);
+    expect(imported.json.data.panels[0].layout).toEqual({ x: 0, y: 0, w: 12, h: 9 });
+    const exported = await call("owner", "GET", `/dashboards/${imported.json.data.dashboard.id}/export`);
+    expect(exported.json.data.format).toBe("chouse.dashboard/v2");
+    expect(exported.json.data.dashboard.panels[0]).not.toHaveProperty("width");
+  });
+
+  it("refuses a document that mixes the formats, and a v1 export that holds a v2 dashboard", async () => {
+    const mixed = await call("owner", "POST", "/dashboards", { ...dashboardV1(), annotations: [] });
+    expect(mixed.status).toBe(400);
+    expect(mixed.json.error.message).toContain("this panel uses the format 1 width and height");
+    expect((await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v1", id: null, dashboard: dashboard() })).status).toBe(400);
+  });
+});
+
+describe("panel kinds", () => {
+  it("saves headings and text panels, and runs only charts", async () => {
+    const created = await create("owner", { panels: [
+      { id: null, kind: "heading", title: "Ingestion", description: "Rows in", layout: { x: 0, y: 0, w: 24, h: 2 } },
+      panel({ layout: { x: 0, y: 2, w: 16, h: 9 } }),
+      { id: null, kind: "text", title: "Runbook", markdown: "Page **#oncall**", layout: { x: 16, y: 2, w: 8, h: 9 } },
+    ] });
+    expect(created.panels.map((p: { kind: string }) => p.kind)).toEqual(["heading", "chart", "text"]);
+    expect(created.panels[2].markdown).toBe("Page **#oncall**");
+    expect(Object.keys(created.lint)).toEqual([created.panels[1].id]);
+    const text = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[2].id}/run`, { range: RANGE, values: {} });
+    expect(text.status).toBe(400);
+    expect(text.json.error.message).toBe("This is a text panel; only chart panels run queries");
+  });
+
+  it("refuses overlapping panels, naming both", async () => {
+    const res = await call("owner", "POST", "/dashboards", dashboard({ panels: [panel({ layout: { x: 0, y: 0, w: 12, h: 9 } }), panel({ title: "Other", layout: { x: 8, y: 4, w: 12, h: 9 } })] }));
+    expect(res.status).toBe(400);
+    expect(res.json.error.message).toBe("Panel 1 (Orders) and Panel 2 (Other) overlap");
+  });
+});
+
+describe("multi-value variables", () => {
+  it("run with a list as an Array(String) parameter, and refuse an empty list or a list for a single-value variable", async () => {
+    const tables = { name: "tables", label: "Tables", kind: "multi", options: { source: "static", values: ["orders", "refunds"] }, default: ["orders"] };
+    const user = { name: "user", label: "User", kind: "string", options: { source: "static", values: ["a"] }, default: "a" };
+    const created = await create("owner", { variables: [tables, user], panels: [panel({ sql: "SELECT now() AS t, count() AS v FROM shop.orders WHERE kind IN {{var.tables}} AND user = {{var.user}}" })] });
+    const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
+    expect((await call("owner", "POST", path, { range: RANGE, values: { tables: ["orders", "refunds"] } })).status).toBe(200);
+    expect(sent[0].query).toContain("{v_tables:Array(String)}");
+    expect(sent[0].params).toEqual({ v_tables: ["orders", "refunds"], v_user: "a" });
+    const empty = await call("owner", "POST", path, { range: RANGE, values: { tables: [] } });
+    expect(empty.status).toBe(400);
+    expect(empty.json.error.message).toBe("Pick at least one value for Tables");
+    expect((await call("owner", "POST", path, { range: RANGE, values: { user: ["a", "b"] } })).json.error.message).toBe("Variable User takes one value, not a list");
+  });
+});
+
+describe("drill-down links", () => {
+  it("must name a dashboard the saver can view, and only its variables", async () => {
+    const target = await create("owner", { variables: [{ name: "table", label: "Table", kind: "string", options: { source: "static", values: ["orders"] }, default: "orders" }] });
+    const link = (dashboardId: string, values: Record<string, unknown>): Record<string, unknown> => panel({ viz: { ...LINE, type: "bar", links: [{ kind: "dashboard", label: "Details", dashboardId, values }] } });
+    const ok = await call("owner", "POST", "/dashboards", dashboard({ panels: [link(target.dashboard.id, { table: { from: "column", column: "t" } })] }));
+    expect(ok.status).toBe(201);
+    const unknownVariable = await call("owner", "POST", "/dashboards", dashboard({ panels: [link(target.dashboard.id, { db: { from: "value", value: "x" } })] }));
+    expect(unknownVariable.json.error.message).toBe('Panel 1 (Orders), link "Details": Shop has no variable db');
+    const missing = await call("owner", "POST", "/dashboards", dashboard({ panels: [link("6f1c2a8e-3b7d-4c55-9a1e-2f0b9d4c7e11", {})] }));
+    expect(missing.json.error.message).toBe('Panel 1 (Orders), link "Details": there is no dashboard 6f1c2a8e-3b7d-4c55-9a1e-2f0b9d4c7e11 you can view');
+    // The peer cannot see the owner's dashboard, so cannot link to it either.
+    const hidden = await call("peer", "POST", "/dashboards", dashboard({ panels: [link(target.dashboard.id, {})] }));
+    expect(hidden.status).toBe(400);
+  });
+});
+
+describe("layout engine", () => {
+  it("arranges sections of new panels by role, with headings", async () => {
+    const res = await call("owner", "POST", "/dashboards/layout", {
+      mode: "arrange",
+      sections: [{ heading: { title: "Throughput", description: "" }, panels: [
+        { key: "trend", kind: "chart", chartType: "line", role: "trend", importance: "primary", size: null },
+        { key: "kpi", kind: "chart", chartType: "stat", role: "kpi", importance: "secondary", size: null },
+      ] }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.data.placed).toEqual([
+      { key: null, heading: { title: "Throughput", description: "" }, layout: { x: 0, y: 0, w: 24, h: 2 } },
+      { key: "kpi", layout: { x: 0, y: 2, w: 24, h: 4 } },
+      { key: "trend", layout: { x: 0, y: 6, w: 24, h: 9 } },
+    ]);
+  });
+
+  it("refuses a chart its role does not allow, a role on a text panel and duplicate keys", async () => {
+    const one = (p: Record<string, unknown>): Record<string, unknown> => ({ mode: "arrange", sections: [{ heading: null, panels: [p] }] });
+    const misfit = await call("owner", "POST", "/dashboards/layout", one({ key: "a", kind: "chart", chartType: "line", role: "kpi", importance: "secondary", size: null }));
+    expect(misfit.json.error.message).toBe("Panel a: a kpi panel is drawn as stat, not line");
+    expect((await call("owner", "POST", "/dashboards/layout", one({ key: "a", kind: "text", chartType: null, role: "trend", importance: "secondary", size: { w: 6, h: 4 } }))).status).toBe(400);
+    const dup = { mode: "tidy", panels: [{ key: "a", kind: "text", chartType: null, size: { w: 6, h: 4 } }, { key: "a", kind: "text", chartType: null, size: { w: 6, h: 4 } }] };
+    expect((await call("owner", "POST", "/dashboards/layout", dup)).json.error.message).toBe("A panel key is listed twice");
+    expect((await call("viewOnly", "POST", "/dashboards/layout", dup)).status).toBe(403);
+  });
+
+  it("tidies an existing dashboard's panels", async () => {
+    const res = await call("owner", "POST", "/dashboards/layout", { mode: "tidy", panels: [
+      { key: "t", kind: "chart", chartType: "table", size: { w: 6, h: 5 } },
+      { key: "s", kind: "chart", chartType: "stat", size: { w: 3, h: 3 } },
+    ] });
+    expect(res.json.data.placed).toEqual([
+      { key: "s", layout: { x: 0, y: 0, w: 24, h: 4 } },
+      { key: "t", layout: { x: 0, y: 4, w: 24, h: 10 } },
+    ]);
+  });
+});
+
+describe("version history", () => {
+  it("records every save with where it came from, and restores an old version as a new one", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const saved = await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ title: "Renamed" }) });
+    expect(saved.status).toBe(200);
+    const versions = await call("owner", "GET", `/dashboards/${id}/versions`);
+    expect(versions.json.data.map((v: { version: number; source: string; savedByName: string }) => [v.version, v.source, v.savedByName])).toEqual([[2, "ui", "u-owner"], [1, "ui", "u-owner"]]);
+    const first = await call("owner", "GET", `/dashboards/${id}/versions/1`);
+    expect(first.json.data.document.title).toBe("Shop");
+    expect(first.json.data.document.panels[0].id).toBe(created.panels[0].id);
+    const stale = await call("owner", "POST", `/dashboards/${id}/versions/1/restore`, { currentVersion: 1 });
+    expect(stale.status).toBe(409);
+    const restored = await call("owner", "POST", `/dashboards/${id}/versions/1/restore`, { currentVersion: 2 });
+    expect(restored.status).toBe(200);
+    expect(restored.json.data.dashboard).toMatchObject({ title: "Shop", version: 3 });
+    expect((await call("owner", "GET", `/dashboards/${id}/versions`)).json.data[0]).toMatchObject({ version: 3, source: "restore" });
+    expect((await call("owner", "GET", `/dashboards/${id}/versions/99`)).status).toBe(404);
+    expect((await call("owner", "GET", `/dashboards/${id}/versions/abc`)).status).toBe(400);
+  });
+
+  it("lists the alerts a restore would delete, and needs edit access", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ panels: [panel({ title: "New" })] }) });
+    const fresh = (await call("owner", "GET", `/dashboards/${id}`)).json.data;
+    const channel = await createChannel({ name: "restore-ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/restore" }, enabled: true });
+    const made = await call("owner", "POST", `/dashboards/${id}/panels/${fresh.panels[0].id}/alerts`, {
+      name: "Orders spike", severity: "warning", connectionId: "conn-1", channelIds: [channel], enabled: true,
+      config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
+    });
+    expect(made.status).toBe(201);
+    const preview = await call("owner", "GET", `/dashboards/${id}/versions/1/restore-preview`);
+    expect(preview.json.data).toEqual({ removedPanels: 1, removedAlerts: [{ id: expect.any(String), name: "Orders spike" }] });
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-c", canEdit: false }] });
+    expect((await call("outsider", "GET", `/dashboards/${id}/versions`)).status).toBe(200);
+    expect((await call("outsider", "GET", `/dashboards/${id}/versions/1/restore-preview`)).status).toBe(403);
+  });
+
+  it("marks imports, duplicates and template copies, and keeps the last 50 versions", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const copy = await call("owner", "POST", `/dashboards/${id}/duplicate`);
+    expect((await call("owner", "GET", `/dashboards/${copy.json.data.dashboard.id}/versions`)).json.data[0].source).toBe("duplicate");
+    let version = 1;
+    for (let i = 0; i < 51; i++) {
+      const res = await call("owner", "PUT", `/dashboards/${id}`, { version, dashboard: dashboard({ title: `Save ${i}` }) });
+      version = res.json.data.dashboard.version;
+    }
+    const kept = (await call("owner", "GET", `/dashboards/${id}/versions`)).json.data;
+    expect(kept).toHaveLength(50);
+    expect(kept[0].version).toBe(52);
+    expect(kept[49].version).toBe(3);
+  });
+});
+
+describe("compare with an earlier window", () => {
+  it("runs a line chart a day or a week earlier, with every check, and refuses what cannot be compared", async () => {
+    const created = await create();
+    const path = `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/run`;
+    const now = await call("owner", "POST", path, { range: RANGE, values: {} });
+    const week = await call("owner", "POST", path, { range: RANGE, values: {}, shiftSeconds: 604_800 });
+    expect(week.status).toBe(200);
+    expect(week.json.data.window.from).toBe(now.json.data.window.from - 604_800);
+    expect(week.json.data.window.intervalSeconds).toBe(now.json.data.window.intervalSeconds);
+    expect(sent[1].params.chouse_to).toBe(Number(sent[0].params.chouse_to) - 604_800);
+    expect((await call("owner", "POST", path, { range: RANGE, values: {}, shiftSeconds: 3_600 })).status).toBe(400);
+    const stat = await create("owner", { panels: [panel({ viz: { ...LINE, type: "stat", x: null, reduce: "last" } })] });
+    const refused = await call("owner", "POST", `/dashboards/${stat.dashboard.id}/panels/${stat.panels[0].id}/run`, { range: RANGE, values: {}, shiftSeconds: 86_400 });
+    expect(refused.json.error.message).toBe("Compare needs a line or area chart");
+    const fleet = await create("owner", { panels: [panel({ fleet: true })] });
+    expect((await call("owner", "POST", `/dashboards/${fleet.dashboard.id}/panels/${fleet.panels[0].id}/run`, { range: RANGE, values: {}, shiftSeconds: 86_400 })).json.error.message)
+      .toBe("Compare runs on one connection; this panel runs across the fleet");
+  });
+});
+
+describe("annotations and notes", () => {
+  it("reads each source on its own: events, or why not, never a silent gap", async () => {
+    const created = await create("observer");
+    await call("observer", "PUT", `/dashboards/${created.dashboard.id}/shares`, { shares: [{ roleId: "role-a", canEdit: false }] });
+    const id = created.dashboard.id;
+    const at = Date.now() - 60_000;
+    await rawRun(sql`INSERT INTO obs_change_events (id, connection_id, kind, occurred_at, node, object_ref, summary, details)
+      VALUES ('ddl:1', 'conn-1', 'ddl', ${at}, NULL, 'shop.orders', 'ALTER TABLE shop.orders ADD COLUMN x UInt8', '{"kind":"Alter","user":"alice"}'),
+             ('ddl:2', 'conn-1', 'ddl', ${at}, NULL, 'secret.payments', 'ALTER TABLE secret.payments DROP COLUMN card', '{"kind":"Alter","user":"bob"}'),
+             ('ddl:3', 'conn-2', 'ddl', ${at}, NULL, 'shop.orders', 'ALTER on beta', '{"kind":"Alter"}'),
+             ('ver:1', 'conn-1', 'version', ${at}, 'ch-1', NULL, '25.3 → 25.8', '{}')`);
+    const res = await call("observer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["ddl", "upgrades", "notes"] });
+    expect(res.status).toBe(200);
+    const [ddl, upgrades, notes] = res.json.data.sources;
+    expect(ddl).toMatchObject({ source: "ddl", ok: true, truncated: false });
+    // secret.payments is not readable by team-a, and conn-2's events are not on view.
+    expect(ddl.events.map((e: { title: string; detail: string }) => [e.title, e.detail])).toEqual([["ALTER shop.orders", "ALTER TABLE shop.orders ADD COLUMN x UInt8 — by alice"]]);
+    expect(upgrades.events[0].title).toBe("Upgraded ch-1: 25.3 → 25.8");
+    expect(notes).toEqual({ source: "notes", ok: true, events: [], truncated: false });
+    // Without observe:view the change sources say why.
+    const owner = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["ddl", "alerts"] });
+    expect(owner.json.data.sources).toEqual([
+      { source: "ddl", ok: false, error: "Needs observe:view" },
+      { source: "alerts", ok: true, events: [], truncated: false },
+    ]);
+    expect((await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["tweets"] })).status).toBe(400);
+  });
+
+  it("shows this dashboard's alert events on the connection they watch", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const channel = await createChannel({ name: "notes-ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/n" }, enabled: true });
+    const alert = await call("owner", "POST", `/dashboards/${id}/panels/${created.panels[0].id}/alerts`, {
+      name: "Orders spike", severity: "warning", connectionId: "conn-1", channelIds: [channel], enabled: true,
+      config: { kind: "threshold", column: "v", reduce: "max", op: ">", value: 100, forEvaluations: 1, everyMinutes: 5, range: "15m", values: {} },
+    });
+    const at = Date.now() - 120_000;
+    await rawRun(sql`INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to) VALUES ('ev-1', ${alert.json.data.id}, 'warning', ${at}, ${JSON.stringify({ title: "🟠 Orders spike", text: "max of v is 120" })}, '[]')`);
+    const onAlpha = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["alerts"] });
+    expect(onAlpha.json.data.sources[0].events).toEqual([{ id: "alert:ev-1", source: "alerts", at, title: "🟠 Orders spike", detail: "max of v is 120", objectRef: null }]);
+    const onBeta = await call("owner", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["alerts"] }, "conn-2");
+    expect(onBeta.json.data.sources[0].events).toEqual([]);
+  });
+
+  it("adds notes for editors, on the connection on view, and lets the author or an editor delete them", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    const at = Date.now() - 30_000;
+    expect((await call("peer", "POST", `/dashboards/${id}/notes`, { at, text: "x" })).status).toBe(403);
+    expect((await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "  " })).status).toBe(400);
+    expect((await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "x".repeat(501) })).status).toBe(400);
+    const note = await call("owner", "POST", `/dashboards/${id}/notes`, { at, text: "Backfill finished" });
+    expect(note.status).toBe(201);
+    const listed = await call("peer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["notes"] });
+    expect(listed.json.data.sources[0].events).toEqual([{ id: note.json.data.id, source: "notes", at, title: "Backfill finished", detail: null, objectRef: null, authorId: "u-owner", authorName: "u-owner" }]);
+    expect((await call("peer", "POST", `/dashboards/${id}/annotations`, { range: RANGE, sources: ["notes"] }, "conn-2")).json.data.sources[0].events).toEqual([]);
+    expect((await call("peer", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(403);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(200);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(404);
+    const audit = await rawAll(sql`SELECT action FROM rbac_audit_logs WHERE resource_id = ${id} AND action LIKE 'dashboard.note%' ORDER BY created_at`);
+    expect(audit.map((a) => a.action)).toEqual(["dashboard.note_create", "dashboard.note_delete"]);
+  });
+});
+
+describe("expected-range bands", () => {
+  const BANDED = { ...LINE, baseline: { weeks: 2 } };
+
+  it("runs the panel for the past weeks, through the pipeline, and says when the band is still learning", async () => {
+    const { clearBaselineCache } = await import("../services/dashboards/baseline");
+    clearBaselineCache();
+    const plain = await create();
+    expect((await call("owner", "POST", `/dashboards/${plain.dashboard.id}/panels/${plain.panels[0].id}/baseline`, { range: RANGE, values: {} })).json.error.message).toBe("This panel does not draw an expected-range band");
+    const created = await create("owner", { panels: [panel({ viz: BANDED })] });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/baseline`, { range: RANGE, values: {} });
+    expect(res.status).toBe(200);
+    // The mock returns the same two buckets for every week, so nothing lines up with the current ones.
+    expect(res.json.data).toEqual({ state: "learning", weeks: 2, points: [], reason: "Only 0 of the past 2 weeks returned data; a band needs at least 2" });
+    expect(sent).toHaveLength(3);
+    const week = 604_800;
+    expect(Number(sent[0].params.chouse_to) - Number(sent[1].params.chouse_to)).toBeLessThanOrEqual(week);
+    expect(Number(sent[1].params.chouse_to) % 900).toBe(0);
+    expect(Number(sent[1].params.chouse_to) - Number(sent[2].params.chouse_to)).toBe(week);
+    // The earlier weeks are kept 15 minutes; only the current window runs again.
+    await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/baseline`, { range: RANGE, values: {} });
+    expect(sent).toHaveLength(3);
+  });
+
+  it("accepts an outside-band alert only on a panel with a band, and keeps the band while the alert is there", async () => {
+    const channel = await createChannel({ name: "band-ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/b" }, enabled: true });
+    const body = { name: "Unusual orders", severity: "warning", connectionId: "conn-1", channelIds: [channel], enabled: true, config: { kind: "outside_band", column: "v", forEvaluations: 2, everyMinutes: 5, range: "6h", values: {} } };
+    const plain = await create();
+    const refused = await call("owner", "POST", `/dashboards/${plain.dashboard.id}/panels/${plain.panels[0].id}/alerts`, body);
+    expect(refused.json.error.message).toContain("needs a panel that draws an expected-range band");
+    const banded = await create("owner", { panels: [panel({ viz: BANDED })] });
+    const id = banded.dashboard.id;
+    const panelId = banded.panels[0].id;
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, body)).status).toBe(201);
+    const off = await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ panels: [panel({ id: panelId })] }) });
+    expect(off.json.error.message).toBe('The alert "Unusual orders" watches this panel\'s expected-range band, which this would turn off. Delete the alert first.');
+  });
+});
+
+describe("annotations as a GET", () => {
+  it("reads the same sources from query parameters, and refuses an unknown source", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const res = await call("owner", "GET", `/dashboards/${id}/annotations?range=6h&sources=notes,alerts`);
+    expect(res.status).toBe(200);
+    expect(res.json.data.sources.map((s: { source: string }) => s.source).sort()).toEqual(["alerts", "notes"]);
+    const every = await call("owner", "GET", `/dashboards/${id}/annotations?range=1h`);
+    expect(every.json.data.sources).toHaveLength(8);
+    expect((await call("owner", "GET", `/dashboards/${id}/annotations?range=1h&sources=gossip`)).status).toBe(400);
+    expect((await call("owner", "GET", `/dashboards/${id}/annotations?range=5h`)).status).toBe(400);
+  });
+});
+
+describe("snapshots", () => {
+  const NOW_S = Math.floor(Date.now() / 1000);
+  const body = (overrides: Record<string, unknown> = {}) => ({ name: "Incident 42", from: NOW_S - 3600, to: NOW_S - 60, values: {}, roleIds: [], expiresInDays: 7, incidentId: null, ...overrides });
+
+  it("freezes each chart panel for the range, and opens only for its creator and roles that still see the dashboard", async () => {
+    const created = await create("owner", { panels: [panel(), { id: null, kind: "text", title: "", markdown: "notes" }, panel({ title: "Broken", sql: "SELECT 1 AS t, 2 AS v FROM shop.missing" })] });
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }, { roleId: "role-c", canEdit: false }] });
+    respond = (_conn, query) => (query.includes("shop.missing") ? new Error("Table shop.missing does not exist") : ROWS);
+    const res = await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b", "role-c"] }));
+    expect(res.status).toBe(201);
+    const snapshotId = res.json.data.id;
+    expect(res.json.data).toMatchObject({ name: "Incident 42", connectionId: "conn-1", range: { from: NOW_S - 3600, to: NOW_S - 60 }, roleIds: ["role-b", "role-c"] });
+    // Both chart panels ran; the range is absolute, so the time-bounded one ran for exactly it.
+    expect(sent).toHaveLength(2);
+    const timed = sent.find((q) => q.query.includes("shop.orders"));
+    expect([timed?.params.chouse_from, timed?.params.chouse_to]).toEqual([NOW_S - 3600, NOW_S - 60]);
+
+    sent.length = 0;
+    const opened = await call("peer", "GET", `/dashboards/${id}/snapshots/${snapshotId}`);
+    expect(opened.status).toBe(200);
+    const [orders, , broken] = opened.json.data.document.panels;
+    expect(opened.json.data.results[orders.id]).toMatchObject({ ok: true, kind: "single", data: { rows: ROWS.data } });
+    expect(opened.json.data.results[broken.id]).toEqual({ ok: false, error: expect.stringContaining("shop.missing") });
+    // Opening never runs anything.
+    expect(sent).toEqual([]);
+
+    // team-c sees the dashboard but may not read shop: the data is withheld, not shown.
+    const denied = await call("outsider", "GET", `/dashboards/${id}/snapshots/${snapshotId}`);
+    expect(denied.json.data.results[orders.id]).toEqual({ ok: false, error: "Access denied" });
+
+    expect((await call("peer", "GET", `/dashboards/${id}/snapshots`)).json.data.map((s: { id: string }) => s.id)).toEqual([snapshotId]);
+    // Unshared, the role no longer sees the dashboard, so not the snapshot either.
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-c", canEdit: false }] });
+    expect((await call("peer", "GET", `/dashboards/${id}/snapshots/${snapshotId}`)).status).toBe(404);
+    // A manager sees the dashboard but holds none of the snapshot's roles.
+    expect((await call("manager", "GET", `/dashboards/${id}/snapshots/${snapshotId}`)).status).toBe(404);
+  });
+
+  it("refuses a range that ends in the future, roles the dashboard is not shared with, and an unknown incident", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ to: NOW_S + 3600 }))).json.error.message).toBe("A snapshot's range cannot end in the future");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ from: NOW_S - 60, to: NOW_S - 3600 }))).json.error.message).toBe("A snapshot's range must end after it starts");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b"] }))).json.error.message).toBe("A snapshot can only be opened by roles the dashboard is shared with");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ incidentId: "nope" }))).json.error.message).toBe("That incident does not exist");
+    expect((await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ expiresInDays: 400 }))).status).toBe(400);
+    expect((await call("viewOnly", "POST", `/dashboards/${id}/snapshots`, body())).status).toBe(403);
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses results over 10 MiB whole, instead of cutting them down", async () => {
+    const created = await create();
+    const big = "x".repeat(1_200);
+    respond = () => ({ ...ROWS, data: Array.from({ length: 10_000 }, (_, i) => ({ t: "2026-10-17 00:00:00", v: i, s: big })), rows: 10_000 });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/snapshots`, body());
+    expect(res.status).toBe(413);
+    expect(res.json.error.message).toMatch(/^The snapshot's results are 1\d\.\d MiB; the limit is 10\.0 MiB/);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${created.dashboard.id}`)).toEqual([]);
+  });
+
+  it("hides an expired snapshot, sweeps it, and lets only the creator or an editor delete one", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "PUT", `/dashboards/${id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    const keep = (await call("owner", "POST", `/dashboards/${id}/snapshots`, body({ roleIds: ["role-b"] }))).json.data.id;
+    const old = (await call("owner", "POST", `/dashboards/${id}/snapshots`, body())).json.data.id;
+    await rawRun(sql`UPDATE dashboard_snapshots SET expires_at = 1 WHERE id = ${old}`);
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots/${old}`)).json.error.message).toBe("This snapshot has expired");
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots`)).json.data.map((s: { id: string }) => s.id)).toEqual([keep]);
+    const { deleteExpiredSnapshots } = await import("../services/dashboards/snapshots");
+    expect(await deleteExpiredSnapshots()).toBeGreaterThanOrEqual(1);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE id = ${old}`)).toEqual([]);
+
+    expect((await call("peer", "DELETE", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(403);
+    expect((await call("owner", "DELETE", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(200);
+    expect((await call("owner", "GET", `/dashboards/${id}/snapshots/${keep}`)).status).toBe(404);
+  });
+
+  it("goes with its dashboard", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    await call("owner", "POST", `/dashboards/${id}/snapshots`, body());
+    expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_snapshots WHERE dashboard_id = ${id}`)).toEqual([]);
+  });
+});
+
+describe("panel cost and rollups", () => {
+  const ROLLABLE = "SELECT toStartOfInterval(ts, INTERVAL {{interval_s}} SECOND) AS t, count() AS v FROM shop.orders WHERE ts >= {{from}} AND ts < {{to}} GROUP BY t ORDER BY t";
+  const TYPES = [{ name: "bucket", type: "DateTime" }, { name: "a_v", type: "AggregateFunction(count)" }];
+  const clickhouse = (_conn: string, query: string): unknown => {
+    if (query.startsWith("DESCRIBE")) return TYPES;
+    if (query.includes("system.tables")) return [{ value: 0 }];
+    return ROWS;
+  };
+
+  it("reports what a run reads, per hour at the refresh, and whether a rollup can serve it", async () => {
+    const created = await create("owner", { panels: [panel({ sql: ROLLABLE }), panel({ title: "Raw", sql: "SELECT 1 AS t, 2 AS v" })] });
+    const [rollable, raw] = created.panels;
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${rollable.id}/cost`, { range: RANGE, values: {} });
+    expect(res.json.data).toMatchObject({ readBytes: 100, readRows: 10, refreshSeconds: 60, readsPerHour: 60, bytesPerHour: 6000, heavy: false, rollup: { eligible: true, source: "shop.orders" } });
+    expect(res.json.data.rollup.target).toMatch(/^shop\.chouse_rollup_[0-9a-f]{12}$/);
+    const other = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${raw.id}/cost`, { range: RANGE, values: {} });
+    expect(other.json.data.rollup).toEqual({ eligible: false, reason: "it reads no table" });
+  });
+
+  it("proposes the rollup as a class 2 action, and switches the panel only while its query is unchanged", async () => {
+    respond = clickhouse;
+    const created = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    const id = created.dashboard.id;
+    const panelId = created.panels[0].id;
+    const res = await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/rollup`, { backfillDays: 7, cluster: null });
+    expect(res.status).toBe(201);
+    const action = res.json.data;
+    expect(action).toMatchObject({ type: "create_panel_rollup", approvalClass: 2, status: "proposed", connectionId: "conn-1" });
+    expect(action.prior.rollup).toEqual({ panelSql: ROLLABLE, types: { bucket: "DateTime", a_v: "AggregateFunction(count)" } });
+    expect(sent.some((q) => q.query.startsWith("DESCRIBE TABLE (SELECT toStartOfMinute(`ts`) AS `bucket`, countState() AS `a_v` FROM `shop`.`orders`"))).toBe(true);
+
+    const { switchPanelToRollup } = await import("../services/dashboards/rollupAction");
+    expect(await switchPanelToRollup(action.params, action.prior, "u-owner")).toBeNull();
+    const after = (await call("owner", "GET", `/dashboards/${id}`)).json.data;
+    expect(after.panels[0].sql).toContain(`FROM \`shop\`.\`${action.params.target}\``);
+    expect(after.dashboard.version).toBe(2);
+    expect((await call("owner", "GET", `/dashboards/${id}/versions`)).json.data[0].source).toBe("rollup");
+    // A second verification of the same action finds it switched already.
+    expect(await switchPanelToRollup(action.params, action.prior, "u-owner")).toBeNull();
+    // The panel now reads a rollup: no second one.
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/cost`, { range: RANGE, values: {} })).json.data.rollup).toEqual({ eligible: false, reason: "it already reads a rollup" });
+
+    const edited = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    const proposed = (await call("owner", "POST", `/dashboards/${edited.dashboard.id}/panels/${edited.panels[0].id}/rollup`, { backfillDays: 1, cluster: null })).json.data;
+    await call("owner", "PUT", `/dashboards/${edited.dashboard.id}`, { version: 1, dashboard: dashboard({ panels: [panel({ id: edited.panels[0].id, sql: ROLLABLE.replace("count()", "count() + 0") })] }) });
+    expect(await switchPanelToRollup(proposed.params, proposed.prior, "u-owner")).toBe("The panel's query changed after the rollup was proposed; it was left as it is");
+  });
+
+  it("refuses an ineligible panel, a viewer without edit access, an existing target, and the generic catalog route", async () => {
+    respond = clickhouse;
+    const rollable = await create("owner", { panels: [panel({ sql: ROLLABLE })] });
+    await call("owner", "PUT", `/dashboards/${rollable.dashboard.id}/shares`, { shares: [{ roleId: "role-b", canEdit: false }] });
+    expect((await call("peer", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).status).toBe(403);
+    respond = (conn, query) => (query.includes("system.tables") ? [{ value: 1 }] : clickhouse(conn, query));
+    expect((await call("owner", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toMatch(/already exists; drop it or use it$/);
+    respond = (conn, query) => (query.startsWith("DESCRIBE") ? [{ name: "bucket", type: "DateTime" }, { name: "a_v", type: "AggregateFunction(sum, Float64)" }] : clickhouse(conn, query));
+    expect((await call("owner", "POST", `/dashboards/${rollable.dashboard.id}/panels/${rollable.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toBe("v sums a Float column, which a rollup cannot reproduce exactly");
+    const bare = await create("owner", { panels: [panel({ sql: "SELECT 1 AS t, 2 AS v" })] });
+    expect((await call("owner", "POST", `/dashboards/${bare.dashboard.id}/panels/${bare.panels[0].id}/rollup`, { backfillDays: 7, cluster: null })).json.error.message).toBe("This panel cannot be rolled up: it reads no table");
+  });
+});
+
+describe("Grafana import", () => {
+  const GRAFANA = {
+    schemaVersion: 39,
+    title: "From Grafana",
+    time: { from: "now-6h", to: "now" },
+    templating: { list: [] },
+    panels: [
+      { type: "timeseries", title: "Orders", datasource: { type: "grafana-clickhouse-datasource", uid: "x" }, gridPos: { x: 0, y: 0, w: 12, h: 8 }, targets: [{ rawSql: "SELECT $__timeInterval(ts) AS t, count() AS v FROM shop.orders WHERE $__timeFilter(ts) GROUP BY t ORDER BY t" }] },
+      { type: "graph", title: "Old", datasource: "Prometheus", gridPos: { x: 12, y: 0, w: 12, h: 8 }, targets: [{ expr: "up" }] },
+    ],
+  };
+
+  it("previews without saving, and the preview imports through the normal import", async () => {
+    const before = (await rawAll(sql`SELECT COUNT(*) AS c FROM dashboards`))[0].c;
+    const res = await call("owner", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
+    expect(res.status).toBe(200);
+    expect(res.json.data.panels.map((p: { status: string }) => p.status)).toEqual(["changed", "skipped"]);
+    expect((await rawAll(sql`SELECT COUNT(*) AS c FROM dashboards`))[0].c).toBe(before);
+    const imported = await call("owner", "POST", "/dashboards/import", { format: "chouse.dashboard/v2", id: null, dashboard: res.json.data.dashboard });
+    expect(imported.status).toBe(201);
+    expect(imported.json.data.panels[0]).toMatchObject({ kind: "chart", title: "Orders" });
+    const run = await call("owner", "POST", `/dashboards/${imported.json.data.dashboard.id}/panels/${imported.json.data.panels[0].id}/run`, { range: RANGE, values: {} });
+    expect(run.status).toBe(200);
+  });
+
+  it("refuses an old schema, connections the caller cannot use, and callers who cannot edit", async () => {
+    expect((await call("owner", "POST", "/dashboards/import/grafana", { grafana: { ...GRAFANA, schemaVersion: 16 }, connectionScope: { kind: "any" } })).json.error.message).toContain("schema 30 or later");
+    expect((await call("owner", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "only", connectionIds: ["conn-3"] } })).status).toBe(400);
+    expect((await call("viewOnly", "POST", "/dashboards/import/grafana", { grafana: GRAFANA, connectionScope: { kind: "any" } })).status).toBe(403);
+  });
+});
+
+describe("scheduled reports", () => {
+  const BASE = "https://chouse.example";
+  const schedule = { kind: "daily", dayOfWeek: null, hour: 9, minute: 0, timezone: "UTC" };
+  let channel = "";
+  const reportBody = (overrides: Record<string, unknown> = {}) => ({ name: "Daily shop", connectionId: "conn-1", schedule, range: "24h", onlyIfAlert: false, enabled: true, channelIds: [channel], ...overrides });
+
+  beforeAll(async () => {
+    channel = await createChannel({ name: "reports", type: ChannelType.Webhook, config: { url: "https://hooks.test/r" }, enabled: true });
+  });
+  beforeEach(() => {
+    process.env.PUBLIC_BASE_URL = `${BASE}/`;
+    delivered.length = 0;
+    deliveryError = null;
+  });
+  afterAll(() => {
+    delete process.env.PUBLIC_BASE_URL;
+  });
+
+  it("refuses a report without PUBLIC_BASE_URL, with an unknown channel, or on a connection outside the dashboard", async () => {
+    const created = await create("owner", { connectionScope: { kind: "only", connectionIds: ["conn-1"] } });
+    const id = created.dashboard.id;
+    delete process.env.PUBLIC_BASE_URL;
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody())).json.error.message).toBe("Reports link back to the dashboard, which needs PUBLIC_BASE_URL set on the server");
+    process.env.PUBLIC_BASE_URL = BASE;
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ channelIds: ["nope"] }))).json.error.message).toBe("Unknown notification channel: nope");
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ connectionId: "conn-2" }))).json.error.message).toContain("not assigned to the connection");
+    expect((await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ schedule: { ...schedule, kind: "weekly" } }))).status).toBe(400);
+    // Reports need alerting:edit and edit access to the dashboard.
+    expect((await call("peer", "POST", `/dashboards/${id}/reports`, reportBody())).status).toBe(403);
+  });
+
+  it("schedules, sends a digest with a link to the range as its owner, and records the run", async () => {
+    const created = await create("owner", { panels: [panel(), panel({ title: "Broken", sql: "SELECT 1 AS t, 2 AS v FROM shop.missing" })] });
+    const id = created.dashboard.id;
+    respond = (_conn, query) => (query.includes("shop.missing") ? new Error("Table shop.missing does not exist") : ROWS);
+    const made = await call("owner", "POST", `/dashboards/${id}/reports`, reportBody());
+    expect(made.status).toBe(201);
+    const report = made.json.data;
+    expect(report).toMatchObject({ ownerId: "u-owner", channelIds: [channel], lastStatus: null });
+    expect(new Date(report.nextRunAt).toISOString()).toMatch(/T09:00:00\.000Z$/);
+    expect((await call("owner", "GET", `/dashboards/${id}/reports`)).json.data).toMatchObject({ reports: [{ id: report.id }], publicBaseUrl: true });
+
+    const sentNow = await call("owner", "POST", `/dashboards/${id}/reports/${report.id}/send`);
+    expect(sentNow.json.data.status).toBe("sent");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].title).toBe("📊 Daily shop");
+    expect(delivered[0].text).toContain("*Orders*\n  v: min 5 · avg 6 · max 7 · last 7");
+    expect(delivered[0].text).toContain("*Broken* — error:");
+    expect(delivered[0].text).toMatch(new RegExp(`Open: ${BASE}/dashboards/${id}\\?from=\\d+&to=\\d+$`));
+    const [from, to] = /from=(\d+)&to=(\d+)/.exec(delivered[0].text)?.slice(1).map(Number) ?? [];
+    expect(to - from).toBe(86_400);
+    const after = (await call("owner", "GET", `/dashboards/${id}/reports`)).json.data.reports[0];
+    expect(after).toMatchObject({ lastStatus: "sent", lastError: null, nextRunAt: report.nextRunAt });
+    const events = await rawAll(sql`SELECT payload, delivered_to FROM alert_events WHERE rule_id = ${report.id}`);
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(String(events[0].payload))).toMatchObject({ source: "dashboard_report", status: "sent", dashboardId: id });
+  });
+
+  it("runs due reports from the scheduler once, skips one with no alert when asked, and fails without sending when the owner may no longer see the dashboard", async () => {
+    const { DashboardReportScheduler } = await import("../services/dashboards/reports");
+    const created = await create();
+    const id = created.dashboard.id;
+    const quiet = (await call("owner", "POST", `/dashboards/${id}/reports`, reportBody({ name: "Only on alerts", onlyIfAlert: true }))).json.data;
+    const shared = await create("owner");
+    await call("owner", "PUT", `/dashboards/${shared.dashboard.id}/shares`, { shares: [{ roleId: "role-b", canEdit: true }] });
+    const theirs = (await call("peer", "POST", `/dashboards/${shared.dashboard.id}/reports`, reportBody({ name: "Peer report" })));
+    // peer has no alerting:edit.
+    expect(theirs.status).toBe(403);
+    const lost = (await call("manager", "POST", `/dashboards/${shared.dashboard.id}/reports`, reportBody({ name: "Manager report" }))).json.data;
+    // Its owner becomes someone the dashboard is not shared with, as when a share is withdrawn.
+    await rawRun(sql`UPDATE dashboard_reports SET owner_id = 'u-out' WHERE id = ${lost.id}`);
+    await rawRun(sql`UPDATE dashboard_reports SET next_run_at = 1 WHERE id IN (${quiet.id}, ${lost.id})`);
+    await DashboardReportScheduler.getInstance().tick(Date.now());
+    const reportsNow = [
+      ...(await call("owner", "GET", `/dashboards/${id}/reports`)).json.data.reports,
+      ...(await call("owner", "GET", `/dashboards/${shared.dashboard.id}/reports`)).json.data.reports,
+    ];
+    const byName = new Map(reportsNow.map((r: { name: string }) => [r.name, r]));
+    expect(byName.get("Only on alerts")).toMatchObject({ lastStatus: "skipped", lastError: "No panel alert fired in the range" });
+    expect(byName.get("Manager report")).toMatchObject({ lastStatus: "failed", lastError: "The report's owner can no longer view this dashboard" });
+    for (const r of reportsNow) expect((r as { nextRunAt: number }).nextRunAt).toBeGreaterThan(Date.now());
+    expect(delivered).toEqual([]);
+    // Nothing is due any more: a second tick sends nothing.
+    await DashboardReportScheduler.getInstance().tick(Date.now());
+    expect(await rawAll(sql`SELECT 1 FROM alert_events WHERE rule_id IN (${quiet.id}, ${lost.id})`)).toHaveLength(2);
+  });
+
+  it("records a failed delivery, and goes with its dashboard", async () => {
+    const created = await create();
+    const id = created.dashboard.id;
+    const report = (await call("owner", "POST", `/dashboards/${id}/reports`, reportBody())).json.data;
+    deliveryError = "webhook returned 500";
+    const res = await call("owner", "POST", `/dashboards/${id}/reports/${report.id}/send`);
+    expect(res.json.data).toMatchObject({ status: "failed", error: "reports: webhook returned 500" });
+    expect((await call("owner", "DELETE", `/dashboards/${id}`)).status).toBe(200);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_reports WHERE dashboard_id = ${id}`)).toEqual([]);
+    expect(await rawAll(sql`SELECT 1 FROM dashboard_report_channels WHERE report_id = ${report.id}`)).toEqual([]);
   });
 });

@@ -45,7 +45,7 @@ describe("capability registry", () => {
   });
 
   it("exposes all 27 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(27);
+    expect(CAPABILITY_IDS).toHaveLength(28);
     expect(CAPABILITY_IDS).toContain("explain-incident");
     expect(CAPABILITY_IDS).toContain("compile-watcher");
     expect(CAPABILITY_IDS).toContain("draft-table-context");

@@ -227,6 +227,14 @@ export default function App() {
                   </AdminRoute>
                 }
               />
+              <Route
+                path="/dashboards/:id/snapshots/:snapshotId"
+                element={
+                  <AdminRoute requiredPermission={DASHBOARDS_ACCESS_PERMISSIONS}>
+                    <DashboardsPage />
+                  </AdminRoute>
+                }
+              />
 
               {/* Backward compatibility redirects for old routes */}
               <Route path="/logs" element={<Navigate to="/monitoring" replace />} />

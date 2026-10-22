@@ -47,6 +47,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0020](0020-ai-usage-and-data-egress-tracking.md) | AI Usage and Data Egress Tracking for CHouse's Own AI Agents | Accepted |
 | [0021](0021-custom-dashboards.md) | Custom Dashboards and AI-Drafted Dashboards | Proposed |
 | [0022](0022-ai-guardrails.md) | AI Guardrails for CHouse's Own Agents and MCP | Proposed |
+| [0023](0023-dashboards-v2.md) | Dashboards v2: Canvas, Intent-Based AI Layout, Context, Baselines and Production Features | Proposed |
 
 ## Conventions
 

@@ -208,8 +208,10 @@ remediation:
   # (`REMEDIATION_SLACK_CHANNEL`). Needs `slack.*`.
   slackChannel: ""
 
-# -- External URL of CHouse UI (`PUBLIC_BASE_URL`), used in Slack messages to
-# link back to incidents and fixes. Empty: links are omitted.
+# -- External URL of CHouse UI (`PUBLIC_BASE_URL`), e.g. `https://chouse.example.com`.
+# Slack messages use it to link back to incidents and fixes (empty: those links
+# are omitted). Scheduled dashboard reports require it: each report links to the
+# dashboard at the reported range, so reports cannot be saved while it is empty.
 publicBaseUrl: ""
 
 slack:
@@ -225,14 +227,16 @@ slack:
 
 scheduledQueries:
   # -- Run the in-process scheduled-queries scheduler, and the dashboard panel
-  # alert evaluator that runs with it, on the web pods. Redundant ticks across
-  # pods are harmless (per-job and per-alert atomic leases on PostgreSQL).
+  # alert evaluator and scheduled-report sender that run with it, on the web
+  # pods. Redundant ticks across pods are harmless (per-job, per-alert and
+  # per-report atomic leases on PostgreSQL).
   # Ignored (forced off on web pods) when `dedicatedScheduler.enabled` is true.
   enabled: true
 
 dedicatedScheduler:
-  # -- Run the scheduled-queries scheduler and the dashboard panel alert
-  # evaluator on a dedicated single-replica Deployment instead of the web pods.
+  # -- Run the scheduled-queries scheduler, the dashboard panel alert evaluator
+  # and the scheduled-report sender on a dedicated single-replica Deployment
+  # instead of the web pods.
   # Requires `database.type: postgres`.
   enabled: false
   # -- Resources for the scheduler pod.

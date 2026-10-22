@@ -17,6 +17,7 @@ export const AUTHENTICATED_ROUTE_INVENTORY = [
   "/overview",
   "/monitoring/:tab?",
   "/dashboards/:id?",
+  "/dashboards/:id/snapshots/:snapshotId",
   "/data/:tab?/:a?/:b?",
   "/ai/:tab?/:id?",
   "/explorer",
@@ -260,9 +261,9 @@ export const ONBOARDING_CHAPTERS: OnboardingChapter[] = [
     estimatedMinutes: 3,
     requiredAny: [p.DASHBOARDS_VIEW],
     steps: [
-      step("dashboards.list", "Your dashboards", "Pinned dashboards, your own and those shared with your roles. Every panel runs with your own data access, so a shared dashboard never shows you more than you can query.", "/dashboards", { target: "dashboards-list", requiredAny: [p.DASHBOARDS_VIEW] }),
-      step("dashboards.templates", "Start from a template", "Curated templates cover query latency, merges and parts, replication, disk and ingestion. Using one copies it into a dashboard you own.", "/dashboards", { target: "dashboards-templates", requiredAny: [p.DASHBOARDS_VIEW] }),
-      step("dashboards.create", "Create or import", "Start an empty dashboard, import an exported JSON file, or pin a chart from the SQL workspace's Chart tab.", "/dashboards", { target: "dashboards-create", requiredAny: [p.DASHBOARDS_EDIT] }),
+      step("dashboards.list", "Your dashboards", "Every dashboard in one table: search it, sort it, and switch between yours, shared with you and pinned. Every panel runs with your own data access, so a shared dashboard never shows you more than you can query.", "/dashboards", { target: "dashboards-list", requiredAny: [p.DASHBOARDS_VIEW] }),
+      step("dashboards.templates", "Start from a template", "The Templates tab has curated templates for query latency, merges and parts, replication, disk and ingestion. Using one copies it into a dashboard you own.", "/dashboards", { target: "dashboards-templates", requiredAny: [p.DASHBOARDS_VIEW] }),
+      step("dashboards.create", "Create or import", "Start an empty dashboard, import an exported JSON file or a Grafana dashboard, or pin a chart from the SQL workspace's Chart tab.", "/dashboards", { target: "dashboards-create", requiredAny: [p.DASHBOARDS_EDIT] }),
     ],
   },
   {

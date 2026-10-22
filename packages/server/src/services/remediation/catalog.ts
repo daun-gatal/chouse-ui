@@ -11,6 +11,8 @@
 
 import { z } from "zod";
 
+import { ROLLUP_AGGREGATES, ROLLUP_OPS, type RollupAggregate } from "../dashboards/rollup";
+
 export const ACTION_TYPES = [
   "kill_query",
   "pause_scheduled_job",
@@ -26,6 +28,7 @@ export const ACTION_TYPES = [
   "reload_dictionary",
   "refresh_view",
   "flush_distributed",
+  "create_panel_rollup",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -63,6 +66,22 @@ export const actionParamsSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("reload_dictionary"), database: ident, name: ident }),
   z.object({ type: z.literal("refresh_view"), database: ident, view: ident }),
   z.object({ type: z.literal("flush_distributed"), database: ident, table: ident }),
+  // ADR 0023 §10. Proposed only from a dashboard panel: its prior state re-reads the panel and must match.
+  z.object({
+    type: z.literal("create_panel_rollup"),
+    dashboardId: z.string().uuid(),
+    panelId: z.string().uuid(),
+    database: ident,
+    table: ident,
+    timeColumn: ident,
+    bucketAlias: ident,
+    target: z.string().regex(/^chouse_rollup_[0-9a-f]{12}$/),
+    groups: z.array(z.object({ column: ident, alias: ident }).strict()).max(8),
+    aggregates: z.array(z.object({ fn: z.enum(ROLLUP_AGGREGATES), column: ident.nullable(), alias: ident }).strict()).min(1).max(12),
+    filters: z.array(z.object({ column: ident, op: z.enum(ROLLUP_OPS), value: z.union([z.string().max(200), z.number().finite()]) }).strict()).max(8),
+    backfillDays: z.number().int().min(1).max(30),
+    cluster: ident.nullable(),
+  }),
 ]);
 export type ActionParams = z.infer<typeof actionParamsSchema>;
 
@@ -74,6 +93,8 @@ export interface PriorState {
   ttl?: string;
   /** Existing CODEC(...) of the column ("" = default). */
   codec?: string;
+  /** A rollup's panel SQL and the column types ClickHouse reports for its target table. */
+  rollup?: { panelSql: string; types: Record<string, string> };
 }
 
 export interface VerificationSpec {
@@ -83,6 +104,8 @@ export interface VerificationSpec {
   comparator: "eq" | "lt" | "lte" | "gt" | "gte";
   threshold: number;
   withinSeconds: number;
+  /** How long one probe may run (default 15 s; under the client's 300 s request timeout). A rollup's comparison reads its whole backfill. */
+  probeSeconds?: number;
 }
 
 export interface BuiltAction {
@@ -118,6 +141,110 @@ function table(database: string, name: string): string {
 }
 
 const TARGET_KEYWORD = { user: "USER", role: "ROLE", profile: "SETTINGS PROFILE" } as const;
+
+// ============================================
+// Panel rollups (ADR 0023 §10)
+// ============================================
+
+type RollupParams = Extract<ActionParams, { type: "create_panel_rollup" }>;
+
+/** A type ClickHouse reported for a rollup column; anything else is refused rather than written into DDL. */
+export const ROLLUP_TYPE_RE = /^[A-Za-z][A-Za-z0-9_]*(\([A-Za-z0-9_, ']*(\([A-Za-z0-9_, ']*\))?[A-Za-z0-9_, ']*\))?$/;
+
+const STATE: Record<RollupAggregate, string> = { count: "count", sum: "sum", min: "min", max: "max", avg: "avg", uniqExact: "uniqExact" };
+
+/** The rollup table's columns, in order: the minute bucket, the group columns, then one state per aggregate. */
+export function rollupColumns(p: Pick<RollupParams, "timeColumn" | "groups" | "aggregates">): Array<{ name: string; source: string; merge: string }> {
+  return [
+    { name: "bucket", source: `toStartOfMinute(${quoteIdent(p.timeColumn)})`, merge: "bucket" },
+    ...p.groups.map((g) => ({ name: `g_${g.column}`, source: quoteIdent(g.column), merge: quoteIdent(`g_${g.column}`) })),
+    ...p.aggregates.map((a) => ({
+      name: `a_${a.alias}`,
+      source: `${STATE[a.fn]}State(${a.column === null ? "" : quoteIdent(a.column)})`,
+      merge: `${STATE[a.fn]}Merge(${quoteIdent(`a_${a.alias}`)})`,
+    })),
+  ];
+}
+
+function rollupFilters(p: Pick<RollupParams, "filters">): string[] {
+  return p.filters.map((f) => `${quoteIdent(f.column)} ${f.op} ${typeof f.value === "number" ? String(f.value) : quoteString(f.value)}`);
+}
+
+/** The SELECT that writes states into the rollup (the materialized view's and the backfill's). */
+function stateSelect(p: RollupParams, extraWhere: string[]): string {
+  const columns = rollupColumns(p);
+  const where = [...rollupFilters(p), ...extraWhere];
+  return `SELECT ${columns.map((c) => `${c.source} AS ${quoteIdent(c.name)}`).join(", ")} FROM ${table(p.database, p.table)}`
+    + `${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} GROUP BY ${columns.slice(0, 1 + p.groups.length).map((c) => quoteIdent(c.name)).join(", ")}`;
+}
+
+/** Asks ClickHouse for the rollup table's column types without running anything. */
+export function rollupDescribeSql(p: RollupParams): string {
+  return `DESCRIBE TABLE (${stateSelect(p, [])})`;
+}
+
+/** The panel's new SQL once the rollup is verified: the same columns, read from the rollup at 1-minute resolution. */
+export function rollupPanelSql(p: Pick<RollupParams, "database" | "target" | "timeColumn" | "bucketAlias" | "groups" | "aggregates">): string {
+  const select = [
+    `toStartOfInterval(bucket, toIntervalSecond(greatest({{interval_s}}, 60))) AS ${quoteIdent(p.bucketAlias)}`,
+    ...p.groups.map((g) => `${quoteIdent(`g_${g.column}`)} AS ${quoteIdent(g.alias)}`),
+    ...p.aggregates.map((a) => `${STATE[a.fn]}Merge(${quoteIdent(`a_${a.alias}`)}) AS ${quoteIdent(a.alias)}`),
+  ];
+  const groupBy = [quoteIdent(p.bucketAlias), ...p.groups.map((g) => quoteIdent(g.alias))];
+  return `SELECT ${select.join(", ")}\nFROM ${table(p.database, p.target)}\nWHERE bucket >= toStartOfMinute({{from}}) AND bucket < {{to}}\nGROUP BY ${groupBy.join(", ")}\nORDER BY ${quoteIdent(p.bucketAlias)}`;
+}
+
+/** Rows that differ between the original aggregation and the rollup, per minute, from the rollup's first minute to 10 minutes ago. */
+function rollupVerificationSql(p: RollupParams): string {
+  const columns = rollupColumns(p);
+  const keys = columns.slice(0, 1 + p.groups.length);
+  // NULL for an empty rollup: both sides are then empty, instead of the source's whole history.
+  const lo = `(SELECT minOrNull(bucket) FROM ${table(p.database, p.target)})`;
+  const hi = "toStartOfMinute(now() - INTERVAL 10 MINUTE)";
+  const original = `SELECT ${keys.map((c) => `${c.source} AS ${quoteIdent(c.name)}`).join(", ")}, ${p.aggregates.map((a) => `${a.fn}(${a.column === null ? "" : quoteIdent(a.column)}) AS ${quoteIdent(`a_${a.alias}`)}`).join(", ")}`
+    + ` FROM ${table(p.database, p.table)} WHERE ${[...rollupFilters(p), `${quoteIdent(p.timeColumn)} >= ${lo}`, `${quoteIdent(p.timeColumn)} < ${hi}`].join(" AND ")}`
+    + ` GROUP BY ${keys.map((c) => quoteIdent(c.name)).join(", ")}`;
+  const rolled = `SELECT ${keys.map((c) => quoteIdent(c.name)).join(", ")}, ${columns.slice(1 + p.groups.length).map((c) => `${c.merge} AS ${quoteIdent(c.name)}`).join(", ")}`
+    + ` FROM ${table(p.database, p.target)} WHERE bucket >= ${lo} AND bucket < ${hi}`
+    + ` GROUP BY ${keys.map((c) => quoteIdent(c.name)).join(", ")}`;
+  return `SELECT count() AS value FROM (SELECT * FROM ((${original}) EXCEPT (${rolled})) UNION ALL SELECT * FROM ((${rolled}) EXCEPT (${original})))`;
+}
+
+function buildRollup(params: RollupParams, prior: PriorState): BuiltAction {
+  const types = prior.rollup?.types;
+  if (!types) throw new Error("A rollup is built from the column types read when it was proposed");
+  const columns = rollupColumns(params);
+  for (const c of columns) {
+    const type = types[c.name];
+    if (!type || !ROLLUP_TYPE_RE.test(type)) throw new Error(`The rollup column ${c.name} has no usable type`);
+  }
+  const onCluster = params.cluster ? ` ON CLUSTER ${quoteIdent(params.cluster)}` : "";
+  const engine = params.cluster ? "ReplicatedAggregatingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')" : "AggregatingMergeTree";
+  const target = table(params.database, params.target);
+  const view = table(params.database, `${params.target}_mv`);
+  const orderBy = [...params.groups.map((g) => quoteIdent(`g_${g.column}`)), "bucket"];
+  const from = `${params.database}.${params.table}`;
+  return {
+    statements: [
+      `CREATE TABLE ${target}${onCluster} (${columns.map((c) => `${quoteIdent(c.name)} ${types[c.name]}`).join(", ")}) ENGINE = ${engine} ORDER BY (${orderBy.join(", ")})`,
+      `CREATE MATERIALIZED VIEW ${view}${onCluster} TO ${target} AS ${stateSelect(params, [])}`,
+      `INSERT INTO ${target} ${stateSelect(params, [`${quoteIdent(params.timeColumn)} >= toStartOfMinute(now()) - INTERVAL ${params.backfillDays} DAY`, `${quoteIdent(params.timeColumn)} < toStartOfMinute(now())`])}`,
+    ],
+    preview: `Roll up ${from} into ${params.database}.${params.target} (1-minute buckets, ${params.backfillDays} day${params.backfillDays === 1 ? "" : "s"} backfilled) for a dashboard panel, then switch the panel to it once the results match`,
+    rollback: [`DROP TABLE IF EXISTS ${view}${onCluster} SYNC`, `DROP TABLE IF EXISTS ${target}${onCluster} SYNC`],
+    approvalClass: 2,
+    windowOnly: true,
+    verification: {
+      description: "The rollup returns exactly what the panel's query returns, per minute, up to 10 minutes ago",
+      sql: rollupVerificationSql(params),
+      comparator: "eq",
+      threshold: 0,
+      withinSeconds: 1800,
+      probeSeconds: 280,
+    },
+    internal: null,
+  };
+}
 
 /** Merge one setting into a rendered SETTINGS list, replacing an existing entry of the same name. */
 export function mergeSettingsList(existing: string, setting: string, value: string | number | boolean): string {
@@ -273,6 +400,8 @@ export function buildAction(params: ActionParams, prior: PriorState = {}): Built
         verification: { description: "The last refresh succeeded", sql: `SELECT toUInt8(exception = '') AS value FROM system.view_refreshes WHERE database = ${quoteString(params.database)} AND view = ${quoteString(params.view)}`, comparator: "eq", threshold: 1, withinSeconds: 600 },
         internal: null,
       };
+    case "create_panel_rollup":
+      return buildRollup(params, prior);
     case "flush_distributed":
       return {
         statements: [`SYSTEM FLUSH DISTRIBUTED ${table(params.database, params.table)}`],
@@ -317,4 +446,8 @@ export const REQUIRED_GRANTS: Record<ActionType, string | null> = {
   reload_dictionary: "SYSTEM RELOAD DICTIONARY",
   refresh_view: "SYSTEM VIEWS",
   flush_distributed: "SYSTEM FLUSH DISTRIBUTED",
+  create_panel_rollup: "CREATE TABLE, CREATE VIEW, INSERT, DROP TABLE and DROP VIEW on the rollup's database; SELECT on the panel's table",
 };
+
+/** Action types that can only be proposed from where they apply, never from the generic catalog or by AI. */
+export const CONTEXT_ONLY_TYPES: ReadonlySet<ActionType> = new Set(["create_panel_rollup"]);

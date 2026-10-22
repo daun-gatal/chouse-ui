@@ -23,6 +23,8 @@ export const ACTION_TYPES = [
   "flush_distributed",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
+/** Every type an action can have; a panel rollup is proposed from its dashboard panel, never from the catalog form. */
+export type AnyActionType = ActionType | "create_panel_rollup";
 
 export type ActionStatus =
   | "proposed"
@@ -35,7 +37,7 @@ export type ActionStatus =
   | "rolled_back"
   | "rejected";
 
-export type ActionParams = { type: ActionType } & Record<string, unknown>;
+export type ActionParams = { type: AnyActionType } & Record<string, unknown>;
 
 export interface VerificationSpec {
   description: string;
@@ -43,12 +45,14 @@ export interface VerificationSpec {
   comparator: "eq" | "lt" | "lte" | "gt" | "gte";
   threshold: number;
   withinSeconds: number;
+  /** How long one probe may run, when not the default 15 s. */
+  probeSeconds?: number;
 }
 
 export interface RemediationAction {
   id: string;
   connectionId: string;
-  type: ActionType;
+  type: AnyActionType;
   params: ActionParams;
   resumeAt: number | null;
   approvalClass: 1 | 2;

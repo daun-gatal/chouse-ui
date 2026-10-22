@@ -26,7 +26,7 @@ import { validateReadOnlySelect } from "../scheduledQueries/validation";
 import { isAdmin, viewerConnections, type Viewer } from "./access";
 import { cacheKey, KeyedSemaphore, ResultCache, type Cached } from "./cache";
 import { compileSql, resolveWindow, type Compiled, type Window } from "./macros";
-import { inScope, type ConnectionScope, type TimeRange, type Variable } from "./spec";
+import { inScope, type ConnectionScope, type TimeRange, type Variable, type VariableValues } from "./spec";
 
 export const DASHBOARDS_SOURCE = "dashboards";
 export const MAX_RESULT_ROWS = 10_000;
@@ -54,6 +54,12 @@ export interface PanelData {
   readRows: number;
   readBytes: number;
   ranAt: number;
+  /**
+   * The session time zone ClickHouse reported (X-ClickHouse-Timezone): the
+   * zone a DateTime column without its own is in (ADR 0023 §8). Null when the
+   * server did not say; time-based features then refuse rather than assume one.
+   */
+  timezone: string | null;
 }
 
 export interface PanelRun {
@@ -86,18 +92,32 @@ export interface PanelQuery {
   sql: string;
   variables: Variable[];
   /** Values chosen for the variables; a variable without one uses its default. */
-  values: Record<string, string>;
+  values: VariableValues;
   range: TimeRange;
   /** Tags for `log_comment`. */
   dashboardId: string | null;
   panelId: string | null;
 }
 
-/** Defaults merged with the chosen values; a value for an undeclared variable is refused. */
-export function resolveValues(variables: Variable[], values: Record<string, string>): Record<string, string> {
-  const declared = new Set(variables.map((v) => v.name));
-  const unknown = Object.keys(values).filter((name) => !declared.has(name));
+/**
+ * Defaults merged with the chosen values. A value for an undeclared variable,
+ * or of the wrong shape for its variable (a list for a single-value one, the
+ * reverse, or an empty list), is refused.
+ */
+export function resolveValues(variables: Variable[], values: VariableValues): VariableValues {
+  const byName = new Map(variables.map((v) => [v.name, v]));
+  const unknown = Object.keys(values).filter((name) => !byName.has(name));
   if (unknown.length > 0) throw AppError.badRequest(`Unknown variable: ${unknown.join(", ")}`);
+  for (const [name, value] of Object.entries(values)) {
+    const variable = byName.get(name);
+    if (!variable) continue;
+    if (variable.kind === "multi") {
+      if (!Array.isArray(value)) throw AppError.badRequest(`Variable ${variable.label} takes a list of values`);
+      if (value.length === 0) throw AppError.badRequest(`Pick at least one value for ${variable.label}`);
+    } else if (Array.isArray(value)) {
+      throw AppError.badRequest(`Variable ${variable.label} takes one value, not a list`);
+    }
+  }
   return { ...Object.fromEntries(variables.map((v) => [v.name, v.default])), ...values };
 }
 
@@ -195,6 +215,7 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
       },
     });
     const json = (await result.json()) as JsonResult;
+    const zone = result.response_headers["x-clickhouse-timezone"];
     return {
       columns: json.meta,
       rows: json.data,
@@ -202,13 +223,14 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
       readRows: Number(json.statistics?.rows_read ?? 0),
       readBytes: Number(json.statistics?.bytes_read ?? 0),
       ranAt: Date.now(),
+      timezone: typeof zone === "string" && zone !== "" ? zone : null,
     };
   } catch (error) {
     throw queryError(error, maxRows, deadline.aborted, connectionName);
   }
 }
 
-async function runOn(viewer: Viewer, connection: ConnectionResponse, query: PanelQuery, window: Window, agentFor: AgentFor): Promise<{ data: PanelData; cached: boolean }> {
+async function runOn(viewer: Viewer, connection: ConnectionResponse, query: PanelQuery, window: Window, agentFor: AgentFor, resultCache: ResultCache<PanelData> = cache): Promise<{ data: PanelData; cached: boolean }> {
   const compiled = compilePanel(query, window);
   await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
@@ -218,7 +240,7 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   }
   let outcome: Cached<PanelData>;
   try {
-    outcome = await cache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
+    outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
       const data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
@@ -231,9 +253,34 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
 }
 
 /** Run one panel on one connection, as `viewer`. */
-export async function runPanel(viewer: Viewer, connectionId: string, query: PanelQuery, agentFor: AgentFor, nowMs: number = Date.now()): Promise<PanelRun> {
+/**
+ * Run one panel on one connection for an exact window, through every check,
+ * with results kept in `resultCache` (baselines keep theirs longer).
+ */
+export async function runPanelWindow(viewer: Viewer, connectionId: string, query: PanelQuery, window: Window, agentFor: AgentFor, resultCache: ResultCache<PanelData>): Promise<PanelRun> {
   const connection = await viewerConnection(viewer, connectionId);
-  const window = resolveWindow(query.range, nowMs);
+  const { data, cached } = await runOn(viewer, connection, query, window, agentFor, resultCache);
+  return { connectionId, window, data, cached };
+}
+
+/** The windows Compare can look back by (ADR 0023 §8): one day, one week. */
+export const SHIFT_SECONDS = [86_400, 604_800] as const;
+export type ShiftSeconds = (typeof SHIFT_SECONDS)[number];
+
+/** `window` moved back by `shiftSeconds`, keeping its bucket size so buckets line up with the current window's. */
+export function shiftWindow(window: Window, shiftSeconds: number): Window {
+  return { from: window.from - shiftSeconds, to: window.to - shiftSeconds, intervalSeconds: window.intervalSeconds };
+}
+
+/**
+ * Run one panel on one connection, as `viewer`. With `shiftSeconds`, the
+ * panel runs for the same window that long ago (Compare); every check runs as
+ * for any run.
+ */
+export async function runPanel(viewer: Viewer, connectionId: string, query: PanelQuery, agentFor: AgentFor, nowMs: number = Date.now(), shiftSeconds: ShiftSeconds | 0 = 0): Promise<PanelRun> {
+  const connection = await viewerConnection(viewer, connectionId);
+  const current = resolveWindow(query.range, nowMs);
+  const window = shiftSeconds === 0 ? current : shiftWindow(current, shiftSeconds);
   const { data, cached } = await runOn(viewer, connection, query, window, agentFor);
   return { connectionId, window, data, cached };
 }

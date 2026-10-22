@@ -20,7 +20,7 @@ mock.module("../scheduledQueries/chClient", () => ({
         failNext = false;
         throw new Error("connection reset");
       }
-      return { json: async () => ({ meta: [{ name: "v", type: "UInt8" }], data: [{ v: 1 }], statistics: { elapsed: 0.001, rows_read: 1, bytes_read: 100 } }) };
+      return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => ({ meta: [{ name: "v", type: "UInt8" }], data: [{ v: 1 }], statistics: { elapsed: 0.001, rows_read: 1, bytes_read: 100 } }) };
     },
   }),
 }));

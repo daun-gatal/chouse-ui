@@ -19,12 +19,12 @@ vi.mock("@/stores", async (importOriginal) => {
   return { ...actual, useRbacStore: (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state) };
 });
 
-const STAT = { version: 1, type: "stat", x: null, y: ["lag"], series: null, unit: "count", decimals: 0, thresholds: [], colorScheme: "violet", reduce: "last" };
+const STAT = { version: 2, type: "stat", x: null, y: ["lag"], series: null, unit: "count", decimals: 0, thresholds: [], colorScheme: "violet", reduce: "last", links: [], baseline: null };
 
 function detail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
-    panels: [{ id: "p1", dashboardId: "d1", position: 0, title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, width: 6, height: "s", fleet: false, createdAt: 0, updatedAt: 0 }],
+    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], annotations: [], version: 4, createdAt: 0, updatedAt: 0 },
+    panels: [{ id: "p1", dashboardId: "d1", position: 0, kind: "chart", title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, fleet: false, layout: { x: 0, y: 0, w: 12, h: 6 }, createdAt: 0, updatedAt: 0 }],
     shares: [],
     access: { owner: true, view: true, edit: true, delete: true, share: true },
     pinned: false,
@@ -180,16 +180,57 @@ describe("Dashboards page", () => {
     expect(screen.getByText("Fleet overview")).toBeTruthy();
     expect(screen.queryByText("Billing")).toBeNull();
     expect(screen.getByTestId("dashboards-elsewhere").textContent).toContain("1 more dashboard is assigned to other connections");
-    expect(screen.getAllByTestId("dashboard-card-scope").map((e) => e.textContent)).toEqual(["alpha", "All connections"]);
+    // Same update time, so by name.
+    expect(screen.getAllByTestId("dashboard-card-scope").map((e) => e.textContent)).toEqual(["All connections", "alpha"]);
   });
 
-  it("lists dashboards and templates", async () => {
+  it("lists dashboards in one table and templates in their own tab", async () => {
     server.use(
       http.get("/api/dashboards", () => ok([{ ...(detail().dashboard as object), panelCount: 1, ownerName: "u1", shares: [], access: detail().access, pinned: true, scope: { kind: "any" } }])),
       http.get("/api/dashboards/templates", () => ok([{ id: "replication", title: "Replication", description: "Replica delay", openFrom: null, dashboard: { panels: [{}, {}] } }])),
     );
     setup("/dashboards");
-    expect(await screen.findAllByText("Kafka")).toHaveLength(2);
+    expect(await screen.findByRole("link", { name: "Kafka" })).toBeTruthy();
+    expect(screen.queryByText("Replication")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /Templates/ }));
     expect(await screen.findByText("Replication")).toBeTruthy();
+  });
+
+  it("filters by tab and search, and pins from the row", async () => {
+    const others = { ...detail().access, owner: false, edit: false, delete: false, share: false };
+    const summary = (id: string, title: string, over: Record<string, unknown> = {}) => ({ ...(detail().dashboard as object), id, title, panelCount: 1, ownerName: "Ada", shares: [], access: detail().access, pinned: false, scope: { kind: "any" }, ...over });
+    const pins: string[] = [];
+    server.use(
+      http.get("/api/dashboards", () => ok([summary("d1", "Kafka lag"), summary("d2", "Merges", { access: others }), summary("d3", "Disk usage", { access: others, description: "Kafka brokers" })])),
+      http.get("/api/dashboards/templates", () => ok([])),
+      http.post("/api/dashboards/:id/pin", ({ params }) => {
+        pins.push(String(params.id));
+        return ok({ pinned: true });
+      }),
+    );
+    setup("/dashboards");
+    expect(await screen.findAllByTestId("dashboard-row")).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: /Shared with me/ }).textContent).toContain("2");
+    fireEvent.click(screen.getByRole("tab", { name: /Shared with me/ }));
+    expect(screen.getAllByTestId("dashboard-row").map((r) => r.querySelector("a")?.textContent)).toEqual(["Disk usage", "Merges"]);
+    fireEvent.change(screen.getByLabelText("Search dashboards"), { target: { value: "kafka" } });
+    expect(screen.getAllByTestId("dashboard-row").map((r) => r.querySelector("a")?.textContent)).toEqual(["Disk usage"]);
+    fireEvent.change(screen.getByLabelText("Search dashboards"), { target: { value: "nothing here" } });
+    expect(screen.getByText('No dashboards match "nothing here".')).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /All/ }));
+    fireEvent.change(screen.getByLabelText("Search dashboards"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pin Merges" }));
+    await waitFor(() => expect(pins).toEqual(["d2"]));
+  });
+
+  it("pages a long list", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...(detail().dashboard as object), id: `d${i}`, title: `Dash ${String(i).padStart(2, "0")}`, panelCount: 1, ownerName: null, shares: [], access: detail().access, pinned: false, scope: { kind: "any" } }));
+    server.use(http.get("/api/dashboards", () => ok(many)), http.get("/api/dashboards/templates", () => ok([])));
+    setup("/dashboards?sort=title");
+    expect(await screen.findAllByTestId("dashboard-row")).toHaveLength(25);
+    expect(screen.getByText("1–25 of 30")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getAllByTestId("dashboard-row")).toHaveLength(5);
+    expect(screen.getAllByTestId("dashboard-row")[0].querySelector("a")?.textContent).toBe("Dash 25");
   });
 });

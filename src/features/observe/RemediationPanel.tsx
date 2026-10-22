@@ -289,6 +289,17 @@ function ActionCard({ action, onDecide }: { action: RemediationAction; onDecide:
   );
 }
 
+/** Fix cards with their approve, reject, run and roll back controls, for actions listed outside an incident (a dashboard panel's rollups). */
+export function ActionList({ actions }: { actions: RemediationAction[] }): ReactElement {
+  const [decision, setDecision] = useState<{ action: RemediationAction; decision: "approve" | "reject" } | null>(null);
+  return (
+    <>
+      <ul className="space-y-2">{actions.map((a) => <ActionCard key={a.id} action={a} onDecide={(d) => setDecision({ action: a, decision: d })} />)}</ul>
+      <DecisionDialog action={decision?.action ?? null} decision={decision?.decision ?? "approve"} onClose={() => setDecision(null)} />
+    </>
+  );
+}
+
 /** Fixes attached to an incident or a notebook, plus the propose entry point. */
 export function RemediationPanel({ context, drafts = [], title = "Fixes" }: { context: ProposeContext; drafts?: ProposeDraft[]; title?: string }): ReactElement {
   const { hasPermission, hasAnyPermission } = useRbacStore();

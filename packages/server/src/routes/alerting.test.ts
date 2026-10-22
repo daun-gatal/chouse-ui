@@ -54,4 +54,14 @@ describe("DELETE /alerting/channels/:id", () => {
     await rawRun(sql`DELETE FROM dashboard_alert_channels WHERE channel_id = ${channelId}`);
     expect((await del(`/alerting/channels/${channelId}`)).status).toBe(200);
   });
+
+  it("refuses while a dashboard report sends to the channel", async () => {
+    const channelId = await createChannel({ name: "digest", type: ChannelType.Webhook, config: { url: "https://hooks.test/d" }, enabled: true });
+    await rawRun(sql`INSERT INTO dashboard_report_channels (report_id, channel_id) VALUES ('r1', ${channelId})`);
+    const refused = await del(`/alerting/channels/${channelId}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toBe("Channel is used by 1 dashboard report; detach it first.");
+    await rawRun(sql`DELETE FROM dashboard_report_channels WHERE channel_id = ${channelId}`);
+    expect((await del(`/alerting/channels/${channelId}`)).status).toBe(200);
+  });
 });

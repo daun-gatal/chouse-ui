@@ -575,16 +575,40 @@ const operationsTools: CatalogTool[] = [
   }),
   apiTool<DashboardDetailPayload>({
     name: "get_dashboard", title: "Dashboard", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
-    description: "One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's title, SQL, chart type and unit.",
+    description: "One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings.",
     schema: z.object({ id: z.string().min(1).describe("Dashboard id from list_dashboards") }),
     request: (a) => ({ path: `/api/dashboards/${segment(String(a.id))}` }),
     project: (d) => ({
       id: d.dashboard.id, title: d.dashboard.title, description: d.dashboard.description, connections: scopeNames(d.scope),
       timeRange: d.dashboard.timeRange, variables: d.dashboard.variables,
-      panels: d.panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet })),
+      panels: d.panels.map((p) => (p.kind === "chart"
+        ? { id: p.id, kind: p.kind, title: p.title, sql: p.sql, chart: p.viz.type, unit: p.viz.unit, fleet: p.fleet }
+        : p.kind === "text"
+          ? { id: p.id, kind: p.kind, title: p.title, markdown: p.markdown }
+          : { id: p.id, kind: p.kind, title: p.title, description: p.description })),
     }),
   }),
+  apiTool<AnnotationsPayload>({
+    name: "get_dashboard_annotations", title: "Dashboard annotations", category: "operations", permissions: [PERMISSIONS.DASHBOARDS_VIEW],
+    description: "What changed around a dashboard's charts on the active connection over a recent range: DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes, newest first. Each kind says if it could not be read and why.",
+    schema: z.object({
+      id: z.string().min(1).describe("Dashboard id from list_dashboards"),
+      range: z.enum(["15m", "1h", "3h", "6h", "12h", "24h", "2d", "7d", "30d"]).describe("How far back to look"),
+      sources: z.array(z.enum(["ddl", "upgrades", "settings", "writers", "alerts", "incidents", "fixes", "notes"])).optional().describe("Kinds of event to read; every kind when left out"),
+    }),
+    request: (a) => ({ path: `/api/dashboards/${segment(String(a.id))}/annotations`, query: { range: String(a.range), sources: Array.isArray(a.sources) ? a.sources.join(",") : undefined } }),
+    project: (d) => d.sources.map((s) => (s.ok
+      ? { source: s.source, truncated: s.truncated, events: s.events.map((e) => ({ at: new Date(e.at).toISOString(), title: e.title, detail: e.detail, object: e.objectRef })) }
+      : { source: s.source, unavailable: s.error })),
+  }),
 ];
+
+interface AnnotationsPayload {
+  sources: Array<
+    | { source: string; ok: true; truncated: boolean; events: Array<{ at: number; title: string; detail: string | null; objectRef: string | null }> }
+    | { source: string; ok: false; error: string }
+  >;
+}
 
 type DashboardScopeView = { kind: "any" } | { kind: "only"; connections: Array<{ name: string }>; hidden: number };
 
@@ -601,7 +625,11 @@ interface DashboardRow {
 interface DashboardDetailPayload {
   dashboard: { id: string; title: string; description: string; timeRange: string; variables: unknown[] };
   scope: DashboardScopeView;
-  panels: Array<{ id: string; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }>;
+  panels: Array<
+    | { id: string; kind: "chart"; title: string; sql: string; viz: { type: string; unit: string }; fleet: boolean }
+    | { id: string; kind: "text"; title: string; markdown: string }
+    | { id: string; kind: "heading"; title: string; description: string }
+  >;
 }
 
 // ============================================

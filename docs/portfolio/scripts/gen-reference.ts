@@ -185,6 +185,7 @@ const AUDIT_AREAS: Record<string, string> = {
   notebook: "Notebooks",
   dashboard: "Dashboards",
   panel_alert: "Dashboards",
+  dashboard_report: "Dashboards",
   upgrade: "Upgrades",
   agent: "Agents",
   ai_agent: "AI agents",
