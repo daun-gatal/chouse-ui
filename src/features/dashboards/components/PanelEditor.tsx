@@ -1,7 +1,8 @@
 /**
- * Edit one panel (ADR 0021 §12): SQL, chart settings, size and fleet, with a
- * live preview through /api/dashboards/preview and the lint findings — each
- * mechanical fix is a button the user presses, never applied for them.
+ * Edit one chart panel (ADR 0021 §12, ADR 0023): SQL, chart settings and
+ * fleet, with a live preview through /api/dashboards/preview and the lint and
+ * chart-fit findings — each mechanical fix is a button the user presses, never
+ * applied for them. Its size and place are set on the canvas.
  */
 
 import React, { Suspense, lazy, useMemo, useState } from "react";
@@ -13,28 +14,25 @@ import { VizSpecEditor } from "@/components/charts/VizSpecEditor";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { previewPanel, type ConnectionScope, type PanelInput, type PanelRunResult } from "@/api/dashboards";
+import { previewPanel, type ChartPanelInput, type ConnectionScope, type PanelRunResult } from "@/api/dashboards";
 import { suggestSpec } from "@/lib/viz/autodetect";
 import { mergeFleet, type ResultColumn } from "@/lib/viz/resolve";
-import { PANEL_HEIGHTS, PANEL_WIDTHS, vizSpecProblems, type Variable } from "@/lib/viz/spec";
+import { vizSpecProblems, type Variable, type VizSpec } from "@/lib/viz/spec";
 import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
-import { cn } from "@/lib/utils";
 
 import type { ViewState } from "../urlState";
 
 const PanelSqlEditor = lazy(() => import("./PanelSqlEditor"));
 
-const HEIGHT_LABELS: Record<PanelInput["height"], string> = { s: "Small", m: "Medium", l: "Large" };
-
 /** Chart types a fleet panel can draw (server: validate.ts fleetProblems). */
-export function fleetProblem(panel: Pick<PanelInput, "fleet" | "viz">): string | null {
+export function fleetProblem(panel: Pick<ChartPanelInput, "fleet" | "viz">): string | null {
   if (!panel.fleet) return null;
   const allowed = ["bar", "horizontal_bar", "grouped_bar", "stacked_bar", "line", "multi_line", "area", "stacked_area", "stat", "table"];
   if (!allowed.includes(panel.viz.type)) return `A ${panel.viz.type} chart cannot run across the fleet; use a line, area, bar, stat or table`;
   if (panel.viz.series !== null) return "A fleet panel splits by connection, so it cannot also split by series";
   if (panel.viz.type !== "table" && panel.viz.y.length !== 1) return "A fleet panel plots exactly one y column per connection";
+  if (panel.viz.baseline !== null) return "A fleet panel has one series per connection, so it cannot draw an expected-range band";
   return null;
 }
 
@@ -44,23 +42,23 @@ function resultColumns(result: PanelRunResult): ResultColumn[] {
   return first && first.ok ? first.data.columns : [];
 }
 
-function ApplyFix({ sql, onApply }: { sql: string; onApply: (sql: string) => void }): React.ReactElement {
-  return <Button variant="outline" className={BTN_INLINE} onClick={() => onApply(sql)}>Apply fix</Button>;
+function ApplyFix({ onApply }: { onApply: () => void }): React.ReactElement {
+  return <Button variant="outline" className={BTN_INLINE} onClick={onApply}>Apply fix</Button>;
 }
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initial: PanelInput;
+  initial: ChartPanelInput;
   variables: Variable[];
   /** The edit session's connections: a fleet preview runs on these. */
   connectionScope: ConnectionScope;
   view: ViewState;
-  onSave: (panel: PanelInput) => void;
+  onSave: (panel: ChartPanelInput) => void;
 }
 
 export function PanelEditor({ open, onOpenChange, initial, variables, connectionScope, view, onSave }: Props): React.ReactElement {
-  const [draft, setDraft] = useState<PanelInput>(initial);
+  const [draft, setDraft] = useState<ChartPanelInput>(initial);
   const preview = useMutation({
     mutationFn: () => previewPanel({ sql: draft.sql, viz: draft.viz, fleet: draft.fleet, variables, values: view.values, range: view.range, connectionScope }),
   });
@@ -83,7 +81,8 @@ export function PanelEditor({ open, onOpenChange, initial, variables, connection
   const useSuggestion = (): void => {
     if (columns.length === 0 || !preview.data) return;
     const rows = preview.data.result.kind === "single" ? preview.data.result.data.rows.length : 0;
-    setDraft((d) => ({ ...d, viz: suggestSpec(columns, rows) }));
+    // A suggestion changes the chart, not the panel's links or band: any that no longer fit are listed as problems to fix.
+    setDraft((d) => ({ ...d, viz: { ...suggestSpec(columns, rows), links: d.viz.links, baseline: d.viz.baseline } }));
   };
 
   return (
@@ -100,20 +99,6 @@ export function PanelEditor({ open, onOpenChange, initial, variables, connection
             <label className="flex min-w-60 flex-1 flex-col gap-1">
               <span className={FIELD_LABEL}>Title</span>
               <Input className={FIELD} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={200} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={FIELD_LABEL}>Width</span>
-              <Select value={String(draft.width)} onValueChange={(v) => setDraft({ ...draft, width: Number(v) as PanelInput["width"] })}>
-                <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Width"><SelectValue /></SelectTrigger>
-                <SelectContent>{PANEL_WIDTHS.map((w) => <SelectItem key={w} value={String(w)}>{w} / 12</SelectItem>)}</SelectContent>
-              </Select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={FIELD_LABEL}>Height</span>
-              <Select value={draft.height} onValueChange={(v) => setDraft({ ...draft, height: v as PanelInput["height"] })}>
-                <SelectTrigger className={cn(FIELD, "w-28")} aria-label="Height"><SelectValue /></SelectTrigger>
-                <SelectContent>{PANEL_HEIGHTS.map((h) => <SelectItem key={h} value={h}>{HEIGHT_LABELS[h]}</SelectItem>)}</SelectContent>
-              </Select>
             </label>
             <label className="flex items-center gap-2 pb-2 text-xs text-paper-dim">
               <Switch checked={draft.fleet} onCheckedChange={(fleet) => setDraft({ ...draft, fleet })} aria-label="Run across the fleet" />
@@ -138,7 +123,8 @@ export function PanelEditor({ open, onOpenChange, initial, variables, connection
                 <li key={f.code} className="flex items-start gap-2 text-xs text-amber-200">
                   <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span className="flex-1">{f.message}</span>
-                  {f.fixedSql !== undefined && <ApplyFix sql={f.fixedSql} onApply={(sql) => setDraft((d) => ({ ...d, sql }))} />}
+                  {f.fixedSql !== undefined && <ApplyFix onApply={() => setDraft((d) => ({ ...d, sql: f.fixedSql as string }))} />}
+                  {f.fixedViz !== undefined && <ApplyFix onApply={() => setDraft((d) => ({ ...d, viz: f.fixedViz as VizSpec }))} />}
                 </li>
               ))}
             </ul>

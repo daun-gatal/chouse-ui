@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { server } from "@/test/mocks/server";
 import * as dashboards from "./dashboards";
 
-const VIZ = { version: 1 as const, type: "line" as const, x: "t", y: ["v"], series: null, unit: "count" as const, decimals: null, thresholds: [], colorScheme: "violet" as const, reduce: null };
+const VIZ = { version: 2 as const, type: "line" as const, x: "t", y: ["v"], series: null, unit: "count" as const, decimals: null, thresholds: [], colorScheme: "violet" as const, reduce: null, links: [], baseline: null };
 const RANGE = { kind: "relative" as const, value: "6h" as const };
 
 describe("dashboards API", () => {
@@ -19,7 +19,7 @@ describe("dashboards API", () => {
         return HttpResponse.json({ success: true, data: {} });
       }),
     );
-    const input: dashboards.DashboardInput = { title: "T", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], panels: [] };
+    const input: dashboards.DashboardInput = { title: "T", description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], annotations: ["ddl"], panels: [] };
     await dashboards.listDashboards();
     await dashboards.getDashboard("d/1");
     await dashboards.createDashboard(input);
@@ -39,6 +39,13 @@ describe("dashboards API", () => {
     await dashboards.instantiateTemplate("replication", { kind: "any" });
     await dashboards.listAlerts("d1");
     await dashboards.listAllAlerts();
+    await dashboards.arrangePanels([]);
+    await dashboards.tidyPanels([]);
+    await dashboards.listVersions("d1");
+    await dashboards.getVersion("d1", 2);
+    await dashboards.restorePreview("d1", 2);
+    await dashboards.restoreVersion("d1", 2, 5);
+    await dashboards.importDashboard({ format: "chouse.dashboard/v1" });
     expect(seen).toEqual([
       "GET /api/dashboards",
       "GET /api/dashboards/d%2F1",
@@ -59,8 +66,18 @@ describe("dashboards API", () => {
       "POST /api/dashboards/templates/replication/instantiate",
       "GET /api/dashboards/d1/alerts",
       "GET /api/dashboards/alerts",
+      "POST /api/dashboards/layout",
+      "POST /api/dashboards/layout",
+      "GET /api/dashboards/d1/versions",
+      "GET /api/dashboards/d1/versions/2",
+      "GET /api/dashboards/d1/versions/2/restore-preview",
+      "POST /api/dashboards/d1/versions/2/restore",
+      "POST /api/dashboards/import",
     ]);
     expect(bodies[3]).toEqual({ version: 3, dashboard: input });
+    expect(bodies[19]).toEqual({ mode: "arrange", sections: [] });
+    expect(bodies[20]).toEqual({ mode: "tidy", panels: [] });
+    expect(bodies[24]).toEqual({ currentVersion: 5 });
   });
 
   it("surfaces the server's error message", async () => {
@@ -69,11 +86,18 @@ describe("dashboards API", () => {
   });
 
   it("maps a detail back to the input a save takes", () => {
-    const panel = { id: "p1", dashboardId: "d1", position: 0, title: "P", sql: "SELECT 1", viz: VIZ, width: 6 as const, height: "m" as const, fleet: false, createdAt: 0, updatedAt: 0 };
-    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", timeRange: "1h" as const, refreshSeconds: 30 as const, connectionScope: { kind: "only" as const, connectionIds: ["c1"] }, variables: [], version: 2, createdAt: 0, updatedAt: 0 };
-    expect(dashboards.toInput({ dashboard, panels: [panel] })).toEqual({
-      title: "T", description: "x", timeRange: "1h", refreshSeconds: 30, connectionScope: { kind: "only", connectionIds: ["c1"] }, variables: [],
-      panels: [{ id: "p1", title: "P", sql: "SELECT 1", viz: VIZ, width: 6, height: "m", fleet: false }],
+    const meta = { dashboardId: "d1", position: 0, createdAt: 0, updatedAt: 0 };
+    const chart = { ...meta, id: "p1", kind: "chart" as const, title: "P", sql: "SELECT 1", viz: VIZ, fleet: false, layout: { x: 0, y: 2, w: 12, h: 9 } };
+    const text = { ...meta, id: "p2", kind: "text" as const, title: "", markdown: "**hi**", layout: { x: 12, y: 2, w: 6, h: 4 } };
+    const heading = { ...meta, id: "p3", kind: "heading" as const, title: "H", description: "d", layout: { x: 0, y: 0, w: 24, h: 2 } };
+    const dashboard = { id: "d1", title: "T", description: "x", ownerId: "u", timeRange: "1h" as const, refreshSeconds: 30 as const, connectionScope: { kind: "only" as const, connectionIds: ["c1"] }, variables: [], annotations: ["alerts" as const], version: 2, createdAt: 0, updatedAt: 0 };
+    expect(dashboards.toInput({ dashboard, panels: [chart, text, heading] })).toEqual({
+      title: "T", description: "x", timeRange: "1h", refreshSeconds: 30, connectionScope: { kind: "only", connectionIds: ["c1"] }, variables: [], annotations: ["alerts"],
+      panels: [
+        { id: "p1", kind: "chart", title: "P", sql: "SELECT 1", viz: VIZ, fleet: false, layout: { x: 0, y: 2, w: 12, h: 9 } },
+        { id: "p2", kind: "text", title: "", markdown: "**hi**", layout: { x: 12, y: 2, w: 6, h: 4 } },
+        { id: "p3", kind: "heading", title: "H", description: "d", layout: { x: 0, y: 0, w: 24, h: 2 } },
+      ],
     });
   });
 });

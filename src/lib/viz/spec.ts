@@ -229,6 +229,19 @@ export type TimeRange = { kind: "relative"; value: RelativeRange } | { kind: "ab
 
 export const ANNOTATION_SOURCES = ["ddl", "upgrades", "settings", "writers", "alerts", "incidents", "fixes", "notes"] as const;
 export type AnnotationSource = (typeof ANNOTATION_SOURCES)[number];
+/** What a new dashboard shows: every source. */
+export const DEFAULT_ANNOTATION_SOURCES: AnnotationSource[] = [...ANNOTATION_SOURCES];
+
+/**
+ * The size a chart gets when added on its own, by the role its type plays
+ * (server: layout.ts roleOf and roleSize — keep in sync).
+ */
+export function soloSize(type: ChartType): { w: number; h: number } {
+  if (type === "stat") return { w: 6, h: 4 };
+  if (type === "table") return { w: 24, h: 10 };
+  if (TIME_SERIES_TYPES.has(type)) return { w: 24, h: 9 };
+  return { w: 12, h: 9 };
+}
 
 export const GRID_COLUMNS = 24;
 export const ROW_HEIGHT_PX = 32;
@@ -269,4 +282,15 @@ export function overlaps(a: Layout, b: Layout): boolean {
 /** A panel's height in pixels for `h` canvas rows. */
 export function rowsToPx(h: number): number {
   return h * ROW_HEIGHT_PX + (h - 1) * ROW_GAP_PX;
+}
+
+/** Where a panel of `size` goes when added to a dashboard: below everything, at the left (server: layout.ts appendBelow). */
+export function appendBelow(existing: Layout[], size: { w: number; h: number }): Layout {
+  const bottom = existing.reduce((max, l) => Math.max(max, l.y + l.h), 0);
+  return { x: 0, y: bottom, w: Math.min(GRID_COLUMNS, size.w), h: size.h };
+}
+
+/** Move `layouts` down by `rows` (adding panels under an existing dashboard). */
+export function shiftDown<T extends { layout: Layout }>(items: T[], rows: number): T[] {
+  return items.map((item) => ({ ...item, layout: { ...item.layout, y: item.layout.y + rows } }));
 }

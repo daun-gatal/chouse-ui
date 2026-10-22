@@ -19,12 +19,12 @@ vi.mock("@/stores", async (importOriginal) => {
   return { ...actual, useRbacStore: (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state) };
 });
 
-const STAT = { version: 1, type: "stat", x: null, y: ["lag"], series: null, unit: "count", decimals: 0, thresholds: [], colorScheme: "violet", reduce: "last" };
+const STAT = { version: 2, type: "stat", x: null, y: ["lag"], series: null, unit: "count", decimals: 0, thresholds: [], colorScheme: "violet", reduce: "last", links: [], baseline: null };
 
 function detail(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], version: 4, createdAt: 0, updatedAt: 0 },
-    panels: [{ id: "p1", dashboardId: "d1", position: 0, title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, width: 6, height: "s", fleet: false, createdAt: 0, updatedAt: 0 }],
+    dashboard: { id: "d1", title: "Kafka", description: "Ingestion", ownerId: "u1", timeRange: "6h", refreshSeconds: 0, connectionScope: { kind: "any" }, variables: [], annotations: [], version: 4, createdAt: 0, updatedAt: 0 },
+    panels: [{ id: "p1", dashboardId: "d1", position: 0, kind: "chart", title: "Consumer lag", sql: "SELECT 1 AS lag", viz: STAT, fleet: false, layout: { x: 0, y: 0, w: 12, h: 6 }, createdAt: 0, updatedAt: 0 }],
     shares: [],
     access: { owner: true, view: true, edit: true, delete: true, share: true },
     pinned: false,

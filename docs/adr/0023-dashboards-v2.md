@@ -73,9 +73,10 @@ their row height. A dashboard has at most 60 panels, of which at most 40 are
 charts.
 
 The editor uses `react-grid-layout`. Panels drag anywhere and resize from any
-edge, and compaction moves panels up into gaps. Text panels render Markdown
-sanitized with DOMPurify. Markdown is the only HTML source, and links open in a
-new tab with `rel="noopener noreferrer"`.
+edge, and compaction moves panels up into gaps. Text panels render Markdown with
+`react-markdown`, which never renders raw HTML and drops `javascript:` links, so
+no HTML string ever reaches the page. Links open in a new tab with
+`rel="noopener noreferrer"`.
 
 ### 2. Viz spec v2
 

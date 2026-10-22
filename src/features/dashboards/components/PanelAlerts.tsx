@@ -28,7 +28,7 @@ import {
   type AlertState,
   type DashboardDetail,
   type PanelAlertWithStatus,
-  type PanelInput,
+  type ChartPanelInput,
 } from "@/api/dashboards";
 import { cn } from "@/lib/utils";
 import { RELATIVE_RANGE_KEYS, REDUCERS, type RelativeRange } from "@/lib/viz/spec";
@@ -60,18 +60,18 @@ function worstState(alerts: PanelAlertWithStatus[]): AlertState | null {
 }
 
 /** A new alert watches the dock's active connection: the evaluator runs with no browser to ask. */
-function defaults(panel: PanelInput, view: ViewState, connectionId: string, range: RelativeRange): AlertInput {
+function defaults(panel: ChartPanelInput, view: ViewState, connectionId: string, range: RelativeRange): AlertInput {
   return {
     name: `${panel.title} alert`,
     severity: "warning",
     connectionId,
     channelIds: [],
     enabled: true,
-    config: { column: panel.viz.y[0] ?? "", reduce: "last", op: ">", value: 0, forEvaluations: 1, everyMinutes: 5, range, values: view.values },
+    config: { kind: "threshold", column: panel.viz.y[0] ?? "", reduce: "last", op: ">", value: 0, forEvaluations: 1, everyMinutes: 5, range, values: view.values },
   };
 }
 
-function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { initial: AlertInput; panel: PanelInput; onCancel: () => void; onSubmit: (input: AlertInput) => void; saving: boolean; error: string | null }): React.ReactElement {
+function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { initial: AlertInput; panel: ChartPanelInput; onCancel: () => void; onSubmit: (input: AlertInput) => void; saving: boolean; error: string | null }): React.ReactElement {
   const [draft, setDraft] = useState<AlertInput>(initial);
   const channels = useQuery({ queryKey: ["alerting", "channels"], queryFn: listChannels });
   const setConfig = (patch: Partial<AlertInput["config"]>): void => setDraft({ ...draft, config: { ...draft.config, ...patch } });
@@ -160,7 +160,7 @@ function AlertForm({ initial, panel, onCancel, onSubmit, saving, error }: { init
 interface Props {
   detail: DashboardDetail;
   panelId: string;
-  panel: PanelInput;
+  panel: ChartPanelInput;
   view: ViewState;
 }
 

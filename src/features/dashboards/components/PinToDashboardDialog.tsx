@@ -13,10 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createDashboard, getDashboard, listDashboards, toInput, updateDashboard, type PanelInput } from "@/api/dashboards";
+import { createDashboard, getDashboard, listDashboards, toInput, updateDashboard, type ChartPanelInput } from "@/api/dashboards";
 import { log } from "@/lib/log";
 import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
-import type { VizSpec } from "@/lib/viz/spec";
+import { DEFAULT_ANNOTATION_SOURCES, appendBelow, soloSize, type VizSpec } from "@/lib/viz/spec";
 import { useAuthStore } from "@/stores";
 
 import { dashboardKeys } from "../hooks";
@@ -51,18 +51,21 @@ export function PinToDashboardDialog({ open, onOpenChange, sql, viz }: Props): R
   const pin = async (): Promise<void> => {
     setSaving(true);
     setError(null);
-    const panel: PanelInput = { id: null, title: panelTitle.trim(), sql, viz, width: 6, height: "m", fleet: false };
+    const panel = (existing: ChartPanelInput["layout"][]): ChartPanelInput => ({
+      id: null, kind: "chart", title: panelTitle.trim(), sql, viz, fleet: false, layout: appendBelow(existing, soloSize(viz.type)),
+    });
     try {
       let id: string;
       if (target === NEW) {
         const created = await createDashboard({
-          title: newTitle.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scopeForNew(activeConnectionId), variables: [], panels: [panel],
+          title: newTitle.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scopeForNew(activeConnectionId), variables: [],
+          annotations: [...DEFAULT_ANNOTATION_SOURCES], panels: [panel([])],
         });
         id = created.dashboard.id;
       } else {
         const detail = await getDashboard(target);
         const input = toInput(detail);
-        await updateDashboard(target, detail.dashboard.version, { ...input, panels: [...input.panels, panel] });
+        await updateDashboard(target, detail.dashboard.version, { ...input, panels: [...input.panels, panel(input.panels.map((p) => p.layout))] });
         id = target;
       }
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });

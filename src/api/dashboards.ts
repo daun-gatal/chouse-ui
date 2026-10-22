@@ -1,8 +1,8 @@
 /**
- * Custom dashboards API (ADR 0021).
+ * Dashboards API (ADR 0021, ADR 0023).
  */
 
-import type { RelativeRange, TimeRange, Variable, VizSpec, PanelWidth, PanelHeight, RefreshSeconds } from "@/lib/viz/spec";
+import type { AnnotationSource, ChartType, Layout, RefreshSeconds, RelativeRange, TimeRange, Variable, VizSpec } from "@/lib/viz/spec";
 import type { ResultColumn } from "@/lib/viz/resolve";
 
 import { invokeAI, type InvokeOptions } from "./ai";
@@ -23,24 +23,25 @@ export interface DashboardRecord {
   refreshSeconds: RefreshSeconds;
   connectionScope: ConnectionScope;
   variables: Variable[];
+  annotations: AnnotationSource[];
   version: number;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface PanelRecord {
+interface PanelMeta {
   id: string;
   dashboardId: string;
   position: number;
-  title: string;
-  sql: string;
-  viz: VizSpec;
-  width: PanelWidth;
-  height: PanelHeight;
-  fleet: boolean;
+  layout: Layout;
   createdAt: number;
   updatedAt: number;
 }
+
+export type ChartPanelRecord = PanelMeta & { kind: "chart"; title: string; sql: string; viz: VizSpec; fleet: boolean };
+export type TextPanelRecord = PanelMeta & { kind: "text"; title: string; markdown: string };
+export type HeadingPanelRecord = PanelMeta & { kind: "heading"; title: string; description: string };
+export type PanelRecord = ChartPanelRecord | TextPanelRecord | HeadingPanelRecord;
 
 export interface ShareRecord {
   roleId: string;
@@ -57,12 +58,17 @@ export interface DashboardAccess {
   share: boolean;
 }
 
-export type LintCode = "cumulative_counter" | "missing_unit" | "avg_of_quantiles" | "unbounded_log_scan" | "pie_without_limit";
+export type LintCode =
+  | "cumulative_counter" | "missing_unit" | "avg_of_quantiles" | "unbounded_log_scan" | "pie_without_limit"
+  | "too_many_slices" | "time_axis_not_time" | "too_many_series" | "too_many_categories";
 
 export interface LintFinding {
   code: LintCode;
   message: string;
+  /** The panel SQL with the fix applied, when the fix is mechanical. */
   fixedSql?: string;
+  /** The chart settings with the fix applied, when the fix is mechanical. */
+  fixedViz?: VizSpec;
 }
 
 export interface DashboardDetail {
@@ -71,6 +77,7 @@ export interface DashboardDetail {
   shares: ShareRecord[];
   access: DashboardAccess;
   pinned: boolean;
+  /** Lint findings per chart panel id. */
   lint: Record<string, LintFinding[]>;
   /** Alerts per panel id (counts only, for every viewer). */
   alertCounts: Record<string, number>;
@@ -86,16 +93,34 @@ export interface DashboardSummary extends DashboardRecord {
   scope: ScopeView;
 }
 
-export interface PanelInput {
-  /** The stored panel's id, or null for a new panel. */
+/** A chart panel as saved: its query, chart and place on the canvas. `id` is null for a new panel. */
+export interface ChartPanelInput {
   id: string | null;
+  kind: "chart";
   title: string;
   sql: string;
   viz: VizSpec;
-  width: PanelWidth;
-  height: PanelHeight;
   fleet: boolean;
+  layout: Layout;
 }
+
+export interface TextPanelInput {
+  id: string | null;
+  kind: "text";
+  title: string;
+  markdown: string;
+  layout: Layout;
+}
+
+export interface HeadingPanelInput {
+  id: string | null;
+  kind: "heading";
+  title: string;
+  description: string;
+  layout: Layout;
+}
+
+export type PanelInput = ChartPanelInput | TextPanelInput | HeadingPanelInput;
 
 export interface DashboardInput {
   title: string;
@@ -104,11 +129,13 @@ export interface DashboardInput {
   refreshSeconds: RefreshSeconds;
   connectionScope: ConnectionScope;
   variables: Variable[];
+  annotations: AnnotationSource[];
   panels: PanelInput[];
 }
 
+/** An export: format 2. Import also takes a format 1 export (`chouse.dashboard/v1`), converted by the server. */
 export interface DashboardExport {
-  format: "chouse.dashboard/v1";
+  format: "chouse.dashboard/v2";
   id: string | null;
   dashboard: DashboardInput;
 }
@@ -120,6 +147,8 @@ export interface PanelData {
   readRows: number;
   readBytes: number;
   ranAt: number;
+  /** ClickHouse's session time zone, or null when it did not say (ADR 0023 §8). */
+  timezone: string | null;
 }
 
 export interface RunWindow {
@@ -200,7 +229,8 @@ export function exportDashboard(id: string): Promise<DashboardExport> {
   return api.get<DashboardExport>(`${base}/${enc(id)}/export`);
 }
 
-export function importDashboard(body: DashboardExport): Promise<DashboardDetail> {
+/** Import an export file as it is: the server reads format 1 and 2 and says what is wrong with anything else. */
+export function importDashboard(body: unknown): Promise<DashboardDetail> {
   return api.post<DashboardDetail>(`${base}/import`, body);
 }
 
@@ -237,6 +267,15 @@ export function instantiateTemplate(templateId: string, connectionScope: Connect
   return api.post<DashboardDetail>(`${base}/templates/${enc(templateId)}/instantiate`, { connectionScope });
 }
 
+/** A stored panel as the panel a save takes. */
+export function panelInputOf(p: PanelRecord): PanelInput {
+  switch (p.kind) {
+    case "chart": return { id: p.id, kind: "chart", title: p.title, sql: p.sql, viz: p.viz, fleet: p.fleet, layout: p.layout };
+    case "text": return { id: p.id, kind: "text", title: p.title, markdown: p.markdown, layout: p.layout };
+    case "heading": return { id: p.id, kind: "heading", title: p.title, description: p.description, layout: p.layout };
+  }
+}
+
 /** A detail's stored panels as the input a save takes. */
 export function toInput(detail: Pick<DashboardDetail, "dashboard" | "panels">): DashboardInput {
   const { dashboard, panels } = detail;
@@ -247,23 +286,88 @@ export function toInput(detail: Pick<DashboardDetail, "dashboard" | "panels">): 
     refreshSeconds: dashboard.refreshSeconds,
     connectionScope: dashboard.connectionScope,
     variables: dashboard.variables,
-    panels: panels.map((p) => ({ id: p.id, title: p.title, sql: p.sql, viz: p.viz, width: p.width, height: p.height, fleet: p.fleet })),
+    annotations: dashboard.annotations,
+    panels: panels.map(panelInputOf),
   };
 }
 
 // ============================================
-// Draft with AI (ADR 0021 §10)
+// Layout engine (ADR 0023 §4)
+// ============================================
+
+export const ROLES = ["kpi", "trend", "breakdown", "ranking", "distribution", "detail"] as const;
+export type Role = (typeof ROLES)[number];
+export type Importance = "primary" | "secondary";
+
+export interface ArrangeSection {
+  heading: { title: string; description: string } | null;
+  panels: Array<{ key: string; kind: "chart" | "text"; chartType: ChartType | null; role: Role | null; importance: Importance; size: { w: number; h: number } | null }>;
+}
+
+export type Placed = { key: string; layout: Layout } | { key: null; heading: { title: string; description: string }; layout: Layout };
+
+export function arrangePanels(sections: ArrangeSection[]): Promise<{ placed: Placed[] }> {
+  return api.post<{ placed: Placed[] }>(`${base}/layout`, { mode: "arrange", sections });
+}
+
+export function tidyPanels(panels: Array<{ key: string; kind: PanelInput["kind"]; chartType: ChartType | null; size: { w: number; h: number } }>): Promise<{ placed: Placed[] }> {
+  return api.post<{ placed: Placed[] }>(`${base}/layout`, { mode: "tidy", panels });
+}
+
+// ============================================
+// Version history (ADR 0023 §11)
+// ============================================
+
+export type VersionSource = "ui" | "token" | "import" | "template" | "duplicate" | "restore" | "migration";
+
+export interface VersionSummary {
+  version: number;
+  savedBy: string | null;
+  savedByName: string | null;
+  savedAt: number;
+  source: VersionSource;
+}
+
+export interface VersionRecord extends VersionSummary {
+  dashboardId: string;
+  document: DashboardInput;
+}
+
+export function listVersions(id: string): Promise<VersionSummary[]> {
+  return api.get<VersionSummary[]>(`${base}/${enc(id)}/versions`);
+}
+
+export function getVersion(id: string, version: number): Promise<VersionRecord> {
+  return api.get<VersionRecord>(`${base}/${enc(id)}/versions/${version}`);
+}
+
+export function restorePreview(id: string, version: number): Promise<{ removedPanels: number; removedAlerts: Array<{ id: string; name: string }> }> {
+  return api.get<{ removedPanels: number; removedAlerts: Array<{ id: string; name: string }> }>(`${base}/${enc(id)}/versions/${version}/restore-preview`);
+}
+
+export function restoreVersion(id: string, version: number, currentVersion: number): Promise<DashboardDetail> {
+  return api.post<DashboardDetail>(`${base}/${enc(id)}/versions/${version}/restore`, { currentVersion });
+}
+
+// ============================================
+// Draft with AI (ADR 0021 §10, ADR 0023 §4)
 // ============================================
 
 export type DraftPanelStatus = "ok" | "attention" | "blocked";
 
+/** A drafted chart: everything but its place, which the layout engine decides. */
+export type DraftedChart = Omit<ChartPanelInput, "layout">;
+
 export interface DraftPanel {
   status: DraftPanelStatus;
-  /** The panel to save; null when its chart settings or size could not be read. */
-  panel: PanelInput | null;
+  /** The panel to add; null when its chart settings, role or importance could not be read. */
+  panel: DraftedChart | null;
   title: string;
   sql: string;
   rationale: string;
+  role: Role | null;
+  importance: Importance | null;
+  section: string | null;
   reasons: string[];
   lint: LintFinding[];
 }
@@ -295,6 +399,7 @@ export type AlertOp = ">" | ">=" | "<" | "<=";
 export type AlertState = "ok" | "pending" | "firing" | "no_data" | "error";
 
 export interface AlertConfig {
+  kind: "threshold";
   column: string;
   reduce: "last" | "max" | "min" | "avg" | "sum";
   op: AlertOp;

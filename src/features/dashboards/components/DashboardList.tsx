@@ -21,13 +21,13 @@ import {
   listDashboards,
   listTemplates,
   type ConnectionScope,
-  type DashboardExport,
   type DashboardSummary,
   type DashboardTemplate,
 } from "@/api/dashboards";
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 import { cn } from "@/lib/utils";
+import { DEFAULT_ANNOTATION_SOURCES } from "@/lib/viz/spec";
 
 import { dashboardKeys } from "../hooks";
 import { isAssignedTo, scopeLabel } from "../scope";
@@ -82,7 +82,7 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
   const create = useMutation({
     mutationFn: () => template
       ? instantiateTemplate(template.id, scope)
-      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scope, variables: [], panels: [] }),
+      : createDashboard({ title: title.trim(), description: "", timeRange: "6h", refreshSeconds: 0, connectionScope: scope, variables: [], annotations: [...DEFAULT_ANNOTATION_SOURCES], panels: [] }),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() });
       onOpenChange(false);
@@ -116,8 +116,14 @@ function NewDashboardDialog({ open, onOpenChange, template }: { open: boolean; o
   );
 }
 
-/** Read an exported dashboard file; a file that is not one says why. */
-export async function readExport(file: File): Promise<DashboardExport> {
+/** Export formats import takes: format 2, and format 1 from before CHouse 3.16 (the server converts it). */
+export const EXPORT_FORMATS = ["chouse.dashboard/v2", "chouse.dashboard/v1"] as const;
+
+/**
+ * Read an exported dashboard file; a file that is not one says why. The
+ * server checks the rest and converts a format 1 export.
+ */
+export async function readExport(file: File): Promise<Record<string, unknown>> {
   const text = await file.text();
   let parsed: unknown;
   try {
@@ -125,10 +131,12 @@ export async function readExport(file: File): Promise<DashboardExport> {
   } catch {
     throw new Error(`${file.name} is not JSON`);
   }
-  if (!parsed || typeof parsed !== "object" || (parsed as { format?: unknown }).format !== "chouse.dashboard/v1") {
-    throw new Error(`${file.name} is not a CHouse dashboard export (format chouse.dashboard/v1)`);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${file.name} is not a CHouse dashboard export`);
+  const format = (parsed as { format?: unknown }).format;
+  if (typeof format !== "string" || !(EXPORT_FORMATS as readonly string[]).includes(format)) {
+    throw new Error(`${file.name} is not a CHouse dashboard export (format ${EXPORT_FORMATS.join(" or ")})`);
   }
-  return parsed as DashboardExport;
+  return parsed as Record<string, unknown>;
 }
 
 export function DashboardList({ toolbar }: { toolbar?: React.ReactNode }): React.ReactElement {

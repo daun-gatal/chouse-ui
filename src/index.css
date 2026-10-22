@@ -824,3 +824,34 @@
     cursor: pointer;
   }
 }
+
+/*
+ * Dashboard canvas (ADR 0023 §1): react-grid-layout in the app's colors. The
+ * drop target is a dashed brand outline; resize handles show on hover while
+ * editing, the corner ones as an L, the edge ones only as a cursor.
+ */
+.dashboard-canvas .react-grid-item.react-grid-placeholder {
+  background: color-mix(in oklab, var(--brand) 8%, transparent);
+  border: 1.5px dashed color-mix(in oklab, var(--brand) 70%, transparent);
+  border-radius: 6px;
+  opacity: 1;
+}
+.dashboard-canvas .react-grid-item > .react-resizable-handle::after {
+  border-color: var(--brand);
+  width: 7px;
+  height: 7px;
+}
+.dashboard-canvas .react-grid-item > .react-resizable-handle-n::after,
+.dashboard-canvas .react-grid-item > .react-resizable-handle-s::after,
+.dashboard-canvas .react-grid-item > .react-resizable-handle-e::after,
+.dashboard-canvas .react-grid-item > .react-resizable-handle-w::after {
+  border: 0;
+}
+.dashboard-canvas .react-grid-item.react-draggable-dragging > section {
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.55);
+}
+.markdown-panel :where(h1, h2, h3) { color: var(--color-paper, inherit); font-weight: 600; margin: 0.4em 0 0.2em; }
+.markdown-panel :where(ul) { list-style: disc; padding-left: 1.25rem; }
+.markdown-panel :where(ol) { list-style: decimal; padding-left: 1.25rem; }
+.markdown-panel :where(code) { font-family: var(--font-mono, monospace); font-size: 0.85em; padding: 0 0.25em; border-radius: 3px; background: rgb(255 255 255 / 0.06); }
+.markdown-panel :where(p + p, ul, ol) { margin-top: 0.4em; }
