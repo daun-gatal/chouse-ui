@@ -6,6 +6,7 @@
  */
 
 import { scanMacros } from "./macros";
+import { isTimeType } from "./time";
 import { NUMERIC_TYPES, TIME_SERIES_TYPES, type VizSpec } from "./spec";
 
 export type LintCode =
@@ -137,10 +138,7 @@ export const MAX_SLICES = 8;
 export const MAX_FIT_SERIES = 12;
 export const MAX_CATEGORIES = 50;
 
-/** Whether a ClickHouse type is a date or time (including Nullable and LowCardinality wrappers). */
-export function isTimeType(type: string): boolean {
-  return /^(Nullable\(|LowCardinality\()*(Date|Date32|DateTime|DateTime64)\b/.test(type);
-}
+export { isTimeType };
 
 export interface FitResult {
   columns: Array<{ name: string; type: string }>;

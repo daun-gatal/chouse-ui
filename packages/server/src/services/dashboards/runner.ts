@@ -230,7 +230,7 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
   }
 }
 
-async function runOn(viewer: Viewer, connection: ConnectionResponse, query: PanelQuery, window: Window, agentFor: AgentFor): Promise<{ data: PanelData; cached: boolean }> {
+async function runOn(viewer: Viewer, connection: ConnectionResponse, query: PanelQuery, window: Window, agentFor: AgentFor, resultCache: ResultCache<PanelData> = cache): Promise<{ data: PanelData; cached: boolean }> {
   const compiled = compilePanel(query, window);
   await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
@@ -240,7 +240,7 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   }
   let outcome: Cached<PanelData>;
   try {
-    outcome = await cache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
+    outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
       const data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
@@ -253,6 +253,16 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
 }
 
 /** Run one panel on one connection, as `viewer`. */
+/**
+ * Run one panel on one connection for an exact window, through every check,
+ * with results kept in `resultCache` (baselines keep theirs longer).
+ */
+export async function runPanelWindow(viewer: Viewer, connectionId: string, query: PanelQuery, window: Window, agentFor: AgentFor, resultCache: ResultCache<PanelData>): Promise<PanelRun> {
+  const connection = await viewerConnection(viewer, connectionId);
+  const { data, cached } = await runOn(viewer, connection, query, window, agentFor, resultCache);
+  return { connectionId, window, data, cached };
+}
+
 /** The windows Compare can look back by (ADR 0023 §8): one day, one week. */
 export const SHIFT_SECONDS = [86_400, 604_800] as const;
 export type ShiftSeconds = (typeof SHIFT_SECONDS)[number];

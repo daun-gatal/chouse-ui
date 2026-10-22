@@ -25,14 +25,9 @@ export type AlertState = (typeof ALERT_STATES)[number];
 
 const RANGE_KEYS = Object.keys(RELATIVE_RANGES) as [RelativeRange, ...RelativeRange[]];
 
-export const alertConfigSchema = z.object({
-  kind: z.literal("threshold"),
-  /** The result column the threshold applies to. */
+const commonConfig = {
+  /** The result column the alert watches. */
   column: z.string().min(1).max(200),
-  /** How the column's values over the evaluated window become one number. */
-  reduce: z.enum(REDUCERS),
-  op: z.enum(ALERT_OPS),
-  value: z.number().finite(),
   /** Consecutive breaching evaluations before it fires. */
   forEvaluations: z.number().int().min(1).max(60),
   everyMinutes: z.number().int().min(1).max(1_440),
@@ -40,7 +35,29 @@ export const alertConfigSchema = z.object({
   range: z.enum(RANGE_KEYS),
   /** Variable values the panel runs with. */
   values: variableValuesSchema,
+};
+
+export const thresholdConfigSchema = z.object({
+  kind: z.literal("threshold"),
+  ...commonConfig,
+  /** How the column's values over the evaluated window become one number. */
+  reduce: z.enum(REDUCERS),
+  op: z.enum(ALERT_OPS),
+  value: z.number().finite(),
 }).strict();
+export type ThresholdConfig = z.infer<typeof thresholdConfigSchema>;
+
+/**
+ * Outside the expected range (ADR 0023 §8): the latest complete bucket — the
+ * second-newest, since the newest is still filling — against the panel's band.
+ */
+export const bandConfigSchema = z.object({
+  kind: z.literal("outside_band"),
+  ...commonConfig,
+}).strict();
+export type BandConfig = z.infer<typeof bandConfigSchema>;
+
+export const alertConfigSchema = z.discriminatedUnion("kind", [thresholdConfigSchema, bandConfigSchema]);
 export type AlertConfig = z.infer<typeof alertConfigSchema>;
 
 export const alertInputSchema = z.object({

@@ -522,7 +522,7 @@ describe("panel alerts", () => {
     const all = await call("owner", "GET", "/dashboards/alerts");
     expect(all.json.data.find((a: { id: string }) => a.id === made.json.data.id).dashboardTitle).toBe("Shop");
     const check = await call("owner", "POST", `/dashboards/${id}/alerts/${made.json.data.id}/check`);
-    expect(check.json.data).toEqual({ kind: "value", value: 7 });
+    expect(check.json.data).toEqual({ kind: "value", value: 7, breached: false });
     expect((await call("owner", "DELETE", `/dashboards/${id}/alerts/${made.json.data.id}`)).status).toBe(200);
     expect((await call("owner", "GET", `/dashboards/${id}/alerts`)).json.data).toEqual([]);
   });
@@ -870,5 +870,43 @@ describe("annotations and notes", () => {
     expect((await call("owner", "DELETE", `/dashboards/${id}/notes/${note.json.data.id}`)).status).toBe(404);
     const audit = await rawAll(sql`SELECT action FROM rbac_audit_logs WHERE resource_id = ${id} AND action LIKE 'dashboard.note%' ORDER BY created_at`);
     expect(audit.map((a) => a.action)).toEqual(["dashboard.note_create", "dashboard.note_delete"]);
+  });
+});
+
+describe("expected-range bands", () => {
+  const BANDED = { ...LINE, baseline: { weeks: 2 } };
+
+  it("runs the panel for the past weeks, through the pipeline, and says when the band is still learning", async () => {
+    const { clearBaselineCache } = await import("../services/dashboards/baseline");
+    clearBaselineCache();
+    const plain = await create();
+    expect((await call("owner", "POST", `/dashboards/${plain.dashboard.id}/panels/${plain.panels[0].id}/baseline`, { range: RANGE, values: {} })).json.error.message).toBe("This panel does not draw an expected-range band");
+    const created = await create("owner", { panels: [panel({ viz: BANDED })] });
+    const res = await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/baseline`, { range: RANGE, values: {} });
+    expect(res.status).toBe(200);
+    // The mock returns the same two buckets for every week, so nothing lines up with the current ones.
+    expect(res.json.data).toEqual({ state: "learning", weeks: 2, points: [], reason: "Only 0 of the past 2 weeks returned data; a band needs at least 2" });
+    expect(sent).toHaveLength(3);
+    const week = 604_800;
+    expect(Number(sent[0].params.chouse_to) - Number(sent[1].params.chouse_to)).toBeLessThanOrEqual(week);
+    expect(Number(sent[1].params.chouse_to) % 900).toBe(0);
+    expect(Number(sent[1].params.chouse_to) - Number(sent[2].params.chouse_to)).toBe(week);
+    // The earlier weeks are kept 15 minutes; only the current window runs again.
+    await call("owner", "POST", `/dashboards/${created.dashboard.id}/panels/${created.panels[0].id}/baseline`, { range: RANGE, values: {} });
+    expect(sent).toHaveLength(3);
+  });
+
+  it("accepts an outside-band alert only on a panel with a band, and keeps the band while the alert is there", async () => {
+    const channel = await createChannel({ name: "band-ops", type: ChannelType.Webhook, config: { url: "https://hooks.test/b" }, enabled: true });
+    const body = { name: "Unusual orders", severity: "warning", connectionId: "conn-1", channelIds: [channel], enabled: true, config: { kind: "outside_band", column: "v", forEvaluations: 2, everyMinutes: 5, range: "6h", values: {} } };
+    const plain = await create();
+    const refused = await call("owner", "POST", `/dashboards/${plain.dashboard.id}/panels/${plain.panels[0].id}/alerts`, body);
+    expect(refused.json.error.message).toContain("needs a panel that draws an expected-range band");
+    const banded = await create("owner", { panels: [panel({ viz: BANDED })] });
+    const id = banded.dashboard.id;
+    const panelId = banded.panels[0].id;
+    expect((await call("owner", "POST", `/dashboards/${id}/panels/${panelId}/alerts`, body)).status).toBe(201);
+    const off = await call("owner", "PUT", `/dashboards/${id}`, { version: 1, dashboard: dashboard({ panels: [panel({ id: panelId })] }) });
+    expect(off.json.error.message).toBe('The alert "Unusual orders" watches this panel\'s expected-range band, which this would turn off. Delete the alert first.');
   });
 });

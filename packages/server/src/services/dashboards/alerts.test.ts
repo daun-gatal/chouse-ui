@@ -42,30 +42,30 @@ const CONFIG = { op: ">" as const, value: 5, forEvaluations: 2 };
 
 describe("nextStatus", () => {
   it("goes pending, then fires once, then stays quiet while firing", () => {
-    const a = nextStatus(OK, { kind: "value", value: 9 }, CONFIG, 1);
+    const a = nextStatus(OK, { kind: "value", value: 9, breached: 9 > CONFIG.value }, CONFIG, 1);
     expect(a).toEqual({ status: { state: "pending", breaches: 1, since: 1, lastEvalAt: 1, lastValue: 9, lastError: null }, notice: null });
-    const b = nextStatus(a.status, { kind: "value", value: 8 }, CONFIG, 2);
+    const b = nextStatus(a.status, { kind: "value", value: 8, breached: 8 > CONFIG.value }, CONFIG, 2);
     expect(b.status.state).toBe("firing");
     expect(b.status.since).toBe(2);
     expect(b.notice).toBe("firing");
-    const c = nextStatus(b.status, { kind: "value", value: 7 }, CONFIG, 3);
+    const c = nextStatus(b.status, { kind: "value", value: 7, breached: 7 > CONFIG.value }, CONFIG, 3);
     expect(c.status).toMatchObject({ state: "firing", breaches: 3, since: 2 });
     expect(c.notice).toBeNull();
   });
 
   it("resolves when the value drops back, and a pending breach just clears", () => {
     const firing: Status = { ...OK, state: "firing", breaches: 2, since: 5 };
-    expect(nextStatus(firing, { kind: "value", value: 1 }, CONFIG, 9)).toEqual({ status: { state: "ok", breaches: 0, since: 9, lastEvalAt: 9, lastValue: 1, lastError: null }, notice: "resolved" });
+    expect(nextStatus(firing, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 9)).toEqual({ status: { state: "ok", breaches: 0, since: 9, lastEvalAt: 9, lastValue: 1, lastError: null }, notice: "resolved" });
     const pending: Status = { ...OK, state: "pending", breaches: 1, since: 5 };
-    expect(nextStatus(pending, { kind: "value", value: 1 }, CONFIG, 9).notice).toBeNull();
+    expect(nextStatus(pending, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 9).notice).toBeNull();
   });
 
   it("notifies once when it starts failing, and when it recovers", () => {
     const failing = nextStatus(OK, { kind: "error", reason: "boom" }, CONFIG, 1);
     expect(failing).toEqual({ status: { state: "error", breaches: 0, since: 1, lastEvalAt: 1, lastValue: null, lastError: "boom" }, notice: "error" });
     expect(nextStatus(failing.status, { kind: "error", reason: "still" }, CONFIG, 2).notice).toBeNull();
-    expect(nextStatus(failing.status, { kind: "value", value: 1 }, CONFIG, 3).notice).toBe("recovered");
-    expect(nextStatus(failing.status, { kind: "value", value: 9 }, { ...CONFIG, forEvaluations: 1 }, 3).notice).toBe("firing");
+    expect(nextStatus(failing.status, { kind: "value", value: 1, breached: 1 > CONFIG.value }, CONFIG, 3).notice).toBe("recovered");
+    expect(nextStatus(failing.status, { kind: "value", value: 9, breached: 9 > CONFIG.value }, { ...CONFIG, forEvaluations: 1 }, 3).notice).toBe("firing");
   });
 
   it("treats no rows as not breaching, resolving a firing alert", () => {
@@ -221,8 +221,14 @@ describe("evaluator end to end", () => {
 
 describe("noticeMessage", () => {
   it("uses the warning icon for warning alerts and names the panel and dashboard", () => {
-    const alert = { name: "Lag", severity: "warning", config: { reduce: "last", column: "lag", op: ">=", value: 1000, forEvaluations: 1 } } as never;
-    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 1500 }, dashboardTitle: "Kafka", panelTitle: "Consumer lag" }, { ...OK, state: "firing", lastValue: 1500 });
+    const alert = { name: "Lag", severity: "warning", config: { kind: "threshold", reduce: "last", column: "lag", op: ">=", value: 1000, forEvaluations: 1 } } as never;
+    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 1500, breached: true }, dashboardTitle: "Kafka", panelTitle: "Consumer lag" }, { ...OK, state: "firing", lastValue: 1500 });
     expect(message).toEqual({ title: "🟠 Lag", text: "Consumer lag on dashboard Kafka: last of lag is 1,500 (alert when >= 1,000, 1 evaluation in a row)." });
+  });
+
+  it("names the expected range for a band alert", () => {
+    const alert = { name: "Inserts", severity: "critical", config: { kind: "outside_band", column: "rows", forEvaluations: 2 } } as never;
+    const message = noticeMessage(alert, "firing", { outcome: { kind: "value", value: 12, breached: true, band: { lo: 100, hi: 180.5 } }, dashboardTitle: "Orders", panelTitle: "Insert rate" }, { ...OK, state: "firing", lastValue: 12 });
+    expect(message).toEqual({ title: "🔴 Inserts", text: "Insert rate on dashboard Orders: rows in the latest complete bucket is 12 (expected 100 to 180.5, 2 evaluations in a row)." });
   });
 });

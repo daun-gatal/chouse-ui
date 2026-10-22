@@ -32,6 +32,7 @@ import { evaluate } from "../services/dashboards/alerts";
 import { getConnectionById, type ConnectionResponse } from "../rbac/services/connections";
 import { dashboardAccess, has, viewerConnections, type DashboardAccess, type Viewer } from "../services/dashboards/access";
 import { addNote, deleteNote, getNote, loadAnnotations, MAX_NOTE_LENGTH } from "../services/dashboards/annotations";
+import { runBaseline } from "../services/dashboards/baseline";
 import { arrange, IMPORTANCES, ROLES, roleProblem, tidy, type ArrangeSection } from "../services/dashboards/layout";
 import { parseDashboardDocument, parseDashboardExport } from "../services/dashboards/legacy";
 import { chartFit, lintPanel, type LintFinding } from "../services/dashboards/lint";
@@ -205,6 +206,11 @@ async function assertAlertsInScope(dashboardId: string, input: DashboardInput): 
   }
   const notChart = alerts.find((a) => kept.get(a.panelId)?.kind !== "chart");
   if (notChart) throw AppError.badRequest(`The alert "${notChart.name}" watches a panel this would turn into a ${kept.get(notChart.panelId)?.kind} panel. Delete the alert first.`);
+  const bandless = alerts.find((a) => {
+    const panel = kept.get(a.panelId);
+    return a.config.kind === "outside_band" && panel?.kind === "chart" && panel.viz.baseline === null;
+  });
+  if (bandless) throw AppError.badRequest(`The alert "${bandless.name}" watches this panel's expected-range band, which this would turn off. Delete the alert first.`);
 }
 
 /** Refuse to run on a connection the dashboard is not assigned to, saying which it is assigned to. */
@@ -451,6 +457,29 @@ dashboards.post("/:id/panels/:panelId/run", requirePermission(PERMISSIONS.DASHBO
 });
 
 // ============================================
+// Expected-range bands (ADR 0023 §8)
+// ============================================
+
+const baselineSchema = z.object({ range: timeRangeSchema, values: variableValuesSchema }).strict();
+
+/** The panel's band over the current window: ready with points, or learning with the reason. */
+dashboards.post("/:id/panels/:panelId/baseline", requirePermission(PERMISSIONS.DASHBOARDS_VIEW), zValidator("json", baselineSchema), async (c) => {
+  requireQueryExecute(c);
+  const id = requireParam(c, "id");
+  const { detail } = await visible(c, id);
+  const panel = chartPanel(detail, requireParam(c, "panelId"));
+  if (panel.viz.baseline === null || panel.viz.x === null) throw AppError.badRequest("This panel does not draw an expected-range band");
+  if (panel.fleet) throw AppError.badRequest("A fleet panel cannot draw an expected-range band");
+  const connectionId = currentConnectionId(c);
+  await assertInScope(c, detail.dashboard.connectionScope, connectionId);
+  markAgentRecorded(c);
+  const { range, values } = c.req.valid("json");
+  const query: PanelQuery = { sql: panel.sql, variables: detail.dashboard.variables, values, range, dashboardId: id, panelId: panel.id };
+  const { baseline } = await runBaseline({ viewer: viewerOf(c), connectionId, query, xColumn: panel.viz.x, yColumn: panel.viz.y[0], weeks: panel.viz.baseline.weeks, agentFor: agentFor(c), nowMs: Date.now() });
+  return ok(c, baseline);
+});
+
+// ============================================
 // Annotations and notes (ADR 0023 §5)
 // ============================================
 
@@ -687,6 +716,9 @@ async function assertAlertValid(c: Context, detail: store.DashboardDetail, panel
     throw AppError.badRequest(panel.viz.y.length === 0
       ? "Alerts need a chart panel with a y column"
       : `Alert on one of the panel's y columns: ${panel.viz.y.join(", ")}`);
+  }
+  if (input.config.kind === "outside_band" && panel.viz.baseline === null) {
+    throw AppError.badRequest("An expected-range alert needs a panel that draws an expected-range band; turn the band on in the panel's chart settings first");
   }
   resolveValues(detail.dashboard.variables, input.config.values);
   await viewerConnection(viewerOf(c), input.connectionId);
