@@ -7,9 +7,9 @@
 import React, { useMemo } from "react";
 import { AlertTriangle } from "lucide-react";
 
-import { ChartView } from "@/components/common/AiChartRenderer";
-import { crossedThreshold, resolveChart, resolveStat, type ResultData } from "@/lib/viz/resolve";
-import type { VizSpec } from "@/lib/viz/spec";
+import { ChartView, type PanelOverlays } from "@/components/common/AiChartRenderer";
+import { crossedThreshold, resolveChart, resolveStat, type ResolvedChart, type ResultData } from "@/lib/viz/resolve";
+import { TIME_SERIES_TYPES, type VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
 
 export const THRESHOLD_COLORS: Record<VizSpec["thresholds"][number]["severity"], string> = {
@@ -44,7 +44,7 @@ function StatValue({ spec, data, height }: { spec: VizSpec; data: ResultData; he
   );
 }
 
-function ResultTable({ data, height }: { data: ResultData; height: number }): React.ReactElement {
+function ResultTable({ data, height, onRowClick }: { data: ResultData; height: number; onRowClick?: (row: Record<string, unknown>) => void }): React.ReactElement {
   if (data.rows.length === 0) return <PanelMessage tone="muted">The query returned no rows</PanelMessage>;
   return (
     <div className="w-full overflow-auto" style={{ height }}>
@@ -58,7 +58,7 @@ function ResultTable({ data, height }: { data: ResultData; height: number }): Re
         </thead>
         <tbody>
           {data.rows.map((row, i) => (
-            <tr key={i} className="border-b border-ink-500/40">
+            <tr key={i} className={onRowClick ? "cursor-pointer border-b border-ink-500/40 hover:bg-ink-200/60" : "border-b border-ink-500/40"} onClick={onRowClick ? () => onRowClick(row) : undefined}>
               {data.columns.map((c) => {
                 const v = row[c.name];
                 return (
@@ -82,10 +82,18 @@ export interface PanelVisualProps {
   title?: string;
   /** More lines to draw on a chart, such as alert thresholds. */
   extraLines?: Array<{ value: number; color: string }>;
+  /**
+   * Line and area charts: what to draw over the resolved chart — annotations,
+   * compare, the band, the selection (ADR 0023). Gets the rows as drawn.
+   */
+  decorate?: (chart: ResolvedChart) => { rows: Array<Record<string, unknown>>; overlays: PanelOverlays };
+  /** A bar, a point or a table row was clicked: its row as drawn (a split chart's row has x and one column per series). */
+  onDatumClick?: (row: Record<string, unknown>) => void;
 }
 
-export function PanelVisual({ spec, data, height, title, extraLines }: PanelVisualProps): React.ReactElement {
+export function PanelVisual({ spec, data, height, title, extraLines, decorate, onDatumClick }: PanelVisualProps): React.ReactElement {
   const chart = useMemo(() => (spec.type === "stat" || spec.type === "table" ? null : resolveChart(spec, data)), [spec, data]);
+  const decorated = useMemo(() => (chart?.ok && decorate && TIME_SERIES_TYPES.has(spec.type) ? decorate(chart.value) : null), [chart, decorate, spec.type]);
   const formatter = useMemo(() => (v: unknown): string => formatValue(v, spec.unit, spec.decimals), [spec.unit, spec.decimals]);
   const thresholds = useMemo(
     () => [...spec.thresholds.map((t) => ({ value: t.value, color: THRESHOLD_COLORS[t.severity] })), ...(extraLines ?? [])],
@@ -93,7 +101,7 @@ export function PanelVisual({ spec, data, height, title, extraLines }: PanelVisu
   );
 
   if (spec.type === "stat") return <StatValue spec={spec} data={data} height={height} />;
-  if (spec.type === "table") return <ResultTable data={data} height={height} />;
+  if (spec.type === "table") return <ResultTable data={data} height={height} onRowClick={onDatumClick} />;
   if (!chart || !chart.ok) return <PanelMessage tone="error">{chart ? chart.error : "Not a chart"}</PanelMessage>;
   return (
     <ChartView
@@ -101,12 +109,20 @@ export function PanelVisual({ spec, data, height, title, extraLines }: PanelVisu
         chartType: spec.type,
         title,
         columns: chart.value.columns,
-        rows: chart.value.rows,
+        rows: decorated ? decorated.rows : chart.value.rows,
         xAxis: chart.value.x,
         yAxis: chart.value.y,
         colorScheme: spec.colorScheme,
       }}
-      options={{ variant: "panel", height, formatValue: formatter, thresholds, seriesMeasure: spec.series === null ? null : spec.y[0] ?? null }}
+      options={{
+        variant: "panel",
+        height,
+        formatValue: formatter,
+        thresholds,
+        seriesMeasure: spec.series === null ? null : spec.y[0] ?? null,
+        overlays: decorated?.overlays,
+        onDatumClick: onDatumClick ? (index) => { const row = chart.value.rows[index]; if (row) onDatumClick(row); } : undefined,
+      }}
     />
   );
 }

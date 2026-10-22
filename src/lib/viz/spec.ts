@@ -213,13 +213,20 @@ export type PanelHeight = (typeof PANEL_HEIGHTS)[number];
 
 export type VariableOptions = { source: "static"; values: string[] } | { source: "query"; sql: string };
 
-export interface Variable {
+interface VariableBase {
   name: string;
   label: string;
-  kind: "string" | "identifier";
   options: VariableOptions;
-  default: string;
 }
+
+/** A dashboard variable: one value, or a list of values (multi, ADR 0023 §7). */
+export type Variable =
+  | (VariableBase & { kind: "string" | "identifier"; default: string })
+  | (VariableBase & { kind: "multi"; default: string[] });
+
+/** A value chosen for a variable: one string, or a list for a multi-value variable. */
+export type VariableValue = string | string[];
+export type VariableValues = Record<string, VariableValue>;
 
 export type TimeRange = { kind: "relative"; value: RelativeRange } | { kind: "absolute"; from: number; to: number };
 

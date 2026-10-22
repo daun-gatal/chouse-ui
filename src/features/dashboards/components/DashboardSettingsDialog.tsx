@@ -1,22 +1,25 @@
 /**
- * Dashboard settings (ADR 0021 §1, §3): title, description, default range
- * and refresh, the connections it is for, and the variables panels can use. Changes go into
- * the edit session; the dashboard is saved with Save.
+ * Dashboard settings (ADR 0021 §1, §3, ADR 0023 §5, §7): title, description,
+ * default range and refresh, the connections it is for, the annotation sources
+ * it shows, and the variables panels can use — one value or a list. Changes go
+ * into the edit session; the dashboard is saved with Save.
  */
 
 import React, { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { DashboardInput } from "@/api/dashboards";
-import { IDENTIFIER_RE, RELATIVE_RANGE_KEYS, REFRESH_SECONDS, VARIABLE_NAME_RE, type RefreshSeconds, type RelativeRange, type Variable } from "@/lib/viz/spec";
+import { ANNOTATION_SOURCES, IDENTIFIER_RE, RELATIVE_RANGE_KEYS, REFRESH_SECONDS, VARIABLE_NAME_RE, type RefreshSeconds, type RelativeRange, type Variable } from "@/lib/viz/spec";
 import { BTN_ICON, BTN_OUTLINE, BTN_PRIMARY, FIELD, TEXTAREA, FIELD_LABEL } from "@/components/charts/controlStyles";
 import { cn } from "@/lib/utils";
 
+import { ANNOTATION_LABELS } from "../overlays";
 import { ConnectionsField, scopeProblem } from "./ConnectionsField";
 import { refreshLabel } from "./ViewControls";
 
@@ -33,8 +36,25 @@ export function variableProblems(variable: Variable, all: Variable[]): string[] 
     problems.push("Write the options query");
   }
   if (variable.kind === "identifier" && !IDENTIFIER_RE.test(variable.default)) problems.push("The default must be an identifier (letters, digits and _)");
+  if (variable.kind === "multi") {
+    if (variable.default.length === 0) problems.push("Give it at least one default value");
+    if (variable.default.length > 100) problems.push("At most 100 default values");
+    if (new Set(variable.default).size !== variable.default.length) problems.push("A default value is listed twice");
+    if (variable.default.some((value) => value === "")) problems.push("Remove the empty lines from the default values");
+  }
   return problems;
 }
+
+/** The variable as another kind, carrying its default over: a list keeps its first value, a value becomes a list of one. */
+export function withKind(variable: Variable, kind: Variable["kind"]): Variable {
+  if (kind === "multi") {
+    const first = variable.kind === "multi" ? variable.default : variable.default === "" ? [] : [variable.default];
+    return { name: variable.name, label: variable.label, options: variable.options, kind, default: first };
+  }
+  const single = variable.kind === "multi" ? variable.default[0] ?? "" : variable.default;
+  return { name: variable.name, label: variable.label, options: variable.options, kind, default: single };
+}
+
 
 type Settings = Omit<DashboardInput, "panels">;
 
@@ -93,6 +113,27 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply 
 
           <ConnectionsField scope={draft.connectionScope} onChange={(connectionScope) => setDraft({ ...draft, connectionScope })} />
 
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className={FIELD_LABEL}>Annotations on time charts</legend>
+            <div className="grid grid-cols-2 gap-1.5">
+              {ANNOTATION_SOURCES.map((source) => (
+                <label key={source} className="flex items-center gap-2 text-xs text-paper-muted">
+                  <Checkbox
+                    checked={draft.annotations.includes(source)}
+                    onCheckedChange={(checked) => setDraft({
+                      ...draft,
+                      annotations: checked === true
+                        ? ANNOTATION_SOURCES.filter((s) => s === source || draft.annotations.includes(s))
+                        : draft.annotations.filter((s) => s !== source),
+                    })}
+                    aria-label={ANNOTATION_LABELS[source]}
+                  />
+                  {ANNOTATION_LABELS[source]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className={FIELD_LABEL}>Variables — use them in panel SQL as {"{{var.name}}"}</span>
@@ -113,11 +154,12 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply 
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className={FIELD_LABEL}>Kind</span>
-                    <Select value={v.kind} onValueChange={(kind) => setVariable(i, { ...v, kind: kind as Variable["kind"] })}>
+                    <Select value={v.kind} onValueChange={(kind) => setVariable(i, withKind(v, kind as Variable["kind"]))}>
                       <SelectTrigger className={cn(FIELD, "w-36")} aria-label="Variable kind"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="string">Text value</SelectItem>
                         <SelectItem value="identifier">Database or table name</SelectItem>
+                        <SelectItem value="multi">List of values</SelectItem>
                       </SelectContent>
                     </Select>
                   </label>
@@ -125,7 +167,7 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply 
                     <span className={FIELD_LABEL}>Values from</span>
                     <Select
                       value={v.options.source}
-                      onValueChange={(source) => setVariable(i, { ...v, options: source === "static" ? { source: "static", values: [v.default] } : { source: "query", sql: "" } })}
+                      onValueChange={(source) => setVariable(i, { ...v, options: source === "static" ? { source: "static", values: v.kind === "multi" ? [...v.default] : [v.default] } : { source: "query", sql: "" } })}
                     >
                       <SelectTrigger className={cn(FIELD, "w-32")} aria-label="Values from"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -134,14 +176,28 @@ export function DashboardSettingsDialog({ open, onOpenChange, settings, onApply 
                       </SelectContent>
                     </Select>
                   </label>
-                  <label className="flex flex-col gap-1">
-                    <span className={FIELD_LABEL}>Default</span>
-                    <Input className={cn(FIELD, "w-36 font-mono")} value={v.default} onChange={(e) => setVariable(i, { ...v, default: e.target.value })} aria-label="Variable default" />
-                  </label>
+                  {v.kind !== "multi" && (
+                    <label className="flex flex-col gap-1">
+                      <span className={FIELD_LABEL}>Default</span>
+                      <Input className={cn(FIELD, "w-36 font-mono")} value={v.default} onChange={(e) => setVariable(i, { ...v, default: e.target.value })} aria-label="Variable default" />
+                    </label>
+                  )}
                   <Button variant="ghost" size="icon" className={BTN_ICON} aria-label={`Remove ${v.label}`} onClick={() => setDraft({ ...draft, variables: draft.variables.filter((_, j) => j !== i) })}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+                {v.kind === "multi" && (
+                  <label className="flex flex-col gap-1">
+                    <span className={FIELD_LABEL}>Default values, one per line — use as col IN {`{{var.${v.name}}}`}</span>
+                    <Textarea
+                      className={cn(TEXTAREA, "font-mono text-xs")}
+                      rows={2}
+                      value={v.default.join("\n")}
+                      onChange={(e) => setVariable(i, { ...v, default: e.target.value.split("\n") })}
+                      aria-label="Variable defaults"
+                    />
+                  </label>
+                )}
                 {v.options.source === "static" ? (
                   <label className="flex flex-col gap-1">
                     <span className={FIELD_LABEL}>Values, one per line</span>

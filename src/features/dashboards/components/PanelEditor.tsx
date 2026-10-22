@@ -22,6 +22,7 @@ import { vizSpecProblems, type Variable, type VizSpec } from "@/lib/viz/spec";
 import { BTN_INLINE, BTN_OUTLINE, BTN_PRIMARY, FIELD, FIELD_LABEL } from "@/components/charts/controlStyles";
 
 import type { ViewState } from "../urlState";
+import { PanelExtrasEditor } from "./PanelExtrasEditor";
 
 const PanelSqlEditor = lazy(() => import("./PanelSqlEditor"));
 
@@ -131,6 +132,8 @@ export function PanelEditor({ open, onOpenChange, initial, variables, connection
           )}
 
           <VizSpecEditor spec={draft.viz} columns={columns.length > 0 ? columns : [...new Set([draft.viz.x, ...draft.viz.y, draft.viz.series].filter((c): c is string => c !== null))].map((name) => ({ name, type: "" }))} onChange={(viz) => setDraft((d) => ({ ...d, viz }))} hideProblems />
+
+          <PanelExtrasEditor viz={draft.viz} resultColumns={columns.map((c) => c.name)} variables={variables} fleet={draft.fleet} onChange={(viz) => setDraft((d) => ({ ...d, viz }))} />
 
           {problems.length > 0 && (
             <ul className="list-disc pl-5 text-[11px] text-amber-300" data-testid="panel-problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul>

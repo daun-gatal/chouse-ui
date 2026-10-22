@@ -10,24 +10,40 @@
  * HTML; links open in a new tab. Headings title a section of the canvas.
  */
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, GripVertical, Pencil, RefreshCw, Trash2, Zap } from "lucide-react";
+import { AlertTriangle, GitCompare, GripVertical, Pencil, RefreshCw, Trash2, Waves, Zap } from "lucide-react";
 
 import { PanelMessage, PanelVisual } from "@/components/charts/PanelVisual";
+import type { PanelOverlays } from "@/components/common/AiChartRenderer";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { runPanel, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type TextPanelInput } from "@/api/dashboards";
-import { mergeFleet, type ResultData } from "@/lib/viz/resolve";
-import type { VizSpec } from "@/lib/viz/spec";
+import { getBaseline, runPanel, type AnnotationEvent, type ChartPanelInput, type HeadingPanelInput, type LintFinding, type PanelRunResult, type TextPanelInput } from "@/api/dashboards";
+import { mergeFleet, type ResolvedChart, type ResultData } from "@/lib/viz/resolve";
+import { TIME_SERIES_TYPES, type VizSpec } from "@/lib/viz/spec";
 import { formatValue } from "@/lib/viz/units";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores";
 import { BTN_ICON } from "@/components/charts/controlStyles";
 
-import type { ViewState } from "../urlState";
+import { BAND_HI, BAND_LO, chartTime, markersFor, mergeBand, mergeCompare } from "../overlays";
+import { COMPARE_OPTIONS, type ViewState } from "../urlState";
+
+/** A time range on a chart, in UTC milliseconds. */
+export interface TimeSpan {
+  fromMs: number;
+  toMs: number;
+}
+
+/** Why a chart cannot be compared with an earlier window (null when it can; server: compareProblem). */
+export function compareProblem(panel: Pick<ChartPanelInput, "fleet" | "viz">): string | null {
+  if (panel.fleet) return "Compare runs on one connection; this panel runs across the fleet";
+  if (!TIME_SERIES_TYPES.has(panel.viz.type)) return "Compare needs a line or area chart";
+  if (panel.viz.series !== null) return "Compare needs a chart without a split by series";
+  return null;
+}
 
 /** The class the canvas uses as each panel's drag handle. */
 export const DRAG_HANDLE_CLASS = "panel-drag-handle";
@@ -69,6 +85,16 @@ interface ChartProps {
   actions?: React.ReactNode;
   /** Alert thresholds to draw on the chart. */
   alertLines?: Array<{ value: number; color: string }>;
+  /** Annotation events to mark on a time chart (already filtered to the sources shown). */
+  annotations?: AnnotationEvent[];
+  /** The range the user selected on this panel, drawn shaded. */
+  selection?: TimeSpan | null;
+  /** A datum was clicked: its row, and on a time chart the bucket it covers. */
+  onDatum?: (row: Record<string, unknown>, bucket: TimeSpan | null) => void;
+  /** A range was selected on a time chart. */
+  onSelectRange?: (span: TimeSpan) => void;
+  /** An annotation marker was clicked. */
+  onMarker?: (event: AnnotationEvent) => void;
 }
 
 /** A fleet result as one result to draw: a `connection` column, split by it for charts. */
@@ -106,7 +132,7 @@ function runMeta(result: PanelRunResult): string | null {
   return `${ok.every((e) => e.cached) ? "cached · " : ""}${slowest} ms · ${formatValue(read, "bytes")} read`;
 }
 
-export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, height, onEdit, onRemove, actions, alertLines }: ChartProps): React.ReactElement {
+export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, editing, lint, height, onEdit, onRemove, actions, alertLines, annotations = [], selection = null, onDatum, onSelectRange, onMarker }: ChartProps): React.ReactElement {
   const chartHeight = Math.max(48, height - CHART_CHROME_PX);
   // Runs on the dock's active connection (sent with every request); a fleet panel on all of them.
   const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
@@ -125,6 +151,95 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
     retry: false,
   });
 
+  // Compare and the band run only for what they apply to; anything else says why in a chip.
+  const shift = view.compare ? COMPARE_OPTIONS[view.compare] : 0;
+  const notComparable = shift > 0 && panel.viz.type !== "stat" && panel.viz.type !== "table" ? compareProblem(panel) : null;
+  const earlier = useQuery({
+    queryKey: ["dashboards", "run", dashboardId, panelId, panel.sql, view, activeConnectionId, "shift", shift],
+    queryFn: ({ signal }) => {
+      if (panelId === null) throw new Error("Save the dashboard to compare this panel");
+      return runPanel(dashboardId, panelId, { range: view.range, values: view.values, shiftSeconds: shift as 86_400 | 604_800 }, signal);
+    },
+    enabled: panelId !== null && shift > 0 && compareProblem(panel) === null,
+    refetchInterval: refreshSeconds > 0 ? refreshSeconds * 1000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const band = useQuery({
+    queryKey: ["dashboards", "baseline", dashboardId, panelId, panel.sql, panel.viz.baseline, view.range, view.values, activeConnectionId],
+    queryFn: ({ signal }) => {
+      if (panelId === null) throw new Error("Save the dashboard to draw the expected range");
+      return getBaseline(dashboardId, panelId, { range: view.range, values: view.values }, signal);
+    },
+    enabled: panelId !== null && panel.viz.baseline !== null && !panel.fleet,
+    refetchInterval: refreshSeconds > 0 ? Math.max(refreshSeconds, 300) * 1000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const single = run.data?.kind === "single" ? run.data : null;
+  const [timeProblem, decorate] = useMemo((): [string | null, ((chart: ResolvedChart) => { rows: Array<Record<string, unknown>>; overlays: PanelOverlays }) | undefined] => {
+    if (!single) return [null, undefined];
+    const needed = annotations.length > 0 || earlier.data !== undefined || band.data !== undefined || onSelectRange !== undefined || onDatum !== undefined;
+    if (!needed) return [null, undefined];
+    let problem: string | null = null;
+    const fn = (chart: ResolvedChart): { rows: Array<Record<string, unknown>>; overlays: PanelOverlays } => {
+      const time = chartTime(chart.rows, chart.columns, chart.x, single.data.timezone, single.window.intervalSeconds);
+      const empty: PanelOverlays = { markers: [], compare: [], band: null, selection: null };
+      if (!time.ok) {
+        return { rows: chart.rows, overlays: { ...empty, onPointClick: onDatum ? (_x, index) => { const row = chart.rows[index]; if (row) onDatum(row, null); } : undefined } };
+      }
+      let rows = chart.rows;
+      let compare: PanelOverlays["compare"] = [];
+      if (earlier.data?.kind === "single" && view.compare) {
+        const merged = mergeCompare(rows, time, { ...earlier.data.data }, chart.x, chart.y, shift, view.compare === "1d" ? "1 day ago" : "1 week ago");
+        rows = merged.rows;
+        compare = merged.keys;
+      }
+      const banded = band.data && band.data.points.length > 0;
+      if (banded && band.data) rows = mergeBand(rows, chart.x, band.data.points);
+      const xAt = (fromMs: number, toMs: number): { from: string; to: string } | null => {
+        const from = time.xsMs.findIndex((ms) => ms !== null && ms >= fromMs);
+        let to = -1;
+        time.xsMs.forEach((ms, i) => { if (ms !== null && ms < toMs) to = i; });
+        return from >= 0 && to >= from ? { from: String(chart.rows[from][chart.x]), to: String(chart.rows[to][chart.x]) } : null;
+      };
+      const spanOf = (index: number): TimeSpan | null => {
+        const ms = time.xsMs[index];
+        return ms === null ? null : { fromMs: ms, toMs: ms + time.intervalMs };
+      };
+      return {
+        rows,
+        overlays: {
+          markers: markersFor(annotations, chart.rows, chart.x, time).map(({ id, x, color, label }) => ({ id, x, color, label })),
+          compare,
+          band: banded ? { lo: BAND_LO, hi: BAND_HI } : null,
+          selection: selection ? xAt(selection.fromMs, selection.toMs) : null,
+          onSelect: onSelectRange ? (fromX, toX) => {
+            const a = chart.rows.findIndex((r) => String(r[chart.x]) === fromX);
+            const b = chart.rows.findIndex((r) => String(r[chart.x]) === toX);
+            const start = spanOf(a);
+            const end = spanOf(b);
+            if (start && end) onSelectRange({ fromMs: start.fromMs, toMs: end.toMs });
+          } : undefined,
+          onPointClick: onDatum ? (_x, index) => { const row = chart.rows[index]; if (row) onDatum(row, spanOf(index)); } : undefined,
+          onMarkerClick: onMarker ? (id) => { const event = annotations.find((e) => e.id === id); if (event) onMarker(event); } : undefined,
+        },
+      };
+    };
+    // Run once to learn whether the times can be read, so the header can say why overlays are missing.
+    if (panel.viz.x !== null && TIME_SERIES_TYPES.has(panel.viz.type)) {
+      const xType = single.data.columns.find((c) => c.name === panel.viz.x)?.type ?? "";
+      const probe = chartTime(single.data.rows, [{ name: panel.viz.x, type: xType }], panel.viz.x, single.data.timezone, single.window.intervalSeconds);
+      if (!probe.ok) problem = probe.reason;
+    }
+    return [problem, fn];
+  }, [single, annotations, earlier.data, band.data, view.compare, shift, selection, onSelectRange, onDatum, onMarker, panel.viz.x, panel.viz.type]);
+
+  const datumClick = useCallback((row: Record<string, unknown>) => onDatum?.(row, null), [onDatum]);
+
   const visual = useMemo(() => {
     if (!run.data) return null;
     if (run.data.kind === "single") return { spec: panel.viz, data: run.data.data };
@@ -140,6 +255,11 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         {editing && <DragHandle title={panel.title} />}
         <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-paper" title={panel.title}>{panel.title}</h3>
         {panel.fleet && <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim"><Zap className="h-3 w-3" aria-hidden /> Fleet</span>}
+        {notComparable && <Chip icon={<GitCompare className="h-3 w-3" aria-hidden />} tone="muted" text="Compare n/a" title={notComparable} testId="compare-na" />}
+        {earlier.isError && <Chip icon={<GitCompare className="h-3 w-3" aria-hidden />} tone="error" text="Compare failed" title={earlier.error.message} testId="compare-error" />}
+        {band.data?.state === "learning" && <Chip icon={<Waves className="h-3 w-3" aria-hidden />} tone="muted" text="Band learning" title={band.data.reason} testId="band-learning" />}
+        {band.isError && <Chip icon={<Waves className="h-3 w-3" aria-hidden />} tone="error" text="Band failed" title={band.error.message} testId="band-error" />}
+        {timeProblem && (annotations.length > 0 || shift > 0 || panel.viz.baseline !== null) && <Chip icon={<AlertTriangle className="h-3 w-3" aria-hidden />} tone="muted" text="No time overlays" title={`Annotations, compare and the band need readable times: ${timeProblem}`} testId="time-problem" />}
         {lint.length > 0 && editing && (
           <TooltipProvider>
             <Tooltip>
@@ -168,7 +288,7 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
         ) : visual && run.data?.kind === "fleet" && panel.viz.type === "stat" ? (
           <FleetStats spec={panel.viz} result={run.data} />
         ) : visual && (run.data?.kind === "single" || visual.data.rows.length > 0) ? (
-          <PanelVisual spec={visual.spec} data={visual.data} height={chartHeight} title={panel.title} extraLines={alertLines} />
+          <PanelVisual spec={visual.spec} data={visual.data} height={chartHeight} title={panel.title} extraLines={alertLines} decorate={run.data?.kind === "single" ? decorate : undefined} onDatumClick={onDatum && run.data?.kind === "single" ? datumClick : undefined} />
         ) : (
           <PanelMessage tone="error">No connection returned a result</PanelMessage>
         )}
@@ -186,6 +306,25 @@ export function PanelCard({ dashboardId, panelId, panel, view, refreshSeconds, e
       </div>
       {meta && <p className="shrink-0 px-3 pb-1 text-right font-mono text-[10px] text-paper-faint" data-testid="panel-meta">{meta}</p>}
     </section>
+  );
+}
+
+function Chip({ icon, text, title, tone, testId }: { icon: React.ReactNode; text: string; title: string; tone: "muted" | "error"; testId: string }): React.ReactElement {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={cn("flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]", tone === "error" ? "bg-red-950/40 text-red-300" : "border border-ink-500 text-paper-dim")}
+            data-testid={testId}
+            aria-label={`${text}: ${title}`}
+          >
+            {icon} {text}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs">{title}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

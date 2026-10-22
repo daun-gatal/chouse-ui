@@ -25,15 +25,19 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ApiError } from "@/api/client";
 import {
+  addNote,
   deleteDashboard,
+  deleteNote,
   duplicateDashboard,
   exportDashboard,
+  getAnnotations,
   getDashboard,
   panelInputOf,
   setPinned,
   tidyPanels,
   toInput,
   updateDashboard,
+  type AnnotationEvent,
   type ChartPanelInput,
   type DashboardDetail,
   type DashboardInput,
@@ -44,18 +48,20 @@ import {
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import { appendBelow, type Layout, type RefreshSeconds } from "@/lib/viz/spec";
-import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, genTabId, useAuthStore, useRbacStore, useWorkspaceStore } from "@/stores";
 import { BTN_GHOST, BTN_ICON, BTN_OUTLINE, BTN_PRIMARY } from "@/components/charts/controlStyles";
 
 import { dashboardKeys } from "../hooks";
+import { bucketQueriesSql, linkAction } from "../links";
 import { isAssignedTo, scopeLabel } from "../scope";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
+import { AnnotationDialog, ChartActionsDialog, NoteDialog, type ChartActionsTarget } from "./ChartActions";
 import { ConnectionsDialog } from "./ConnectionsDialog";
 import { DashboardCanvas, type CanvasItem } from "./DashboardCanvas";
 import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
 import { NotAssignedNotice } from "./NotAssignedNotice";
-import { HeadingPanelCard, PanelCard, TextPanelCard } from "./PanelCard";
+import { HeadingPanelCard, PanelCard, TextPanelCard, type TimeSpan } from "./PanelCard";
 import { PanelAlertsButton, useDashboardAlerts } from "./PanelAlerts";
 import { PanelEditor } from "./PanelEditor";
 import { ShareDialog } from "./ShareDialog";
@@ -120,10 +126,55 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   const [refresh, setRefresh] = useState<RefreshSeconds | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ key: string; title: string; alerts: number } | null>(null);
   const alerts = useDashboardAlerts(id);
+  const addTab = useWorkspaceStore((s) => s.addTab);
+  const userId = useRbacStore((s) => s.user?.id ?? null);
+  const [actions, setActions] = useState<ChartActionsTarget | null>(null);
+  const [selected, setSelected] = useState<{ key: string; span: TimeSpan } | null>(null);
+  const [marker, setMarker] = useState<AnnotationEvent | null>(null);
+  const [noteAt, setNoteAt] = useState<number | null>(null);
 
   const data = detail.data;
   const parsed = useMemo(() => (data ? parseView(params, data.dashboard) : null), [params, data]);
   const editing = draft !== null;
+
+  // Every source the dashboard shows is read (so the toggles can show counts and failures); hidden ones are not drawn.
+  const annotationSources = data?.dashboard.annotations ?? [];
+  const viewRange = parsed?.view.range ?? null;
+  const annotationsQuery = useQuery({
+    queryKey: ["dashboards", "annotations", id, viewRange, annotationSources, activeConnectionId],
+    queryFn: ({ signal }) => {
+      if (viewRange === null) throw new Error("The dashboard is not loaded");
+      return getAnnotations(id, viewRange, annotationSources, signal);
+    },
+    enabled: viewRange !== null && annotationSources.length > 0 && activeConnectionId !== null && !editing,
+    refetchInterval: (refresh ?? data?.dashboard.refreshSeconds ?? 0) > 0 ? (refresh ?? data?.dashboard.refreshSeconds ?? 0) * 1000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const hidden = parsed?.view.hidden ?? [];
+  const annotationEvents = useMemo(
+    () => (annotationsQuery.data?.sources ?? []).flatMap((r) => (r.ok && !hidden.includes(r.source) ? r.events : [])),
+    [annotationsQuery.data, hidden],
+  );
+
+  const note = useMutation({
+    mutationFn: ({ at, text }: { at: number; text: string }) => addNote(id, at, text),
+    onSuccess: async () => {
+      setNoteAt(null);
+      await queryClient.invalidateQueries({ queryKey: ["dashboards", "annotations", id] });
+      toast.success("Note added");
+    },
+  });
+  const removeNote = useMutation({
+    mutationFn: (noteId: string) => deleteNote(id, noteId),
+    onSuccess: async () => {
+      setMarker(null);
+      await queryClient.invalidateQueries({ queryKey: ["dashboards", "annotations", id] });
+      toast.success("Note deleted");
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   // `?edit=1` (a new dashboard) opens straight into editing, once.
   useEffect(() => {
@@ -182,6 +233,28 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
   };
 
   const setView = (next: ViewState): void => setParams(writeView(params, next), { replace: true });
+
+  const followLink = (target: Extract<ChartActionsTarget, { kind: "datum" }>, index: number): void => {
+    const link = target.panel.viz.links[index];
+    if (!link) return;
+    const action = linkAction(link, target.row, view.range, data.dashboard.variables);
+    setActions(null);
+    if (action.kind === "error") toast.error(action.message);
+    else if (action.kind === "navigate") navigate(action.to);
+    else setView({ ...view, values: { ...view.values, [action.variable]: action.value } });
+  };
+
+  const openQueries = (span: TimeSpan): void => {
+    addTab({ id: genTabId(), title: `Queries · ${new Date(span.fromMs).toLocaleTimeString()}`, type: "sql", content: bucketQueriesSql(span.fromMs, span.toMs), isSaved: false });
+    setActions(null);
+    navigate("/explorer");
+  };
+
+  const zoomTo = (span: TimeSpan): void => {
+    setActions(null);
+    setSelected(null);
+    setView({ ...view, range: { kind: "absolute", from: Math.floor(span.fromMs / 1000), to: Math.ceil(span.toMs / 1000) } });
+  };
 
   const onLayoutChange = (places: Map<string, Layout>): void => {
     setDraft((current) => current && {
@@ -294,9 +367,14 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
         onEdit={() => setEditingPanel({ kind: "chart", key, panel })}
         onRemove={() => removePanel(item)}
         actions={!editing && panel.id ? <PanelAlertsButton detail={data} panelId={panel.id} panel={panel} view={view} /> : undefined}
-        alertLines={(alerts.data ?? [])
-          .filter((a) => a.enabled && a.panelId === panel.id && panel.viz.y.includes(a.config.column))
-          .map((a) => ({ value: a.config.value, color: a.status?.state === "firing" ? ALERT_LINE_COLORS.firing : ALERT_LINE_COLORS.other }))}
+        alertLines={(alerts.data ?? []).flatMap((a) => (a.enabled && a.panelId === panel.id && a.config.kind === "threshold" && panel.viz.y.includes(a.config.column)
+          ? [{ value: a.config.value, color: a.status?.state === "firing" ? ALERT_LINE_COLORS.firing : ALERT_LINE_COLORS.other }]
+          : []))}
+        annotations={editing ? [] : annotationEvents}
+        selection={selected?.key === key ? selected.span : null}
+        onDatum={editing ? undefined : (row, bucket) => setActions({ kind: "datum", panel, row, bucket })}
+        onSelectRange={editing ? undefined : (span) => { setSelected({ key, span }); setActions({ kind: "range", panel, span }); }}
+        onMarker={editing ? undefined : setMarker}
       />
     );
   };
@@ -383,6 +461,8 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           <ViewControls
             dashboardId={id}
             variables={data.dashboard.variables}
+            annotations={data.dashboard.annotations}
+            annotationResults={annotationsQuery.data?.sources ?? []}
             view={view}
             refreshSeconds={refreshSeconds}
             onViewChange={setView}
@@ -444,6 +524,31 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
         </AlertDialogContent>
       </AlertDialog>
       {askAi && <AskAiDialog open onOpenChange={setAskAi} existing={data} />}
+      {actions && (
+        <ChartActionsDialog
+          target={actions}
+          canNote={data.access.edit}
+          canExplain={false}
+          onClose={() => { setActions(null); setSelected(null); }}
+          onLink={(index) => { if (actions.kind === "datum") followLink(actions, index); }}
+          onQueries={openQueries}
+          onNote={(at) => { setActions(null); setSelected(null); setNoteAt(at); }}
+          onZoom={zoomTo}
+          onExplain={() => undefined}
+        />
+      )}
+      {marker && (
+        <AnnotationDialog
+          event={marker}
+          canDelete={marker.source === "notes" && (data.access.edit || marker.authorId === userId)}
+          deleting={removeNote.isPending}
+          onDelete={() => removeNote.mutate(marker.id)}
+          onClose={() => setMarker(null)}
+        />
+      )}
+      {noteAt !== null && (
+        <NoteDialog atMs={noteAt} saving={note.isPending} error={note.isError ? note.error.message : null} onSave={(text) => note.mutate({ at: noteAt, text })} onClose={() => setNoteAt(null)} />
+      )}
       {shareOpen && <ShareDialog open onOpenChange={setShareOpen} dashboardId={id} shares={data.shares} />}
       {connectionsOpen && <ConnectionsDialog open onOpenChange={setConnectionsOpen} detail={data} />}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

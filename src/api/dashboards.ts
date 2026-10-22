@@ -2,7 +2,7 @@
  * Dashboards API (ADR 0021, ADR 0023).
  */
 
-import type { AnnotationSource, ChartType, Layout, RefreshSeconds, RelativeRange, TimeRange, Variable, VizSpec } from "@/lib/viz/spec";
+import type { AnnotationSource, ChartType, Layout, RefreshSeconds, RelativeRange, TimeRange, Variable, VariableValues, VizSpec } from "@/lib/viz/spec";
 import type { ResultColumn } from "@/lib/viz/resolve";
 
 import { invokeAI, type InvokeOptions } from "./ai";
@@ -168,7 +168,9 @@ export type PanelRunResult =
 /** A panel runs on the caller's active connection (the X-Connection-Id every request carries); a fleet panel on all of them. */
 export interface RunRequest {
   range: TimeRange;
-  values: Record<string, string>;
+  values: VariableValues;
+  /** Compare: run the same window this long ago (ADR 0023 §8). */
+  shiftSeconds?: 86_400 | 604_800;
 }
 
 export interface DashboardTemplate {
@@ -236,6 +238,63 @@ export function importDashboard(body: unknown): Promise<DashboardDetail> {
 
 export function runPanel(dashboardId: string, panelId: string, request: RunRequest, signal?: AbortSignal): Promise<PanelRunResult> {
   return api.post<PanelRunResult>(`${base}/${enc(dashboardId)}/panels/${enc(panelId)}/run`, request, { signal });
+}
+
+// ============================================
+// Annotations, notes and bands (ADR 0023 §5, §8)
+// ============================================
+
+export interface AnnotationEvent {
+  id: string;
+  source: AnnotationSource;
+  /** Unix milliseconds (UTC). */
+  at: number;
+  title: string;
+  detail: string | null;
+  objectRef: string | null;
+  authorId?: string;
+  authorName?: string | null;
+}
+
+export type AnnotationSourceResult =
+  | { source: AnnotationSource; ok: true; events: AnnotationEvent[]; truncated: boolean }
+  | { source: AnnotationSource; ok: false; error: string };
+
+export function getAnnotations(dashboardId: string, range: TimeRange, sources: AnnotationSource[], signal?: AbortSignal): Promise<{ sources: AnnotationSourceResult[] }> {
+  return api.post<{ sources: AnnotationSourceResult[] }>(`${base}/${enc(dashboardId)}/annotations`, { range, sources }, { signal });
+}
+
+export interface NoteRecord {
+  id: string;
+  dashboardId: string;
+  connectionId: string;
+  at: number;
+  text: string;
+  authorId: string;
+  createdAt: number;
+}
+
+export function addNote(dashboardId: string, at: number, text: string): Promise<NoteRecord> {
+  return api.post<NoteRecord>(`${base}/${enc(dashboardId)}/notes`, { at, text });
+}
+
+export function deleteNote(dashboardId: string, noteId: string): Promise<{ deleted: string }> {
+  return api.delete<{ deleted: string }>(`${base}/${enc(dashboardId)}/notes/${enc(noteId)}`);
+}
+
+export interface BandPoint {
+  x: string;
+  lo: number;
+  hi: number;
+  median: number;
+}
+
+export type Baseline =
+  | { state: "ready"; weeks: number; points: BandPoint[] }
+  | { state: "learning"; weeks: number; points: BandPoint[]; reason: string };
+
+export function getBaseline(dashboardId: string, panelId: string, request: Omit<RunRequest, "shiftSeconds">, signal?: AbortSignal): Promise<Baseline> {
+  return api.post<Baseline>(`${base}/${enc(dashboardId)}/panels/${enc(panelId)}/baseline`, request, { signal });
 }
 
 export interface PreviewRequest extends RunRequest {
@@ -398,17 +457,25 @@ export function draftDashboard(request: DraftRequest, opts?: InvokeOptions): Pro
 export type AlertOp = ">" | ">=" | "<" | "<=";
 export type AlertState = "ok" | "pending" | "firing" | "no_data" | "error";
 
-export interface AlertConfig {
-  kind: "threshold";
+interface AlertCommon {
   column: string;
-  reduce: "last" | "max" | "min" | "avg" | "sum";
-  op: AlertOp;
-  value: number;
   forEvaluations: number;
   everyMinutes: number;
   range: RelativeRange;
-  values: Record<string, string>;
+  values: VariableValues;
 }
+
+export type ThresholdConfig = AlertCommon & {
+  kind: "threshold";
+  reduce: "last" | "max" | "min" | "avg" | "sum";
+  op: AlertOp;
+  value: number;
+};
+
+/** Outside the panel's expected-range band, in the latest complete bucket (ADR 0023 §8). */
+export type BandConfig = AlertCommon & { kind: "outside_band" };
+
+export type AlertConfig = ThresholdConfig | BandConfig;
 
 export interface AlertInput {
   name: string;
@@ -441,7 +508,10 @@ export interface PanelAlertWithStatus extends PanelAlert {
   status: AlertStatus | null;
 }
 
-export type AlertCheck = { kind: "value"; value: number } | { kind: "no_data"; reason: string } | { kind: "error"; reason: string };
+export type AlertCheck =
+  | { kind: "value"; value: number; breached: boolean; band?: { lo: number; hi: number } }
+  | { kind: "no_data"; reason: string }
+  | { kind: "error"; reason: string };
 
 export function listAlerts(dashboardId: string): Promise<PanelAlertWithStatus[]> {
   return api.get<PanelAlertWithStatus[]>(`${base}/${enc(dashboardId)}/alerts`);

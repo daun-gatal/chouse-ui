@@ -195,6 +195,8 @@ export type ChartViewOptions =
         seriesMeasure: string | null;
         /** Line and area charts only: what is drawn over the series (ADR 0023). */
         overlays?: PanelOverlays;
+        /** Bar charts: a bar was clicked (the index of its row). */
+        onDatumClick?: (index: number) => void;
     };
 
 /**
@@ -455,6 +457,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
     // ============================================
 
     let chartElement: React.ReactElement;
+    const barClick = panel?.onDatumClick ? (_: unknown, index: number): void => panel.onDatumClick?.(index) : undefined;
 
     const label = (state: { activeLabel?: string | number; activeTooltipIndex?: unknown } | null | undefined): { x: string; index: number } | null => {
         if (!state || state.activeLabel === undefined) return null;
@@ -533,6 +536,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             yAxisId={axisForSeries(col)}
@@ -560,6 +565,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             yAxisId={axisForSeries(col)}
@@ -605,6 +612,8 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
+                            onClick={barClick}
+                            style={barClick ? { cursor: 'pointer' } : undefined}
                             dataKey={col}
                             name={humanizeAxisName(col)}
                             fill={palette[i % palette.length]}
