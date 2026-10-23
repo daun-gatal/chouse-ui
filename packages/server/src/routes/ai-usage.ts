@@ -6,6 +6,8 @@
  *   GET /egress         data sent to providers, by source (top 100, search, total)
  *   GET /requests       recent AI requests (search, origin filter, paging)
  *   GET /requests/:id   one request with its steps and egress
+ *   GET /budgets        budgets with this period's spend (ADR 0024)
+ *   POST /budgets, PUT /budgets/:id, DELETE /budgets/:id   manage them (`ai_budgets:manage`)
  *
  * `ai_usage:view` reads everyone's requests. Users with `ai:chat` or
  * `ai:optimize` but not `ai_usage:view` read only their own; every response
@@ -14,9 +16,10 @@
 
 import { Hono, type Context } from "hono";
 
-import { getRbacUser, rbacAuthMiddleware, requireAnyPermission } from "../rbac/middleware/rbacAuth";
-import { PERMISSIONS } from "../rbac/schema/base";
-import { userHasPermission } from "../rbac/services/rbac";
+import { getRbacUser, rbacAuthMiddleware, requireAnyPermission, requirePermission } from "../rbac/middleware/rbacAuth";
+import { AUDIT_ACTIONS, PERMISSIONS, type AuditAction } from "../rbac/schema/base";
+import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
+import { budgetInputSchema, budgetStatuses, createBudget, deleteBudget, updateBudget } from "../services/ai/budgets";
 import { egressBySource, listUsageRequests, MAX_EGRESS_SOURCES, REQUEST_ORIGINS, usageByModel, usageRequestDetail, usageSummary, type RequestOrigin, type UsageScope } from "../services/ai/usage/queries";
 import { usageRetentionDays } from "../services/ai/usage/store";
 import { AppError, requireParam } from "../types";
@@ -96,6 +99,44 @@ aiUsage.get("/requests/:id", async (c) => {
   const detail = await usageRequestDetail(id, all ? null : getRbacUser(c).sub);
   if (!detail) throw AppError.notFound("AI request not found");
   return ok(c, detail);
+});
+
+const MANAGE_BUDGETS = requirePermission(PERMISSIONS.AI_BUDGETS_MANAGE);
+
+async function auditBudget(c: Context, action: AuditAction, resourceId: string, details: Record<string, unknown> = {}): Promise<void> {
+  await createAuditLogWithContext(c, action, getRbacUser(c).sub, { resourceType: "ai_budget", resourceId, details });
+}
+
+function parseBudget(body: unknown): ReturnType<typeof budgetInputSchema.parse> {
+  const parsed = budgetInputSchema.safeParse(body);
+  if (!parsed.success) throw AppError.badRequest(parsed.error.issues.map((i) => i.message).join("; "));
+  return parsed.data;
+}
+
+aiUsage.get("/budgets", async (c) => {
+  const permissions: string[] = c.get("rbacPermissions") ?? [];
+  const canManage = permissions.includes(PERMISSIONS.AI_BUDGETS_MANAGE) || await userHasPermission(getRbacUser(c).sub, PERMISSIONS.AI_BUDGETS_MANAGE);
+  if (!canManage && !(await seesAll(c))) throw AppError.forbidden("You need ai_usage:view or ai_budgets:manage to see AI budgets");
+  return ok(c, { canManage, budgets: await budgetStatuses() });
+});
+
+aiUsage.post("/budgets", MANAGE_BUDGETS, async (c) => {
+  const budget = await createBudget(parseBudget(await c.req.json()), getRbacUser(c).sub);
+  await auditBudget(c, AUDIT_ACTIONS.AI_BUDGET_CREATE, budget.id, { name: budget.name });
+  return c.json({ success: true, data: budget }, 201);
+});
+
+aiUsage.put("/budgets/:id", MANAGE_BUDGETS, async (c) => {
+  const budget = await updateBudget(requireParam(c, "id"), parseBudget(await c.req.json()));
+  await auditBudget(c, AUDIT_ACTIONS.AI_BUDGET_UPDATE, budget.id, { name: budget.name, enabled: budget.enabled });
+  return ok(c, budget);
+});
+
+aiUsage.delete("/budgets/:id", MANAGE_BUDGETS, async (c) => {
+  const id = requireParam(c, "id");
+  await deleteBudget(id);
+  await auditBudget(c, AUDIT_ACTIONS.AI_BUDGET_DELETE, id);
+  return ok(c, { id });
 });
 
 export default aiUsage;

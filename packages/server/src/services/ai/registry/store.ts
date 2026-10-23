@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 
 import { AppError } from "../../../types";
 import { all, json, num, one, run, sql, str, strOrNull, type Row } from "../../observe/db";
+import { normalizeTuning } from "./tuning";
 import type {
   AgentDef,
   AgentKind,
@@ -42,19 +43,8 @@ function stringRecord(value: unknown): Record<string, string> {
   return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
-function optionalNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function parseTuning(value: unknown): AgentTuning {
-  const parsed = json<Record<string, unknown>>(value, {});
-  const stepBudget = typeof parsed.stepBudget === "number" && parsed.stepBudget > 0 ? parsed.stepBudget : 10;
-  return {
-    stepBudget,
-    recursionLimit: optionalNumber(parsed.recursionLimit),
-    timeoutMs: optionalNumber(parsed.timeoutMs),
-    maxOutputTokens: optionalNumber(parsed.maxOutputTokens),
-  };
+  return normalizeTuning(json<Record<string, unknown>>(value, {}));
 }
 
 function parseSkillLinks(value: unknown): AgentSkillLink[] {

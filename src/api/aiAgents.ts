@@ -33,6 +33,16 @@ export interface AgentTuning {
   recursionLimit?: number | null;
   timeoutMs?: number | null;
   maxOutputTokens?: number | null;
+  /** ADR 0024 runtime settings. */
+  fallbackModelConfigId?: string | null;
+  modelRetries?: number | null;
+  toolRetries?: number | null;
+  maxModelCalls?: number | null;
+  maxToolCalls?: number | null;
+  promptCaching?: boolean;
+  clearOldToolResults?: boolean;
+  /** Subagents that see the parent's conversation. */
+  forkedSubagents?: string[];
 }
 
 export interface AgentSkillLink {
@@ -127,6 +137,10 @@ export interface TuningLimits {
   recursionLimit: { min: number; max: number };
   timeoutMs: { min: number; max: number };
   maxOutputTokens: { min: number; max: number };
+  modelRetries: { min: number; max: number };
+  toolRetries: { min: number; max: number };
+  maxModelCalls: { min: number; max: number };
+  maxToolCalls: { min: number; max: number };
 }
 
 export interface AiRegistry {

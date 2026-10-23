@@ -384,6 +384,11 @@
     "category": "AI Agents",
     "anchor": "ai-agents"
   },
+  "ai_budgets:manage": {
+    "name": "Manage AI Budgets",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
   "sso:view": {
     "name": "View SSO Configuration",
     "category": "SSO Management",

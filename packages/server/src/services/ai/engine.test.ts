@@ -25,6 +25,7 @@ mock.module("deepagents", () => ({
   StateBackend: class {},
   GENERAL_PURPOSE_SUBAGENT: { name: "general-purpose", description: "gp", systemPrompt: "gp prompt" },
   createDeepAgent: createDeepAgentMock,
+  createSkillsMiddleware: () => ({ name: "SkillsMiddleware" }),
   registerHarnessProfile: registerHarnessProfileMock,
 }));
 
@@ -45,6 +46,8 @@ mock.module("./model", () => ({ resolveDeepAgentModel: resolveModelMock }));
 
 let snapshot: RegistrySnapshot;
 mock.module("./registry/cache", () => ({ getRegistrySnapshot: async () => snapshot, resetRegistryCache: () => {} }));
+// Budgets read the RBAC database; budgets.test.ts covers them.
+mock.module("./budgets", () => ({ checkBudgets: async () => ({ fallbackModelConfigId: null, budget: null }) }));
 
 // Finished usage runs are collected instead of written to the RBAC database.
 const realUsage = await import("./usage");
@@ -304,7 +307,8 @@ describe("agent trees", () => {
     const subagents = rootParams.subagents as Array<{ name: string; description: string }>;
     expect(subagents.map((s) => [s.name, s.description])).toEqual([["child", "the child"]]);
     // The delegating harness has no exclusions or overrides, so no harness middleware.
-    expect(rootParams.middleware).toBeUndefined();
+    const names = ((rootParams.middleware ?? []) as Array<{ name: string }>).map((m) => m.name);
+    expect(names.filter((name) => name.startsWith("ChouseHarness"))).toEqual([]);
   });
 
   it("adds the general-purpose subagent only when the harness enables it", async () => {
@@ -349,7 +353,7 @@ describe("invokeChat", () => {
   it("answers with the bound chat agent and reports it", async () => {
     invokeResult = { messages: [{ content: "Complete answer" }] };
     const result = await invokeChat(CTX, [{ role: "user", content: "hi" }]);
-    expect(result).toEqual({ content: "Complete answer", toolCalls: [], agent: { id: "a-chat", slug: "chat-agent", name: "Chat" } });
+    expect(result).toEqual({ content: "Complete answer", toolCalls: [], agent: { id: "a-chat", slug: "chat-agent", name: "Chat" }, interrupts: [] });
     expect(lastInvoke().input.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 

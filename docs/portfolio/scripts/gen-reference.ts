@@ -194,6 +194,7 @@ const AUDIT_AREAS: Record<string, string> = {
   ai_binding: "AI feature bindings",
   ai_registry: "AI agent registry",
   ai_guardrail: "AI guardrails",
+  ai_budget: "AI budgets",
 };
 
 function auditEventsPage(): string {

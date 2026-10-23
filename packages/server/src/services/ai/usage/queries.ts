@@ -26,6 +26,12 @@ export interface UsageSummary {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /**
+   * What prompt caching saved (ADR 0024): cache-read tokens × (input price −
+   * cache-read price) of each model. Null when no model with cached reads has
+   * a cache-read price.
+   */
+  cacheSavingsUsd: number | null;
   /** Sum over priced calls; null when nothing in the window was priced. */
   costUsd: number | null;
   unpricedCalls: number;
@@ -245,6 +251,26 @@ export function likePattern(q: string): string {
   return `%${q.toLowerCase().replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
 }
 
+/** Savings from cached reads, per model; models without a cache-read price are skipped. */
+export function cacheSavings(rows: Array<Record<string, unknown>>): number | null {
+  let total: number | null = null;
+  for (const row of rows) {
+    let pricing: unknown = row.pricing;
+    if (typeof pricing === "string") {
+      try {
+        pricing = JSON.parse(pricing);
+      } catch {
+        continue;
+      }
+    }
+    if (!pricing || typeof pricing !== "object") continue;
+    const { input, cacheRead } = pricing as { input?: unknown; cacheRead?: unknown };
+    if (typeof input !== "number" || typeof cacheRead !== "number") continue;
+    total = (total ?? 0) + (toNumber(row.cache_read) / 1_000_000) * Math.max(0, input - cacheRead);
+  }
+  return total;
+}
+
 export async function usageSummary(scope: UsageScope): Promise<UsageSummary> {
   const [totals] = await rawAll(sql`
     SELECT COUNT(*) AS requests,
@@ -268,6 +294,17 @@ export async function usageSummary(scope: UsageScope): Promise<UsageSummary> {
       AND s.kind = 'llm' AND s.usage_reported = 1 AND s.cost_usd IS NULL AND m.pricing IS NULL
     GROUP BY s.model_config_id
     ORDER BY COUNT(*) DESC`);
+  // Pricing is JSON (JSONB on PostgreSQL, which cannot be aggregated): read it per model afterwards.
+  const cachedByModel = await rawAll(sql`
+    SELECT s.model_config_id, SUM(s.cache_read_tokens) AS cache_read
+    FROM ai_usage_steps s
+    JOIN ai_usage_requests r ON r.id = s.request_id
+    WHERE r.started_at >= ${scope.since}${userFilter(scope, "r.user_id")} AND s.kind = 'llm' AND s.cache_read_tokens > 0
+    GROUP BY s.model_config_id`);
+  const pricedIds = cachedByModel.map((r) => strOrNull(r.model_config_id)).filter((id): id is string => id !== null);
+  const prices = pricedIds.length === 0 ? [] : await rawAll(sql`SELECT id, pricing FROM rbac_ai_models WHERE id IN (${sql.join(pricedIds.map((id) => sql`${id}`), sql`, `)})`);
+  const priceById = new Map(prices.map((p) => [String(p.id), p.pricing]));
+  const cached = cachedByModel.map((r) => ({ cache_read: r.cache_read, pricing: priceById.get(String(r.model_config_id)) ?? null }));
   const origins = await rawAll(sql`
     SELECT origin, CASE WHEN source = 'background' THEN 'background' ELSE '' END AS bg, COUNT(*) AS requests,
       SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost
@@ -294,6 +331,7 @@ export async function usageSummary(scope: UsageScope): Promise<UsageSummary> {
     outputTokens: toNumber(totals?.output_tokens),
     cacheReadTokens: toNumber(totals?.cache_read),
     cacheWriteTokens: toNumber(totals?.cache_write),
+    cacheSavingsUsd: cacheSavings(cached),
     costUsd: numOrNull(totals?.cost),
     unpricedCalls: toNumber(totals?.unpriced),
     incompleteCalls: toNumber(totals?.incomplete),

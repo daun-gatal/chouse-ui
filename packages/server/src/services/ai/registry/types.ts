@@ -50,6 +50,22 @@ export interface AgentTuning {
   recursionLimit?: number | null;
   timeoutMs?: number | null;
   maxOutputTokens?: number | null;
+  /** ADR 0024: model used when the agent's own model fails (modelFallbackMiddleware). */
+  fallbackModelConfigId?: string | null;
+  /** Retries of a failed model call; null = none. */
+  modelRetries?: number | null;
+  /** Retries of a tool call that failed with a transient error; null = none. */
+  toolRetries?: number | null;
+  /** Cap on model calls per run; null = no cap beyond the step budget. */
+  maxModelCalls?: number | null;
+  /** Cap on tool calls per run; null = no cap beyond the step budget. */
+  maxToolCalls?: number | null;
+  /** Provider prompt caching (Anthropic, Bedrock); on unless turned off. */
+  promptCaching?: boolean;
+  /** Clear old tool results once the context grows (contextEditingMiddleware). */
+  clearOldToolResults?: boolean;
+  /** Subagent ids that inherit the parent's conversation (mode "fork"). */
+  forkedSubagents?: string[];
 }
 
 export interface AgentSkillLink {

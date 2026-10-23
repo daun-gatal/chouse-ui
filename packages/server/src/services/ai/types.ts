@@ -47,9 +47,15 @@ export interface AgentRunContext {
   bearerToken?: string;
 }
 
+/** A content block of a chat message: text, or an attachment the model reads (ADR 0024). */
+export type AgentContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; mimeType: string; data: string }
+  | { type: "file"; mimeType: string; data: string; filename?: string };
+
 export type AgentMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | AgentContentPart[];
 };
 
 // ============================================

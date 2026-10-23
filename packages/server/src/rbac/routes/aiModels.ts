@@ -19,6 +19,7 @@ import {
 } from '../services/aiModels';
 import {
     STRUCTURED_OUTPUT_POLICIES,
+    INPUT_MODALITIES,
     validateAiModelParams,
     type AiModelParams,
 } from '../constants/aiModelParams';
@@ -55,6 +56,7 @@ const aiModelParamsSchema = z.object({
     runTimeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
     structuredOutputPolicy: z.enum(STRUCTURED_OUTPUT_POLICIES).optional(),
     contextWindow: z.number().int().min(1_024).max(10_000_000).optional(),
+    inputModalities: z.array(z.enum(INPUT_MODALITIES)).max(2).optional(),
     extra: z.record(z.unknown()).optional(),
 }).strict();
 

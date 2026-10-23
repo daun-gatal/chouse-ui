@@ -11,6 +11,7 @@
 import { CAPABILITIES } from "../capabilities";
 import type { AnyCapability } from "../types";
 import { catalogTool } from "./catalog";
+import { skillIncludeTools } from "./skillTools";
 import { BUILTIN_TOOL_NAMES } from "./harness";
 import { MAX_AGENT_DEPTH } from "./builder";
 import { templateReferences, validateTemplate, type VariableSpec } from "./template";
@@ -35,6 +36,10 @@ export const TUNING_LIMITS = {
   recursionLimit: { min: 8, max: 1000 },
   timeoutMs: { min: 5_000, max: 30 * 60_000 },
   maxOutputTokens: { min: 256, max: 200_000 },
+  modelRetries: { min: 0, max: 5 },
+  toolRetries: { min: 0, max: 5 },
+  maxModelCalls: { min: 1, max: 500 },
+  maxToolCalls: { min: 1, max: 500 },
 } as const;
 
 // Read lazily: capabilities that draft registry entities import this module,
@@ -110,6 +115,11 @@ function skillProblems(skill: SkillDef, snapshot: RegistrySnapshot): string[] {
     if (front.description.length > 1024) problems.push("SKILL.md description is longer than 1024 characters");
   }
   if (skill.skillMd.length > MAX_SKILL_FILE_BYTES) problems.push("SKILL.md is larger than 1 MB");
+  for (const name of skillIncludeTools(skill.skillMd)) {
+    const entry = catalogTool(name);
+    if (!entry) problems.push(`Skill tool '${name}' is not in the catalog`);
+    else if (entry.access !== "read") problems.push(`Skill tool '${name}' is not read-only; a skill can only unlock read tools`);
+  }
   for (const [file, content] of Object.entries(skill.files)) {
     if (file === "SKILL.md" || !SKILL_FILE_RE.test(file) || file.includes("..")) problems.push(`Invalid file name '${file}'`);
     if (content.length > MAX_SKILL_FILE_BYTES) problems.push(`File '${file}' is larger than 1 MB`);
@@ -131,6 +141,13 @@ function tuningProblems(agent: AgentDef): string[] {
   check("recursionLimit", agent.tuning.recursionLimit, true);
   check("timeoutMs", agent.tuning.timeoutMs, true);
   check("maxOutputTokens", agent.tuning.maxOutputTokens, true);
+  check("modelRetries", agent.tuning.modelRetries, true);
+  check("toolRetries", agent.tuning.toolRetries, true);
+  check("maxModelCalls", agent.tuning.maxModelCalls, true);
+  check("maxToolCalls", agent.tuning.maxToolCalls, true);
+  if (agent.tuning.fallbackModelConfigId && agent.tuning.fallbackModelConfigId === agent.modelConfigId) {
+    problems.push("The fallback model must differ from the agent's own model");
+  }
   return problems;
 }
 
@@ -179,6 +196,11 @@ function agentProblems(agent: AgentDef, snapshot: RegistrySnapshot): string[] {
     problems.push(`Harness '${harness.name}' hides the task tool, so this agent cannot delegate to its subagents`);
   }
   if (agent.kind === "router" && agent.subagents.length === 0) problems.push("A router needs at least one subagent");
+  for (const childId of agent.tuning.forkedSubagents ?? []) {
+    const child = snapshot.agents.get(childId);
+    if (!agent.subagents.includes(childId) || !child) problems.push("A subagent set to inherit the conversation is not one of this agent's subagents");
+    else if (child.subagents.length > 0) problems.push(`Subagent '${child.name}' has subagents of its own, so it cannot inherit the conversation`);
+  }
   problems.push(...tuningProblems(agent));
 
   // Skill tokens in both templates must resolve.

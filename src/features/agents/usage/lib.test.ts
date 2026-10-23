@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AiUsageStep } from "@/api/aiUsage";
 
-import { buildTimeline, cachedShare, featureLabel, formatOffset, OPEN_CHAT_THREAD_EVENT, openChatThread, plural, requestCaller, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
+import { budgetFormProblems, budgetLimitLabel, budgetScopeLabel, budgetUsedShare, buildTimeline, cachedShare, featureLabel, formatOffset, OPEN_CHAT_THREAD_EVENT, openChatThread, plural, requestCaller, requestOrigin, formatTokens, formatUsd, logsHoursCovering, providerLabel, queryLogsLink, requestCost, requestTokens } from "./lib";
 
 describe("formatUsd", () => {
   it("shows unknown cost as a dash, never $0", () => {
@@ -175,5 +175,35 @@ describe("openChatThread", () => {
     openChatThread("t-1");
     window.removeEventListener(OPEN_CHAT_THREAD_EVENT, listener);
     expect((listener.mock.calls[0][0] as CustomEvent<{ threadId: string }>).detail).toEqual({ threadId: "t-1" });
+  });
+});
+
+describe("budgets", () => {
+  it("measures the share used by the closer limit", () => {
+    expect(budgetUsedShare({ limitTokens: 1_000, limitCostUsd: null, spend: { tokens: 250, costUsd: 9 } })).toBe(0.25);
+    expect(budgetUsedShare({ limitTokens: 1_000, limitCostUsd: 2, spend: { tokens: 250, costUsd: 1.5 } })).toBe(0.75);
+    expect(budgetUsedShare({ limitTokens: null, limitCostUsd: null, spend: { tokens: 1, costUsd: 1 } })).toBe(0);
+  });
+
+  it("labels scope and limits", () => {
+    expect(budgetScopeLabel({ featureId: "chat", appliesTo: "each_user", period: "day" })).toBe("Chat · each user · per day");
+    expect(budgetScopeLabel({ featureId: null, appliesTo: "all", period: "month" })).toBe("All AI · everyone together · per month");
+    expect(budgetScopeLabel({ featureId: "optimize-query", appliesTo: "user", period: "day" }, "alice")).toBe("Optimize query · alice · per day");
+    expect(budgetLimitLabel({ limitTokens: 100_000, limitCostUsd: 5 })).toBe("100.0k tokens or $5.00");
+    expect(budgetLimitLabel({ limitTokens: null, limitCostUsd: 0.5 })).toBe("$0.50");
+  });
+});
+
+describe("budgetFormProblems", () => {
+  const valid = { name: "Chat", limitTokens: 10, limitCostUsd: null, appliesTo: "each_user", userId: null, onExhaust: "stop", fallbackModelConfigId: null };
+  it("accepts a complete budget and lists what is missing", () => {
+    expect(budgetFormProblems(valid)).toEqual([]);
+    expect(budgetFormProblems({ ...valid, name: " ", limitTokens: null, appliesTo: "user", onExhaust: "fallback" })).toEqual([
+      "Give the budget a name.",
+      "Set a token limit, a cost limit or both.",
+      "Pick the user this budget applies to.",
+      "Pick the model to switch to.",
+    ]);
+    expect(budgetFormProblems({ ...valid, limitTokens: 0, limitCostUsd: -1 })).toEqual(["The token limit must be above 0.", "The cost limit must be above $0."]);
   });
 });

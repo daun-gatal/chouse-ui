@@ -28,6 +28,7 @@ import { ContextBadge, errorMessage, Field, INPUT_CLASS, OriginBadge, ProblemLis
 import { TestConsole } from "./TestConsole";
 
 const DEFAULT_MODEL = "__default__";
+const NO_FALLBACK = "__none__";
 const OFF = "off";
 
 export interface AgentEditorTarget {
@@ -128,6 +129,10 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
     setDraft((d) => ({ ...d, [key]: value }));
     setPreview(null);
   };
+  const setTuning = (patch: Partial<AgentInput["tuning"]>): void => {
+    setDraft((d) => ({ ...d, tuning: { ...d.tuning, ...patch } }));
+  };
+  const forkedSubagents = draft.tuning.forkedSubagents ?? [];
 
   const bound = stored ? featuresBoundTo(stored.id, registry) : [];
   const previewFeatureId = target.featureId ?? bound[0]?.id ?? null;
@@ -342,21 +347,46 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             <TabsContent value="subagents" className="mt-4 space-y-2">
               {review("subagents")}
               {hidesTask && <p role="status" className="rounded-xs border border-amber-500/40 bg-amber-500/5 p-2 text-[12px] text-amber-500">The {harness?.name} harness hides the task tool. Pick a delegating harness in Settings to use subagents.</p>}
-              <p className="text-[12px] text-paper-muted">The agent delegates to these with the task tool, choosing by their description. Subagents don't see the conversation, only the task the parent writes.</p>
-              {subagentOptions.map((option) => (
-                <label key={option.id} className="flex items-start gap-2 rounded-xs px-2 py-1.5 hover:bg-ink-200/30">
-                  <Checkbox
-                    checked={draft.subagents.includes(option.id)}
-                    onCheckedChange={(v) => set("subagents", v === true ? [...draft.subagents, option.id] : draft.subagents.filter((id) => id !== option.id))}
-                    disabled={readOnly || (wouldCycle(option.id) && !draft.subagents.includes(option.id))}
-                    aria-label={option.name}
-                  />
-                  <span className="min-w-0">
-                    <span className="text-[12px] text-paper">{option.name} <Mono className="text-paper-faint">{option.slug}</Mono>{!option.enabled && <span className="ml-1 text-[10px] text-amber-500">disabled</span>}</span>
-                    <span className="block text-[11px] text-paper-faint">{option.description}</span>
-                  </span>
-                </label>
-              ))}
+              <p className="text-[12px] text-paper-muted">The agent delegates to these with the task tool, choosing by their description. A subagent sees only the task the parent writes, unless it inherits the conversation.</p>
+              {subagentOptions.map((option) => {
+                const selected = draft.subagents.includes(option.id);
+                const forked = forkedSubagents.includes(option.id);
+                const hasOwnSubagents = option.subagents.length > 0;
+                return (
+                  <div key={option.id} className="flex items-start gap-2 rounded-xs px-2 py-1.5 hover:bg-ink-200/30">
+                    <label className="flex min-w-0 flex-1 items-start gap-2">
+                      <Checkbox
+                        checked={selected}
+                        onCheckedChange={(v) => {
+                          set("subagents", v === true ? [...draft.subagents, option.id] : draft.subagents.filter((id) => id !== option.id));
+                          if (v !== true && forked) setTuning({ forkedSubagents: forkedSubagents.filter((id) => id !== option.id) });
+                        }}
+                        disabled={readOnly || (wouldCycle(option.id) && !selected)}
+                        aria-label={option.name}
+                      />
+                      <span className="min-w-0">
+                        <span className="text-[12px] text-paper">{option.name} <Mono className="text-paper-faint">{option.slug}</Mono>{!option.enabled && <span className="ml-1 text-[10px] text-amber-500">disabled</span>}</span>
+                        <span className="block text-[11px] text-paper-faint">{option.description}</span>
+                      </span>
+                    </label>
+                    {selected && (
+                      <label
+                        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] text-paper-muted"
+                        title={hasOwnSubagents ? "A subagent with subagents of its own can't inherit the conversation." : "The subagent sees the whole conversation, not only its task."}
+                      >
+                        <Switch
+                          className={SWITCH_CLASS}
+                          checked={forked}
+                          onCheckedChange={(v) => setTuning({ forkedSubagents: v ? [...forkedSubagents, option.id] : forkedSubagents.filter((id) => id !== option.id) })}
+                          disabled={readOnly || (hasOwnSubagents && !forked)}
+                          aria-label={`${option.name} inherits the conversation`}
+                        />
+                        Inherit conversation
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
             </TabsContent>
 
             <TabsContent value="settings" className="mt-4 space-y-4">
@@ -400,6 +430,51 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
                 <Field label="Max output tokens" hint="Formatter fallback budget">
                   <Input type="number" className={INPUT_CLASS} value={draft.tuning.maxOutputTokens ?? ""} onChange={(e) => set("tuning", { ...draft.tuning, maxOutputTokens: numberOrNull(e.target.value) })} disabled={readOnly} aria-label="Max output tokens" />
                 </Field>
+              </div>
+              <div className="space-y-3 rounded-xs border border-ink-500 p-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Runtime</p>
+                  <p className="text-[11px] text-paper-faint">What happens when a call fails or a run grows. Empty fields keep the default.</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Field label="Fallback model" hint="Answers when the agent's model fails after its retries.">
+                    <Select value={draft.tuning.fallbackModelConfigId ?? NO_FALLBACK} onValueChange={(v) => setTuning({ fallbackModelConfigId: v === NO_FALLBACK ? null : v })} disabled={readOnly}>
+                      <SelectTrigger className="h-8 rounded-xs text-[12px]" aria-label="Fallback model"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_FALLBACK}>None</SelectItem>
+                        {(models.data ?? []).filter((m) => m.id !== draft.modelConfigId).map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Model retries" hint={`Transient provider errors, ${registry.limits.modelRetries.min}–${registry.limits.modelRetries.max}`}>
+                    <Input type="number" className={INPUT_CLASS} placeholder="0" value={draft.tuning.modelRetries ?? ""} onChange={(e) => setTuning({ modelRetries: numberOrNull(e.target.value) })} disabled={readOnly} aria-label="Model retries" />
+                  </Field>
+                  <Field label="Tool retries" hint={`Timeouts and busy servers, ${registry.limits.toolRetries.min}–${registry.limits.toolRetries.max}`}>
+                    <Input type="number" className={INPUT_CLASS} placeholder="0" value={draft.tuning.toolRetries ?? ""} onChange={(e) => setTuning({ toolRetries: numberOrNull(e.target.value) })} disabled={readOnly} aria-label="Tool retries" />
+                  </Field>
+                  <Field label="Max model calls" hint="Per run; the agent answers with what it has">
+                    <Input type="number" className={INPUT_CLASS} placeholder="no cap" value={draft.tuning.maxModelCalls ?? ""} onChange={(e) => setTuning({ maxModelCalls: numberOrNull(e.target.value) })} disabled={readOnly} aria-label="Max model calls" />
+                  </Field>
+                  <Field label="Max tool calls" hint="Per run; the agent is told the cap is reached">
+                    <Input type="number" className={INPUT_CLASS} placeholder="no cap" value={draft.tuning.maxToolCalls ?? ""} onChange={(e) => setTuning({ maxToolCalls: numberOrNull(e.target.value) })} disabled={readOnly} aria-label="Max tool calls" />
+                  </Field>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex items-start gap-2">
+                    <Switch className={`${SWITCH_CLASS} mt-0.5`} checked={draft.tuning.promptCaching !== false} onCheckedChange={(v) => setTuning({ promptCaching: v })} disabled={readOnly} aria-label="Prompt caching" />
+                    <span>
+                      <span className="block text-[12px] text-paper">Prompt caching</span>
+                      <span className="block text-[11px] text-paper-faint">Anthropic and Bedrock reuse the unchanged start of each prompt; AI Usage shows the savings.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <Switch className={`${SWITCH_CLASS} mt-0.5`} checked={draft.tuning.clearOldToolResults === true} onCheckedChange={(v) => setTuning({ clearOldToolResults: v })} disabled={readOnly} aria-label="Clear old tool results" />
+                    <span>
+                      <span className="block text-[12px] text-paper">Clear old tool results</span>
+                      <span className="block text-[11px] text-paper-faint">Long runs drop older tool output once the context is 60% full.</span>
+                    </span>
+                  </label>
+                </div>
               </div>
               <Field label="Required permissions" hint="Chat users need at least one of these to see the agent (comma-separated). Empty: anyone with ai:chat.">
                 <Input className={`${INPUT_CLASS} font-mono`} value={draft.requiredPermissions.join(", ")} onChange={(e) => set("requiredPermissions", e.target.value.split(",").map((p) => p.trim()).filter(Boolean))} disabled={readOnly} aria-label="Required permissions" />

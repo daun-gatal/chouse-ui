@@ -154,6 +154,9 @@ export const PERMISSIONS = {
   AI_GUARDRAILS_VIEW: 'ai_guardrails:view',
   AI_GUARDRAILS_MANAGE: 'ai_guardrails:manage',
 
+  // AI budgets (ADR 0024): token and cost caps per feature and per user.
+  AI_BUDGETS_MANAGE: 'ai_budgets:manage',
+
   // SSO Management
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
@@ -304,6 +307,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_USAGE_VIEW,
     PERMISSIONS.AI_GUARDRAILS_VIEW,
     PERMISSIONS.AI_GUARDRAILS_MANAGE,
+    PERMISSIONS.AI_BUDGETS_MANAGE,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
@@ -645,6 +649,11 @@ export const AUDIT_ACTIONS = {
   AI_GUARDRAIL_CREATE: 'ai_guardrail.create',
   AI_GUARDRAIL_UPDATE: 'ai_guardrail.update',
   AI_GUARDRAIL_DELETE: 'ai_guardrail.delete',
+
+  // AI budgets (ADR 0024)
+  AI_BUDGET_CREATE: 'ai_budget.create',
+  AI_BUDGET_UPDATE: 'ai_budget.update',
+  AI_BUDGET_DELETE: 'ai_budget.delete',
 
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',

@@ -7,9 +7,10 @@ import { useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { BookOpen, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 
-import { skillInputOf, type AiRegistry, type AiSkill, type DraftResult, type SkillInput } from "@/api/aiAgents";
+import { skillInputOf, type AiRegistry, type AiSkill, type CatalogTool, type DraftResult, type SkillInput } from "@/api/aiAgents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +18,7 @@ import { DH_PRIMARY } from "@/features/data-health/lib";
 import { DataTable, EmptyState, Mono, Panel } from "@/features/observe/ui";
 import { AiDraftBanner, DraftWithAiButton, DraftWithAiDialog, RefineWithAi, SaveWarning, SectionReview, useAiDraftSession, useSaveGuard, type DraftOrigin } from "./DraftWithAi";
 import { useAssistantMutations } from "./hooks";
-import { problemsFor } from "./lib";
+import { problemsFor, skillIncludeTools, withSkillIncludeTools } from "./lib";
 import { RevisionHistory } from "./RevisionHistory";
 import { errorMessage, Field, INPUT_CLASS, OriginBadge, ProblemList, SWITCH_CLASS, TEXTAREA_CLASS } from "./shared";
 
@@ -33,6 +34,49 @@ interface SkillEditorTarget {
   initial: SkillInput;
   aiDraft?: DraftResult<SkillInput>;
   origin?: DraftOrigin;
+}
+
+const ADD_TOOL = "__add__";
+
+/**
+ * Tools this skill unlocks (ADR 0024): kept in the SKILL.md front matter as
+ * `metadata.include_tools`. The agent sees them only after it reads the skill.
+ */
+function SkillToolsField({ tools, skillMd, readOnly, onChange }: { tools: CatalogTool[]; skillMd: string; readOnly: boolean; onChange: (skillMd: string) => void }): ReactElement {
+  const listed = skillIncludeTools(skillMd);
+  const byName = new Map(tools.map((t) => [t.name, t]));
+  const addable = tools.filter((t) => t.access === "read" && !listed.includes(t.name)).sort((a, b) => a.title.localeCompare(b.title));
+  const hasFrontMatter = /^---\s*\n/.test(skillMd);
+  return (
+    <Field label="Tools this skill unlocks" hint="Hidden from the agent until it reads this skill, so they cost no prompt space before then. Read-only catalog tools only.">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {listed.length === 0 && <span className="text-[11px] text-paper-faint">None — the agent's own tools are enough.</span>}
+        {listed.map((name) => {
+          const tool = byName.get(name);
+          const problem = !tool ? "Not in the catalog" : tool.access !== "read" ? "Not read-only" : null;
+          return (
+            <span key={name} className={`inline-flex items-center gap-1 rounded-xs border px-2 py-1 font-mono text-[10px] ${problem ? "border-amber-500/50 bg-amber-500/5 text-amber-500" : "border-brand/40 bg-brand/5 text-brand"}`} title={problem ?? tool?.title}>
+              {name}{problem && <span className="font-sans">· {problem}</span>}
+              {!readOnly && (
+                <button type="button" onClick={() => onChange(withSkillIncludeTools(skillMd, listed.filter((n) => n !== name)))} className="grid h-4 w-4 place-items-center rounded-xs hover:bg-ink-300" aria-label={`Remove ${name}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {!readOnly && hasFrontMatter && addable.length > 0 && (
+          <Select value={ADD_TOOL} onValueChange={(v) => v !== ADD_TOOL && onChange(withSkillIncludeTools(skillMd, [...listed, v]))}>
+            <SelectTrigger className="h-7 w-[180px] rounded-xs text-[11px]" aria-label="Add a tool"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ADD_TOOL}>Add a tool…</SelectItem>
+              {addable.map((t) => <SelectItem key={t.name} value={t.name}>{t.title} <span className="font-mono text-paper-faint">{t.name}</span></SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+    </Field>
+  );
 }
 
 function SkillEditor({ registry, target, canManage, onClose }: { registry: AiRegistry; target: SkillEditorTarget; canManage: boolean; onClose: () => void }): ReactElement {
@@ -96,6 +140,7 @@ function SkillEditor({ registry, target, canManage, onClose }: { registry: AiReg
           <Field label="SKILL.md">
             <Textarea className={`${TEXTAREA_CLASS} min-h-[260px]`} value={draft.skillMd} onChange={(e) => setDraft({ ...draft, skillMd: e.target.value })} disabled={readOnly} spellCheck={false} aria-label="SKILL.md" />
           </Field>
+          <SkillToolsField tools={registry.tools} skillMd={draft.skillMd} readOnly={readOnly} onChange={(skillMd) => setDraft({ ...draft, skillMd })} />
           {review("files")}
           {Object.entries(draft.files).map(([name, content]) => (
             <Field key={name} label={name}>

@@ -23,6 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
+import { AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -443,6 +444,18 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
     expect(await h.columnExists("dashboard_panels", "height")).toBe(false);
     expect(await h.columnExists("dashboard_panels", "position")).toBe(true);
+  },
+  "1.65.0": async () => {
+    // ADR 0024 phase 1: chat runs, LangGraph checkpoints, budgets; ai_budgets:manage for admins only.
+    expect(AI_RUNTIME_TABLE_NAMES).toEqual(["ai_chat_runs", "ai_checkpoints", "ai_checkpoint_writes", "ai_budgets"]);
+    for (const t of AI_RUNTIME_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_RUNTIME_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["steps", "pending", "cancel_requested", "heartbeat_at"]) expect(await h.columnExists("ai_chat_runs", c)).toBe(true);
+    for (const c of ["applies_to", "limit_tokens", "limit_cost_usd", "on_exhaust", "fallback_model_config_id"]) expect(await h.columnExists("ai_budgets", c)).toBe(true);
+    expect(await h.permissionExists("ai_budgets:manage")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai_budgets:manage")).toBe(role === "super_admin" || role === "admin");
+    }
   },
 };
 
@@ -1420,7 +1433,7 @@ for (const dialect of DIALECTS) {
     });
 
     it("then drops the old sizes, and the store reads every converted dashboard", async () => {
-      expect((await runMigrations()).migrationsApplied).toEqual(["1.64.0"]);
+      expect((await runMigrations({ through: "1.64.0" })).migrationsApplied).toEqual(["1.64.0"]);
       expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
       const migration = MIGRATIONS.find((m) => m.version === "1.64.0")!;
       const { getDatabase } = await import("./index");

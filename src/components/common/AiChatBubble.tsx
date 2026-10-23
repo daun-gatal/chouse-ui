@@ -33,15 +33,40 @@ import {
     getThread,
     deleteThread,
     updateThreadTitle,
-    invokeChatMessage,
     getAiModels,
     getChatAgents,
+    streamChatRun,
+    followChatRun,
+    getChatRun,
+    cancelChatRun,
+    getActiveChatRun,
+    getChatSkills,
     type AiModelSimple,
     type ChatThread,
     type ChatAgentOption,
     type ChatMessage,
     type ChartSpec,
+    type ChatAttachmentInput,
+    type ChatRun,
+    type ChatRunAnswer,
+    type ChatRunEvent,
+    type ChatRunStep,
+    type PendingApproval,
+    type ChatSkill,
 } from '@/api/ai-chat';
+import { ApiError } from '@/api/client';
+import {
+    attachmentAccept,
+    attachmentHint,
+    attachmentKind,
+    attachmentMimeType,
+    attachmentProblem,
+    insertSkillCommand,
+    parseSkillCommands,
+    readAsBase64,
+    skillQueryAt,
+} from '@/lib/chatComposer';
+import { ComposerChips, SkillSuggestions, type ComposerAttachment } from '@/components/common/ai-chat/ComposerExtras';
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
 import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
@@ -83,6 +108,8 @@ import {
     Copy,
     Pencil,
     Download,
+    XCircle,
+    Paperclip,
 } from 'lucide-react';
 
 import {
@@ -115,7 +142,7 @@ interface ToolCallStep {
     parentId?: string;
     tool: string;
     args: Record<string, unknown>;
-    status: 'running' | 'done';
+    status: 'running' | 'done' | 'failed';
     label?: string;
     category?: string;
     description?: string;
@@ -142,6 +169,21 @@ interface UIMessage {
     chartSpecs?: ChartSpec[];
     /** The agent that answered this turn. */
     agentName?: string;
+    /** The durable run producing this reply (ADR 0024). */
+    runId?: string;
+    /** Tool calls waiting for the user's approval. */
+    pending?: PendingApproval[];
+    /** Names of files sent with a user message. */
+    attachments?: string[];
+}
+
+/** The server stores a message's attachments as a trailing `[attached: a.csv, b.png]` line. */
+const ATTACHED_SUFFIX = /\n\n\[attached: ([^\]]+)\]$/;
+
+function splitAttachments(content: string): { content: string; attachments?: string[] } {
+    const match = ATTACHED_SUFFIX.exec(content);
+    if (!match) return { content };
+    return { content: content.slice(0, match.index), attachments: match[1].split(', ').filter(Boolean) };
 }
 
 const NO_MESSAGES: UIMessage[] = [];
@@ -490,12 +532,16 @@ function CollapsibleThreadGroup({
 // ============================================
 
 function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; isInvoking?: boolean }) {
-    const [expanded, setExpanded] = useState(false);
+    // Open while the reply is being worked on, so steps show as they happen; the user's own toggle wins.
+    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+    const expanded = userExpanded ?? Boolean(isInvoking);
+    const setExpanded = (update: (value: boolean) => boolean): void => setUserExpanded(update(expanded));
 
     if (!toolCalls || toolCalls.length === 0) return null;
 
-    const runningCount = toolCalls.filter((t) => t.status === 'running').length;
-    const isRunning = isInvoking && runningCount > 0;
+    const failedCount = toolCalls.filter((t) => t.status === 'failed').length;
+    // The reply is being worked on even between steps, while the model thinks.
+    const isRunning = Boolean(isInvoking);
     const roots = toolCalls.filter((step) => !step.parentId);
     const childrenByParent = toolCalls.reduce<Record<string, ToolCallStep[]>>((acc, step) => {
         if (!step.parentId) return acc;
@@ -507,9 +553,9 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
         .slice(-3)
         .map((step) => activityLabelFor(step).label.toLowerCase());
     const label = isRunning
-        ? `Working through ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}...`
+        ? `Working through ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}…`
         : completedLabels.length > 0
-            ? `Completed ${completedLabels.join(', ')}`
+            ? `Completed ${completedLabels.join(', ')}${failedCount > 0 ? ` · ${failedCount} failed` : ''}`
             : `Completed ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}`;
 
     const renderStep = (step: ToolCallStep, depth = 0) => {
@@ -524,7 +570,9 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
                     <div className="flex-shrink-0 pt-0.5">
                         {step.status === 'running'
                             ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
-                            : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
+                            : step.status === 'failed'
+                                ? <XCircle className="w-3 h-3 text-red-400/80" />
+                                : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
                         }
                     </div>
                     <div className="flex-1 min-w-0 space-y-1">
@@ -551,6 +599,9 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
                         {step.status === 'done' && step.summary && (
                             <p className="text-[10px] text-emerald-400/80">{step.summary}</p>
                         )}
+                        {step.status === 'failed' && (
+                            <p className="text-[10px] text-red-400/80">{step.summary ?? 'Failed'}</p>
+                        )}
                     </div>
                 </div>
                 {children.length > 0 && (
@@ -570,6 +621,7 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
             )}
             <button
                 onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-ink-300"
             >
                 {isRunning
@@ -804,12 +856,8 @@ export function preprocessMarkdown(text: string): string {
 // useAiChatInvoke hook
 // ============================================
 
-const INVOKE_STATUS_STEPS = [
-    'Understanding your request',
-    'Working through ClickHouse context',
-    'Checking the evidence',
-    'Preparing the response',
-];
+/** Shown before the first tool call, while the model reads the question. */
+const THINKING_STATUS = 'Thinking';
 
 /** Apply `update` to one thread's messages, leaving every other thread untouched. */
 type UpdateThreadMessages = (threadId: string, update: (previous: UIMessage[]) => UIMessage[]) => void;
@@ -823,15 +871,75 @@ function patchLastAssistant(messages: UIMessage[], patch: (last: UIMessage) => U
     return [...messages.slice(0, -1), next];
 }
 
+function stepToToolCall(step: ChatRunStep): ToolCallStep {
+    return {
+        id: step.id,
+        tool: step.name,
+        args: step.args,
+        status: step.status,
+        summary: step.summary,
+        ...(step.agent ? { agent: step.agent } : {}),
+    };
+}
+
+/** The status line for a run: the step in progress, else "Thinking". */
+function statusOf(steps: ToolCallStep[]): string {
+    const running = [...steps].reverse().find((s) => s.status === 'running');
+    return running ? activityLabelFor(running).label : THINKING_STATUS;
+}
+
+/** An answer as the thread shows it (shared by a live run and a reloaded one). */
+function answerPatch(result: ChatRunAnswer, steps: ToolCallStep[]): Partial<UIMessage> {
+    return {
+        content: result.content,
+        isInvoking: false,
+        toolStatus: undefined,
+        pending: undefined,
+        // Live steps carry their result summaries; the stored answer only has the calls.
+        toolCalls: steps.length > 0 ? steps : result.toolCalls.map((call, index) => ({
+            id: `activity_${index + 1}`,
+            tool: call.name,
+            args: call.args,
+            status: 'done' as const,
+            agent: call.agent,
+        })),
+        chartSpecs: result.chartSpecs,
+        agentName: result.agent?.name,
+    };
+}
+
+/** What the thread shows for a run that ended without an answer. */
+function failurePatch(message: string, code: string, prompt: string | undefined): Partial<UIMessage> {
+    const stopped = code === 'CANCELLED';
+    const retryable = !stopped && code !== 'AI_BUDGET_EXHAUSTED';
+    return {
+        content: stopped ? 'Generation stopped.' : message,
+        isInvoking: false,
+        isError: !stopped,
+        retryPrompt: retryable ? prompt : undefined,
+        retryable,
+        toolStatus: undefined,
+        pending: undefined,
+    };
+}
+
 interface ThreadRun {
     controller: AbortController;
-    timer: number;
+    runId: string | null;
+    /** Stop was pressed before the server named the run: stop it as soon as it does. */
+    stopRequested: boolean;
+}
+
+interface TurnExtras {
+    skills?: string[];
+    attachments?: ChatAttachmentInput[];
 }
 
 /**
- * Runs chat turns per thread, so a reply still generating in one thread never
- * blocks (or lands in) another: each thread has its own controller, status and
- * placeholder message.
+ * Runs chat turns per thread (ADR 0024). Each turn is a server-side run whose
+ * steps stream in live; a thread finishing in the background never lands in
+ * another. Closing the stream (switching connection, unmounting) does not stop
+ * the run — only Stop does — and a reopened thread re-attaches to it.
  */
 function useAiChatInvoke({
     updateThreadMessages,
@@ -861,115 +969,154 @@ function useAiChatInvoke({
                 delete rest[threadId];
                 return rest;
             }
+            if (previous[threadId] === status) return previous;
             return { ...previous, [threadId]: status };
         });
     }, []);
 
-    const runInvoke = useCallback(async (
+    /**
+     * Drive one run's events into the thread's trailing assistant message.
+     * `open` starts or re-attaches the stream; `prompt` lets a failure offer Retry.
+     */
+    const driveRun = useCallback(async (
         threadId: string,
-        prompt: string,
-        messageHistory: { role: string; content: string }[],
+        open: (onEvent: (event: ChatRunEvent) => void, signal: AbortSignal) => Promise<void>,
+        prompt: string | undefined,
+        initialSteps: ToolCallStep[] = [],
     ): Promise<void> => {
         if (runsRef.current.has(threadId)) return;
         const epoch = epochRef.current;
         const invocationConnectionId = activeConnectionId;
         const isCurrent = (): boolean => epoch === epochRef.current && isActiveChatConnection(invocationConnectionId);
         const controller = new AbortController();
+        const entry: ThreadRun = { controller, runId: null, stopRequested: false };
+        runsRef.current.set(threadId, entry);
+        let steps = [...initialSteps];
+        let settled = false;
+        const patch = (fields: Partial<UIMessage>): void => {
+            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({ ...last, ...fields })));
+        };
+        setThreadStatus(threadId, statusOf(steps));
 
-        const showStatus = (status: string): void => {
-            setThreadStatus(threadId, status);
-            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => (
-                last.isInvoking ? { ...last, toolStatus: status } : null
-            )));
+        const onEvent = (event: ChatRunEvent): void => {
+            if (!isCurrent()) return;
+            switch (event.type) {
+                case 'run':
+                    entry.runId = event.run.id;
+                    if (entry.stopRequested) {
+                        cancelChatRun(event.run.id).catch((error: unknown) => log.error('[AiChat] Failed to stop the reply', error));
+                    }
+                    if (steps.length === 0 && event.run.steps.length > 0) steps = event.run.steps.map(stepToToolCall);
+                    patch({ runId: event.run.id, toolCalls: steps, toolStatus: statusOf(steps) });
+                    setThreadStatus(threadId, statusOf(steps));
+                    // The server titles a new thread when the turn starts: show it in the history now.
+                    if (prompt !== undefined) loadThreads();
+                    return;
+                case 'step': {
+                    const next = stepToToolCall(event.step);
+                    const index = steps.findIndex((s) => s.id === next.id);
+                    steps = index >= 0 ? steps.map((s, i) => (i === index ? next : s)) : [...steps, next];
+                    patch({ toolCalls: steps, toolStatus: statusOf(steps) });
+                    setThreadStatus(threadId, statusOf(steps));
+                    return;
+                }
+                case 'status':
+                    if (event.status === 'awaiting_approval') {
+                        settled = true;
+                        patch({ isInvoking: false, toolStatus: undefined, pending: event.pending, toolCalls: steps });
+                    } else {
+                        patch({ pending: undefined, isInvoking: true, toolStatus: statusOf(steps) });
+                    }
+                    return;
+                case 'final':
+                    settled = true;
+                    patch(answerPatch(event.result, steps));
+                    return;
+                case 'error':
+                    settled = true;
+                    patch(failurePatch(event.message, event.code, prompt));
+                    return;
+            }
         };
 
-        let statusIndex = 0;
-        const timer = window.setInterval(() => {
-            if (!isCurrent()) return;
-            statusIndex = (statusIndex + 1) % INVOKE_STATUS_STEPS.length;
-            showStatus(INVOKE_STATUS_STEPS[statusIndex]);
-        }, 2500);
-        runsRef.current.set(threadId, { controller, timer });
-        showStatus(INVOKE_STATUS_STEPS[0]);
-
         try {
-            const result = await invokeChatMessage(
-                threadId,
-                prompt,
-                messageHistory,
-                selectedModelId || undefined,
-                controller.signal,
-                selectedAgentId,
-            );
-            if (!isCurrent()) return;
-
-            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({
-                ...last,
-                content: result.content,
-                isInvoking: false,
-                toolStatus: undefined,
-                toolCalls: result.toolCalls.map((call, index) => ({
-                    id: `activity_${index + 1}`,
-                    tool: call.name,
-                    args: call.args,
-                    status: 'done',
-                    agent: call.agent,
-                })),
-                chartSpecs: result.chartSpecs,
-                agentName: result.agent?.name,
-            })));
+            try {
+                await open(onEvent, controller.signal);
+            } catch (error) {
+                // The stream dropped (network, proxy timeout) but the run goes on: follow it.
+                const dropped = error instanceof TypeError || (error instanceof Error && /network|fetch/i.test(error.message));
+                if (!dropped || !entry.runId || controller.signal.aborted) throw error;
+                await followChatRun(entry.runId, onEvent, controller.signal);
+            }
+            if (!settled && isCurrent() && !controller.signal.aborted && entry.runId) {
+                // The stream ended without an outcome: read the stored run.
+                const run = await getChatRun(entry.runId);
+                if (run.status === 'completed' && run.result) onEvent({ type: 'final', result: run.result });
+                else if (run.status === 'awaiting_approval') onEvent({ type: 'status', status: run.status, pending: run.pending });
+                else if (run.status === 'failed' || run.status === 'cancelled') onEvent({ type: 'error', message: run.error ?? 'The reply failed.', code: run.status === 'cancelled' ? 'CANCELLED' : 'AI_CHAT_ERROR', status: run.status });
+            }
         } catch (error: unknown) {
-            if (!isCurrent()) return;
-
-            const wasStopped = error instanceof Error && error.name === 'AbortError';
-            const isNetwork = error instanceof Error &&
-                (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
-            const errorMessage = wasStopped
-                ? 'Generation stopped.'
-                : isNetwork
-                    ? 'Connection failed. You can retry.'
-                    : error instanceof Error
-                        ? error.message
-                        : 'Something went wrong. You can retry.';
-
-            updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({
-                ...last,
-                content: errorMessage,
-                isInvoking: false,
-                isError: !wasStopped,
-                retryPrompt: wasStopped ? undefined : prompt,
-                retryable: !wasStopped,
-                toolStatus: undefined,
-            })));
+            if (!isCurrent() || controller.signal.aborted) return;
+            const apiError = error instanceof ApiError ? error : null;
+            const isNetwork = !apiError && error instanceof Error && (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
+            const message = isNetwork
+                ? 'Connection failed. You can retry.'
+                : error instanceof Error ? error.message : 'Something went wrong. You can retry.';
+            patch(failurePatch(message, apiError?.code ?? 'AI_CHAT_ERROR', prompt));
         } finally {
-            window.clearInterval(timer);
-            if (runsRef.current.get(threadId)?.controller === controller) {
+            if (runsRef.current.get(threadId) === entry) {
                 runsRef.current.delete(threadId);
                 setThreadStatus(threadId, null);
             }
             if (isCurrent()) loadThreads();
         }
-    }, [activeConnectionId, loadThreads, selectedModelId, selectedAgentId, setThreadStatus, updateThreadMessages]);
+    }, [activeConnectionId, loadThreads, setThreadStatus, updateThreadMessages]);
 
-    /** Stop one thread's reply; the request settles as "Generation stopped." */
+    const runInvoke = useCallback(async (
+        threadId: string,
+        prompt: string,
+        messageHistory: { role: string; content: string }[],
+        extras: TurnExtras = {},
+    ): Promise<void> => {
+        await driveRun(threadId, (onEvent, signal) => streamChatRun({
+            threadId,
+            message: prompt,
+            messages: messageHistory,
+            modelId: selectedModelId || undefined,
+            agentId: selectedAgentId,
+            ...(extras.skills?.length ? { skills: extras.skills } : {}),
+            ...(extras.attachments?.length ? { attachments: extras.attachments } : {}),
+        }, onEvent, signal), prompt);
+    }, [driveRun, selectedAgentId, selectedModelId]);
+
+    /** Re-attach to a run that is still going (after a reload or reopening the thread). */
+    const followRun = useCallback(async (threadId: string, run: ChatRun): Promise<void> => {
+        await driveRun(threadId, (onEvent, signal) => followChatRun(run.id, onEvent, signal), undefined, run.steps.map(stepToToolCall));
+    }, [driveRun]);
+
+    /** Stop one thread's reply: the server finishes the run as stopped. */
     const stopThread = useCallback((threadId: string) => {
-        runsRef.current.get(threadId)?.controller.abort();
-    }, []);
+        const entry = runsRef.current.get(threadId);
+        if (!entry) return;
+        setThreadStatus(threadId, 'Stopping');
+        if (entry.runId) {
+            cancelChatRun(entry.runId).catch((error: unknown) => log.error('[AiChat] Failed to stop the reply', error));
+        } else {
+            entry.stopRequested = true;
+        }
+    }, [setThreadStatus]);
 
-    /** Drop every in-flight reply without touching messages (connection switch). */
+    /** Stop following every reply without stopping the runs (connection switch, unmount). */
     const cancelAll = useCallback(() => {
         epochRef.current += 1;
-        for (const run of runsRef.current.values()) {
-            run.controller.abort();
-            window.clearInterval(run.timer);
-        }
+        for (const run of runsRef.current.values()) run.controller.abort();
         runsRef.current.clear();
         setStatusByThread({});
     }, []);
 
     useEffect(() => cancelAll, [cancelAll]);
 
-    return { runInvoke, statusByThread, stopThread, cancelAll };
+    return { runInvoke, followRun, statusByThread, stopThread, cancelAll };
 }
 
 // ============================================
@@ -1177,6 +1324,15 @@ export default function AiChatBubble() {
         inputValueRef.current = input;
     }, [input]);
     const [shuffleKey, setShuffleKey] = useState(() => Date.now());
+    // Files and skills for the next message (ADR 0024).
+    const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+    const [chatSkills, setChatSkills] = useState<ChatSkill[]>([]);
+    const [skillQuery, setSkillQuery] = useState<{ start: number; query: string } | null>(null);
+    const [skillIndex, setSkillIndex] = useState(0);
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    /** What each thread's last turn sent besides text, so Retry sends it again. */
+    const lastExtrasRef = useRef(new Map<string, TurnExtras>());
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1272,6 +1428,66 @@ export default function AiChatBubble() {
     }, [fetchAgents, isOpen]);
 
 
+    // Skills of the chosen agent, offered as /skill: commands.
+    useEffect(() => {
+        if (!isOpen || !hasPermission || !aiEnabled) return;
+        let cancelled = false;
+        getChatSkills(selectedAgentId)
+            .then((skills) => { if (!cancelled) setChatSkills(skills); })
+            .catch((e) => {
+                if (!cancelled) setChatSkills([]);
+                log.error('[AiChat] Failed to fetch chat skills', e);
+            });
+        return () => { cancelled = true; };
+    }, [isOpen, hasPermission, aiEnabled, selectedAgentId]);
+
+    const modelModalities = useMemo(
+        () => aiModels.find((m) => m.id === selectedModelId)?.inputModalities ?? [],
+        [aiModels, selectedModelId],
+    );
+    const skillNames = useMemo(() => chatSkills.map((skill) => skill.name), [chatSkills]);
+    const pinnedSkills = useMemo(() => parseSkillCommands(input, skillNames).skills, [input, skillNames]);
+    const skillMatches = useMemo(() => {
+        if (!skillQuery) return [];
+        const q = skillQuery.query.toLowerCase();
+        return chatSkills.filter((skill) => skill.name.includes(q) || skill.description.toLowerCase().includes(q)).slice(0, 8);
+    }, [chatSkills, skillQuery]);
+    const skillPickerOpen = skillQuery !== null && chatSkills.length > 0;
+
+    const addFiles = useCallback(async (files: File[]) => {
+        let count = attachments.length;
+        const added: ComposerAttachment[] = [];
+        for (const file of files) {
+            const problem = attachmentProblem(file, modelModalities, count);
+            if (problem) {
+                toast.error(problem);
+                continue;
+            }
+            const kind = attachmentKind(file);
+            if (!kind) continue;
+            try {
+                added.push({ id: `${file.name}-${file.size}-${Date.now()}-${count}`, name: file.name, mimeType: attachmentMimeType(file), size: file.size, kind, data: await readAsBase64(file) });
+                count += 1;
+            } catch (error) {
+                log.error('[AiChat] Failed to read attachment', error);
+                toast.error(`Couldn't read ${file.name}`);
+            }
+        }
+        if (added.length > 0) setAttachments((previous) => [...previous, ...added]);
+    }, [attachments.length, modelModalities]);
+
+    const pickSkill = useCallback((name: string) => {
+        const el = inputRef.current;
+        const caret = el?.selectionStart ?? input.length;
+        const next = insertSkillCommand(input, caret, name);
+        setInput(next.text);
+        setSkillQuery(null);
+        requestAnimationFrame(() => {
+            el?.focus();
+            el?.setSelectionRange(next.caret, next.caret);
+        });
+    }, [input]);
+
     // Auto-scroll to bottom without bubbling up scroll events to parent
     useEffect(() => {
         if (scrollContainerRef.current) {
@@ -1307,7 +1523,7 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId]);
 
-    const { runInvoke, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
+    const { runInvoke, followRun, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
         updateThreadMessages,
         loadThreads,
         selectedModelId,
@@ -1333,6 +1549,8 @@ export default function AiChatBubble() {
         draftsRef.current.set(draftThreadRef.current, inputValueRef.current);
         draftThreadRef.current = activeThreadId;
         setInput(draftsRef.current.get(activeThreadId) ?? '');
+        setAttachments([]);
+        setSkillQuery(null);
     }, [activeThreadId]);
 
     const previousActiveConnectionIdRef = useRef(activeConnectionId);
@@ -1362,7 +1580,7 @@ export default function AiChatBubble() {
     useEffect(() => {
         if (!isOpen) return;
         const handler = (e: globalThis.KeyboardEvent) => {
-            if (e.key === 'Escape') setIsOpen(false);
+            if (e.key === 'Escape' && !e.defaultPrevented) setIsOpen(false);
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -1420,11 +1638,16 @@ export default function AiChatBubble() {
             setActiveThreadId(threadId);
             setSelectedAgentId(data.agentId ?? null);
             if (runningThreadIdsRef.current.has(threadId)) return;
-            updateThreadMessages(threadId, () =>
-                data.messages.map((m: ChatMessage) => ({
+            const active = await getActiveChatRun(threadId).catch((error: unknown) => {
+                log.error('[AiChat] Failed to check for a reply in progress:', error);
+                return null;
+            });
+            if (!isActiveChatConnection(loadConnectionId) || runningThreadIdsRef.current.has(threadId)) return;
+            updateThreadMessages(threadId, () => [
+                ...data.messages.map((m: ChatMessage) => ({
                     id: m.id,
                     role: m.role,
-                    content: m.content,
+                    ...(m.role === 'user' ? splitAttachments(m.content) : { content: m.content }),
                     toolCalls: m.toolCalls?.map((tc, index) => ({
                         id: `saved_${m.id}_${index}`,
                         tool: tc.name,
@@ -1435,12 +1658,25 @@ export default function AiChatBubble() {
                     })) || undefined,
                     chartSpecs: m.chartSpecs || undefined,
                     createdAt: m.createdAt,
-                }))
-            );
+                })),
+                // A reply still being worked on (or waiting for approval) continues where it is.
+                ...(active ? [{
+                    id: `assistant_${active.id}`,
+                    role: 'assistant' as const,
+                    content: '',
+                    createdAt: new Date(active.createdAt).toISOString(),
+                    runId: active.id,
+                    isInvoking: active.status === 'running',
+                    toolCalls: active.steps.map(stepToToolCall),
+                    toolStatus: active.status === 'running' ? statusOf(active.steps.map(stepToToolCall)) : undefined,
+                    pending: active.status === 'awaiting_approval' ? active.pending : undefined,
+                }] : []),
+            ]);
+            if (active?.status === 'running') void followRun(threadId, active);
         } catch (err) {
             log.error('[AiChat] Failed to load thread:', err);
         }
-    }, [activeConnectionId, updateThreadMessages]);
+    }, [activeConnectionId, followRun, updateThreadMessages]);
 
     // AI activity's "Open in chat" (ADR 0020): open the bubble on one of the viewer's threads.
     useEffect(() => {
@@ -1534,14 +1770,28 @@ export default function AiChatBubble() {
 
     const handleSend = useCallback(async (e?: FormEvent) => {
         e?.preventDefault();
-        const trimmed = input.trim();
-        if (!trimmed || isInvoking || !activeThreadId) return;
+        if (isInvoking || !activeThreadId) return;
+        const parsed = parseSkillCommands(input.trim(), skillNames);
+        const trimmed = parsed.message || (attachments.length > 0 ? `Look at the attached file${attachments.length > 1 ? 's' : ''}.` : '');
+        if (!trimmed) return;
+        // The model may have changed since a file was attached.
+        const refused = attachments.map((a) => attachmentProblem({ name: a.name, type: a.mimeType, size: a.size }, modelModalities, 0)).find(Boolean);
+        if (refused) {
+            toast.error(refused);
+            return;
+        }
+        const extras: TurnExtras = {
+            skills: parsed.skills,
+            attachments: attachments.map(({ name, mimeType, data }) => ({ name, mimeType, data })),
+        };
+        lastExtrasRef.current.set(activeThreadId, extras);
 
         const userMsg: UIMessage = {
             id: `user_${Date.now()}`,
             role: 'user',
             content: trimmed,
             createdAt: new Date().toISOString(),
+            ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.name) } : {}),
         };
         const assistantMsg: UIMessage = {
             id: `assistant_${Date.now()}`,
@@ -1556,13 +1806,15 @@ export default function AiChatBubble() {
 
         updateThreadMessages(activeThreadId, (prev) => [...prev, userMsg, assistantMsg]);
         setInput('');
+        setAttachments([]);
+        setSkillQuery(null);
         // Reset textarea height back to single line
         if (inputRef.current) {
             inputRef.current.style.height = 'auto';
         }
 
-        await runInvoke(activeThreadId, trimmed, messageHistory);
-    }, [input, isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages]);
+        await runInvoke(activeThreadId, trimmed, messageHistory, extras);
+    }, [input, isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages, attachments, skillNames, modelModalities]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
         if (!retryPrompt || isInvoking || !activeThreadId) return;
@@ -1584,15 +1836,41 @@ export default function AiChatBubble() {
             .map((m) => ({ role: m.role, content: m.content }));
         messageHistory.push({ role: 'user', content: retryPrompt });
 
-        await runInvoke(activeThreadId, retryPrompt, messageHistory);
+        await runInvoke(activeThreadId, retryPrompt, messageHistory, lastExtrasRef.current.get(activeThreadId));
     }, [isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (skillPickerOpen) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const step = e.key === 'ArrowDown' ? 1 : -1;
+                setSkillIndex((i) => (skillMatches.length === 0 ? 0 : (i + step + skillMatches.length) % skillMatches.length));
+                return;
+            }
+            if ((e.key === 'Enter' || e.key === 'Tab') && skillMatches[skillIndex]) {
+                e.preventDefault();
+                pickSkill(skillMatches[skillIndex].name);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setSkillQuery(null);
+                return;
+            }
+        }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
-    }, [handleSend]);
+    }, [handleSend, pickSkill, skillIndex, skillMatches, skillPickerOpen]);
+
+    const handleInputChange = useCallback((value: string, caret: number) => {
+        setInput(value);
+        const query = skillQueryAt(value, caret);
+        setSkillQuery(query);
+        if (query?.query !== skillQuery?.query) setSkillIndex(0);
+    }, [skillQuery]);
 
     if (!hasPermission) return null;
     if (aiEnabled !== true) {
@@ -2071,10 +2349,10 @@ export default function AiChatBubble() {
                                                                                 isInvoking={msg.isInvoking}
                                                                             />
                                                                         )}
-                                                                        {msg.isInvoking && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
-                                                                            <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                                                                        {msg.isInvoking && msg.toolStatus && !msg.content && (
+                                                                            <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand" aria-live="polite">
                                                                                 <Loader2 className="w-3 h-3 motion-safe:animate-spin" />
-                                                                                <span>{msg.toolStatus}</span>
+                                                                                <span>{msg.toolStatus}…</span>
                                                                             </div>
                                                                         )}
                                                                         {msg.isError ? (
@@ -2111,7 +2389,19 @@ export default function AiChatBubble() {
                                                                         )}
                                                                     </>
                                                                 ) : (
-                                                                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                                                                    <>
+                                                                        <span className="whitespace-pre-wrap">{msg.content}</span>
+                                                                        {msg.attachments && msg.attachments.length > 0 && (
+                                                                            <span className="mt-2 flex flex-wrap gap-1.5">
+                                                                                {msg.attachments.map((name) => (
+                                                                                    <span key={name} className="inline-flex max-w-full items-center gap-1 rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+                                                                                        <Paperclip className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                                                                                        <span className="truncate">{name}</span>
+                                                                                    </span>
+                                                                                ))}
+                                                                            </span>
+                                                                        )}
+                                                                    </>
                                                                 )}
                                                             </div>
                                                             <div className={`flex items-center gap-1 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -2147,15 +2437,71 @@ export default function AiChatBubble() {
                                     {/* Input area */}
                                     {activeThreadId && (
                                         <div className={`relative z-10 flex-shrink-0 border-t border-ink-500 bg-ink-200 px-4 ${isMobile ? 'pt-3 pb-6' : 'py-3'}`}>
-                                            <form onSubmit={handleSend} className="flex items-end gap-2">
+                                            <ComposerChips
+                                                attachments={attachments}
+                                                skills={pinnedSkills}
+                                                onRemoveAttachment={(id) => setAttachments((previous) => previous.filter((a) => a.id !== id))}
+                                            />
+                                            <form
+                                                onSubmit={handleSend}
+                                                className={`relative flex items-end gap-2 ${isDraggingFile ? 'rounded-xs outline outline-1 outline-dashed outline-brand' : ''}`}
+                                                onDragOver={(e) => {
+                                                    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+                                                    e.preventDefault();
+                                                    setIsDraggingFile(true);
+                                                }}
+                                                onDragLeave={() => setIsDraggingFile(false)}
+                                                onDrop={(e) => {
+                                                    if (e.dataTransfer.files.length === 0) return;
+                                                    e.preventDefault();
+                                                    setIsDraggingFile(false);
+                                                    void addFiles(Array.from(e.dataTransfer.files));
+                                                }}
+                                            >
+                                                {skillPickerOpen && (
+                                                    <SkillSuggestions skills={skillMatches} activeIndex={skillIndex} onPick={pickSkill} onHover={setSkillIndex} />
+                                                )}
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    multiple
+                                                    accept={attachmentAccept(modelModalities)}
+                                                    className="hidden"
+                                                    aria-hidden
+                                                    tabIndex={-1}
+                                                    onChange={(e) => {
+                                                        const files = Array.from(e.target.files ?? []);
+                                                        e.target.value = '';
+                                                        void addFiles(files);
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    disabled={isInvoking}
+                                                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-dim transition-colors hover:border-ink-700 hover:bg-ink-300 hover:text-paper disabled:opacity-40"
+                                                    title={attachmentHint(modelModalities)}
+                                                    aria-label={attachmentHint(modelModalities)}
+                                                >
+                                                    <Paperclip className="h-4 w-4" />
+                                                </button>
                                                 <textarea
                                                     ref={inputRef}
                                                     value={input}
-                                                    onChange={(e) => setInput(e.target.value)}
+                                                    onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
                                                     onKeyDown={handleKeyDown}
-                                                    placeholder="Ask about your databases, schemas, queries…"
+                                                    onBlur={() => setSkillQuery(null)}
+                                                    onPaste={(e) => {
+                                                        const files = Array.from(e.clipboardData.files);
+                                                        if (files.length === 0) return;
+                                                        e.preventDefault();
+                                                        void addFiles(files);
+                                                    }}
+                                                    placeholder={chatSkills.length > 0 ? 'Ask about your databases… type / for skills' : 'Ask about your databases, schemas, queries…'}
                                                     disabled={isInvoking}
                                                     rows={1}
+                                                    aria-autocomplete={chatSkills.length > 0 ? 'list' : undefined}
+                                                    aria-expanded={skillPickerOpen}
                                                     className="flex-1 resize-none rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5
                                                                font-mono text-[12.5px] text-paper placeholder:text-paper-faint
                                                                focus:border-brand focus:outline-none focus:ring-0
@@ -2181,7 +2527,7 @@ export default function AiChatBubble() {
                                                 ) : (
                                                     <button
                                                         type="submit"
-                                                        disabled={!input.trim()}
+                                                        disabled={!input.trim() && attachments.length === 0}
                                                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xs bg-brand text-ink-50 transition-[transform,background-color] duration-200 hover:bg-brand-soft hover:-translate-y-px disabled:bg-ink-300 disabled:text-paper-faint disabled:translate-y-0"
                                                         title="Send message"
                                                         aria-label="Send"
@@ -2192,12 +2538,12 @@ export default function AiChatBubble() {
                                             </form>
                                             <div className="mt-2 flex items-center justify-between px-1">
                                                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                                                    Shift+Enter newline · Esc close
+                                                    Shift+Enter newline · Esc close{chatSkills.length > 0 ? ' · / skills' : ''}
                                                 </span>
                                                 {isInvoking && toolStatus && (
-                                                    <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                                                    <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted" aria-live="polite">
                                                         <Loader2 className="h-2.5 w-2.5 motion-safe:animate-spin" />
-                                                        {toolStatus}
+                                                        {toolStatus}…
                                                     </span>
                                                 )}
                                             </div>

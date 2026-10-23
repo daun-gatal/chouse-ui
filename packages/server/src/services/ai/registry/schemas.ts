@@ -6,6 +6,8 @@
 
 import { z } from "zod";
 
+import { normalizeTuning } from "./tuning";
+
 import type { AgentInput, HarnessInput, SkillInput } from "./service";
 
 export const tuningSchema = z.object({
@@ -13,6 +15,14 @@ export const tuningSchema = z.object({
   recursionLimit: z.number().int().nullable().optional(),
   timeoutMs: z.number().int().nullable().optional(),
   maxOutputTokens: z.number().int().nullable().optional(),
+  fallbackModelConfigId: z.string().min(1).nullable().optional(),
+  modelRetries: z.number().int().nullable().optional(),
+  toolRetries: z.number().int().nullable().optional(),
+  maxModelCalls: z.number().int().nullable().optional(),
+  maxToolCalls: z.number().int().nullable().optional(),
+  promptCaching: z.boolean().optional(),
+  clearOldToolResults: z.boolean().optional(),
+  forkedSubagents: z.array(z.string().min(1)).max(20).optional(),
 });
 
 export const agentSchema = z.object({
@@ -60,12 +70,7 @@ export const skillSchema = z.object({
 export function normalizedAgent(body: z.infer<typeof agentSchema>): AgentInput {
   return {
     ...body,
-    tuning: {
-      stepBudget: body.tuning.stepBudget,
-      recursionLimit: body.tuning.recursionLimit ?? null,
-      timeoutMs: body.tuning.timeoutMs ?? null,
-      maxOutputTokens: body.tuning.maxOutputTokens ?? null,
-    },
+    tuning: normalizeTuning(body.tuning),
   };
 }
 

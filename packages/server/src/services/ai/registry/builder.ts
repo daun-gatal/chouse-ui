@@ -12,13 +12,17 @@ import {
   CompositeBackend,
   StateBackend,
   createDeepAgent,
+  createSkillsMiddleware,
   type CompiledSubAgent,
   type DeepAgent,
   type FilesystemPermission,
   type SubAgent,
 } from "deepagents";
+import { randomUUID } from "crypto";
+import { parseToolResult } from "../runtime/chatOutput";
 import { tool } from "@langchain/core/tools";
-import { todoListMiddleware } from "langchain";
+import { todoListMiddleware, type AgentMiddleware } from "langchain";
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 import { AppError } from "../../../types";
@@ -32,6 +36,9 @@ import { observeQueries } from "../../queryObserver";
 import { currentUsageRun, runInToolStep, type ModelRef, type ToolContext } from "../usage";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 import { guardrailMiddleware } from "../guardrails/middleware";
+import { runtimeMiddleware } from "../runtime/middleware";
+import { skillIncludeTools } from "./skillTools";
+import { logger } from "../../../utils/logger";
 import type { GuardrailRunner } from "../guardrails/runner";
 
 /** Maximum agent-tree depth: root → agent → subagent. */
@@ -95,6 +102,29 @@ export interface InvokedToolCall {
   agent?: string;
 }
 
+/** A tool call starting or finishing, for live run steps (ADR 0024). */
+export type ToolEvent =
+  | { type: "tool_start"; id: string; name: string; args: Record<string, unknown>; agent?: string }
+  | { type: "tool_end"; id: string; name: string; ok: boolean; summary: string | null };
+
+/** A one-line summary of a tool result for the live step list; never the data itself. */
+export function summarizeToolResult(result: unknown): string | null {
+  // Tools return ToolMessages and JSON strings; summarize what is inside.
+  const value = parseToolResult(result);
+  if (typeof value === "string") return value.length > 0 ? `${value.length.toLocaleString("en-US")} characters` : null;
+  if (Array.isArray(value)) return `${value.length.toLocaleString("en-US")} item${value.length === 1 ? "" : "s"}`;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.error === "string") return "Failed";
+  if (record.repeated === true) return "Reused the previous result";
+  if (typeof record.rowCount === "number") return `${record.rowCount.toLocaleString("en-US")} row${record.rowCount === 1 ? "" : "s"}`;
+  if (Array.isArray(record.rows)) return `${record.rows.length.toLocaleString("en-US")} row${record.rows.length === 1 ? "" : "s"}`;
+  for (const [key, entry] of Object.entries(record)) {
+    if (Array.isArray(entry)) return `${entry.length.toLocaleString("en-US")} ${key}`;
+  }
+  return null;
+}
+
 function stableToolInput(input: unknown): string {
   if (!input || typeof input !== "object") return JSON.stringify(input);
   const sorted = Object.fromEntries(
@@ -119,6 +149,7 @@ export function guardDuplicateTools(
   calls: InvokedToolCall[],
   agentPath?: string,
   usage: ToolContext = { model: null, connectionId: null, defaultDatabase: null },
+  onEvent?: (event: ToolEvent) => void,
 ): AgentTool[] {
   const seen = new Set<string>();
   return tools.map((original) => tool(
@@ -127,6 +158,8 @@ export function guardDuplicateTools(
     async (input: unknown, config: unknown) => {
       const recorded: InvokedToolCall = { name: original.name, args: recordableInput(input), ...(agentPath ? { agent: agentPath } : {}) };
       calls.push(recorded);
+      const eventId = randomUUID();
+      onEvent?.({ type: "tool_start", id: eventId, name: original.name, args: recorded.args, ...(agentPath ? { agent: agentPath } : {}) });
       const step = currentUsageRun()?.beginTool(original.name, agentPath ?? null, usage);
       const signature = `${original.name}:${stableToolInput(input)}`;
       if (seen.has(signature)) {
@@ -137,6 +170,7 @@ export function guardDuplicateTools(
         };
         recorded.result = duplicateResult;
         step?.end({ result: duplicateResult, duplicate: true });
+        onEvent?.({ type: "tool_end", id: eventId, name: original.name, ok: true, summary: summarizeToolResult(duplicateResult) });
         return duplicateResult;
       }
       seen.add(signature);
@@ -145,9 +179,11 @@ export function guardDuplicateTools(
         const result = step ? await runInToolStep(step, () => observeQueries(step.observer, invoke)) : await invoke();
         recorded.result = result;
         step?.end({ result });
+        onEvent?.({ type: "tool_end", id: eventId, name: original.name, ok: true, summary: summarizeToolResult(result) });
         return result;
       } catch (error) {
         step?.end({ error });
+        onEvent?.({ type: "tool_end", id: eventId, name: original.name, ok: false, summary: "Failed" });
         throw error;
       }
     },
@@ -205,6 +241,10 @@ export interface BuildContext {
   includeChild?: (child: AgentDef) => boolean;
   /** The run's guardrails (ADR 0022); null only where a tree is built without a run (tests). */
   guardrails: GuardrailRunner | null;
+  /** Durable runs (ADR 0024): the root agent checkpoints through it so a run can pause and resume. */
+  checkpointer?: BaseCheckpointSaver;
+  /** Live run steps (ADR 0024): every tool call of the tree, as it starts and ends. */
+  onToolEvent?: (event: ToolEvent) => void;
 }
 
 function harnessFor(agent: AgentDef, snapshot: RegistrySnapshot): HarnessDef {
@@ -222,19 +262,46 @@ interface NodeOptions {
   visiting: Set<string>;
 }
 
-async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions): Promise<DeepAgent> {
+interface NodeParts {
+  tools: AgentTool[];
+  middleware: AgentMiddleware[];
+  sources: string[];
+  skills: SkillDef[];
+  subagents: Array<SubAgent | CompiledSubAgent>;
+}
+
+/** Resolve the agent's fallback model; a fallback that no longer resolves is skipped, never fatal. */
+async function fallbackModel(agent: AgentDef, build: BuildContext): Promise<BaseChatModel | null> {
+  const id = agent.tuning.fallbackModelConfigId;
+  if (!id) return null;
+  try {
+    return (await build.resolveModel(id)).model;
+  } catch (error) {
+    logger.warn({ module: "AI", agent: agent.slug, err: error instanceof Error ? error.message : String(error) }, "Fallback model unavailable; running without it");
+    return null;
+  }
+}
+
+/** Tools, middleware, skills and children of one tree node — shared by compiled and forked nodes. */
+async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions): Promise<NodeParts> {
   const { snapshot } = build;
   const harness = harnessFor(agent, snapshot);
   // LLM calls only carry the agent's slug; the run maps it to its place in the tree.
   currentUsageRun()?.registerAgentPath(agent.slug, node.path);
-  const tools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools(agent.tools, build.runtime), harness), build.calls, node.path, {
+  const usage: ToolContext = {
     model: node.model.usage ?? null,
     connectionId: build.runtime.ctx.connectionId ?? null,
     defaultDatabase: build.runtime.ctx.defaultDatabase ?? null,
-  });
+  };
   const { sources, skills } = skillSources(agent, snapshot);
+  // Tools a skill lists stay hidden until that skill is read (ADR 0024).
+  const skillToolNames = new Set(skills.flatMap((skill) => skillIncludeTools(skill.skillMd)));
+  const baseGrants = agent.tools.filter((name) => !skillToolNames.has(name));
+  const tools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools(baseGrants, build.runtime), harness), build.calls, node.path, usage, build.onToolEvent);
+  const skillTools = guardDuplicateTools(applyDescriptionOverrides(buildGrantedTools([...skillToolNames], build.runtime), harness), build.calls, node.path, usage, build.onToolEvent);
 
   const subagents: Array<SubAgent | CompiledSubAgent> = [];
+  const forked = new Set(agent.tuning.forkedSubagents ?? []);
   for (const childId of agent.subagents) {
     const child = snapshot.agents.get(childId);
     if (!child || !child.enabled) continue;
@@ -244,34 +311,63 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
     const childPrompts = renderAgentPrompts(child, build.variables, snapshot);
     const childModel = child.modelConfigId ? await build.resolveModel(child.modelConfigId) : node.model;
     const childHarness = harnessFor(child, snapshot);
-    const runnable = await buildNode(child, build, {
+    const childNode: NodeOptions = {
       systemPrompt: applyPromptSuffix(childPrompts.system, childHarness),
       model: childModel,
       path: `${node.path} › ${child.slug}`,
       depth: node.depth + 1,
       visiting: new Set([...node.visiting, child.id]),
-    });
+    };
+    if (forked.has(child.id) && child.subagents.length === 0) {
+      // A forked child sees the parent's conversation. It is built from a spec, so its skills live on the parent's backend.
+      const parts = await nodeParts(child, build, childNode);
+      for (const skill of parts.skills) if (!skills.includes(skill)) skills.push(skill);
+      subagents.push({
+        name: child.slug,
+        description: child.description,
+        systemPrompt: childNode.systemPrompt,
+        mode: "fork",
+        model: childNode.model.model as never,
+        tools: parts.tools,
+        middleware: parts.middleware,
+        ...(parts.sources.length > 0 ? { skills: parts.sources } : {}),
+      } as SubAgent);
+      continue;
+    }
+    const runnable = await buildNode(child, build, childNode);
     const limit = child.tuning.recursionLimit ?? recursionLimitFor(child.tuning.stepBudget);
     subagents.push({ name: child.slug, description: child.description, runnable: runnable.withConfig({ recursionLimit: limit }) } as CompiledSubAgent);
   }
   const generalPurpose = generalPurposeSubagent(harness, tools, sources);
   if (generalPurpose) subagents.push(generalPurpose);
 
-  // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
   const middleware = [
+    // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
     harness.excludedTools.includes("write_todos") ? null : todoListMiddleware(),
     harnessToolMiddleware(harness),
     build.guardrails ? guardrailMiddleware(build.guardrails, { agentId: agent.id, agentSlug: agent.slug, path: node.path, isRoot: node.depth === 0 }) : null,
-  ].filter((m) => m !== null);
+    sources.length > 0 ? createSkillsMiddleware({ backend: () => skillsBackend(skills), sources, tools: skillTools }) : null,
+    ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
+  ].filter((m): m is AgentMiddleware => m !== null);
+  return { tools, middleware, sources, skills, subagents };
+}
+
+function skillsBackend(skills: SkillDef[]): CompositeBackend {
+  return new CompositeBackend(new StateBackend(), { [SKILLS_MOUNT]: new RegistrySkillsBackend(skillFiles(skills)) });
+}
+
+async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions): Promise<DeepAgent> {
+  const parts = await nodeParts(agent, build, node);
   return createDeepAgent({
     model: node.model.model as never,
-    tools,
+    tools: parts.tools,
     systemPrompt: node.systemPrompt,
-    backend: new CompositeBackend(new StateBackend(), { [SKILLS_MOUNT]: new RegistrySkillsBackend(skillFiles(skills)) }),
+    backend: skillsBackend(parts.skills),
     permissions: FILESYSTEM_PERMISSIONS,
-    ...(sources.length > 0 ? { skills: sources } : {}),
-    subagents,
-    ...(middleware.length > 0 ? { middleware } : {}),
+    subagents: parts.subagents,
+    ...(parts.middleware.length > 0 ? { middleware: parts.middleware } : {}),
+    // Only the root holds the checkpointer; subgraphs checkpoint through it.
+    ...(node.depth === 0 && build.checkpointer ? { checkpointer: build.checkpointer } : {}),
     name: agent.slug,
   }) as DeepAgent;
 }

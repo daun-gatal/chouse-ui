@@ -14,6 +14,8 @@ import { AppError } from "../../types";
 import { resolveDeepAgentModel, type ResolvedModel } from "./model";
 import { structuredOutput } from "./structuredOutput";
 import { handleAiError } from "./errors";
+import { checkBudgets } from "./budgets";
+import { logger } from "../../utils/logger";
 import { getCapability } from "./capabilities";
 import { getRegistrySnapshot } from "./registry/cache";
 import {
@@ -24,7 +26,10 @@ import {
   renderTaskMessage,
   type BuildContext,
   type InvokedToolCall,
+  type ToolEvent,
 } from "./registry/builder";
+import { checkpointSaver } from "./runtime/checkpointer";
+import { Command } from "@langchain/langgraph";
 import { registerHarnessBaseline } from "./registry/harness";
 import { runnerForRun } from "./guardrails/runtime";
 import { guardrailErrorIn, type GuardrailRunner } from "./guardrails/runner";
@@ -69,10 +74,24 @@ function runSignal(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal
   return externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal;
 }
 
-function normalizeMessages(messages: AgentMessage[]): AgentMessage[] {
+/**
+ * Attachments become LangChain data content blocks (`source_type: "base64"`),
+ * the shape every provider adapter converts (OpenAI image_url/file, Anthropic
+ * image/document, Gemini inline data).
+ */
+export function providerContent(content: AgentMessage["content"]): unknown {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") return part;
+    if (part.type === "image") return { type: "image", source_type: "base64", mime_type: part.mimeType, data: part.data };
+    return { type: "file", source_type: "base64", mime_type: part.mimeType, data: part.data, ...(part.filename ? { metadata: { filename: part.filename } } : {}) };
+  });
+}
+
+function normalizeMessages(messages: AgentMessage[]): Array<{ role: AgentMessage["role"]; content: unknown }> {
   return messages.map((message) => ({
     role: message.role,
-    content: message.content,
+    content: providerContent(message.content),
   }));
 }
 
@@ -243,10 +262,32 @@ async function guardFallbackInput(guardrails: GuardrailRunner, agent: AgentDef, 
   const list = guardrails.at("input", agent.id);
   if (list.length === 0) return messages;
   const out: AgentMessage[] = [];
+  const check = (text: string): Promise<string> => guardrails.checkText("input", list, text, { agentPath: agent.slug, tool: null });
   for (const m of messages) {
-    out.push(m.role === "user" ? { ...m, content: await guardrails.checkText("input", list, m.content, { agentPath: agent.slug, tool: null }) } : m);
+    if (m.role !== "user") {
+      out.push(m);
+      continue;
+    }
+    const content = typeof m.content === "string"
+      ? await check(m.content)
+      : await Promise.all(m.content.map(async (part) => (part.type === "text" ? { ...part, text: await check(part.text) } : part)));
+    out.push({ ...m, content });
   }
   return out;
+}
+
+/**
+ * The model config a run uses: an exhausted budget's fallback model first
+ * (ADR 0024, D5), then the caller's pick, then the agent's own. Throws when an
+ * exhausted budget stops runs.
+ */
+export async function budgetedModel(featureId: string, ctx: AgentRunContext, agent: AgentDef): Promise<string | undefined> {
+  const decision = await checkBudgets(featureId, ctx.userId ?? null);
+  if (decision.fallbackModelConfigId) {
+    logger.info({ module: "AI", featureId, budget: decision.budget?.name }, "AI budget used up; running on its fallback model");
+    return decision.fallbackModelConfigId;
+  }
+  return ctx.modelId ?? agent.modelConfigId ?? undefined;
 }
 
 function chosenAgent(snapshot: RegistrySnapshot, featureId: string, agentId: string | undefined): AgentDef {
@@ -278,7 +319,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       const task = renderTaskMessage(agent, variables, snapshot);
       const instructions = structuredInstructions(prompts.system, cap.outputSchema);
 
-      const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
+      const resolved = await resolveDeepAgentModel(await budgetedModel(cap.id, ctx, agent));
       const { model, config, label } = resolved;
       const calls: InvokedToolCall[] = [];
       const build = await buildContext(snapshot, resolved, {
@@ -354,6 +395,58 @@ export interface ChatRunResult {
   content: string;
   toolCalls: InvokedToolCall[];
   agent: { id: string; slug: string; name: string };
+  /** Approvals the run is waiting for (ADR 0024); empty once it has finished. */
+  interrupts: ChatInterrupt[];
+}
+
+/** One paused tool call, as LangChain's per-call approval reports it. */
+export interface ChatInterrupt {
+  id: string;
+  toolCallId: string;
+  name: string;
+  args: Record<string, unknown>;
+  description: string;
+}
+
+function interruptsOf(state: unknown): ChatInterrupt[] {
+  const raw = (state as { __interrupt__?: unknown } | undefined)?.__interrupt__;
+  if (!Array.isArray(raw)) return [];
+  const out: ChatInterrupt[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const { id, value } = entry as { id?: unknown; value?: unknown };
+    if (typeof id !== "string" || !value || typeof value !== "object") continue;
+    const v = value as { type?: unknown; tool_call_id?: unknown; name?: unknown; args?: unknown; description?: unknown };
+    if (v.type !== "tool_approval" || typeof v.name !== "string") continue;
+    out.push({
+      id,
+      toolCallId: typeof v.tool_call_id === "string" ? v.tool_call_id : "",
+      name: v.name,
+      args: v.args && typeof v.args === "object" ? (v.args as Record<string, unknown>) : {},
+      description: typeof v.description === "string" ? v.description : "",
+    });
+  }
+  return out;
+}
+
+/** How a durable chat run (ADR 0024) starts or continues. */
+export interface ChatRunOptions {
+  /** The run id: the checkpoint thread, so a paused run resumes on any replica. */
+  id: string;
+  /** Decisions for the paused tool calls, keyed by interrupt id; absent = a new turn. */
+  resume?: Record<string, unknown>;
+  /** Skills the user named with /skill: — their instructions go to the model before it answers. */
+  pinnedSkills?: string[];
+  /** Files sent with the new message; each is recorded as data sent to the provider (ADR 0020). */
+  attachments?: ChatAttachment[];
+  onToolEvent?: (event: ToolEvent) => void;
+}
+
+export interface ChatAttachment {
+  name: string;
+  mimeType: string;
+  /** Base64 content. */
+  data: string;
 }
 
 /**
@@ -370,6 +463,8 @@ export async function invokeChat(
     signal?: AbortSignal;
     /** Test console: run against a draft registry, and any chat agent (manager-only route). */
     snapshot?: RegistrySnapshot;
+    /** A durable, checkpointed run (ADR 0024). */
+    run?: ChatRunOptions;
   } = {},
 ): Promise<ChatRunResult> {
   const cap = getCapability("chat");
@@ -392,28 +487,48 @@ export async function invokeChat(
 
   return withUsageRun({ ...usageMeta("chat", ctx, "chat"), threadId: options.threadId ?? null }, persistUsageRun, async (run) => {
     run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
-    const resolved = await resolveDeepAgentModel(ctx.modelId ?? agent.modelConfigId ?? undefined);
+    const resolved = await resolveDeepAgentModel(await budgetedModel("chat", ctx, agent));
     const calls: InvokedToolCall[] = [];
     const prompts = renderAgentPrompts(agent, {}, snapshot);
+    const durable = options.run;
+    if (durable?.attachments?.length) {
+      const step = run.beginTool("chat_attachments", agent.slug, { model: resolved.usage, connectionId: ctx.connectionId ?? null, defaultDatabase: ctx.defaultDatabase ?? null });
+      for (const file of durable.attachments) step.addChouseSource(`Attachment: ${file.name}`, file.data);
+      step.end({ result: { files: durable.attachments.length } });
+    }
     const build = await buildContext(snapshot, resolved, {
       runtime: featureRuntime(ctx, cap.contexts),
       variables: {},
       calls,
       includeChild: (child) => userMayUseAgent(child, ctx),
       guardrails: runnerForRun(snapshot, "chat", ctx, run),
+      ...(durable ? {
+        checkpointer: checkpointSaver(),
+        // Only calls made below the answering agent carry a path, as in the stored answer.
+        onToolEvent: durable.onToolEvent && ((event: ToolEvent) => durable.onToolEvent?.(event.type === "tool_start" && event.agent === agent.slug ? { ...event, agent: undefined } : event)),
+      } : {}),
     });
     const deepAgent = await buildAgentTree(agent, prompts.system, build);
     const overrides = runtimeOverrides(resolved.config);
-    const result = await deepAgent.invoke(
-      { messages: normalizeMessages(messages) },
-      {
-        recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
-        signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
-      },
-    ).catch((error: unknown) => {
+    const config = {
+      recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
+      signal: runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? CHAT_RUN_TIMEOUT_MS, options.signal),
+      ...(durable ? { configurable: { thread_id: durable.id } } : {}),
+    };
+    const pinned = durable?.pinnedSkills?.length ? { pinnedSkills: durable.pinnedSkills } : {};
+    const input = durable?.resume
+      ? new Command({ resume: durable.resume })
+      : { messages: normalizeMessages(messages), ...pinned };
+    const result = await deepAgent.invoke(input as never, config).catch((error: unknown) => {
       throw guardrailErrorIn(error) ?? error;
     });
-    return { content: finalTextFromState(result), toolCalls: calls, agent: { id: agent.id, slug: agent.slug, name: agent.name } };
+    const interrupts = interruptsOf(result);
+    return {
+      content: interrupts.length > 0 ? "" : finalTextFromState(result),
+      toolCalls: calls,
+      agent: { id: agent.id, slug: agent.slug, name: agent.name },
+      interrupts,
+    };
   });
 }
 

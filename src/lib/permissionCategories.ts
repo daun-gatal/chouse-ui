@@ -36,6 +36,7 @@ const CATEGORY_BY_PREFIX: Record<string, string> = {
   ai_agents: "AI Agents",
   ai_usage: "AI Agents",
   ai_guardrails: "AI Agents",
+  ai_budgets: "AI Agents",
   sso: "SSO Management",
   alerting: "Alerting",
   scheduled_queries: "Scheduled Queries",
