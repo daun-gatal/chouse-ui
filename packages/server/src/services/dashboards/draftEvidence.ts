@@ -25,12 +25,17 @@ function examples(): unknown[] {
     }));
 }
 
-/** What the drafter is told: the goal, the dashboard it adds to, and the rules a panel must follow. */
+/**
+ * What the drafter is told: the goal, the dashboard it adds to, the draft to
+ * revise when the user refines one, and the rules a panel must follow.
+ */
 export function draftEvidence(request: DraftRequest): Record<string, unknown> {
   return {
     goal: request.goal,
     connectionId: request.connectionId,
     existingDashboard: request.existing,
+    // Only present on Refine and Regenerate, so a first draft's evidence is unchanged.
+    ...(request.revision ? { revision: request.revision } : {}),
     rules: {
       sql: "One read-only SELECT per panel, no FORMAT clause and no SETTINGS. Bound every system.*_log read with event_time >= {{from}} AND event_time < {{to}}. Bucket time with toStartOfInterval(event_time, INTERVAL {{interval_s}} SECOND). At most 10,000 result rows: aggregate, and keep top-N with ORDER BY … LIMIT. Leave CHouse's own queries out of system.query_log with JSONExtractString(log_comment, 'source') NOT IN ('observe', 'remediation_preflight', 'dashboards').",
       macros: "{{from}} and {{to}} (DateTime), {{interval_s}} (UInt32 bucket seconds) and {{var.NAME}} for a declared variable. Never put a macro inside quotes. A multi variable is a list: use it as col IN {{var.NAME}}.",

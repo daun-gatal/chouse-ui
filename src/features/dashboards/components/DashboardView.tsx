@@ -54,6 +54,7 @@ import { BTN_GHOST, BTN_ICON, BTN_OUTLINE, BTN_PRIMARY } from "@/components/char
 import { dashboardKeys } from "../hooks";
 import { bucketQueriesSql, linkAction } from "../links";
 import { isAssignedTo, scopeLabel } from "../scope";
+import { useRevealAddedPanels } from "../revealPanels";
 import { parseView, writeView, type ViewState } from "../urlState";
 import { AskAiDialog } from "./AskAiDialog";
 import { AnnotationDialog, ChartActionsDialog, NoteDialog, type ChartActionsTarget } from "./ChartActions";
@@ -188,6 +189,8 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  useRevealAddedPanels(useMemo(() => (data ? data.panels.map((p) => p.id) : null), [data]));
 
   // `?edit=1` (a new dashboard) opens straight into editing, once.
   useEffect(() => {

@@ -26,12 +26,30 @@ import { IMPORTANCES, ROLES, roleProblem } from "./layout";
 import { chartFit, lintPanel } from "./lint";
 import { compileSql, defaultValues, resolveWindow } from "./macros";
 import { execute } from "./runner";
-import { variableSchema, vizSpecSchema, type Variable } from "./spec";
+import { MAX_VARIABLES, variableSchema, vizSpecSchema, type Variable } from "./spec";
 import { panelProblems } from "./validate";
 import type { DashboardDraft, DashboardDraftOutput, DraftedChart, DraftPanel, DraftRequest } from "./draftSchemas";
 
-function readVariables(raw: unknown[]): { variables: Variable[]; problems: string[] } {
+/** The readable variables of a list the model or the client sent; the first of a name wins. */
+function parseVariables(raw: unknown[]): Variable[] {
   const variables: Variable[] = [];
+  for (const value of raw) {
+    const parsed = variableSchema.safeParse(value);
+    if (parsed.success && !variables.some((v) => v.name === parsed.data.name)) variables.push(parsed.data);
+  }
+  return variables;
+}
+
+/**
+ * The model's variables, and the ones its panels run with. `kept` are the
+ * variables the panels will be saved with already — the dashboard's own, and
+ * when one panel is drafted again, the rest of the draft's: a name they have
+ * keeps their definition, so the panels are checked against it. A new name
+ * past the dashboard's limit is left out.
+ */
+function readVariables(raw: unknown[], kept: Variable[]): { variables: Variable[]; effective: Variable[]; problems: string[] } {
+  const variables: Variable[] = [];
+  const effective: Variable[] = [...kept];
   const problems: string[] = [];
   raw.forEach((value, i) => {
     const parsed = variableSchema.safeParse(value);
@@ -43,9 +61,16 @@ function readVariables(raw: unknown[]): { variables: Variable[]; problems: strin
       problems.push(`Variable ${parsed.data.name} was left out: the name is used twice`);
       return;
     }
+    if (!effective.some((v) => v.name === parsed.data.name)) {
+      if (effective.length >= MAX_VARIABLES) {
+        problems.push(`Variable ${parsed.data.name} was left out: a dashboard has at most ${MAX_VARIABLES} variables`);
+        return;
+      }
+      effective.push(parsed.data);
+    }
     variables.push(parsed.data);
   });
-  return { variables, problems };
+  return { variables, effective, problems };
 }
 
 function columnsNamed(viz: DraftedChart["viz"]): string[] {
@@ -101,8 +126,13 @@ async function reviewPanel(raw: DashboardDraftOutput["panels"][number], variable
 
 /** Review the model's draft (see the module comment). */
 export async function finalizeDraft(output: DashboardDraftOutput, request: DraftRequest, ctx: AgentRunContext): Promise<DashboardDraft> {
-  const { variables, problems } = readVariables(output.variables);
+  const regenerating = request.revision !== undefined && request.revision.panelIndex !== null;
+  const kept = parseVariables([...(request.existing?.variables ?? []), ...(regenerating && request.revision ? request.revision.previous.variables : [])]);
+  const { variables, effective, problems } = readVariables(output.variables, kept);
+  // Regenerate replaces one panel: anything more the model sent is not used.
+  const drafted = regenerating ? output.panels.slice(0, 1) : output.panels;
+  if (output.panels.length > drafted.length) problems.push(`Only one panel was asked for; the other ${output.panels.length - drafted.length} the model drafted were left out`);
   const panels: DraftPanel[] = [];
-  for (const raw of output.panels) panels.push(await reviewPanel(raw, variables, request, ctx));
+  for (const raw of drafted) panels.push(await reviewPanel(raw, effective, request, ctx));
   return { title: output.title, description: output.description, variables, problems, panels };
 }

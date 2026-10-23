@@ -24,6 +24,7 @@ mock.module("../../middleware/dataAccess", () => ({
 
 const { finalizeDraft } = await import("./draft");
 const { draftEvidence } = await import("./draftEvidence");
+const { draftRequestSchema, revisionProblem } = await import("./draftSchemas");
 
 const VIZ = { version: 2, type: "line", x: "t", y: ["v"], series: null, unit: "count", decimals: null, thresholds: [], colorScheme: "violet", reduce: null, links: [], baseline: null };
 const REQUEST = { goal: "Watch the orders pipeline", connectionId: "c1", existing: null };
@@ -136,6 +137,64 @@ describe("finalizeDraft", () => {
     expect(result.panels[0].status).toBe("ok");
     expect(dryRuns[0]).toContain("{v_tables:Array(String)}");
   });
+
+  it("checks panels for an existing dashboard against its own definition of a variable name the model reused", async () => {
+    const own = { name: "db", label: "Database", kind: "identifier", options: { source: "static", values: ["default"] }, default: "default" };
+    const drafted = { ...own, kind: "string", label: "Other" };
+    const existing = { title: "Orders", variables: [own], panels: [] };
+    const result = await finalizeDraft(draft([panel({ sql: "SELECT now() AS t, count() AS v FROM {{var.db}}.events" })], [drafted]), { ...REQUEST, existing }, CTX);
+    expect(result.panels[0].status).toBe("ok");
+    expect(dryRuns[0]).toContain("{v_db:Identifier}");
+    // Still returned, so the review can say the dashboard's own definition is kept.
+    expect(result.variables.map((v) => v.label)).toEqual(["Other"]);
+  });
+
+  it("leaves out a new variable past the dashboard's limit and blocks the panels that need it", async () => {
+    const own = Array.from({ length: 10 }, (_, i) => ({ name: `v${i}`, label: `V${i}`, kind: "string", options: { source: "static", values: ["a"] }, default: "a" }));
+    const extra = { name: "extra", label: "Extra", kind: "string", options: { source: "static", values: ["a"] }, default: "a" };
+    const result = await finalizeDraft(draft([panel({ sql: "SELECT now() AS t, count() AS v FROM t WHERE x = {{var.extra}}" })], [extra]), { ...REQUEST, existing: { title: "Full", variables: own, panels: [] } }, CTX);
+    expect(result.variables).toEqual([]);
+    expect(result.problems).toEqual(["Variable extra was left out: a dashboard has at most 10 variables"]);
+    expect(result.panels[0].status).toBe("blocked");
+  });
+
+  it("reviews only one panel when regenerating, with the rest of the draft's variables", async () => {
+    const db = { name: "db", label: "Database", kind: "identifier", options: { source: "static", values: ["default"] }, default: "default" };
+    const previous = { title: "Orders", description: "", variables: [db], panels: [{ title: "Parts", sql: GOOD_SQL, viz: VIZ, role: "trend", importance: "primary", section: null, rationale: "x", included: true }] };
+    const request = { ...REQUEST, revision: { previous, feedback: "", panelIndex: 0 } };
+    const result = await finalizeDraft(draft([panel({ sql: "SELECT now() AS t, count() AS v FROM {{var.db}}.events" }), panel()]), request, CTX);
+    expect(result.panels).toHaveLength(1);
+    expect(result.panels[0].status).toBe("ok");
+    expect(dryRuns).toHaveLength(1);
+    expect(result.problems).toEqual(["Only one panel was asked for; the other 1 the model drafted were left out"]);
+  });
+
+  it("drafts a refined dashboard with its own variables, not the previous draft's", async () => {
+    const db = { name: "db", label: "Database", kind: "identifier", options: { source: "static", values: ["default"] }, default: "default" };
+    const previous = { title: "Orders", description: "", variables: [db], panels: [{ title: "Parts", sql: GOOD_SQL, viz: VIZ, role: "trend", importance: "primary", section: null, rationale: "x", included: true }] };
+    const request = { ...REQUEST, revision: { previous, feedback: "Add disk usage", panelIndex: null } };
+    const result = await finalizeDraft(draft([panel(), panel({ sql: "SELECT now() AS t, count() AS v FROM {{var.db}}.events" })]), request, CTX);
+    expect(result.panels.map((p) => p.status)).toEqual(["ok", "blocked"]);
+    expect(result.problems).toEqual([]);
+  });
+});
+
+describe("revisionProblem", () => {
+  const previous = { title: "Orders", description: "", variables: [], panels: [{ title: "Parts", sql: GOOD_SQL, viz: VIZ, role: "trend", importance: "primary", section: null, rationale: "x", included: true }] };
+
+  it("needs feedback to refine the whole draft, and a panel that is in the draft to regenerate", () => {
+    expect(revisionProblem({ previous, feedback: "Add disk usage", panelIndex: null })).toBeNull();
+    expect(revisionProblem({ previous, feedback: "", panelIndex: 0 })).toBeNull();
+    expect(revisionProblem({ previous, feedback: "", panelIndex: null })).toBe("Say what to change in the draft");
+    expect(revisionProblem({ previous, feedback: "", panelIndex: 1 })).toBe("The panel to regenerate is not in the draft");
+  });
+
+  it("is part of a request the schema accepts, and older requests without it still parse", () => {
+    expect(draftRequestSchema.safeParse(REQUEST).success).toBe(true);
+    expect(draftRequestSchema.safeParse({ ...REQUEST, revision: { previous, feedback: "x", panelIndex: null } }).success).toBe(true);
+    expect(draftRequestSchema.safeParse({ ...REQUEST, revision: { previous: { ...previous, panels: [] }, feedback: "x", panelIndex: null } }).success).toBe(false);
+    expect(draftRequestSchema.safeParse({ ...REQUEST, revision: { previous, feedback: "x".repeat(2_001), panelIndex: null } }).success).toBe(false);
+  });
 });
 
 describe("draftEvidence", () => {
@@ -151,5 +210,11 @@ describe("draftEvidence", () => {
       expect(Object.keys(example).sort()).toEqual(["importance", "role", "section", "sql", "title", "viz"]);
     }
     expect(examples[0].importance).toBe("primary");
+    expect(evidence).not.toHaveProperty("revision");
+  });
+
+  it("carries the draft to revise and the feedback when the user refines", () => {
+    const revision = { previous: { title: "Orders", description: "", variables: [], panels: [{ title: "Parts", sql: "SELECT 1", viz: VIZ, role: "trend", importance: "primary", section: null, rationale: "x", included: false }] }, feedback: "Add disk usage", panelIndex: null };
+    expect(draftEvidence({ ...REQUEST, revision }).revision).toEqual(revision);
   });
 });

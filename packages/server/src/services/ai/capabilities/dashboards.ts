@@ -11,7 +11,7 @@ import { PERMISSIONS } from "../../../rbac/schema/base";
 import { AppError } from "../../../types";
 import type { StructuredCapability } from "../types";
 import { draftEvidence } from "../../dashboards/draftEvidence";
-import { DashboardDraftSchema, draftRequestSchema, type DashboardDraft, type DraftRequest } from "../../dashboards/draftSchemas";
+import { DashboardDraftSchema, draftRequestSchema, revisionProblem, type DashboardDraft, type DraftRequest } from "../../dashboards/draftSchemas";
 import { explainRequestSchema, SpikeExplanationSchema, type ExplainRequest, type SpikeExplanation } from "../../dashboards/explainSchemas";
 
 function requirePermission(ctx: { isAdmin?: boolean; permissions?: string[] }, permission: string): void {
@@ -32,6 +32,8 @@ export const draftDashboardCapability: StructuredCapability<DraftRequest, DraftR
   prepare(input, ctx) {
     requirePermission(ctx, PERMISSIONS.DASHBOARDS_EDIT);
     if (ctx.connectionId !== input.connectionId) throw AppError.badRequest("Draft on the connection you are on: this request names another one");
+    const problem = input.revision ? revisionProblem(input.revision) : null;
+    if (problem) throw AppError.badRequest(problem);
     return input;
   },
   templateVariables: (prepared) => ({ evidence: JSON.stringify(draftEvidence(prepared)) }),

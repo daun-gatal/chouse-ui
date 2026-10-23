@@ -6,7 +6,7 @@
 
 **A canvas for dashboards** — Drag panels anywhere and resize them from any edge on a 24-column grid; panels never overlap and never go below a readable size. Add **text** panels in Markdown for runbooks and links, and **headings** for sections. **Tidy up** lays a dashboard out in one click: current values in a row at the top, then trends, breakdowns and tables. Every dashboard you already have was converted on upgrade, keeping its panels' order and sizes, and old exports still import. → [The canvas](/docs/dashboards/#the-canvas)
 
-**AI picks the chart and the size** — Ask AI now says what each panel is for (a current value, a trend, a breakdown, a ranking, a distribution or the rows) and CHouse picks a fitting chart and lays the panels out by section, so drafts come out tidy. Each draft runs in full first, and a chart that does not suit the result, such as a pie with 40 slices, is flagged with a fix. → [Draft dashboards with AI](/docs/dashboards-ai/)
+**AI picks the chart and the size** — Ask AI now says what each panel is for (a current value, a trend, a breakdown, a ranking, a distribution or the rows) and CHouse picks a fitting chart and lays the panels out by section, so drafts come out tidy. Each draft runs in full first, and a chart that does not suit the result, such as a pie with 40 slices, is flagged with a fix. The review is now full screen with a live preview laid out as it will be saved, works on tablets and phones, and lets you **Refine** the whole draft or **Regenerate** one panel instead of starting over. → [Draft dashboards with AI](/docs/dashboards-ai/)
 
 **What changed, and why it spiked** — Line and area charts mark DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes along the time axis, each read with your own access. Select a range to zoom, open its slowest queries, add a note, or **Explain this spike**: Chouse AI reads the range, a week earlier, the changes, queries, mutations and merges, and gives the likely cause with its evidence. → [Annotations and notes](/docs/dashboards/#annotations-and-notes)
 
@@ -35,5 +35,6 @@ Migrations run on start; nothing to run by hand. Check these:
 | A built-in *Spike Explainer* agent and its feature are installed on start | Nothing to do. Explaining a spike needs `ai:optimize` |
 | New read-only MCP tools `list_dashboard_versions` and `get_dashboard_annotations` are on by default | Nothing to do; a token only lists them with `dashboards:view`. Switch them off in **AI Governance › MCP** to keep them from agents |
 | *Operations Analyst* gets `get_dashboard_annotations` on start | Nothing to do for the built-in agent. If you customized it, it shows **Update available** in **AI Governance › Assistant** |
+| *Dashboard Drafter*'s prompt learns Refine and Regenerate on start | Nothing to do for the built-in agent. If you customized it, it shows **Update available** in **AI Governance › Assistant**; until you take it, Refine and Regenerate still work but follow the feedback less closely |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).
