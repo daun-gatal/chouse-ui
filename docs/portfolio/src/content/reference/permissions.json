@@ -339,6 +339,11 @@
     "category": "AI Assistant",
     "anchor": "ai-assistant"
   },
+  "ai:act": {
+    "name": "Let AI Agents Run Approved Actions",
+    "category": "AI Assistant",
+    "anchor": "ai-assistant"
+  },
   "ai_models:view": {
     "name": "View AI Models",
     "category": "AI Models Management",

@@ -134,6 +134,8 @@ export const PERMISSIONS = {
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
   AI_CHAT: 'ai:chat',
+  // ADR 0024: let an AI agent run an action the user approved (kill a query, create a job…).
+  AI_ACT: 'ai:act',
 
   // AI Models Management
   AI_MODELS_VIEW: 'ai_models:view',
@@ -298,6 +300,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.LIVE_QUERIES_KILL_ALL,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_ACT,
     PERMISSIONS.AI_MODELS_VIEW,
     PERMISSIONS.AI_MODELS_CREATE,
     PERMISSIONS.AI_MODELS_UPDATE,
@@ -354,6 +357,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_ACT,
     ...OBSERVE_VIEW_PERMISSIONS,
     PERMISSIONS.OBSERVE_EDIT,
     PERMISSIONS.CONTEXT_EDIT,
@@ -654,6 +658,10 @@ export const AUDIT_ACTIONS = {
   AI_BUDGET_CREATE: 'ai_budget.create',
   AI_BUDGET_UPDATE: 'ai_budget.update',
   AI_BUDGET_DELETE: 'ai_budget.delete',
+
+  // Approved actions (ADR 0024): a person deciding what an AI agent asked to do.
+  AI_ACTION_APPROVE: 'ai_action.approve',
+  AI_ACTION_REJECT: 'ai_action.reject',
 
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',

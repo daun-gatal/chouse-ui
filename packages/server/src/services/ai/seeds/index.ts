@@ -172,6 +172,15 @@ const PINNED_PLAYBOOK: SeedSkillLink = { skill: "clickhouse-playbook", mode: "pi
 // Agents
 // ============================================
 
+/**
+ * Write tools the chat can ask to run (ADR 0024): each low-risk call waits for
+ * the user's approval, and a fix only becomes a proposal in Fixes.
+ */
+const CHAT_ACTION_TOOLS = [
+  "kill_query", "create_saved_query", "create_scheduled_query", "create_health_promise",
+  "create_dashboard", "update_table_context", "propose_remediation",
+];
+
 const CORE_SESSION_TOOLS = [
   "list_databases", "list_tables", "get_table_schema", "get_table_ddl", "get_table_size", "get_table_sample",
   "run_select_query", "explain_query", "get_database_info", "get_running_queries", "get_server_info",
@@ -298,7 +307,7 @@ export const SEED_AGENTS: SeedAgent[] = [
     id: "builtin-agent-clickhouse-data", slug: "clickhouse-data", name: "ClickHouse Data",
     description: "Answers questions about ClickHouse data: databases, tables, columns, SQL, query performance, server state and charts.",
     kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12 },
-    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query"], skills: ALL_SKILLS, subagents: [],
+    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query", ...CHAT_ACTION_TOOLS], skills: ALL_SKILLS, subagents: [],
   },
   {
     id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin",

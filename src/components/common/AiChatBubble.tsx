@@ -41,7 +41,9 @@ import {
     cancelChatRun,
     getActiveChatRun,
     getChatSkills,
+    resumeChatRun,
     type AiModelSimple,
+    type ApprovalDecision,
     type ChatThread,
     type ChatAgentOption,
     type ChatMessage,
@@ -67,6 +69,7 @@ import {
     skillQueryAt,
 } from '@/lib/chatComposer';
 import { ComposerChips, SkillSuggestions, type ComposerAttachment } from '@/components/common/ai-chat/ComposerExtras';
+import { ApprovalCard } from '@/components/common/ai-chat/ApprovalCard';
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
 import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
@@ -531,7 +534,7 @@ function CollapsibleThreadGroup({
 // Component
 // ============================================
 
-function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; isInvoking?: boolean }) {
+function ActivityPanel({ toolCalls, isInvoking, waiting }: { toolCalls: ToolCallStep[]; isInvoking?: boolean; waiting?: boolean }) {
     // Open while the reply is being worked on, so steps show as they happen; the user's own toggle wins.
     const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
     const expanded = userExpanded ?? Boolean(isInvoking);
@@ -554,7 +557,9 @@ function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; i
         .map((step) => activityLabelFor(step).label.toLowerCase());
     const label = isRunning
         ? `Working through ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}…`
-        : completedLabels.length > 0
+        : waiting
+            ? `${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''} so far · waiting for your approval`
+            : completedLabels.length > 0
             ? `Completed ${completedLabels.join(', ')}${failedCount > 0 ? ` · ${failedCount} failed` : ''}`
             : `Completed ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}`;
 
@@ -983,6 +988,8 @@ function useAiChatInvoke({
         open: (onEvent: (event: ChatRunEvent) => void, signal: AbortSignal) => Promise<void>,
         prompt: string | undefined,
         initialSteps: ToolCallStep[] = [],
+        /** Handles a request the server refused before the run moved on; true when handled. */
+        onRefused?: (error: ApiError) => boolean,
     ): Promise<void> => {
         if (runsRef.current.has(threadId)) return;
         const epoch = epochRef.current;
@@ -1025,6 +1032,7 @@ function useAiChatInvoke({
                         settled = true;
                         patch({ isInvoking: false, toolStatus: undefined, pending: event.pending, toolCalls: steps });
                     } else {
+                        settled = false;
                         patch({ pending: undefined, isInvoking: true, toolStatus: statusOf(steps) });
                     }
                     return;
@@ -1058,6 +1066,7 @@ function useAiChatInvoke({
         } catch (error: unknown) {
             if (!isCurrent() || controller.signal.aborted) return;
             const apiError = error instanceof ApiError ? error : null;
+            if (apiError && onRefused?.(apiError)) return;
             const isNetwork = !apiError && error instanceof Error && (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
             const message = isNetwork
                 ? 'Connection failed. You can retry.'
@@ -1094,6 +1103,26 @@ function useAiChatInvoke({
         await driveRun(threadId, (onEvent, signal) => followChatRun(run.id, onEvent, signal), undefined, run.steps.map(stepToToolCall));
     }, [driveRun]);
 
+    /**
+     * Answer a paused reply's approvals and follow the rest of it. A refused
+     * answer that can be fixed (an invalid edit, no ai:act) puts the card back.
+     */
+    const answerApprovals = useCallback(async (threadId: string, runId: string, pending: PendingApproval[], decisions: ApprovalDecision[], steps: ToolCallStep[]): Promise<void> => {
+        updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({ ...last, pending: undefined, isInvoking: true, toolStatus: statusOf(steps) })));
+        await driveRun(
+            threadId,
+            (onEvent, signal) => resumeChatRun(runId, decisions, onEvent, { modelId: selectedModelId || undefined, signal }),
+            undefined,
+            steps,
+            (error) => {
+                if (error.statusCode !== 400 && error.statusCode !== 403) return false;
+                toast.error(error.message);
+                updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({ ...last, pending, isInvoking: false, toolStatus: undefined })));
+                return true;
+            },
+        );
+    }, [driveRun, selectedModelId, updateThreadMessages]);
+
     /** Stop one thread's reply: the server finishes the run as stopped. */
     const stopThread = useCallback((threadId: string) => {
         const entry = runsRef.current.get(threadId);
@@ -1116,7 +1145,7 @@ function useAiChatInvoke({
 
     useEffect(() => cancelAll, [cancelAll]);
 
-    return { runInvoke, followRun, statusByThread, stopThread, cancelAll };
+    return { runInvoke, followRun, answerApprovals, statusByThread, stopThread, cancelAll };
 }
 
 // ============================================
@@ -1523,7 +1552,8 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId]);
 
-    const { runInvoke, followRun, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
+    const canAct = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_ACT));
+    const { runInvoke, followRun, answerApprovals, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
         updateThreadMessages,
         loadThreads,
         selectedModelId,
@@ -1786,6 +1816,21 @@ export default function AiChatBubble() {
         };
         lastExtrasRef.current.set(activeThreadId, extras);
 
+        // A new message instead of an answer declines the waiting approval, so the thread is free again.
+        const waiting = messages.find((m) => m.role === 'assistant' && m.pending?.length && m.runId);
+        if (waiting?.runId) {
+            try {
+                await cancelChatRun(waiting.runId);
+            } catch (error) {
+                log.error('[AiChat] Failed to decline the pending approval', error);
+                toast.error('Answer the pending approval first.');
+                return;
+            }
+            updateThreadMessages(activeThreadId, (prev) => prev.map((m) => (m.id === waiting.id
+                ? { ...m, pending: undefined, content: m.content || 'Not run: you sent a new message instead of approving it.' }
+                : m)));
+        }
+
         const userMsg: UIMessage = {
             id: `user_${Date.now()}`,
             role: 'user',
@@ -1801,7 +1846,7 @@ export default function AiChatBubble() {
             isInvoking: true,
         };
 
-        const messageHistory = messages.map((m) => ({ role: m.role, content: m.content }));
+        const messageHistory = messages.filter((m) => m !== waiting).map((m) => ({ role: m.role, content: m.content }));
         messageHistory.push({ role: 'user', content: trimmed });
 
         updateThreadMessages(activeThreadId, (prev) => [...prev, userMsg, assistantMsg]);
@@ -2347,6 +2392,16 @@ export default function AiChatBubble() {
                                                                             <ActivityPanel
                                                                                 toolCalls={msg.toolCalls}
                                                                                 isInvoking={msg.isInvoking}
+                                                                                waiting={Boolean(msg.pending?.length)}
+                                                                            />
+                                                                        )}
+                                                                        {msg.pending && msg.pending.length > 0 && msg.runId && activeThreadId && (
+                                                                            <ApprovalCard
+                                                                                key={msg.runId + msg.pending.map((p) => p.actionId).join()}
+                                                                                pending={msg.pending}
+                                                                                canAct={canAct}
+                                                                                busy={isInvoking}
+                                                                                onSubmit={(decisions) => void answerApprovals(activeThreadId, msg.runId!, msg.pending!, decisions, msg.toolCalls ?? [])}
                                                                             />
                                                                         )}
                                                                         {msg.isInvoking && msg.toolStatus && !msg.content && (

@@ -10,7 +10,8 @@
 
 import type { Hono } from "hono";
 
-const ASSISTANT_USER_AGENT = "chouse-assistant/1";
+/** Requests made by CHouse's own agents carry this, so routes can tell an AI proposal from a person's. */
+export const ASSISTANT_USER_AGENT = "chouse-assistant/1";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 let app: Hono | null = null;
@@ -58,9 +59,25 @@ export class InProcessApiClient {
 
   /** GET a route and unwrap the standard `{ success, data }` envelope. */
   async get<T = unknown>(path: string, query?: Record<string, string | undefined>): Promise<T> {
+    return this.request<T>("GET", path, { query });
+  }
+
+  /**
+   * POST a body (ADR 0024 approved actions). The route checks permissions and
+   * writes its own audit entry, as the approving user.
+   */
+  async post<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("POST", path, { body });
+  }
+
+  async put<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("PUT", path, { body });
+  }
+
+  private async request<T>(method: "GET" | "POST" | "PUT", path: string, options: { query?: Record<string, string | undefined>; body?: unknown }): Promise<T> {
     if (!app) throw new InProcessApiError("The in-process API is not available", 503);
     const url = new URL(path, "http://chouse.internal");
-    for (const [key, value] of Object.entries(query ?? {})) {
+    for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, value);
     }
     const headers: Record<string, string> = {
@@ -70,9 +87,11 @@ export class InProcessApiClient {
       "X-Requested-With": "XMLHttpRequest",
     };
     if (this.connectionId) headers["X-Connection-Id"] = this.connectionId;
+    if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await app.request(url.pathname + url.search, {
-      method: "GET",
+      method,
       headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     const body = await response.text();

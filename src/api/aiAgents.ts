@@ -121,6 +121,8 @@ export interface CatalogTool {
   domain: "clickhouse" | "chouse";
   category: string;
   access: "read" | "write" | "destructive";
+  /** Write tools (ADR 0024): low risk pauses for approval; high risk only files a proposal. */
+  risk?: "low" | "high";
   requires: ToolContextKind | null;
   permissions: string[];
   description: string;

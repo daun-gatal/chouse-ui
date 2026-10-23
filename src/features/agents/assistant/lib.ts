@@ -132,8 +132,11 @@ const DOMAIN_LABELS: Record<CatalogTool["domain"], string> = { clickhouse: "Clic
 export function groupTools(tools: CatalogTool[]): ToolGroup[] {
   const groups = new Map<string, ToolGroup>();
   for (const tool of tools) {
-    const key = `${tool.domain}:${tool.category}`;
-    const group = groups.get(key) ?? { key, label: `${DOMAIN_LABELS[tool.domain]} · ${tool.category}`, tools: [] };
+    // Write tools (ADR 0024) get groups of their own, so a "read-only" group never holds one.
+    const write = tool.access !== "read";
+    const key = `${tool.domain}:${write ? "actions:" : ""}${tool.category}`;
+    const domain = write ? "Actions (approval required)" : DOMAIN_LABELS[tool.domain];
+    const group = groups.get(key) ?? { key, label: `${domain} · ${tool.category}`, tools: [] };
     group.tools.push(tool);
     groups.set(key, group);
   }

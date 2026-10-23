@@ -11,11 +11,25 @@ import type { AgentDef, HarnessDef, RegistrySnapshot } from "./types";
 const session = {} as never;
 
 describe("tool catalog", () => {
-  it("has unique names that never collide with DeepAgents built-ins, and only read tools", () => {
+  it("has unique names that never collide with DeepAgents built-ins, and no destructive tools", () => {
     const names = TOOL_CATALOG.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
     for (const name of names) expect(BUILTIN_TOOL_NAMES.has(name)).toBe(false);
-    expect(TOOL_CATALOG.every((t) => t.access === "read")).toBe(true);
+    expect(TOOL_CATALOG.some((t) => t.access === "destructive")).toBe(false);
+  });
+
+  it("gives every write tool a risk class, and only write tools one (ADR 0024)", () => {
+    const writes = TOOL_CATALOG.filter((t) => t.access === "write");
+    expect(writes.map((t) => [t.name, t.risk])).toEqual([
+      ["kill_query", "low"],
+      ["create_saved_query", "low"],
+      ["create_scheduled_query", "low"],
+      ["create_health_promise", "low"],
+      ["create_dashboard", "low"],
+      ["update_table_context", "low"],
+      ["propose_remediation", "high"],
+    ]);
+    expect(TOOL_CATALOG.filter((t) => t.access === "read").every((t) => t.risk === undefined)).toBe(true);
   });
 
   it("describes every entry for the UI", () => {

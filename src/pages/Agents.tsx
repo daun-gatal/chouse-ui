@@ -5,13 +5,14 @@
  * with its tool switches. The Assistant tab (ADR 0019) manages CHouse's own
  * AI agents: the chat and every AI feature; AI activity (ADR 0020) shows what
  * they cost and the data they sent to providers; Guardrails (ADR 0022) control
- * what passes through every AI run and MCP tool result.
+ * what passes through every AI run and MCP tool result. Approvals (ADR 0024)
+ * lists the write actions agents asked for and holds background ones for review.
  */
 
 import { useState, type ReactElement } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Activity, Bot, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, Bot, ClipboardCheck, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
 import { AiModelButton } from "@/components/common/AiModelButton";
@@ -20,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ApprovalsPanel } from "@/features/agents/approvals/ApprovalsPanel";
+import { usePendingAiActionCount } from "@/features/agents/approvals/hooks";
 import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
 import { GuardrailsPanel } from "@/features/agents/guardrails/GuardrailsPanel";
 import { AiActivityPanel } from "@/features/agents/usage/AiActivityPanel";
@@ -32,7 +35,7 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage";
+type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage" | "approvals";
 /**
  * External agents (MCP / tokens) need agents:view; the built-in AI agents need
  * ai_agents:view. AI activity (ADR 0020) shows everyone's usage with
@@ -45,6 +48,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permissions: stri
   { key: "assistant", label: "Assistant", icon: Sparkles, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
   { key: "guardrails", label: "Guardrails", icon: ShieldCheck, permissions: [RBAC_PERMISSIONS.AI_GUARDRAILS_VIEW] },
   { key: "usage", label: "AI activity", icon: Activity, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
+  { key: "approvals", label: "Approvals", icon: ClipboardCheck, permissions: [RBAC_PERMISSIONS.AI_ACT, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
 ];
 
 /** Tabs about external agents, which share the agent KPIs and the pause switch. */
@@ -177,6 +181,7 @@ export default function Agents(): ReactElement {
   const { pause } = useAgentMutations();
   const [confirmPause, setConfirmPause] = useState(false);
   const defaultBudget = policies.data?.find((p) => p.scopeKind === "default")?.dailyBytes ?? null;
+  const pendingApprovals = usePendingAiActionCount(tabs.some((t) => t.key === "approvals"));
 
   const togglePause = async (paused: boolean): Promise<void> => {
     try {
@@ -196,7 +201,7 @@ export default function Agents(): ReactElement {
         title="AI Governance"
         navLabel="AI Governance sections"
         layout="start"
-        nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink />)}
+        nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink count={t.key === "approvals" ? pendingApprovals.data : undefined} />)}
         actions={
           <>
             <AiModelButton />
@@ -226,6 +231,7 @@ export default function Agents(): ReactElement {
           {active === "assistant" && <AssistantPanel />}
           {active === "guardrails" && <GuardrailsPanel />}
           {active === "usage" && <AiActivityPanel />}
+          {active === "approvals" && <ApprovalsPanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

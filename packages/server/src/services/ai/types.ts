@@ -45,6 +45,16 @@ export interface AgentRunContext {
    * in-process as that user. Absent for background runs.
    */
   bearerToken?: string;
+  /**
+   * How write tools behave (ADR 0024 §Phase 2). `approve`: a chat run pauses
+   * for the user's approval, then the tool runs. `propose` (the default, for
+   * runs with no person in the loop): the tool only records a pending action.
+   */
+  actionMode?: "approve" | "propose";
+  /** The durable chat run this context belongs to (ADR 0024). */
+  runId?: string;
+  /** The chat thread, so an action links back to it. */
+  threadId?: string;
 }
 
 /** A content block of a chat message: text, or an attachment the model reads (ADR 0024). */

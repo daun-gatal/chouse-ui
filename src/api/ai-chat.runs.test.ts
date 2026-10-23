@@ -14,6 +14,7 @@ import {
     getActiveChatRun,
     getChatRun,
     getChatSkills,
+    resumeChatRun,
     streamChatRun,
     type ChatRunEvent,
 } from './ai-chat';
@@ -94,5 +95,31 @@ describe('run follow-ups', () => {
         expect(await getChatSkills('agent-1')).toEqual([{ name: 'tuning', description: 'Tune queries' }]);
         await getChatSkills(null);
         expect(seen).toEqual(['agent-1', null]);
+    });
+});
+
+describe('resumeChatRun', () => {
+    it('posts the decisions (and model) and streams the rest of the run', async () => {
+        let posted: unknown;
+        server.use(http.post('/api/ai-chat/runs/r1/resume', async ({ request }) => {
+            posted = await request.json();
+            return sse([
+                ['status', { type: 'status', status: 'running', pending: [] }],
+                ['final', { type: 'final', result: { messageId: 'm2', content: 'Killed.', toolCalls: [], chartSpecs: [], agent: { id: 'a', slug: 'a', name: 'A' } } }],
+            ]);
+        }));
+        const events: ChatRunEvent[] = [];
+        await resumeChatRun('r1', [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], (e) => events.push(e), { modelId: 'm' });
+        expect(posted).toEqual({ decisions: [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], modelId: 'm' });
+        expect(events.map((e) => e.type)).toEqual(['status', 'final']);
+    });
+
+    it('throws when the approval expired', async () => {
+        server.use(http.post('/api/ai-chat/runs/r1/resume', () => HttpResponse.json(
+            { success: false, error: { code: 'APPROVAL_EXPIRED', message: 'This approval expired or was already answered.', category: 'validation' } },
+            { status: 410 },
+        )));
+        const error = await resumeChatRun('r1', [{ actionId: 'x1', type: 'approve' }], () => undefined).catch((e: unknown) => e);
+        expect(error).toMatchObject({ statusCode: 410, code: 'APPROVAL_EXPIRED' });
     });
 });

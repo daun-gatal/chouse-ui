@@ -23,7 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
-import { AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
+import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -455,6 +455,17 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.permissionExists("ai_budgets:manage")).toBe(true);
     for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
       expect(await h.roleHasPermission(role, "ai_budgets:manage")).toBe(role === "super_admin" || role === "admin");
+    }
+  },
+  "1.66.0": async () => {
+    // ADR 0024 phase 2: approved actions; ai:act for the roles that change things (not analysts, viewers or guests).
+    expect(AI_ACTION_TABLE_NAMES).toEqual(["ai_actions"]);
+    for (const t of AI_ACTION_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_ACTION_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["source", "run_id", "interrupt_id", "tool", "args", "status", "decided_by", "expires_at"]) expect(await h.columnExists("ai_actions", c)).toBe(true);
+    expect(await h.permissionExists("ai:act")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai:act")).toBe(role === "super_admin" || role === "admin" || role === "developer");
     }
   },
 };

@@ -170,7 +170,7 @@ function agentProblems(agent: AgentDef, snapshot: RegistrySnapshot): string[] {
   for (const name of agent.tools) {
     const entry = catalogTool(name);
     if (!entry) problems.push(`Tool '${name}' is not in the catalog`);
-    else if (entry.access !== "read") problems.push(`Tool '${name}' is not read-only; only read tools can be granted`);
+    else if (entry.access === "destructive") problems.push(`Tool '${name}' is destructive and cannot be granted to an agent`);
     if (seenTools.has(name)) problems.push(`Tool '${name}' is granted twice`);
     seenTools.add(name);
   }

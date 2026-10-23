@@ -177,10 +177,15 @@ for (const dialect of DIALECTS) {
       const decisions = { "int-1": { type: "approve" } };
       const rebuild = async () => input(thread.id);
       const resumed = await runs.resumeChatRun(paused.id, userId, { userId }, decisions, rebuild);
+      // Someone following the resumed run starts from it running, not from the pause it answered.
+      const followed = collect(paused.id);
+      expect(followed.some((e) => e.type === "status" && e.status === "awaiting_approval")).toBe(false);
+      expect(followed[0]).toMatchObject({ type: "run", run: { status: "running", pending: [] } });
       // A second answer to the same approval is refused.
       await expect(runs.resumeChatRun(paused.id, userId, { userId }, decisions, rebuild)).rejects.toMatchObject({ statusCode: 409 });
       const finished = await resumed.done;
       expect(finished.status).toBe("completed");
+      expect(followed.at(-1)).toMatchObject({ type: "final", result: { content: "Killed q1." } });
       expect(calls.at(-1)?.run?.resume).toEqual(decisions);
       // Pinned skills and attachments belong to the first step only.
       expect(calls.at(-1)?.run?.pinnedSkills).toBeUndefined();

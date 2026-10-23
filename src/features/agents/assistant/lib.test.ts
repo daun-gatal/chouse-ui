@@ -116,6 +116,13 @@ describe("assistant lib", () => {
     expect(groupTools(tools).map((g) => g.label)).toEqual(["CHouse (read-only) · access", "ClickHouse · fleet", "ClickHouse · schema"]);
   });
 
+  it("keeps write tools out of the read-only groups", () => {
+    const write = { ...tools[0], name: "kill_query", category: "access", access: "write" as const, risk: "low" as const };
+    const groups = groupTools([...tools, write]);
+    expect(groups.map((g) => g.label)).toEqual(["Actions (approval required) · access", "CHouse (read-only) · access", "ClickHouse · fleet", "ClickHouse · schema"]);
+    expect(groups.find((g) => g.label === "CHouse (read-only) · access")?.tools.some((t) => t.access !== "read")).toBe(false);
+  });
+
   it("makes slugs and keeps them unique", () => {
     expect(slugify("  My Orders Agent! ")).toBe("my-orders-agent");
     expect(uniqueSlug("Orders", ["orders", "orders-2"])).toBe("orders-3");

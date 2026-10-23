@@ -53,7 +53,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.65.0';
+export const APP_VERSION = '1.66.0';
 
 // ============================================
 // Error Helpers

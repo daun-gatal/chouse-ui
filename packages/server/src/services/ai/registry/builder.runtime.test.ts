@@ -12,6 +12,7 @@ import type { ChatResult } from "@langchain/core/outputs";
 import { tool, type StructuredTool } from "@langchain/core/tools";
 
 mock.module("./catalog", () => ({
+  catalogTool: () => undefined,
   buildGrantedTools: (names: string[]) => names.map((name) => tool(async () => `${name} result`, { name, description: `the ${name} tool`, schema: z.object({}) }) as unknown as StructuredTool),
 }));
 

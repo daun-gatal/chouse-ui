@@ -16,15 +16,20 @@ import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
 } from "../middleware/connectionContext";
-import { userHasPermission } from "../rbac/services/rbac";
-import { PERMISSIONS } from "../rbac/schema/base";
+import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
+import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getConfiguration, isAIEnabled } from "../services/aiConfig";
 import { checkBudgets } from "../services/ai/budgets";
 import type { InputModality } from "../rbac/constants/aiModelParams";
-import type { AgentContentPart, AgentMessage } from "../services/ai/types";
+import type { AgentContentPart, AgentMessage, AgentRunContext } from "../services/ai/types";
+import { actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
+import { decideAction } from "../services/ai/actions/store";
+import { mayAct } from "../services/ai/actions/tools";
 import {
     activeRunForThread,
     cancelChatRun,
+    expireStaleApprovals,
+    resumeChatRun,
     getChatRun,
     pruneChatRuns,
     startChatRun,
@@ -258,6 +263,21 @@ async function acceptedModalities(modelId: string | undefined, agentModelId: str
     return config?.model.params?.inputModalities ?? [];
 }
 
+/** The run context of a request: who, which connection, and the token management tools act with. */
+function runContextOf(c: Context<{ Variables: Variables }>, modelId?: string): AgentRunContext {
+    return {
+        userId: c.get("rbacUserId")!,
+        isAdmin: c.get("isRbacAdmin") || false,
+        permissions: c.get("rbacPermissions") || [],
+        connectionId: c.get("rbacConnectionId"),
+        clickhouseService: c.get("service"),
+        defaultDatabase: c.get("session")?.connectionConfig?.database,
+        modelId,
+        // CHouse management tools call the API in-process as this user.
+        bearerToken: extractTokenFromHeader(c.req.header("Authorization")) ?? undefined,
+    };
+}
+
 interface PreparedTurn {
     input: StartChatRunInput;
 }
@@ -304,17 +324,7 @@ async function prepareTurn(c: Context<{ Variables: Variables }>, body: InvokeReq
     if (last && last.role === "user" && last.content === body.message) history = [...history.slice(0, -1), { role: "user", content }];
     else history = [...history, { role: "user", content }];
 
-    const ctx = {
-        userId: rbacUserId,
-        isAdmin: c.get("isRbacAdmin") || false,
-        permissions: c.get("rbacPermissions") || [],
-        connectionId: c.get("rbacConnectionId"),
-        clickhouseService: c.get("service"),
-        defaultDatabase: session?.connectionConfig?.database,
-        modelId: body.modelId,
-        // CHouse management tools call the API in-process as this user.
-        bearerToken: extractTokenFromHeader(c.req.header("Authorization")) ?? undefined,
-    };
+    const ctx = runContextOf(c, body.modelId);
     return {
         input: {
             userId: rbacUserId,
@@ -374,7 +384,9 @@ function streamRun(c: Context<{ Variables: Variables }>, runId: string, initial:
             if (subscription) {
                 for (const event of subscription.replay) {
                     await send(event);
+                    // A pause followed by "running" again was answered: only the latest outcome ends the stream.
                     if (ends(event)) finished = true;
+                    else if (event.type === "status") finished = false;
                 }
                 while (!finished) {
                     if (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve; setTimeout(resolve, 15_000); });
@@ -453,6 +465,83 @@ aiChat.get("/skills", async (c) => {
     const requested = c.req.query("agentId") || null;
     if (requested && !chatAgentCandidates(snapshot, ctx).some((a) => a.id === requested)) throw AppError.notFound("Chat agent not found");
     return c.json({ success: true, data: pinnableSkills(snapshot, requested) });
+});
+
+export const DecisionSchema = z.object({
+    actionId: z.string().min(1),
+    type: z.enum(["approve", "edit", "reject"]),
+    /** The edited arguments (edit only); validated like the tool's own input. */
+    args: z.record(z.unknown()).optional(),
+    /** Why it was rejected, for the agent (reject only). */
+    message: z.string().trim().max(1000).optional(),
+});
+
+export const ResumeRequestSchema = z.object({
+    decisions: z.array(DecisionSchema).min(1).max(20),
+    modelId: z.string().optional(),
+});
+
+/**
+ * POST /ai-chat/runs/:id/resume — answer a paused run's approvals (ADR 0024
+ * §Phase 2) and stream the rest of it. Every pending action needs a decision.
+ * Approving or editing needs ai:act; anyone may reject their own run's action.
+ */
+aiChat.post("/runs/:id/resume", zValidator("json", ResumeRequestSchema), async (c) => {
+    const body = c.req.valid("json");
+    const userId = c.get("rbacUserId")!;
+    const ctx = runContextOf(c, body.modelId);
+    const paused = await getChatRun(c.req.param("id"));
+    if (!paused || paused.userId !== userId) throw AppError.notFound("Chat run not found");
+    if (paused.status !== "awaiting_approval") throw AppError.conflict("This reply is not waiting for an approval.");
+    const byAction = new Map(body.decisions.map((d) => [d.actionId, d]));
+    const missing = paused.pending.filter((p) => !byAction.has(p.actionId));
+    if (missing.length > 0) throw AppError.badRequest(`Decide every pending action first: ${missing.map((p) => p.title).join(", ")}.`);
+    if (body.decisions.some((d) => d.type !== "reject") && !mayAct(ctx)) {
+        throw AppError.forbidden("You need the ai:act permission to approve AI actions. You can still reject them.");
+    }
+
+    // Validate every edit before recording any decision, so one bad edit leaves all of them open to retry.
+    const answers = paused.pending.map((pending) => {
+        const decision = byAction.get(pending.actionId);
+        if (!decision) throw AppError.badRequest("Decide every pending action first.");
+        const definition = actionDefinition(pending.name);
+        let args: Record<string, unknown> | undefined;
+        if (decision.type === "edit") {
+            if (!definition) throw AppError.badRequest(`'${pending.name}' cannot be edited.`);
+            const parsed = parseEditedArgs(definition, decision.args);
+            if (!parsed.ok) throw AppError.badRequest(parsed.message);
+            args = parsed.args;
+        }
+        return { pending, decision, definition, args };
+    });
+
+    const resume: Record<string, unknown> = {};
+    for (const { pending, decision, definition, args } of answers) {
+        const decided = await decideAction(pending.actionId, decision.type === "reject" ? "rejected" : "approved", userId, args);
+        if (!decided) {
+            await expireStaleApprovals();
+            throw new AppError("This approval expired or was already answered. Ask the assistant again.", "APPROVAL_EXPIRED", "validation", 410);
+        }
+        await createAuditLogWithContext(c, decision.type === "reject" ? AUDIT_ACTIONS.AI_ACTION_REJECT : AUDIT_ACTIONS.AI_ACTION_APPROVE, userId, {
+            resourceType: "ai_action",
+            resourceId: decided.id,
+            details: { origin: "ai", tool: decided.tool, description: definition && args ? definition.describe(args) : decided.description, edited: decision.type === "edit", runId: paused.id },
+        });
+        resume[pending.id] = decision.type === "approve"
+            ? { type: "approve" }
+            : decision.type === "edit"
+                ? { type: "edit", edited_action: { name: pending.name, args } }
+                : { type: "reject", message: decision.message || "The user rejected this action. Don't retry it unless they ask." };
+    }
+    const { run } = await resumeChatRun(paused.id, userId, ctx, resume, async (stored) => ({
+        userId,
+        threadId: stored.threadId,
+        ctx,
+        messages: [],
+        agentId: undefined,
+        runAgentId: stored.agentId,
+    }));
+    return streamRun(c, run.id, run);
 });
 
 /** GET /ai-chat/runs/:id — a run's stored state (steps, pending approvals, answer). */

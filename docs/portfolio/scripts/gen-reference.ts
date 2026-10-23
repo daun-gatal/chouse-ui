@@ -195,6 +195,7 @@ const AUDIT_AREAS: Record<string, string> = {
   ai_registry: "AI agent registry",
   ai_guardrail: "AI guardrails",
   ai_budget: "AI budgets",
+  ai_action: "AI approved actions",
 };
 
 function auditEventsPage(): string {
@@ -652,18 +653,33 @@ const AI_TOOL_DOMAINS = [
 function aiToolsPage(): string {
   const catalog = describeCatalog();
   const users = (name: string): string[] => SEED_AGENTS.filter((a) => a.tools.includes(name)).map((a) => a.name);
+  const what = (description: string): string => cell(description.replace(/\s*Read-only; results respect your CHouse permissions\.$/, "").replace(/```(\w+)/g, "`$1`"));
+  const needs = (permissions: readonly string[]): string => (permissions.length ? permissions.map(code).join(", ") : "—");
   const sections = AI_TOOL_DOMAINS.map(({ id, label }) => {
-    const tools = catalog.filter((t) => t.domain === id);
+    const tools = catalog.filter((t) => t.domain === id && t.access === "read");
     const rows = tools.map((t) => [
       code(t.name),
       cell(t.title),
       t.requires ? CONTEXT_LABELS[t.requires] : "—",
-      t.permissions.length ? t.permissions.map(code).join(", ") : "—",
-      cell(t.description.replace(/\s*Read-only; results respect your CHouse permissions\.$/, "").replace(/```(\w+)/g, "`$1`")),
+      needs(t.permissions),
+      what(t.description),
       String(users(t.name).length),
     ]);
     return `## ${label}\n\n${table(["Tool", "Title", "Context", "Needs any of", "What it does", "Built-in agents"], rows)}`;
   });
+  const actions = catalog.filter((t) => t.access === "write");
+  sections.push(`## Action tools
+
+These tools change something, so nothing runs until a person says so. In a chat the run pauses on each low-risk call and the user approves, edits or rejects it; running it needs \`ai:act\`. In a run with nobody there, the call is saved for approval in **AI Governance › Approvals**. High-risk changes only file a proposal in **Fixes**, where the remediation approval rules decide.
+
+${table(["Tool", "Title", "Risk", "Needs any of", "What it does", "Built-in agents"], actions.map((t) => [
+    code(t.name),
+    cell(t.title),
+    t.risk ?? "low",
+    needs(t.permissions),
+    what(t.description),
+    String(users(t.name).length),
+  ]))}`);
   const harnessTable = table(
     ["Built-in tool", "What it does", ...SEED_HARNESSES.map((h) => h.name)],
     BUILTIN_TOOLS.map((t) => [
@@ -686,7 +702,7 @@ function aiToolsPage(): string {
     `
 Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the ${catalog.length} catalog tools, the built-in DeepAgents tools a harness can hide, and the ${SEED_SKILLS.length} skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
-Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
+Catalog tools only read, except the [action tools](#action-tools), which wait for a person to approve each call. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
 ${sections.join("\n\n")}
 

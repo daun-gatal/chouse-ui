@@ -17,12 +17,13 @@ const mocks = vi.hoisted(() => ({
   cancelChatRun: vi.fn(),
   getActiveChatRun: vi.fn(),
   getChatSkills: vi.fn(),
+  resumeChatRun: vi.fn(),
   listThreads: vi.fn(),
   viewportWidth: 1440,
 }));
 
 vi.mock("@/stores", () => ({
-  RBAC_PERMISSIONS: { AI_CHAT: "ai:chat" },
+  RBAC_PERMISSIONS: { AI_CHAT: "ai:chat", AI_ACT: "ai:act" },
   useAuthStore: Object.assign(
     (selector: (state: { activeConnectionId: string | null }) => unknown) =>
       selector({ activeConnectionId: mocks.activeConnectionId }),
@@ -45,6 +46,7 @@ vi.mock("@/api/ai-chat", () => ({
   cancelChatRun: mocks.cancelChatRun,
   getActiveChatRun: mocks.getActiveChatRun,
   getChatSkills: mocks.getChatSkills,
+  resumeChatRun: mocks.resumeChatRun,
   listThreads: mocks.listThreads,
   updateThreadTitle: vi.fn(),
 }));
@@ -72,6 +74,20 @@ function deferredRun(): { implementation: (request: unknown, onEvent: (event: un
       done();
     },
   };
+}
+
+const COMPOSER = "Ask about your databases, schemas, queries…";
+
+/**
+ * Type into the composer and send. The sheet re-renders its composer once the
+ * thread list loads, so re-query until the text has landed in the live one.
+ */
+async function send(value: string, placeholder: string | RegExp = COMPOSER): Promise<void> {
+  await waitFor(() => {
+    fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(placeholder).value).toBe(value);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
 }
 
 // jsdom has no layout, so the virtualized message list would render nothing: render every row.
@@ -142,6 +158,7 @@ describe("AiChatBubble", () => {
     mocks.getChatSkills.mockResolvedValue([]);
     mocks.listThreads.mockReset();
     mocks.listThreads.mockResolvedValue([]);
+    mocks.resumeChatRun.mockReset();
     mocks.viewportWidth = 1440;
   });
 
@@ -278,10 +295,8 @@ describe("AiChatBubble", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
-    fireEvent.change(await screen.findByPlaceholderText("Ask about your databases, schemas, queries…"), {
-      target: { value: "Question for connection A" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByPlaceholderText(COMPOSER);
+    await send("Question for connection A");
     await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(1));
     const loadsOfA = (): number => mocks.listThreads.mock.calls.filter(([connectionId]) => connectionId === "connection-a").length;
     const loadsBeforeSwitch = loadsOfA();
@@ -331,9 +346,8 @@ describe("AiChatBubble", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
-    const composer = await screen.findByPlaceholderText("Ask about your databases, schemas, queries…");
-    fireEvent.change(composer, { target: { value: "Slow question" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByPlaceholderText(COMPOSER);
+    await send("Slow question");
     await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("button", { name: "Stop generating" })).not.toBeNull();
 
@@ -343,8 +357,7 @@ describe("AiChatBubble", () => {
     expect(freshComposer.disabled).toBe(false);
     expect(screen.queryByRole("button", { name: "Stop generating" })).toBeNull();
 
-    fireEvent.change(freshComposer, { target: { value: "Second question" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await send("Second question");
     await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(2));
     expect(mocks.streamChatRun.mock.calls.map(([request]) => (request as { threadId: string }).threadId)).toEqual(["thread-1", "thread-2"]);
 
@@ -444,9 +457,8 @@ describe("AiChatBubble", () => {
         emit = onEvent;
         done = resolve;
       }));
-      const composer = await openNewChat();
-      fireEvent.change(composer, { target: { value: "List databases" } });
-      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await openNewChat();
+      await send("List databases");
       await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(1));
 
       await act(async () => {
@@ -479,9 +491,8 @@ describe("AiChatBubble", () => {
         done();
         return run("run-stop", { status: "cancelled" });
       });
-      const composer = await openNewChat();
-      fireEvent.change(composer, { target: { value: "Slow" } });
-      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await openNewChat();
+      await send("Slow");
       fireEvent.click(await screen.findByRole("button", { name: "Stop generating" }));
       await waitFor(() => expect(mocks.cancelChatRun).toHaveBeenCalledWith("run-stop"));
       expect(await screen.findByText("Generation stopped.")).not.toBeNull();
@@ -490,9 +501,8 @@ describe("AiChatBubble", () => {
 
     it("shows a used-up budget without offering Retry", async () => {
       mocks.streamChatRun.mockRejectedValueOnce(new ApiError("The AI budget 'chat cap' is used up for this day. It resets at 2026-10-24 00:00 UTC.", 429, "AI_BUDGET_EXHAUSTED", "validation"));
-      const composer = await openNewChat();
-      fireEvent.change(composer, { target: { value: "hi" } });
-      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await openNewChat();
+      await send("hi");
       expect(await screen.findByText(/The AI budget 'chat cap' is used up/)).not.toBeNull();
       expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     });
@@ -518,9 +528,13 @@ describe("AiChatBubble", () => {
 
     it("offers the agent's skills after / and pins the chosen one", async () => {
       mocks.getChatSkills.mockResolvedValue([{ name: "query-optimization", description: "Tune slow queries" }]);
-      const composer = await openNewChat(/type \/ for skills/);
-      fireEvent.change(composer, { target: { value: "/", selectionStart: 1 } });
-      const option = await screen.findByRole("option", { name: /skill:query-optimization/ });
+      await openNewChat(/type \/ for skills/);
+      await waitFor(() => {
+        fireEvent.change(screen.getByPlaceholderText(/type \/ for skills/), { target: { value: "/", selectionStart: 1 } });
+        expect(screen.getByRole("option", { name: /skill:query-optimization/ })).not.toBeNull();
+      });
+      const composer = screen.getByPlaceholderText<HTMLTextAreaElement>(/type \/ for skills/);
+      const option = screen.getByRole("option", { name: /skill:query-optimization/ });
       expect(option.getAttribute("aria-selected")).toBe("true");
       fireEvent.keyDown(composer, { key: "Enter" });
       await waitFor(() => expect(composer.value).toBe("/skill:query-optimization "));
@@ -530,6 +544,76 @@ describe("AiChatBubble", () => {
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
       await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(1));
       expect(mocks.streamChatRun.mock.calls[0][0]).toMatchObject({ message: "why is it slow?", skills: ["query-optimization"] });
+    });
+
+    describe("approvals (ADR 0024 phase 2)", () => {
+      const pending = { id: "int-1", toolCallId: "c1", actionId: "act-1", name: "kill_query", title: "Kill a query", args: { queryId: "q-7" }, description: 'KILL QUERY WHERE query_id = "q-7"', expiresAt: Date.now() + 15 * 60_000 };
+
+      async function pause(): Promise<void> {
+        mocks.streamChatRun.mockImplementationOnce(async (_request: unknown, onEvent: (event: unknown) => void) => {
+          onEvent({ type: "run", run: run("run-pause") });
+          onEvent({ type: "step", step: { id: "s1", name: "get_running_queries", args: {}, status: "done", summary: "1 query", startedAt: 1, endedAt: 2 } });
+          onEvent({ type: "status", status: "awaiting_approval", pending: [pending] });
+        });
+        await openNewChat();
+        await send("Kill the runaway query");
+        expect(await screen.findByRole("group", { name: "Approval needed" })).not.toBeNull();
+      }
+
+      it("shows what will run, and continues the same reply once approved", async () => {
+        mocks.resumeChatRun.mockImplementationOnce(async (_id: string, _decisions: unknown, onEvent: (event: unknown) => void) => {
+          onEvent({ type: "status", status: "running", pending: [] });
+          onEvent({ type: "final", result: answer("Killed q-7.") });
+        });
+        await pause();
+        expect(screen.getByText("Kill a query")).not.toBeNull();
+        expect(screen.getByText('KILL QUERY WHERE query_id = "q-7"')).not.toBeNull();
+        expect(screen.getByText(/Expires in 1[45]:/)).not.toBeNull();
+        expect(screen.getByText("1 step so far · waiting for your approval")).not.toBeNull();
+        // The reply is not generating while it waits, so Stop is not offered.
+        expect(screen.queryByRole("button", { name: "Stop generating" })).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+        await waitFor(() => expect(mocks.resumeChatRun).toHaveBeenCalledWith("run-pause", [{ actionId: "act-1", type: "approve" }], expect.any(Function), expect.objectContaining({ signal: expect.any(AbortSignal) })));
+        expect(await screen.findByText("Killed q-7.")).not.toBeNull();
+        expect(screen.queryByRole("group", { name: "Approval needed" })).toBeNull();
+      });
+
+      it("puts the card back when the server refuses an edit", async () => {
+        mocks.resumeChatRun.mockRejectedValueOnce(new ApiError('The edited "Kill a query" action is not valid: queryId Required', 400, "BAD_REQUEST", "validation"));
+        await pause();
+        fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+        const editor = screen.getByLabelText("Arguments (JSON)");
+        fireEvent.change(editor, { target: { value: "{" } });
+        fireEvent.click(screen.getByRole("button", { name: "Approve with changes" }));
+        expect(screen.getByRole("alert").textContent).toBe("Not valid JSON.");
+        expect(mocks.resumeChatRun).not.toHaveBeenCalled();
+        fireEvent.change(editor, { target: { value: "{}" } });
+        fireEvent.click(screen.getByRole("button", { name: "Approve with changes" }));
+        await waitFor(() => expect(mocks.resumeChatRun).toHaveBeenCalledWith("run-pause", [{ actionId: "act-1", type: "edit", args: {} }], expect.any(Function), expect.anything()));
+        expect(await screen.findByRole("group", { name: "Approval needed" })).not.toBeNull();
+        expect(screen.queryByText(/Generation stopped|went wrong/)).toBeNull();
+      });
+
+      it("sends a rejection with the reason", async () => {
+        mocks.resumeChatRun.mockImplementationOnce(async (_id: string, _decisions: unknown, onEvent: (event: unknown) => void) => {
+          onEvent({ type: "final", result: answer("Okay, I left it running.") });
+        });
+        await pause();
+        fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+        fireEvent.change(screen.getByLabelText(/Why not\?/), { target: { value: "Not during the backfill" } });
+        fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+        await waitFor(() => expect(mocks.resumeChatRun).toHaveBeenCalledWith("run-pause", [{ actionId: "act-1", type: "reject", message: "Not during the backfill" }], expect.any(Function), expect.anything()));
+        expect(await screen.findByText("Okay, I left it running.")).not.toBeNull();
+      });
+
+      it("declines the waiting approval when a new message is sent instead", async () => {
+        await pause();
+        await send("Actually, show me the tables");
+        await waitFor(() => expect(mocks.cancelChatRun).toHaveBeenCalledWith("run-pause"));
+        await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(2));
+        expect(screen.getByText("Not run: you sent a new message instead of approving it.")).not.toBeNull();
+        expect(screen.queryByRole("group", { name: "Approval needed" })).toBeNull();
+      });
     });
 
     it("closes the skill picker with Escape without closing the chat", async () => {

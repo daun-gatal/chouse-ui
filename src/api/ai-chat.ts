@@ -200,15 +200,26 @@ export interface ChatRunStep {
     endedAt: number | null;
 }
 
-/** A tool call waiting for the user's approval. */
+/** A tool call waiting for the user's approval (ADR 0024 §Phase 2). */
 export interface PendingApproval {
     id: string;
     toolCallId: string;
+    /** The recorded action the decision is about. */
+    actionId: string;
     name: string;
+    /** The tool's title, e.g. "Kill a query". */
+    title: string;
     args: Record<string, unknown>;
+    /** What will happen, in one line. */
     description: string;
     expiresAt: number;
 }
+
+/** The user's answer to one pending approval. */
+export type ApprovalDecision =
+    | { actionId: string; type: 'approve' }
+    | { actionId: string; type: 'edit'; args: Record<string, unknown> }
+    | { actionId: string; type: 'reject'; message?: string };
 
 export interface ChatRunAnswer {
     messageId: string | null;
@@ -286,6 +297,13 @@ export async function streamChatRun(request: ChatRunRequest, onEvent: (event: Ch
 export async function followChatRun(runId: string, onEvent: (event: ChatRunEvent) => void, signal?: AbortSignal): Promise<void> {
     const response = await api.stream('GET', `/ai-chat/runs/${runId}/events`, undefined, signal);
     await consume(response, onEvent, signal);
+}
+
+/** Answer a paused run's approvals and stream the rest of it. */
+export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; signal?: AbortSignal } = {}): Promise<void> {
+    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}) };
+    const response = await api.stream('POST', `/ai-chat/runs/${runId}/resume`, body, options.signal);
+    await consume(response, onEvent, options.signal);
 }
 
 export async function getChatRun(runId: string): Promise<ChatRun> {

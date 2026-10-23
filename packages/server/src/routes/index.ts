@@ -25,6 +25,7 @@ import agents from "./agents";
 import aiAgents from "./ai-agents";
 import aiGuardrails from "./ai-guardrails";
 import aiUsage from "./ai-usage";
+import aiActions from "./ai-actions";
 import integrations from "./integrations";
 import dashboards from "./dashboards";
 import { requestCallerMiddleware } from "../services/ai/usage/origin";
@@ -123,6 +124,7 @@ api.route("/agents", agents);
 api.route("/ai-agents", aiAgents);
 api.route("/ai-guardrails", aiGuardrails);
 api.route("/ai-usage", aiUsage);
+api.route("/ai-actions", aiActions);
 api.route("/integrations", integrations);
 
 // Custom dashboards (ADR 0021)

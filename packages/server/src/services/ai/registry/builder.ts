@@ -21,14 +21,15 @@ import {
 import { randomUUID } from "crypto";
 import { parseToolResult } from "../runtime/chatOutput";
 import { tool } from "@langchain/core/tools";
-import { todoListMiddleware, type AgentMiddleware } from "langchain";
+import { humanInTheLoopMiddleware, todoListMiddleware, type AgentMiddleware } from "langchain";
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 import { AppError } from "../../../types";
 import type { AgentTool } from "../langchainTools";
 import type { AgentRunContext, RenderedPrompts } from "../types";
-import { buildGrantedTools, type ToolRuntime } from "./catalog";
+import { buildGrantedTools, catalogTool, type ToolRuntime } from "./catalog";
+import { actionDefinition } from "../actions/definitions";
 import { applyDescriptionOverrides, applyPromptSuffix, generalPurposeSubagent, harnessToolMiddleware } from "./harness";
 import { RegistrySkillsBackend, skillFiles } from "./skillsBackend";
 import { renderTemplate, TemplateError, type TemplateValue } from "./template";
@@ -342,6 +343,8 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
   if (generalPurpose) subagents.push(generalPurpose);
 
   const middleware = [
+    // First, so it wraps everything after it: an approved (or edited) call then passes the guardrails like any other.
+    approvalMiddleware([...baseGrants, ...skillToolNames], build.runtime),
     // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
     harness.excludedTools.includes("write_todos") ? null : todoListMiddleware(),
     harnessToolMiddleware(harness),
@@ -350,6 +353,25 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
   ].filter((m): m is AgentMiddleware => m !== null);
   return { tools, middleware, sources, skills, subagents };
+}
+
+/**
+ * Per-call approval for the low-risk write tools of a chat run (ADR 0024
+ * §Phase 2). It is always added for them: no harness or setting can skip it.
+ * Runs without a person in the loop never get it; their write tools only
+ * record pending actions.
+ */
+function approvalMiddleware(toolNames: Iterable<string>, runtime: ToolRuntime): AgentMiddleware | null {
+  if (runtime.ctx.actionMode !== "approve") return null;
+  const interruptOn: Record<string, { allowedDecisions: Array<"approve" | "edit" | "reject">; description: (call: { args: Record<string, unknown> }) => string }> = {};
+  for (const name of toolNames) {
+    const entry = catalogTool(name);
+    const definition = actionDefinition(name);
+    if (entry?.access !== "write" || entry.risk !== "low" || !definition) continue;
+    interruptOn[name] = { allowedDecisions: ["approve", "edit", "reject"], description: (call) => definition.describe(call.args ?? {}) };
+  }
+  if (Object.keys(interruptOn).length === 0) return null;
+  return humanInTheLoopMiddleware({ interruptOn, interruptMode: "per_call" }) as AgentMiddleware;
 }
 
 function skillsBackend(skills: SkillDef[]): CompositeBackend {

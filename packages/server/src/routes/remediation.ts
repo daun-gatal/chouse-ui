@@ -23,6 +23,7 @@ import { postApprovalRequest } from "../services/remediation/slack";
 import * as store from "../services/remediation/store";
 import { AppError, requireParam } from "../types";
 import { actor, assertConnectionAccess, tableAccess } from "./observe/access";
+import { ASSISTANT_USER_AGENT } from "../services/ai/registry/inProcessApi";
 
 const remediation = new Hono();
 remediation.use("*", rbacAuthMiddleware);
@@ -115,8 +116,8 @@ remediation.post("/actions", requirePermission(PERMISSIONS.REMEDIATION_PROPOSE),
     if (!allowed(p.database, typeof p.table === "string" ? p.table : null)) throw AppError.forbidden("You do not have access to this table");
   }
   const user = getRbacUser(c);
-  // MCP / PAT callers are agents: their proposals can never be self-approved.
-  const source = c.get("authMethod") === "pat" ? "mcp" : "user";
+  // MCP / PAT callers and CHouse's own assistant are agents: their proposals can never be self-approved.
+  const source = c.req.header("User-Agent") === ASSISTANT_USER_AGENT ? "ai" : c.get("authMethod") === "pat" ? "mcp" : "user";
   let action: store.RemediationAction;
   try {
     action = await proposeAction({ ...body, proposedBy: user.sub, proposedSource: source });

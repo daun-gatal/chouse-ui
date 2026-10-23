@@ -25,6 +25,8 @@ import type { ToolEvent } from "../registry/builder";
 import type { AgentMessage, AgentRunContext } from "../types";
 import { chatAnswer, stripScratchpad, type ChatAnswerToolCall } from "./chatOutput";
 import { checkpointSaver } from "./checkpointer";
+import { actionDefinition } from "../actions/definitions";
+import { CHAT_APPROVAL_TTL_MS, createAction, expireActions, rejectRunActions } from "../actions/store";
 
 export const CHAT_RUN_STATUSES = ["running", "awaiting_approval", "completed", "failed", "cancelled"] as const;
 export type ChatRunStatus = (typeof CHAT_RUN_STATUSES)[number];
@@ -55,6 +57,10 @@ export interface ChatRunAnswer {
 }
 
 export interface PendingApproval extends ChatInterrupt {
+  /** The recorded action (ADR 0024 §Phase 2): what the approval card decides. */
+  actionId: string;
+  /** The tool's title, for the approval card. */
+  title: string;
   expiresAt: number;
 }
 
@@ -284,7 +290,9 @@ async function execute(entry: ChatRun, { input, resume }: Execution): Promise<Ch
   };
 
   try {
-    const result = await invokeChat(input.ctx, input.messages, {
+    // A chat run has a person in the loop: write tools pause for their approval.
+    const ctx = { ...input.ctx, actionMode: "approve" as const, runId: entry.id, threadId: entry.threadId };
+    const result = await invokeChat(ctx, input.messages, {
       agentId: input.runAgentId,
       threadId: entry.threadId,
       signal: controller.signal,
@@ -293,7 +301,22 @@ async function execute(entry: ChatRun, { input, resume }: Execution): Promise<Ch
     });
     if (result.interrupts.length > 0) {
       entry.status = "awaiting_approval";
-      entry.pending = result.interrupts.map((i) => ({ ...i, expiresAt: Date.now() + APPROVAL_TTL_MS }));
+      entry.pending = [];
+      for (const interrupt of result.interrupts) {
+        const action = await createAction({
+          source: "chat",
+          runId: entry.id,
+          interruptId: interrupt.id,
+          threadId: entry.threadId,
+          userId: entry.userId,
+          connectionId: entry.connectionId,
+          tool: interrupt.name,
+          args: interrupt.args,
+          description: interrupt.description || interrupt.name,
+          expiresAt: Date.now() + APPROVAL_TTL_MS,
+        });
+        entry.pending.push({ ...interrupt, actionId: action.id, title: actionDefinition(interrupt.name)?.title ?? interrupt.name, expiresAt: action.expiresAt });
+      }
       await saveRun(entry);
       emit(entry.id, { type: "status", status: entry.status, pending: entry.pending });
       return entry;
@@ -334,7 +357,40 @@ async function cancelWasRequested(runId: string): Promise<boolean> {
 }
 
 /** Pending approvals in chat expire (ADR 0024 §Phase 2). */
-export const APPROVAL_TTL_MS = 15 * 60_000;
+export const APPROVAL_TTL_MS = CHAT_APPROVAL_TTL_MS;
+
+const EXPIRED_MESSAGE = "The approval expired, so this reply stopped. Ask again to continue.";
+
+/**
+ * End runs whose approval expired: the action is marked expired and the run
+ * stops (its checkpoints go). Safe on every replica — each step is conditional.
+ */
+export async function expireStaleApprovals(now: number = Date.now()): Promise<number> {
+  const runIds = await expireActions(now);
+  let ended = 0;
+  for (const runId of runIds) {
+    const row = await one(sql`UPDATE ai_chat_runs SET status = 'cancelled', error = ${EXPIRED_MESSAGE}, pending = NULL, updated_at = ${now}
+      WHERE id = ${runId} AND status = 'awaiting_approval' RETURNING id`);
+    if (!row) continue;
+    ended += 1;
+    paused.delete(runId);
+    await rejectRunActions(runId, null);
+    await checkpointSaver().deleteThread(runId);
+    emit(runId, { type: "error", message: EXPIRED_MESSAGE, code: "APPROVAL_EXPIRED", status: "cancelled" });
+  }
+  return ended;
+}
+
+let sweeper: ReturnType<typeof setInterval> | null = null;
+
+/** Check for expired approvals every minute (started once at boot). */
+export function startApprovalSweeper(): void {
+  if (sweeper) return;
+  sweeper = setInterval(() => {
+    expireStaleApprovals().catch((error: unknown) => logger.warn({ module: "ChatRuns", err: error instanceof Error ? error.message : String(error) }, "Approval sweep failed"));
+  }, 60_000);
+  sweeper.unref?.();
+}
 
 /** The inputs a paused run needs to resume, kept by the replica that paused it. */
 const paused = new Map<string, StartChatRunInput>();
@@ -387,9 +443,11 @@ export async function resumeChatRun(runId: string, userId: string, ctx: AgentRun
   paused.delete(runId);
   entry.status = "running";
   entry.pending = [];
+  // A follower of the resumed run starts from its current state, not from the pause it already answered.
   const liveRun = live.get(runId);
-  if (liveRun) liveRun.events.push({ type: "status", status: "running", pending: [] });
-  else live.set(runId, { controller: new AbortController(), events: [{ type: "run", run: { ...entry } }], listeners: new Set() });
+  const events: ChatRunEvent[] = [{ type: "run", run: { ...entry, steps: entry.steps.map((s) => ({ ...s })) } }];
+  if (liveRun) liveRun.events = events;
+  else live.set(runId, { controller: new AbortController(), events, listeners: new Set() });
   emit(runId, { type: "status", status: "running", pending: [] });
   const done = execute(entry, { input, resume: decisions }).then((finished) => {
     if (finished.status === "awaiting_approval") paused.set(finished.id, input);
@@ -406,6 +464,7 @@ export async function cancelChatRun(runId: string, userId: string): Promise<Chat
     entry.status = "cancelled";
     entry.error = "Stopped.";
     entry.pending = [];
+    await rejectRunActions(runId, userId);
     await run(sql`UPDATE ai_chat_runs SET cancel_requested = 1 WHERE id = ${runId}`);
     await saveRun(entry);
     await checkpointSaver().deleteThread(runId);

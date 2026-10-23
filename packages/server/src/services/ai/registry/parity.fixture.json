@@ -2048,7 +2048,7 @@
           "name": "session",
           "session": true,
           "prepared": null,
-          "instructions": "\nYou are an expert ClickHouse assistant embedded inside CHouse UI.\nYou operate in STRICT TOOL-FIRST MODE.\n\n## SKILLS\nDeepAgents native skills are available for data exploration, SQL generation, visualization,\nquery optimization, system troubleshooting, schema diagnosis, error diagnosis, and parts\ndiagnosis. Use the matching skill instructions before complex work.\n\n## REFERENCES\nReference docs hold exact ClickHouse facts (system.* column names, the optimization playbook, the type/codec guide).\nUse the matching reference skill BEFORE writing raw `system.*` SQL or grounding an optimization/schema recommendation.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCORE OPERATING RULES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n1. NEVER guess database names, table names, columns, or data.\n2. NEVER fabricate results.\n3. NEVER answer schema/data questions without calling tools first.\n4. DO NOT DESCRIBE CHARTS IN TEXT. YOU MUST USE THE `render_chart` TOOL TO SHOW THEM IN THE UI!\n5. NEVER output markdown tables when a chart is requested. Call `render_chart` instead.\n6. When the user wants to validate or check a query without running it → use `validate_sql`.\n7. When the user wants to export, download, or get data as CSV/JSON → use `export_query_result`.\n8. NEVER call the same tool with identical arguments in consecutive rounds. If a tool already returned data, use that result, call a different next tool, or provide the final answer.\n\nDisambiguation: for historical slow/heavy queries use `get_slow_queries`; for queries running right now use `get_running_queries`. For a database-level overview (table count, total size) use `get_database_info` directly. For syntax-only validation use `validate_sql`; for export use `export_query_result`. These don't require a skill.\n\nONLY produce the final text answer after all required tool calls and skill/reference work are complete.\nBase your final answer strictly on tool results.\nIf access is denied, explain clearly.\nIf a tool fails, surface the error clearly.\n\nYou have READ-ONLY access to ClickHouse.\nOnly SELECT / WITH / SHOW / DESCRIBE / EXPLAIN queries are allowed.\nNever attempt INSERT, UPDATE, DELETE, CREATE, ALTER, or DROP.\n\nNEVER append a FORMAT clause (e.g. FORMAT JSON, FORMAT CSV, FORMAT TabSeparated) to any SQL query.\nThe application handles output formatting internally. A FORMAT clause will break query execution.\n",
+          "instructions": "\nYou are an expert ClickHouse assistant embedded inside CHouse UI.\nYou operate in STRICT TOOL-FIRST MODE.\n\n## SKILLS\nDeepAgents native skills are available for data exploration, SQL generation, visualization,\nquery optimization, system troubleshooting, schema diagnosis, error diagnosis, and parts\ndiagnosis. Use the matching skill instructions before complex work.\n\n## REFERENCES\nReference docs hold exact ClickHouse facts (system.* column names, the optimization playbook, the type/codec guide).\nUse the matching reference skill BEFORE writing raw `system.*` SQL or grounding an optimization/schema recommendation.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCORE OPERATING RULES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n1. NEVER guess database names, table names, columns, or data.\n2. NEVER fabricate results.\n3. NEVER answer schema/data questions without calling tools first.\n4. DO NOT DESCRIBE CHARTS IN TEXT. YOU MUST USE THE `render_chart` TOOL TO SHOW THEM IN THE UI!\n5. NEVER output markdown tables when a chart is requested. Call `render_chart` instead.\n6. When the user wants to validate or check a query without running it → use `validate_sql`.\n7. When the user wants to export, download, or get data as CSV/JSON → use `export_query_result`.\n8. NEVER call the same tool with identical arguments in consecutive rounds. If a tool already returned data, use that result, call a different next tool, or provide the final answer.\n\nDisambiguation: for historical slow/heavy queries use `get_slow_queries`; for queries running right now use `get_running_queries`. For a database-level overview (table count, total size) use `get_database_info` directly. For syntax-only validation use `validate_sql`; for export use `export_query_result`. These don't require a skill.\n\nONLY produce the final text answer after all required tool calls and skill/reference work are complete.\nBase your final answer strictly on tool results.\nIf access is denied, explain clearly.\nIf a tool fails, surface the error clearly.\n\n## ACTIONS\nYou can ask to run a few actions for the user: `kill_query`, `create_saved_query`, `create_scheduled_query`, `create_health_promise`, `create_dashboard` and `update_table_context`. Each call pauses until the user approves, edits or rejects it. Call one only when the user asked for that change, or agreed to your suggestion, and with complete arguments (validate SQL first). After it runs, report exactly what its result says; if it was rejected, do not retry it.\nFor a change to a table or the server (TTL, codec, skip index, OPTIMIZE, settings…) use `propose_remediation`: it files a proposal for approvers in Fixes and changes nothing by itself.\nNever say an action ran unless its result says it did.\n\nYou have READ-ONLY access to ClickHouse.\nOnly SELECT / WITH / SHOW / DESCRIBE / EXPLAIN queries are allowed.\nNever attempt INSERT, UPDATE, DELETE, CREATE, ALTER, or DROP.\n\nNEVER append a FORMAT clause (e.g. FORMAT JSON, FORMAT CSV, FORMAT TabSeparated) to any SQL query.\nThe application handles output formatting internally. A FORMAT clause will break query execution.\n",
           "messages": null,
           "fallbackMessages": null,
           "tools": [
@@ -2065,6 +2065,299 @@
                 },
                 "required": [
                   "sql"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "create_dashboard",
+              "description": "Create a dashboard on the active connection from panels (title, SQL, chart type and columns). Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "timeRange": {
+                    "type": "string",
+                    "enum": [
+                      "15m",
+                      "1h",
+                      "3h",
+                      "6h",
+                      "12h",
+                      "24h",
+                      "2d",
+                      "7d",
+                      "30d"
+                    ],
+                    "description": "Default time range, 24h if omitted"
+                  },
+                  "panels": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "sql": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Read-only SELECT; may use {{from}} / {{to}} time-range macros"
+                        },
+                        "chart": {
+                          "type": "string",
+                          "enum": [
+                            "bar",
+                            "horizontal_bar",
+                            "grouped_bar",
+                            "stacked_bar",
+                            "line",
+                            "multi_line",
+                            "area",
+                            "stacked_area",
+                            "pie",
+                            "donut",
+                            "scatter",
+                            "radar",
+                            "treemap",
+                            "funnel",
+                            "histogram",
+                            "heatmap",
+                            "stat",
+                            "table"
+                          ],
+                          "description": "Chart type; table shows every column"
+                        },
+                        "x": {
+                          "type": "string",
+                          "description": "x column (not for stat or table)"
+                        },
+                        "y": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 8,
+                          "description": "y columns (stat: exactly one; table and histogram: none)"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "sql",
+                        "chart"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1,
+                    "maxItems": 24
+                  }
+                },
+                "required": [
+                  "title",
+                  "panels"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "create_health_promise",
+              "description": "Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "database": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "table": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "eventTimeColumn": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Column holding each row's event time, for freshness and slot checks"
+                  },
+                  "criticality": {
+                    "type": "string",
+                    "enum": [
+                      "standard",
+                      "important",
+                      "critical"
+                    ]
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "hourly",
+                      "daily",
+                      "weekly",
+                      "monthly",
+                      "cron"
+                    ],
+                    "description": "How often it runs"
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23,
+                    "description": "Hour of day (daily, weekly, monthly)"
+                  },
+                  "dayOfWeek": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "0 = Sunday (weekly)"
+                  },
+                  "dayOfMonth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 28,
+                    "description": "Day of month (monthly)"
+                  },
+                  "cronExpr": {
+                    "type": "string",
+                    "description": "Cron expression (frequency cron)"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone, default UTC"
+                  },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "description": "Check definitions, each with a type and its settings"
+                  }
+                },
+                "required": [
+                  "name",
+                  "database",
+                  "table",
+                  "frequency",
+                  "checks"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "create_saved_query",
+              "description": "Save a SQL query to the user's saved queries on the active connection. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "name",
+                  "query"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "create_scheduled_query",
+              "description": "Create a scheduled report query (read-only SELECT, no materialization) on the active connection. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Read-only SELECT"
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "hourly",
+                      "daily",
+                      "weekly",
+                      "monthly",
+                      "cron"
+                    ],
+                    "description": "How often it runs"
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23,
+                    "description": "Hour of day (daily, weekly, monthly)"
+                  },
+                  "dayOfWeek": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "0 = Sunday (weekly)"
+                  },
+                  "dayOfMonth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 28,
+                    "description": "Day of month (monthly)"
+                  },
+                  "cronExpr": {
+                    "type": "string",
+                    "description": "Cron expression (frequency cron)"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone, default UTC"
+                  }
+                },
+                "required": [
+                  "name",
+                  "query",
+                  "frequency"
                 ],
                 "additionalProperties": false,
                 "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2290,6 +2583,25 @@
               }
             },
             {
+              "name": "kill_query",
+              "description": "Stop a running ClickHouse query by its query_id (from get_running_queries). Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "queryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "query_id of the running query"
+                  }
+                },
+                "required": [
+                  "queryId"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
               "name": "list_databases",
               "description": "List all available database names. Results are filtered by user permissions.",
               "schema": {
@@ -2330,6 +2642,38 @@
                 },
                 "required": [
                   "sql"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "propose_remediation",
+              "description": "File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "description": "Why this fixes the problem, with the evidence"
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": {},
+                    "description": "The remediation action: { type, …its parameters }"
+                  }
+                },
+                "required": [
+                  "title",
+                  "rationale",
+                  "params"
                 ],
                 "additionalProperties": false,
                 "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2442,6 +2786,53 @@
                 },
                 "required": [
                   "pattern"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "update_table_context",
+              "description": "Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "database": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "table": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "grain": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "What one row is, e.g. one order line"
+                  },
+                  "owner": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    },
+                    "maxItems": 30
+                  }
+                },
+                "required": [
+                  "database",
+                  "table"
                 ],
                 "additionalProperties": false,
                 "$schema": "http://json-schema.org/draft-07/schema#"

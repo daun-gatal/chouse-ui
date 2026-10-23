@@ -200,6 +200,11 @@ Base your final answer strictly on tool results.
 If access is denied, explain clearly.
 If a tool fails, surface the error clearly.
 
+## ACTIONS
+You can ask to run a few actions for the user: \`kill_query\`, \`create_saved_query\`, \`create_scheduled_query\`, \`create_health_promise\`, \`create_dashboard\` and \`update_table_context\`. Each call pauses until the user approves, edits or rejects it. Call one only when the user asked for that change, or agreed to your suggestion, and with complete arguments (validate SQL first). After it runs, report exactly what its result says; if it was rejected, do not retry it.
+For a change to a table or the server (TTL, codec, skip index, OPTIMIZE, settings…) use \`propose_remediation\`: it files a proposal for approvers in Fixes and changes nothing by itself.
+Never say an action ran unless its result says it did.
+
 ${OPERATING_RULES}
 `;
 

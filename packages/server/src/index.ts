@@ -337,6 +337,9 @@ initializeRbac().then(async () => {
   // AI run reads the registry, so it is seeded before anything can run one.
   const { syncRegistrySeeds } = await import("./services/ai/registry/seedSync");
   await syncRegistrySeeds();
+  // Paused chat runs whose approval expired stop on their own (ADR 0024).
+  const { startApprovalSweeper } = await import("./services/ai/runtime/chatRuns");
+  startApprovalSweeper();
   const { startObservability } = await import("./services/observe");
   await startObservability();
   // Chouse AI scheduled scans (daily/weekly/monthly) — dormant until a schedule

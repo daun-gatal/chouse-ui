@@ -812,7 +812,7 @@ Answers questions about ClickHouse data: databases, tables, columns, SQL, query 
 | Used by | [Chat](#chat), subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 12 steps |
-| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query` |
+| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query`, `kill_query`, `create_saved_query`, `create_scheduled_query`, `create_health_promise`, `create_dashboard`, `update_table_context`, `propose_remediation` |
 | Skills | all built-in skills on demand |
 
 ### CHouse Admin

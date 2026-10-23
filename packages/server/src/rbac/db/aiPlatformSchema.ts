@@ -71,6 +71,34 @@ const RUNTIME_TABLES: string[] = [
   )`,
 ];
 
+/** 1.66.0 — approved actions: every write an agent proposed, and what became of it. */
+const ACTION_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS ai_actions (
+    id              TEXT PRIMARY KEY NOT NULL,
+    source          TEXT NOT NULL,
+    run_id          TEXT,
+    interrupt_id    TEXT,
+    thread_id       TEXT,
+    user_id         TEXT NOT NULL,
+    connection_id   TEXT,
+    agent_path      TEXT,
+    tool            TEXT NOT NULL,
+    args            TEXT NOT NULL DEFAULT '{}',
+    description     TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL,
+    result          TEXT,
+    error           TEXT,
+    decided_by      TEXT,
+    decided_at      {BIGINT},
+    expires_at      {BIGINT} NOT NULL,
+    created_at      {BIGINT} NOT NULL,
+    updated_at      {BIGINT} NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_actions_status_idx ON ai_actions (status, expires_at)`,
+  `CREATE INDEX IF NOT EXISTS ai_actions_user_idx ON ai_actions (user_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS ai_actions_run_idx ON ai_actions (run_id)`,
+];
+
 function render(statements: string[], dialect: Dialect): string[] {
   const bigint = dialect === "sqlite" ? "INTEGER" : "BIGINT";
   const real = dialect === "sqlite" ? "REAL" : "DOUBLE PRECISION";
@@ -95,3 +123,10 @@ export function aiRuntimeSchemaStatements(dialect: Dialect): string[] {
 
 export const AI_RUNTIME_TABLE_NAMES: string[] = tableNames(RUNTIME_TABLES);
 export const AI_RUNTIME_INDEX_NAMES: string[] = indexNames(RUNTIME_TABLES);
+
+export function aiActionsSchemaStatements(dialect: Dialect): string[] {
+  return render(ACTION_TABLES, dialect);
+}
+
+export const AI_ACTION_TABLE_NAMES: string[] = tableNames(ACTION_TABLES);
+export const AI_ACTION_INDEX_NAMES: string[] = indexNames(ACTION_TABLES);
