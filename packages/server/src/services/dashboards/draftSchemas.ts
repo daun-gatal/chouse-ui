@@ -12,7 +12,37 @@
 
 import { z } from "zod";
 
-import { MAX_SQL_LENGTH, type ChartPanelInput, type Variable } from "./spec";
+import { MAX_SQL_LENGTH, MAX_VARIABLES, type ChartPanelInput, type Variable } from "./spec";
+
+export const MAX_DRAFT_PANELS = 12;
+export const MAX_FEEDBACK_LENGTH = 2_000;
+
+/**
+ * Refine and Regenerate: the draft under review as the user has it now (their
+ * fixes applied, the panels they left out marked), and what to change. With a
+ * panel index, only that panel is drafted again.
+ */
+const revisionSchema = z.object({
+  previous: z.object({
+    title: z.string().max(200),
+    description: z.string().max(2_000),
+    variables: z.array(z.unknown()).max(MAX_VARIABLES),
+    panels: z.array(z.object({
+      title: z.string().max(200),
+      sql: z.string().max(MAX_SQL_LENGTH),
+      viz: z.unknown(),
+      role: z.unknown(),
+      importance: z.unknown(),
+      section: z.string().max(80).nullable(),
+      rationale: z.string().max(500),
+      /** False when the user left the panel out. */
+      included: z.boolean(),
+    }).strict()).min(1).max(MAX_DRAFT_PANELS),
+  }).strict(),
+  feedback: z.string().trim().max(MAX_FEEDBACK_LENGTH),
+  panelIndex: z.number().int().min(0).max(MAX_DRAFT_PANELS - 1).nullable(),
+}).strict();
+export type DraftRevision = z.infer<typeof revisionSchema>;
 
 export const draftRequestSchema = z.object({
   /** What the dashboard should show, in the user's words. */
@@ -24,10 +54,16 @@ export const draftRequestSchema = z.object({
     variables: z.array(z.unknown()).max(10),
     panels: z.array(z.object({ title: z.string().max(200), sql: z.string().max(MAX_SQL_LENGTH) }).strict()).max(60),
   }).strict().nullable(),
+  revision: revisionSchema.optional(),
 }).strict();
 export type DraftRequest = z.infer<typeof draftRequestSchema>;
 
-export const MAX_DRAFT_PANELS = 12;
+/** What the schema cannot check about a revision (null when it is usable). */
+export function revisionProblem(revision: DraftRevision): string | null {
+  if (revision.panelIndex !== null && revision.panelIndex >= revision.previous.panels.length) return "The panel to regenerate is not in the draft";
+  if (revision.panelIndex === null && revision.feedback.length < 3) return "Say what to change in the draft";
+  return null;
+}
 
 export const DashboardDraftSchema = z.object({
   title: z.string().min(1).max(200),
