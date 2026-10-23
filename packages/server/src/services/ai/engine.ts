@@ -33,7 +33,7 @@ import { Command } from "@langchain/langgraph";
 import { registerHarnessBaseline } from "./registry/harness";
 import { runnerForRun } from "./guardrails/runtime";
 import { guardrailErrorIn, type GuardrailRunner } from "./guardrails/runner";
-import { currentCaller, persistUsageRun, withUsageRun, type UsageRunMeta } from "./usage";
+import { currentCaller, persistUsageRun, withUsageRun, type UsageRun, type UsageRunMeta } from "./usage";
 import { userMayUseAgent, chatAgentCandidates } from "./registry/chatAgents";
 import type { AgentDef, RegistrySnapshot } from "./registry/types";
 import type { TemplateValue } from "./registry/template";
@@ -231,6 +231,20 @@ export interface RunOptions {
   agentId?: string;
   /** Receives what the agent was given and did (test console). */
   onTrace?: (trace: RunTrace) => void;
+  /** Receives the run's LLM tokens and cost when it ends, failed or not (auto-triage budgets, ADR 0024). */
+  onUsage?: (usage: { tokens: number; costUsd: number | null }) => void;
+}
+
+/** Tokens and cost of every LLM call a usage run made so far. */
+function runUsage(run: UsageRun): { tokens: number; costUsd: number | null } {
+  let tokens = 0;
+  let costUsd: number | null = null;
+  for (const step of run.steps) {
+    if (step.kind !== "llm") continue;
+    tokens += step.usage.input + step.usage.output;
+    if (step.costUsd !== null) costUsd = (costUsd ?? 0) + step.costUsd;
+  }
+  return { tokens, costUsd };
 }
 
 export interface RunTrace {
@@ -307,82 +321,90 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
 ): Promise<TOutput> {
   try {
     return await withUsageRun(usageMeta(cap.id, ctx, ctx.userId ? "feature" : "background"), persistUsageRun, async (run) => {
-      const snapshot = options.snapshot ?? await getRegistrySnapshot();
-      const agent = chosenAgent(snapshot, cap.id, options.agentId);
-      run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
-      const prepared = await cap.prepare(input, ctx);
-      const scope = `${agent.id}@${agent.version}`;
-      const cached = await cap.cachedResult?.(prepared, ctx, scope);
-      if (cached !== undefined) return cached;
-
-      const guardrails = runnerForRun(snapshot, cap.id, ctx, run);
-      const variables = await guardGatheredData(guardrails, cap, cap.templateVariables(prepared, ctx), agent);
-      const prompts = renderAgentPrompts(agent, variables, snapshot);
-      const task = renderTaskMessage(agent, variables, snapshot);
-      const instructions = structuredInstructions(prompts.system, cap.outputSchema);
-
-      const resolved = await resolveDeepAgentModel(await budgetedModel(cap.id, ctx, agent));
-      const { model, config, label } = resolved;
-      const calls: InvokedToolCall[] = [];
-      const build = await buildContext(snapshot, resolved, {
-        runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
-        variables,
-        calls,
-        guardrails,
-      });
-      const deepAgent = await buildAgentTree(agent, instructions, build);
-
-      const overrides = runtimeOverrides(config);
-      const signal = runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS);
-      const raw = await collectStructuredRun(
-        deepAgent,
-        [{ role: "user", content: task }],
-        overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
-        signal,
-      );
-      options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
-      const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
-      const meta = { raw, steps, modelLabel: label };
-
-      const fallbackMessages: AgentMessage[] = cap.fallbackMessages
-        ? cap.fallbackMessages(prepared, ctx, raw, prompts, variables)
-        : [
-            { role: "system", content: instructions },
-            {
-              role: "user",
-              content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
-            },
-          ];
-
-      const parsed = await structuredOutput({
-        model,
-        schema: cap.outputSchema,
-        raw,
-        fallbackMessages,
-        maxOutputTokens: agent.tuning.maxOutputTokens ?? undefined,
-        policy: isStructuredOutputPolicy(config.model.params?.structuredOutputPolicy)
-          ? config.model.params.structuredOutputPolicy
-          : "auto",
-        strategyCacheKey: structuredOutputCacheKey(config),
-        signal,
-        module: `AI:${cap.id}`,
-        // The fallback call runs outside the agent, so its guardrails are applied here.
-        guardFallbackMessages: (messages) => guardFallbackInput(guardrails, agent, messages),
-        guardFallbackOutput: (output) => guardrails.checkStructured(guardrails.at("output", agent.id), output, { agentPath: agent.slug, tool: null }),
-      });
-
-      if (parsed === null) {
-        if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
-        throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
+      try {
+        return await structuredRun(run);
+      } finally {
+        options.onUsage?.(runUsage(run));
       }
-
-      const output = await cap.finalize(parsed, prepared, ctx, meta);
-      await cap.cacheResult?.(output, prepared, ctx, scope);
-      return output;
     });
   } catch (error) {
     if (cap.softFail) return cap.softFail(error);
     handleAiError(error, `AI:${cap.id}`);
+  }
+
+  async function structuredRun(run: UsageRun): Promise<TOutput> {
+    const snapshot = options.snapshot ?? await getRegistrySnapshot();
+    const agent = chosenAgent(snapshot, cap.id, options.agentId);
+    run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
+    const prepared = await cap.prepare(input, ctx);
+    const scope = `${agent.id}@${agent.version}`;
+    const cached = await cap.cachedResult?.(prepared, ctx, scope);
+    if (cached !== undefined) return cached;
+
+    const guardrails = runnerForRun(snapshot, cap.id, ctx, run);
+    const variables = await guardGatheredData(guardrails, cap, cap.templateVariables(prepared, ctx), agent);
+    const prompts = renderAgentPrompts(agent, variables, snapshot);
+    const task = renderTaskMessage(agent, variables, snapshot);
+    const instructions = structuredInstructions(prompts.system, cap.outputSchema);
+
+    const resolved = await resolveDeepAgentModel(await budgetedModel(cap.id, ctx, agent));
+    const { model, config, label } = resolved;
+    const calls: InvokedToolCall[] = [];
+    const build = await buildContext(snapshot, resolved, {
+      runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
+      variables,
+      calls,
+      guardrails,
+    });
+    const deepAgent = await buildAgentTree(agent, instructions, build);
+
+    const overrides = runtimeOverrides(config);
+    const signal = runSignal(overrides.runTimeoutMs ?? agent.tuning.timeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS);
+    const raw = await collectStructuredRun(
+      deepAgent,
+      [{ role: "user", content: task }],
+      overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
+      signal,
+    );
+    options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
+    const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
+    const meta = { raw, steps, modelLabel: label };
+
+    const fallbackMessages: AgentMessage[] = cap.fallbackMessages
+      ? cap.fallbackMessages(prepared, ctx, raw, prompts, variables)
+      : [
+          { role: "system", content: instructions },
+          {
+            role: "user",
+            content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
+          },
+        ];
+
+    const parsed = await structuredOutput({
+      model,
+      schema: cap.outputSchema,
+      raw,
+      fallbackMessages,
+      maxOutputTokens: agent.tuning.maxOutputTokens ?? undefined,
+      policy: isStructuredOutputPolicy(config.model.params?.structuredOutputPolicy)
+        ? config.model.params.structuredOutputPolicy
+        : "auto",
+      strategyCacheKey: structuredOutputCacheKey(config),
+      signal,
+      module: `AI:${cap.id}`,
+      // The fallback call runs outside the agent, so its guardrails are applied here.
+      guardFallbackMessages: (messages) => guardFallbackInput(guardrails, agent, messages),
+      guardFallbackOutput: (output) => guardrails.checkStructured(guardrails.at("output", agent.id), output, { agentPath: agent.slug, tool: null }),
+    });
+
+    if (parsed === null) {
+      if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
+      throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
+    }
+
+    const output = await cap.finalize(parsed, prepared, ctx, meta);
+    await cap.cacheResult?.(output, prepared, ctx, scope);
+    return output;
   }
 }
 

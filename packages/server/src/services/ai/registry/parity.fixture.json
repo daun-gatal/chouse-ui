@@ -4076,6 +4076,120 @@
           "tools": []
         }
       ]
+    },
+    "triage-incident": {
+      "permission": "ai_agents:manage",
+      "delivery": "structured",
+      "tuning": {
+        "stopAtSteps": 10,
+        "maxOutputTokens": 4000
+      },
+      "cases": [
+        {
+          "name": "failed scheduled run",
+          "session": false,
+          "prepared": {
+            "trigger": "scheduled_run_failed",
+            "title": "Scheduled query \"Daily orders\" failed",
+            "connectionId": "conn-1",
+            "evidence": {
+              "query": "Daily orders",
+              "sql": "SELECT count() FROM orders",
+              "status": "failed",
+              "error": "Memory limit exceeded"
+            },
+            "nodes": [
+              {
+                "id": "conn-1",
+                "name": "node-a"
+              }
+            ]
+          },
+          "instructions": "You are Chouse AI on call: something just went wrong in a ClickHouse deployment and nobody has looked at it yet. Investigate it the way a careful SRE would in the first ten minutes, then report.\n\n## HOW TO INVESTIGATE\n- Start from the evidence you are given; it is what CHouse recorded about the subject.\n- Check it against the live system with query_node (read-only SELECTs on system tables of the listed connections): system.errors, system.query_log, system.part_log, system.replication_queue, system.mutations, system.merges, system.metrics, system.asynchronous_metrics, system.disks, system.processes.\n- Bound every query: a time window around the event and a LIMIT. Never scan user tables.\n- Stop when you can name the most likely cause, or when more queries would not change the answer.\n\n## ACTIONS\nNobody is here to approve anything now. Use an action tool only when you are confident it is the right first step:\n- kill_query for a runaway query that is still running and causing the problem;\n- propose_remediation for a fix from the remediation catalog.\nBoth only record a proposal that a person reviews later in AI Governance › Approvals. Never claim an action ran.\n\n## REPORT\n- summary: two sentences a person reads in a notification.\n- likelyCause: the most likely cause, with the evidence that points to it.\n- confidence: low, medium or high, honestly.\n- severity: how much it matters now (low, medium, high).\n- findings: up to 8 facts you checked, each with the number or row that shows it.\n- nextSteps: up to 6 concrete steps for a person, most important first.\nWrite plainly. Never include secrets, passwords or personal data from query results.",
+          "messages": [
+            {
+              "role": "user",
+              "content": "New Failed scheduled run: Scheduled query \"Daily orders\" failed\n\nConnections you may query with query_node (use the id):\n[{\"id\":\"conn-1\",\"name\":\"node-a\"}]\n\nWhat CHouse recorded:\n```json\n{\n  \"query\": \"Daily orders\",\n  \"sql\": \"SELECT count() FROM orders\",\n  \"status\": \"failed\",\n  \"error\": \"Memory limit exceeded\"\n}\n```\n\nInvestigate, propose an action only if you are confident, then produce the structured triage report."
+            }
+          ],
+          "tools": [
+            {
+              "name": "kill_query",
+              "description": "Stop a running ClickHouse query by its query_id (from get_running_queries). Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "queryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "query_id of the running query"
+                  }
+                },
+                "required": [
+                  "queryId"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "propose_remediation",
+              "description": "File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "description": "Why this fixes the problem, with the evidence"
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": {},
+                    "description": "The remediation action: { type, …its parameters }"
+                  }
+                },
+                "required": [
+                  "title",
+                  "rationale",
+                  "params"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            },
+            {
+              "name": "query_node",
+              "description": "Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connectionId": {
+                    "type": "string",
+                    "description": "the node id from the overview"
+                  },
+                  "sql": {
+                    "type": "string",
+                    "description": "a single read-only SELECT querying system.* tables"
+                  }
+                },
+                "required": [
+                  "connectionId",
+                  "sql"
+                ],
+                "additionalProperties": false,
+                "$schema": "http://json-schema.org/draft-07/schema#"
+              }
+            }
+          ]
+        }
+      ]
     }
   }
 }

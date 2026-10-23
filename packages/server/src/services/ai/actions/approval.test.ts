@@ -165,4 +165,19 @@ describe("write tools without a person in the loop", () => {
     const pending = await store.listActions({ userId: "alice", source: "background", status: "pending" });
     expect(pending.map((a) => [a.tool, a.args])).toEqual([["kill_query", { queryId: "q-7" }]]);
   });
+
+  it("records an auto-triage proposal for the rule's owner when the run has no user", async () => {
+    kills.length = 0;
+    const tree = await buildAgentTree(AGENT, "SRE", build({ isAdmin: false, permissions: ["live_queries:kill"], connectionId: "conn-1", proposeAs: "rule-owner" }, false));
+    await tree.invoke({ messages: [{ role: "user", content: "kill it" }] });
+    expect(kills).toEqual([]);
+    const pending = await store.listActions({ userId: "rule-owner", source: "background", status: "pending" });
+    expect(pending.map((a) => [a.tool, a.connectionId])).toEqual([["kill_query", "conn-1"]]);
+  });
+
+  it("offers no write tool to a run with neither a user nor an owner", async () => {
+    const tree = await buildAgentTree(AGENT, "SRE", build({ isAdmin: true, connectionId: "conn-1" }, false));
+    const state = await tree.invoke({ messages: [{ role: "user", content: "kill it" }] });
+    expect(textOf((state as { messages: BaseMessage[] }).messages.at(-1)?.content)).not.toContain("Waiting for approval");
+  });
 });

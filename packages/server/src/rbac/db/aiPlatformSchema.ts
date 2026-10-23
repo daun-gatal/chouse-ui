@@ -131,6 +131,47 @@ const MEMORY_TABLES: string[] = [
   )`,
 ];
 
+/**
+ * 1.68.0 — auto-triage. One rule per trigger (off until someone turns it on);
+ * one run per (trigger, subject), so a subject is never investigated twice.
+ * `watermark` is the newest subject time a rule has looked at.
+ */
+const TRIAGE_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS ai_triage_rules (
+    trigger             TEXT PRIMARY KEY NOT NULL,
+    enabled             INTEGER NOT NULL DEFAULT 0,
+    agent_id            TEXT,
+    cooldown_minutes    INTEGER NOT NULL DEFAULT 60,
+    daily_token_budget  {BIGINT} NOT NULL DEFAULT 200000,
+    channel_ids         TEXT NOT NULL DEFAULT '[]',
+    propose_as          TEXT,
+    watermark           {BIGINT} NOT NULL DEFAULT 0,
+    updated_by          TEXT,
+    updated_at          {BIGINT} NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS ai_triage_runs (
+    id              TEXT PRIMARY KEY NOT NULL,
+    trigger         TEXT NOT NULL,
+    subject_id      TEXT NOT NULL,
+    subject_title   TEXT NOT NULL DEFAULT '',
+    connection_id   TEXT,
+    status          TEXT NOT NULL,
+    reason          TEXT,
+    summary         TEXT,
+    result          TEXT,
+    notebook_id     TEXT,
+    action_ids      TEXT NOT NULL DEFAULT '[]',
+    tokens          {BIGINT} NOT NULL DEFAULT 0,
+    cost_usd        {REAL},
+    error           TEXT,
+    started_at      {BIGINT} NOT NULL,
+    finished_at     {BIGINT}
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS ai_triage_runs_subject_idx ON ai_triage_runs (trigger, subject_id)`,
+  `CREATE INDEX IF NOT EXISTS ai_triage_runs_started_idx ON ai_triage_runs (started_at)`,
+  `CREATE INDEX IF NOT EXISTS ai_triage_runs_cooldown_idx ON ai_triage_runs (trigger, connection_id, started_at)`,
+];
+
 function render(statements: string[], dialect: Dialect): string[] {
   const bigint = dialect === "sqlite" ? "INTEGER" : "BIGINT";
   const real = dialect === "sqlite" ? "REAL" : "DOUBLE PRECISION";
@@ -169,3 +210,10 @@ export function aiMemorySchemaStatements(dialect: Dialect): string[] {
 
 export const AI_MEMORY_TABLE_NAMES: string[] = tableNames(MEMORY_TABLES);
 export const AI_MEMORY_INDEX_NAMES: string[] = indexNames(MEMORY_TABLES);
+
+export function aiTriageSchemaStatements(dialect: Dialect): string[] {
+  return render(TRIAGE_TABLES, dialect);
+}
+
+export const AI_TRIAGE_TABLE_NAMES: string[] = tableNames(TRIAGE_TABLES);
+export const AI_TRIAGE_INDEX_NAMES: string[] = indexNames(TRIAGE_TABLES);

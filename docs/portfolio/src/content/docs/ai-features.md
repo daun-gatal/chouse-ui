@@ -39,6 +39,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Explain an incident](#explain-an-incident) | Observability | `ai:optimize` | Evidence only | [Incident Explainer](#incident-explainer) |
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
+| [Auto-triage](#auto-triage) | Observability | `ai_agents:manage` | Fleet nodes | [Incident Triager](#incident-triager) |
 | [Draft a dashboard](#draft-a-dashboard) | Dashboards | `ai:optimize` | ClickHouse session | [Dashboard Drafter](#dashboard-drafter) |
 | [Explain this spike](#explain-this-spike) | Dashboards | `ai:optimize` | ClickHouse session | [Spike Explainer](#spike-explainer) |
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
@@ -343,6 +344,21 @@ Context › Draft with AI: drafts a table's curated context from metadata and an
 | --- | --- | --- |
 | `ctx.evidence` | json | The evidence object the feature assembled (JSON). |
 
+### Auto-triage
+
+ID `triage-incident` · needs `ai_agents:manage` · structured answer (JSON contract) · also runs in the background
+
+AI Governance › Auto-triage: investigates new incidents, alerts, failed scheduled runs and Doctor findings on its own, and proposes actions for approval.
+
+**Tools may use:** Fleet nodes. **Built-in agent:** [Incident Triager](#incident-triager).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.trigger` | string | What happened, e.g. "Failed scheduled run". |
+| `ctx.title` | string | The subject's title. |
+| `ctx.evidence` | json | What CHouse knows about the subject (pretty-printed JSON). |
+| `ctx.nodes` | json | Connections the agent may query with query_node (id and name). |
+
 ## Dashboards features
 
 ### Draft a dashboard
@@ -421,7 +437,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 33 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 34 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -533,6 +549,20 @@ Reviews every node's health, deep-dives heavy queries and writes the Doctor repo
 | Harness | Focused |
 | Tuning | 12 steps · 16,000 output tokens |
 | Tools | `query_node` |
+| Skills | all built-in skills on demand |
+
+### Incident Triager
+
+Investigates new incidents, fleet alerts, failed scheduled runs and Doctor findings on its own, and proposes actions for approval.
+
+| Setting | Value |
+| --- | --- |
+| Slug | `incident-triager` |
+| Kind | Feature agent |
+| Used by | [Auto-triage](#auto-triage) |
+| Harness | Focused |
+| Tuning | 10 steps · 4,000 output tokens |
+| Tools | `query_node`, `kill_query`, `propose_remediation` |
 | Skills | all built-in skills on demand |
 
 ### Dashboard Drafter

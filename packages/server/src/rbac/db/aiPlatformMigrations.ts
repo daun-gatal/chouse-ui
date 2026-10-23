@@ -10,7 +10,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES, type Permission } from '../schema/base';
 import { getDatabaseType, type PostgresDb, type RbacDb, type SqliteDb } from './index';
-import { aiActionsSchemaStatements, aiMemorySchemaStatements, aiRuntimeSchemaStatements } from './aiPlatformSchema';
+import { aiActionsSchemaStatements, aiMemorySchemaStatements, aiRuntimeSchemaStatements, aiTriageSchemaStatements } from './aiPlatformSchema';
 import type { Migration } from './migrations';
 
 type Row = Record<string, unknown>;
@@ -92,6 +92,18 @@ export const AI_PLATFORM_MIGRATIONS: Migration[] = [
       }
       await grantDefaults(db, [PERMISSIONS.AI_MEMORIES_MANAGE]);
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.67.0] Created AI memory tables (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.68.0',
+    name: 'ai_triage',
+    description: 'ADR 0024 phase 4 — auto-triage rules and runs (ai_triage_rules, ai_triage_runs). Every trigger starts off.',
+    up: async (db) => {
+      for (const statement of aiTriageSchemaStatements(dialect())) {
+        await exec(db, sql.raw(statement));
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.68.0] Created AI triage tables (${dialect()})`);
     },
     down: async () => { /* forward-only */ },
   },

@@ -55,6 +55,11 @@ export interface AgentRunContext {
   runId?: string;
   /** The chat thread, so an action links back to it. */
   threadId?: string;
+  /**
+   * Background runs with no user (auto-triage): who their proposed actions
+   * are recorded for. It is not the run's user, so usage stays "background".
+   */
+  proposeAs?: string;
 }
 
 /** A content block of a chat message: text, or an attachment the model reads (ADR 0024). */

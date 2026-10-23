@@ -29,7 +29,7 @@ Catalog tools only read, except the [action tools](#action-tools), which wait fo
 | `generate_query` | Draft SQL from a description | — | — | Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools. After calling this, you MUST output the generated query in a `sql` code block. If the user wants the query executed, call run_select_query with that SQL. | 1 |
 | `optimize_query` | Optimize a query (runs the optimize-query feature) | ClickHouse session | — | Get AI-powered optimization suggestions for a SQL query. | 1 |
 | `run_bounded_aggregate` | Run a bounded aggregate | ClickHouse session | — | Run one read-only aggregate SELECT for a health recommendation. Raw-row SELECTs and SELECT * are rejected. | 1 |
-| `query_node` | Query a node's system tables | Fleet nodes | — | Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows. | 5 |
+| `query_node` | Query a node's system tables | Fleet nodes | — | Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows. | 6 |
 
 ## CHouse tools
 
@@ -85,13 +85,13 @@ These tools change something, so nothing runs until a person says so. In a chat 
 
 | Tool | Title | Risk | Needs any of | What it does | Built-in agents |
 | --- | --- | --- | --- | --- | --- |
-| `kill_query` | Kill a query | low | `live_queries:kill`, `live_queries:kill_all` | Stop a running ClickHouse query by its query_id (from get_running_queries). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `kill_query` | Kill a query | low | `live_queries:kill`, `live_queries:kill_all` | Stop a running ClickHouse query by its query_id (from get_running_queries). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 2 |
 | `create_saved_query` | Save a query | low | `saved_queries:create` | Save a SQL query to the user's saved queries on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
 | `create_scheduled_query` | Schedule a query | low | `scheduled_queries:edit` | Create a scheduled report query (read-only SELECT, no materialization) on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
 | `create_health_promise` | Create a data health promise | low | `data_health:edit` | Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
 | `create_dashboard` | Create a dashboard | low | `dashboards:edit` | Create a dashboard on the active connection from panels (title, SQL, chart type and columns). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
 | `update_table_context` | Update table context | low | `context:edit` | Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `propose_remediation` | Propose a fix | high | `remediation:propose` | File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes. | 1 |
+| `propose_remediation` | Propose a fix | high | `remediation:propose` | File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes. | 2 |
 
 ## Built-in DeepAgents tools
 

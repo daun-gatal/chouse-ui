@@ -41,7 +41,8 @@ function buildActionTool(definition: ActionDefinition, runtime: ToolRuntime): Ag
   const approve = ctx.actionMode === "approve";
   // Executing needs the user's own token; proposing only needs to know who it is for.
   if (approve && !ctx.bearerToken) return null;
-  if (!approve && !ctx.userId) return null;
+  const proposer = ctx.userId ?? ctx.proposeAs;
+  if (!approve && !proposer) return null;
   const how = definition.risk === "high"
     ? "It changes nothing by itself; approvers decide in Fixes."
     : approve
@@ -56,7 +57,7 @@ function buildActionTool(definition: ActionDefinition, runtime: ToolRuntime): Ag
       if (!approve) {
         const action = await createAction({
           source: "background",
-          userId: ctx.userId ?? "",
+          userId: proposer ?? "",
           connectionId: ctx.connectionId ?? null,
           tool: definition.name,
           args,

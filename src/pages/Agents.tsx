@@ -7,13 +7,14 @@
  * they cost and the data they sent to providers; Guardrails (ADR 0022) control
  * what passes through every AI run and MCP tool result. Approvals (ADR 0024)
  * lists the write actions agents asked for and holds background ones for review;
- * Memories holds the notes agents keep about a user or a connection.
+ * Memories holds the notes agents keep about a user or a connection; Auto-triage
+ * sets which events an agent investigates on its own.
  */
 
 import { useState, type ReactElement } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Activity, Bot, Brain, ClipboardCheck, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, Bot, Brain, ClipboardCheck, Radar, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
 import { AiModelButton } from "@/components/common/AiModelButton";
@@ -27,6 +28,7 @@ import { usePendingAiActionCount } from "@/features/agents/approvals/hooks";
 import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
 import { MemoriesPanel } from "@/features/agents/memories/MemoriesPanel";
 import { usePendingMemoryCount } from "@/features/agents/memories/hooks";
+import { TriagePanel } from "@/features/agents/triage/TriagePanel";
 import { GuardrailsPanel } from "@/features/agents/guardrails/GuardrailsPanel";
 import { AiActivityPanel } from "@/features/agents/usage/AiActivityPanel";
 import { McpPanel } from "@/features/agents/McpPanel";
@@ -38,7 +40,7 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage" | "approvals" | "memories";
+type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage" | "approvals" | "memories" | "triage";
 /**
  * External agents (MCP / tokens) need agents:view; the built-in AI agents need
  * ai_agents:view. AI activity (ADR 0020) shows everyone's usage with
@@ -53,6 +55,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permissions: stri
   { key: "usage", label: "AI activity", icon: Activity, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
   { key: "approvals", label: "Approvals", icon: ClipboardCheck, permissions: [RBAC_PERMISSIONS.AI_ACT, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
   { key: "memories", label: "Memories", icon: Brain, permissions: [RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE, RBAC_PERMISSIONS.AI_MEMORIES_MANAGE] },
+  { key: "triage", label: "Triage", icon: Radar, permissions: [RBAC_PERMISSIONS.AI_AGENTS_VIEW] },
 ];
 
 /** Tabs about external agents, which share the agent KPIs and the pause switch. */
@@ -238,6 +241,7 @@ export default function Agents(): ReactElement {
           {active === "usage" && <AiActivityPanel />}
           {active === "approvals" && <ApprovalsPanel />}
           {active === "memories" && <MemoriesPanel />}
+          {active === "triage" && <TriagePanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

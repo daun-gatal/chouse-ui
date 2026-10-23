@@ -26,6 +26,7 @@ import {
   OPTIMIZER_PROMPT,
   PARTS_DIAGNOSE_PROMPT,
   SCHEMA_DIAGNOSE_PROMPT,
+  TRIAGE_PROMPT,
 } from "./prompts";
 import {
   ACCESS_AUDITOR_PROMPT,
@@ -259,6 +260,14 @@ export const SEED_AGENTS: SeedAgent[] = [
     taskTemplate: "Current ClickHouse fleet overview (one object per node). Investigation window: last {{ctx.hours}} hours (the `recentHeavyQueries` field covers this window; scope your system.query_log tool queries to it too). Investigate and produce the structured health report.\n\n```json\n{{ctx.overview}}\n```",
     tools: ["query_node"], tuning: { stepBudget: 12, maxOutputTokens: 16000 },
   }),
+  // --- Auto-triage (ADR 0024) ---------------------------------------------------------------
+  featureAgent({
+    id: "builtin-agent-incident-triager", slug: "incident-triager", name: "Incident Triager",
+    description: "Investigates new incidents, fleet alerts, failed scheduled runs and Doctor findings on its own, and proposes actions for approval.",
+    systemPrompt: TRIAGE_PROMPT,
+    taskTemplate: "New {{ctx.trigger}}: {{ctx.title}}\n\nConnections you may query with query_node (use the id):\n{{ctx.nodes}}\n\nWhat CHouse recorded:\n```json\n{{ctx.evidence}}\n```\n\nInvestigate, propose an action only if you are confident, then produce the structured triage report.",
+    tools: ["query_node", "kill_query", "propose_remediation"], tuning: { stepBudget: 10, maxOutputTokens: 4000 },
+  }),
   // --- Dashboards (ADR 0021) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-dashboard-drafter", "dashboard-drafter", "Dashboard Drafter", "Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).", "draft-dashboard",
     { stepBudget: 8, maxOutputTokens: 8000 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "validate_sql"]),
@@ -382,4 +391,5 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-dashboard": "dashboard-drafter",
   "explain-spike": "spike-explainer",
   "draft-guardrail": "guardrail-drafter",
+  "triage-incident": "incident-triager",
 };

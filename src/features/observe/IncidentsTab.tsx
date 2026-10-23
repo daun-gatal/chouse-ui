@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useAcknowledgeObserveIncident, useIncident, useIncidents, useRecomputeRca } from "./hooks";
 import { formatAgo, humanize, LAYER_LABEL, nodeKind, nodeLabel, severityTone } from "./lib";
+import { AiInvestigatedBadge } from "@/features/agents/triage/AiInvestigatedBadge";
 import { NotebookPanel } from "./NotebookPanel";
 import { dataPaths } from "./paths";
 import { RemediationPanel, type ProposeDraft } from "./RemediationPanel";
@@ -195,6 +196,7 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill tone={severityTone(data.severity)}>{data.severity}</StatusPill>
             <StatusPill tone="muted" dot={false}>{data.status}</StatusPill>
+            <AiInvestigatedBadge trigger={source === "data_health" ? "data_health_incident" : "observe_incident"} subjectId={id} />
             <span className="text-[11px] text-paper-muted">{data.connectionName ? `${data.connectionName} · ` : ""}Opened {formatAgo(data.openedAt)} · {source === "data_health" ? "Data Health promise" : humanize(data.kind)}</span>
             {data.acknowledgedByName && <span className="text-[11px] text-paper-muted">· acknowledged by {data.acknowledgedByName}{data.acknowledgedAt ? ` ${formatAgo(data.acknowledgedAt)}` : ""}</span>}
             {data.rca && <span className="text-[11px] text-paper-muted">· root cause computed {formatAgo(data.rca.computedAt)}</span>}

@@ -674,6 +674,9 @@ export const AUDIT_ACTIONS = {
   AI_MEMORY_APPROVE: 'ai_memory.approve',
   AI_MEMORY_REJECT: 'ai_memory.reject',
 
+  // Auto-triage (ADR 0024): turning a trigger on or off, or changing its limits.
+  AI_TRIAGE_UPDATE: 'ai_triage.update',
+
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',
   DASHBOARD_UPDATE: 'dashboard.update',

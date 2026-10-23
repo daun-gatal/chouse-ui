@@ -23,7 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
-import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
+import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -478,6 +478,15 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
       expect(await h.roleHasPermission(role, "ai_memories:manage")).toBe(role === "super_admin" || role === "admin");
     }
+  },
+  "1.68.0": async () => {
+    // ADR 0024 phase 4: auto-triage rules (none until turned on) and one run per subject.
+    expect(AI_TRIAGE_TABLE_NAMES).toEqual(["ai_triage_rules", "ai_triage_runs"]);
+    for (const t of AI_TRIAGE_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_TRIAGE_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["enabled", "cooldown_minutes", "daily_token_budget", "channel_ids", "propose_as", "watermark"]) expect(await h.columnExists("ai_triage_rules", c)).toBe(true);
+    for (const c of ["trigger", "subject_id", "status", "action_ids", "tokens", "notebook_id"]) expect(await h.columnExists("ai_triage_runs", c)).toBe(true);
+    expect(await h.rowCount("ai_triage_rules")).toBe(0);
   },
 };
 
