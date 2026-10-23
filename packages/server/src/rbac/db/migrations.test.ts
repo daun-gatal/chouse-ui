@@ -488,6 +488,12 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const c of ["trigger", "subject_id", "status", "action_ids", "tokens", "notebook_id"]) expect(await h.columnExists("ai_triage_runs", c)).toBe(true);
     expect(await h.rowCount("ai_triage_rules")).toBe(0);
   },
+  "1.69.0": async () => {
+    // ADR 0024 phase 5: the analysis sandbox is a harness switch, off for every harness until turned on.
+    expect(await h.columnExists("ai_harnesses", "analysis")).toBe(true);
+    const on = await h.rawAll(sql`SELECT COUNT(*) AS n FROM ai_harnesses WHERE analysis <> 0`);
+    expect(Number(on[0]?.n ?? 0)).toBe(0);
+  },
 };
 
 // ---------------------------------------------------------------------------

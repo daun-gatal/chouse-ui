@@ -35,6 +35,8 @@ export interface HarnessDef {
   /** Appended to the agent's rendered system prompt (profile `systemPromptSuffix`). */
   promptSuffix: string | null;
   toolDescriptionOverrides: Record<string, string>;
+  /** ADR 0024 phase 5: give its agents `js_eval`, the analysis sandbox. Off unless set. */
+  analysis?: boolean;
   isSystem: boolean;
   seedHash: string | null;
   customized: boolean;

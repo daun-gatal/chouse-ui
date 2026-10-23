@@ -80,6 +80,7 @@ function harnessFromRow(r: Row): HarnessDef {
     generalPurpose: parseGeneralPurpose(r.general_purpose),
     promptSuffix: strOrNull(r.prompt_suffix),
     toolDescriptionOverrides: stringRecord(r.tool_description_overrides),
+    analysis: bool(r.analysis),
     isSystem: bool(r.is_system),
     seedHash: strOrNull(r.seed_hash),
     customized: bool(r.customized),
@@ -275,9 +276,9 @@ export async function saveHarness(input: HarnessInput, meta: WriteMeta): Promise
   const existing = await one(sql`SELECT version FROM ai_harnesses WHERE id = ${input.id}`);
   if (!existing) {
     await run(sql`
-      INSERT INTO ai_harnesses (id, slug, name, description, excluded_tools, general_purpose, prompt_suffix, tool_description_overrides, is_system, seed_hash, customized, version, created_by, created_at, updated_at)
+      INSERT INTO ai_harnesses (id, slug, name, description, excluded_tools, general_purpose, prompt_suffix, tool_description_overrides, analysis, is_system, seed_hash, customized, version, created_by, created_at, updated_at)
       VALUES (${input.id}, ${input.slug}, ${input.name}, ${input.description}, ${JSON.stringify(input.excludedTools)}, ${JSON.stringify(input.generalPurpose)},
-        ${input.promptSuffix}, ${JSON.stringify(input.toolDescriptionOverrides)}, ${input.isSystem ? 1 : 0}, ${input.seedHash}, ${input.customized ? 1 : 0}, 1, ${meta.actor}, ${now}, ${now})
+        ${input.promptSuffix}, ${JSON.stringify(input.toolDescriptionOverrides)}, ${input.analysis ? 1 : 0}, ${input.isSystem ? 1 : 0}, ${input.seedHash}, ${input.customized ? 1 : 0}, 1, ${meta.actor}, ${now}, ${now})
     `);
   } else {
     const current = num(existing.version);
@@ -286,7 +287,7 @@ export async function saveHarness(input: HarnessInput, meta: WriteMeta): Promise
       UPDATE ai_harnesses SET slug = ${input.slug}, name = ${input.name}, description = ${input.description},
         excluded_tools = ${JSON.stringify(input.excludedTools)}, general_purpose = ${JSON.stringify(input.generalPurpose)},
         prompt_suffix = ${input.promptSuffix}, tool_description_overrides = ${JSON.stringify(input.toolDescriptionOverrides)},
-        is_system = ${input.isSystem ? 1 : 0}, seed_hash = ${input.seedHash}, customized = ${input.customized ? 1 : 0},
+        analysis = ${input.analysis ? 1 : 0}, is_system = ${input.isSystem ? 1 : 0}, seed_hash = ${input.seedHash}, customized = ${input.customized ? 1 : 0},
         version = version + 1, updated_at = ${now}
       WHERE id = ${input.id} AND version = ${current} RETURNING id`);
     if (updated.length === 0) throw conflict("harness", input.id);

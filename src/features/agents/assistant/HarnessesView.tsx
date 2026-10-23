@@ -31,6 +31,7 @@ function blankHarness(registry: AiRegistry): HarnessInput {
     generalPurpose: { enabled: false },
     promptSuffix: null,
     toolDescriptionOverrides: {},
+    analysis: false,
   };
 }
 
@@ -123,6 +124,11 @@ function HarnessEditor({ registry, target, canManage, onClose }: { registry: AiR
               )}
             </div>
           </Field>
+          <Field label="Analysis sandbox" hint="Agents get js_eval: JavaScript in a sandbox (no network or files, 64 MB, 15 s per call) that can call their read-only tools, so rows are computed on without passing through the model. Write tools are never available in it.">
+            <div>
+              <Switch className={SWITCH_CLASS} checked={draft.analysis === true} disabled={readOnly} aria-label="Analysis sandbox" onCheckedChange={(on) => set("analysis", on)} />
+            </div>
+          </Field>
           {review("promptSuffix")}
           <Field label="Prompt suffix" hint="Appended to every agent prompt that uses this harness.">
             <Textarea className={TEXTAREA_CLASS} value={draft.promptSuffix ?? ""} onChange={(e) => set("promptSuffix", e.target.value || null)} disabled={readOnly} aria-label="Prompt suffix" />
@@ -177,12 +183,13 @@ export function HarnessesView({ registry, canManage }: { registry: AiRegistry; c
           </span>
         ) : undefined}>
         {registry.harnesses.length === 0 ? <EmptyState icon={Wrench} title="No harnesses" /> : (
-          <DataTable label="Harnesses" head={["Harness", "Hidden built-in tools", "General-purpose", "Used by", "Status"]}>
+          <DataTable label="Harnesses" head={["Harness", "Hidden built-in tools", "General-purpose", "Analysis", "Used by", "Status"]}>
             {registry.harnesses.map((h) => (
               <tr key={h.id} className="cursor-pointer hover:bg-ink-200/50" onClick={() => open({ harness: h, initial: harnessInputOf(h) })}>
                 <td><span className="block text-[12px] text-paper">{h.name}</span><span className="block text-[11px] text-paper-faint">{h.description}</span></td>
                 <td className="font-mono text-[10px] text-paper-muted">{h.excludedTools.join(", ") || "none"}</td>
                 <td className="text-[11px] text-paper-muted">{h.generalPurpose.enabled ? "on" : "off"}</td>
+                <td className="text-[11px] text-paper-muted">{h.analysis ? "on" : "off"}</td>
                 <td className="text-[11px] text-paper-muted">{h.usedBy.length}</td>
                 <td><OriginBadge row={h} /></td>
               </tr>

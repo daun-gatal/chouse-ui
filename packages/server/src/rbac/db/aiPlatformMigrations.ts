@@ -51,6 +51,13 @@ async function grantDefaults(db: RbacDb, permissions: Permission[]): Promise<voi
   }
 }
 
+async function hasColumn(db: RbacDb, table: string, column: string): Promise<boolean> {
+  const found = getDatabaseType() === 'sqlite'
+    ? await rows(db, sql`SELECT 1 FROM pragma_table_info(${table}) WHERE name = ${column}`)
+    : await rows(db, sql`SELECT 1 FROM information_schema.columns WHERE table_name = ${table} AND column_name = ${column}`);
+  return found.length > 0;
+}
+
 function dialect(): 'sqlite' | 'postgres' {
   return getDatabaseType() === 'sqlite' ? 'sqlite' : 'postgres';
 }
@@ -104,6 +111,18 @@ export const AI_PLATFORM_MIGRATIONS: Migration[] = [
         await exec(db, sql.raw(statement));
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.68.0] Created AI triage tables (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.69.0',
+    name: 'ai_harness_analysis',
+    description: 'ADR 0024 phase 5 — the analysis sandbox switch on harnesses (ai_harnesses.analysis), off for every existing harness.',
+    up: async (db) => {
+      if (!(await hasColumn(db, 'ai_harnesses', 'analysis'))) {
+        await exec(db, sql.raw('ALTER TABLE ai_harnesses ADD COLUMN analysis INTEGER NOT NULL DEFAULT 0'));
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.69.0] Added the analysis switch to AI harnesses (${dialect()})`);
     },
     down: async () => { /* forward-only */ },
   },

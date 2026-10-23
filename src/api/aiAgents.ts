@@ -102,6 +102,8 @@ export interface HarnessInput {
   generalPurpose: GeneralPurposeConfig;
   promptSuffix: string | null;
   toolDescriptionOverrides: Record<string, string>;
+  /** ADR 0024: agents get `js_eval`, a sandbox that can call their read-only tools. */
+  analysis?: boolean;
 }
 
 export type AiHarness = HarnessInput & RowMeta;
@@ -386,6 +388,7 @@ export function harnessInputOf(harness: AiHarness): HarnessInput {
     generalPurpose: { ...harness.generalPurpose },
     promptSuffix: harness.promptSuffix,
     toolDescriptionOverrides: { ...harness.toolDescriptionOverrides },
+    analysis: harness.analysis === true,
   };
 }
 

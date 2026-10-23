@@ -42,6 +42,7 @@ import { skillIncludeTools } from "./skillTools";
 import { logger } from "../../../utils/logger";
 import type { GuardrailRunner } from "../guardrails/runner";
 import { buildRememberTool, memoryPrompt, type RunMemory } from "../memory/runtime";
+import { analysisPrompt, bridgedTool, buildAnalysisTool } from "../runtime/analysis";
 
 /** Maximum agent-tree depth: root → agent → subagent. */
 export const MAX_AGENT_DEPTH = 3;
@@ -249,6 +250,8 @@ export interface BuildContext {
   onToolEvent?: (event: ToolEvent) => void;
   /** Memory (ADR 0024 phase 3), loaded on first use by an agent with memory turned on. */
   memory?: () => Promise<RunMemory>;
+  /** Receives cleanups (analysis sandboxes, ADR 0024 phase 5) the engine runs when the run ends. */
+  onDispose?: (dispose: () => void) => void;
 }
 
 function harnessFor(agent: AgentDef, snapshot: RegistrySnapshot): HarnessDef {
@@ -272,8 +275,8 @@ interface NodeParts {
   sources: string[];
   skills: SkillDef[];
   subagents: Array<SubAgent | CompiledSubAgent>;
-  /** The memory section for this node's system prompt ("" when memory is off). */
-  memorySection: string;
+  /** Sections appended to this node's system prompt (memory, analysis). */
+  promptSections: string[];
 }
 
 /** Resolve the agent's fallback model; a fallback that no longer resolves is skipped, never fatal. */
@@ -331,7 +334,7 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
       subagents.push({
         name: child.slug,
         description: child.description,
-        systemPrompt: withMemory(childNode.systemPrompt, parts.memorySection),
+        systemPrompt: withSections(childNode.systemPrompt, parts.promptSections),
         mode: "fork",
         model: childNode.model.model as never,
         tools: parts.tools,
@@ -354,6 +357,15 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     memorySection = memoryPrompt(memory, canRemember);
   }
 
+  // Analysis sandbox: read-only tools are bridged into it, write tools never.
+  let analysisSection = "";
+  if (harness.analysis && build.onDispose) {
+    const readTools = tools.filter((t) => catalogTool(t.name)?.access === "read");
+    const guard = build.guardrails ? { runner: build.guardrails, agentId: agent.id, path: node.path } : null;
+    tools.push(...guardDuplicateTools([buildAnalysisTool(readTools.map((t) => bridgedTool(t, guard)), build.onDispose)], build.calls, node.path, usage, build.onToolEvent));
+    analysisSection = analysisPrompt(readTools.map((t) => t.name));
+  }
+
   const generalPurpose = generalPurposeSubagent(harness, tools, sources);
   if (generalPurpose) subagents.push(generalPurpose);
 
@@ -367,11 +379,11 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     sources.length > 0 ? createSkillsMiddleware({ backend: () => skillsBackend(skills), sources, tools: skillTools }) : null,
     ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
   ].filter((m): m is AgentMiddleware => m !== null);
-  return { tools, middleware, sources, skills, subagents, memorySection };
+  return { tools, middleware, sources, skills, subagents, promptSections: [memorySection, analysisSection].filter(Boolean) };
 }
 
-function withMemory(systemPrompt: string, memorySection: string): string {
-  return memorySection ? `${systemPrompt}\n\n${memorySection}` : systemPrompt;
+function withSections(systemPrompt: string, sections: readonly string[]): string {
+  return [systemPrompt, ...sections].join("\n\n");
 }
 
 /**
@@ -402,7 +414,7 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
   return createDeepAgent({
     model: node.model.model as never,
     tools: parts.tools,
-    systemPrompt: withMemory(node.systemPrompt, parts.memorySection),
+    systemPrompt: withSections(node.systemPrompt, parts.promptSections),
     backend: skillsBackend(parts.skills),
     permissions: FILESYSTEM_PERMISSIONS,
     subagents: parts.subagents,

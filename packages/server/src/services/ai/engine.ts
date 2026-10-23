@@ -182,6 +182,17 @@ function usageMeta(featureId: string, ctx: AgentRunContext, source: UsageRunMeta
   };
 }
 
+/** Release what a run's agents held (analysis sandboxes), whatever the run's outcome. */
+function disposeAll(disposers: Array<() => void>): void {
+  for (const dispose of disposers.splice(0)) {
+    try {
+      dispose();
+    } catch (error) {
+      logger.warn({ module: "AI", err: error instanceof Error ? error.message : String(error) }, "Could not release a run resource");
+    }
+  }
+}
+
 async function buildContext(
   snapshot: RegistrySnapshot,
   root: ResolvedModel,
@@ -350,11 +361,13 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
     const resolved = await resolveDeepAgentModel(await budgetedModel(cap.id, ctx, agent));
     const { model, config, label } = resolved;
     const calls: InvokedToolCall[] = [];
+    const disposers: Array<() => void> = [];
     const build = await buildContext(snapshot, resolved, {
       runtime: featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(prepared)),
       variables,
       calls,
       guardrails,
+      onDispose: (dispose) => disposers.push(dispose),
     });
     const deepAgent = await buildAgentTree(agent, instructions, build);
 
@@ -365,7 +378,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       [{ role: "user", content: task }],
       overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),
       signal,
-    );
+    ).finally(() => disposeAll(disposers));
     options.onTrace?.({ agent: { id: agent.id, slug: agent.slug, name: agent.name }, system: instructions, task, raw, calls });
     const steps = calls.map((call) => ({ tool: call.name, input: call.args, ...(call.agent && call.agent !== agent.slug ? { agent: call.agent } : {}) }));
     const meta = { raw, steps, modelLabel: label };
@@ -513,6 +526,7 @@ export async function invokeChat(
     run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
     const resolved = await resolveDeepAgentModel(await budgetedModel("chat", ctx, agent));
     const calls: InvokedToolCall[] = [];
+    const disposers: Array<() => void> = [];
     const prompts = renderAgentPrompts(agent, {}, snapshot);
     const durable = options.run;
     if (durable?.attachments?.length) {
@@ -526,6 +540,7 @@ export async function invokeChat(
       calls,
       includeChild: (child) => userMayUseAgent(child, ctx),
       guardrails: runnerForRun(snapshot, "chat", ctx, run),
+      onDispose: (dispose) => disposers.push(dispose),
       ...(durable ? {
         checkpointer: checkpointSaver(),
         // Only calls made below the answering agent carry a path, as in the stored answer.
@@ -545,7 +560,7 @@ export async function invokeChat(
       : { messages: normalizeMessages(messages), ...pinned };
     const result = await deepAgent.invoke(input as never, config).catch((error: unknown) => {
       throw guardrailErrorIn(error) ?? error;
-    });
+    }).finally(() => disposeAll(disposers));
     const interrupts = interruptsOf(result);
     return {
       content: interrupts.length > 0 ? "" : finalTextFromState(result),

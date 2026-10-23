@@ -59,6 +59,7 @@ export const harnessSchema = z.object({
   }),
   promptSuffix: z.string().max(4_000).nullable(),
   toolDescriptionOverrides: z.record(z.string().max(4_000)),
+  analysis: z.boolean().optional(),
 });
 
 export const skillSchema = z.object({
