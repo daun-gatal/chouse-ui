@@ -57,6 +57,7 @@ export { useDebounce } from './useDebounce';
 export { useWindowSize } from './useWindowSize';
 export type { Breakpoint } from './useWindowSize';
 export { useDeviceType } from './useDeviceType';
+export { useInView } from './useInView';
 
 // Pagination preferences hook
 export { usePaginationPreference, getDefaultPaginationSize } from './usePaginationPreferences';

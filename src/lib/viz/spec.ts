@@ -256,6 +256,7 @@ export const ROW_GAP_PX = 8;
 export const MAX_PANEL_ROWS = 40;
 export const MAX_PANELS = 60;
 export const MAX_CHART_PANELS = 40;
+export const MAX_VARIABLES = 10;
 
 export interface Layout {
   x: number;
