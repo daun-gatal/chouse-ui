@@ -1,7 +1,7 @@
-import { tool, type StructuredToolInterface } from "@langchain/core/tools";
+import { tool, type StructuredTool } from "@langchain/core/tools";
 import type { z } from "zod";
 
-export type AgentTool = StructuredToolInterface;
+export type AgentTool = StructuredTool;
 export type AgentToolSet = Record<string, AgentTool>;
 
 type ToolConfig<TSchema extends z.ZodTypeAny> = {

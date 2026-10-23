@@ -27,7 +27,7 @@ function blankHarness(registry: AiRegistry): HarnessInput {
     slug: uniqueSlug("new-harness", registry.harnesses.map((h) => h.slug)),
     name: "New harness",
     description: "",
-    excludedTools: ["write_todos", "write_file", "edit_file", "execute"],
+    excludedTools: ["write_todos", "write_file", "edit_file", "delete", "execute"],
     generalPurpose: { enabled: false },
     promptSuffix: null,
     toolDescriptionOverrides: {},

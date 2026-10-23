@@ -30,6 +30,7 @@ export const BUILTIN_TOOLS: ReadonlyArray<{ name: string; description: string }>
   { name: "grep", description: "Search file contents." },
   { name: "write_file", description: "Write a scratch file in the run's in-memory filesystem (never to disk; skills stay read-only)." },
   { name: "edit_file", description: "Edit a scratch file in the run's in-memory filesystem." },
+  { name: "delete", description: "Delete a scratch file or folder in the run's in-memory filesystem (skills stay read-only)." },
   { name: "execute", description: "Run a shell command — only available with a sandbox backend; CHouse never provides one." },
   { name: "start_async_task", description: "Start a remote async subagent (not used by CHouse)." },
   { name: "check_async_task", description: "Check a remote async subagent (not used by CHouse)." },

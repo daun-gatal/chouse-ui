@@ -93,6 +93,7 @@ DeepAgents gives every agent these tools on top of its catalog tools. A harness 
 | `grep` | Search file contents. | hidden | hidden | hidden |
 | `write_file` | Write a scratch file in the run's in-memory filesystem (never to disk; skills stay read-only). | hidden | hidden | hidden |
 | `edit_file` | Edit a scratch file in the run's in-memory filesystem. | hidden | hidden | hidden |
+| `delete` | Delete a scratch file or folder in the run's in-memory filesystem (skills stay read-only). | hidden | hidden | hidden |
 | `execute` | Run a shell command — only available with a sandbox backend; CHouse never provides one. | hidden | hidden | hidden |
 | `start_async_task` | Start a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
 | `check_async_task` | Check a remote async subagent (not used by CHouse). | hidden | hidden | hidden |

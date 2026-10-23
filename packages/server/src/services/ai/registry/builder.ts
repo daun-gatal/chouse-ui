@@ -18,6 +18,7 @@ import {
   type SubAgent,
 } from "deepagents";
 import { tool } from "@langchain/core/tools";
+import { todoListMiddleware } from "langchain";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 import { AppError } from "../../../types";
@@ -256,7 +257,9 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
   const generalPurpose = generalPurposeSubagent(harness, tools, sources);
   if (generalPurpose) subagents.push(generalPurpose);
 
+  // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
   const middleware = [
+    harness.excludedTools.includes("write_todos") ? null : todoListMiddleware(),
     harnessToolMiddleware(harness),
     build.guardrails ? guardrailMiddleware(build.guardrails, { agentId: agent.id, agentSlug: agent.slug, path: node.path, isRoot: node.depth === 0 }) : null,
   ].filter((m) => m !== null);
