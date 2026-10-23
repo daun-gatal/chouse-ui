@@ -855,3 +855,24 @@
 .markdown-panel :where(ol) { list-style: decimal; padding-left: 1.25rem; }
 .markdown-panel :where(code) { font-family: var(--font-mono, monospace); font-size: 0.85em; padding: 0 0.25em; border-radius: 3px; background: rgb(255 255 255 / 0.06); }
 .markdown-panel :where(p + p, ul, ol) { margin-top: 0.4em; }
+
+/* Dashboards: panels just added by Ask AI are outlined for a moment (revealPanels.ts). */
+.panel-just-added > section {
+  animation: panelJustAdded 2.4s ease-out;
+}
+
+@keyframes panelJustAdded {
+  0%, 60% {
+    box-shadow: 0 0 0 2px var(--color-brand);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-just-added > section {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--color-brand);
+  }
+}

@@ -624,6 +624,22 @@ export interface DraftRequest {
   /** The active connection: the drafter reads its schemas. */
   connectionId: string;
   existing: { title: string; variables: Variable[]; panels: Array<{ title: string; sql: string }> } | null;
+  /** Refine (panelIndex null) or Regenerate one panel of the draft under review. */
+  revision?: DraftRevision;
+}
+
+export const MAX_FEEDBACK_LENGTH = 2_000;
+
+export interface DraftRevision {
+  /** The draft as the user has it now: their fixes applied, the panels they left out marked. */
+  previous: {
+    title: string;
+    description: string;
+    variables: Variable[];
+    panels: Array<{ title: string; sql: string; viz: VizSpec | null; role: Role | null; importance: Importance | null; section: string | null; rationale: string; included: boolean }>;
+  };
+  feedback: string;
+  panelIndex: number | null;
 }
 
 export function draftDashboard(request: DraftRequest, opts?: InvokeOptions): Promise<DashboardDraft> {

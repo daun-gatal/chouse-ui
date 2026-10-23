@@ -67,7 +67,7 @@ export function DashboardCanvas({ items, editing, onLayoutChange, renderItem }: 
       {stacked ? (
         <div className="flex flex-col" style={{ gap: ROW_GAP_PX }}>
           {readingOrder(items).map((item) => (
-            <div key={item.key} style={{ height: rowsToPx(item.panel.layout.h) }}>{renderItem(item, rowsToPx(item.panel.layout.h))}</div>
+            <div key={item.key} data-panel-key={item.key} style={{ height: rowsToPx(item.panel.layout.h) }}>{renderItem(item, rowsToPx(item.panel.layout.h))}</div>
           ))}
         </div>
       ) : mounted ? (
