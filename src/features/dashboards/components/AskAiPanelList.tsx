@@ -17,6 +17,7 @@ import type { DraftPanelStatus } from "@/api/dashboards";
 import type { ChartType } from "@/lib/viz/spec";
 
 import { canInclude, groupBySection, statusCounts, type ReviewPanel } from "../askAi";
+import { REVIEW_LAYER } from "./askAiLayer";
 
 export type StatusFilter = "all" | DraftPanelStatus;
 
@@ -86,7 +87,7 @@ export function AskAiPanelList({ panels, filter, onFilter, selectedId, onSelect,
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className={cn(BTN_GHOST, "min-h-8")} disabled={locked || all.length === 0}><ListChecks className="h-3.5 w-3.5" aria-hidden /> Select</Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className={REVIEW_LAYER.nested}>
             <DropdownMenuItem onClick={() => onInclude(all, true)}>All</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onInclude(all, false)}>None</DropdownMenuItem>
             <DropdownMenuItem onClick={onOnlyChecked}>Only checked ✓</DropdownMenuItem>

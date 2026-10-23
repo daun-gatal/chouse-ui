@@ -17,7 +17,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useAiModelStore, useRbacStore } from "@/stores";
 
-export function AiModelButton(): React.ReactElement | null {
+interface Props {
+  /** Stacking for the picker when it opens over a surface above the app's dock (e.g. a full-screen review). */
+  layer?: { overlay: string; content: string };
+}
+
+export function AiModelButton({ layer }: Props = {}): React.ReactElement | null {
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
   const modelId = useAiModelStore((s) => s.modelId);
   const setModelId = useAiModelStore((s) => s.setModelId);
@@ -59,7 +64,7 @@ export function AiModelButton(): React.ReactElement | null {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md rounded-xs border-ink-500 bg-ink-100">
+        <DialogContent className={cn("max-w-md rounded-xs border-ink-500 bg-ink-100", layer?.content)} overlayClassName={layer?.overlay}>
           <DialogHeader>
             <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-brand" /><DialogTitle>Your AI model</DialogTitle></div>
             <DialogDescription>Used by AI features on Data, Dashboards and AI Governance. Stored per user.</DialogDescription>

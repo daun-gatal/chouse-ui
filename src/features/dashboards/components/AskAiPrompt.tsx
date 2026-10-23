@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { BTN_OUTLINE, BTN_PRIMARY, TEXTAREA } from "@/components/charts/controlStyles";
 
+import { PICKER_LAYER } from "./askAiLayer";
+
 export const MIN_GOAL_LENGTH = 8;
 export const MAX_GOAL_LENGTH = 4_000;
 
@@ -74,7 +76,7 @@ export function AskAiPrompt({ goal, onGoal, onDraft, drafting, onCancel, error, 
       {blocked && <p className="text-xs text-amber-300" data-testid="draft-blocked">{blocked}</p>}
       {error && <p role="alert" className="break-words text-xs text-red-300">{error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <AiModelButton />
+        <AiModelButton layer={PICKER_LAYER} />
         <div className="flex items-center gap-2">
           <span className="hidden text-[11px] text-paper-faint sm:inline">Ctrl/⌘ + Enter</span>
           <Button className={`${BTN_PRIMARY} min-h-9`} onClick={onDraft} disabled={!ready}>

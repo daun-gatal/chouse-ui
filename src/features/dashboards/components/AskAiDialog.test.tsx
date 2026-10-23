@@ -116,6 +116,8 @@ describe("AskAiDialog on a wide screen", () => {
     await draftIt();
     expect(api.draftDashboard.mock.calls[0][0]).toEqual({ goal: "Watch the orders pipeline", connectionId: "c1", existing: null });
     expect((screen.getByLabelText("Dashboard title") as HTMLInputElement).value).toBe("Orders pipeline");
+    // Above the app's dock (z-70/80), so its rail does not cover the review's left edge.
+    expect(screen.getByTestId("ask-ai").className).toContain("z-[90]");
 
     const list = screen.getByTestId("draft-panel-list");
     expect(within(list).getAllByRole("region").map((s) => s.getAttribute("aria-label"))).toEqual(["Throughput", "Where", "Top of the dashboard"]);

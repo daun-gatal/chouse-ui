@@ -71,6 +71,7 @@ import { AskAiPanelDetail } from "./AskAiPanelDetail";
 import { AskAiPanelList, type StatusFilter } from "./AskAiPanelList";
 import { AskAiPreview, type PreviewRun } from "./AskAiPreview";
 import { AskAiPrompt } from "./AskAiPrompt";
+import { REVIEW_LAYER } from "./askAiLayer";
 
 /** Widths where the list sits beside the preview, and where tabs replace it on a tablet. */
 export const WIDE_FROM_PX = 1100;
@@ -356,7 +357,8 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}>
       <DialogContent
-        className="left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0"
+        overlayClassName={REVIEW_LAYER.overlay}
+        className="z-[90] left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0"
         onboardingSurfaceDismissible={false}
         data-testid="ask-ai"
       >
@@ -464,7 +466,8 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
               <Sheet open={selected !== null} onOpenChange={(o) => { if (!o) setSelectedId(null); }}>
                 <SheetContent
                   side={layout === "phone" ? "bottom" : "right"}
-                  className={cn("overflow-y-auto p-0", layout === "phone" ? "max-h-[85dvh] rounded-t-md" : "w-full sm:max-w-md")}
+                  overlayClassName={REVIEW_LAYER.nestedOverlay}
+                  className={cn("overflow-y-auto p-0", REVIEW_LAYER.nested, layout === "phone" ? "max-h-[85dvh] rounded-t-md" : "w-full sm:max-w-md")}
                 >
                   <SheetTitle className="sr-only">{selected?.draft.title ?? "Panel"}</SheetTitle>
                   <SheetDescription className="sr-only">Details of the drafted panel</SheetDescription>
@@ -476,7 +479,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
         )}
 
         <AlertDialog open={confirm !== null} onOpenChange={(o) => { if (!o) setConfirm(null); }}>
-          <AlertDialogContent>
+          <AlertDialogContent className={REVIEW_LAYER.nested} overlayClassName={REVIEW_LAYER.nestedOverlay}>
             {confirm === "warnings" ? (
               <>
                 <AlertDialogHeader>

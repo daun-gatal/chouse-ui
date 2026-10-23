@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 import type { StatusCounts } from "../askAi";
 import { STATUS } from "./AskAiPanelList";
+import { REVIEW_LAYER } from "./askAiLayer";
 
 export type ReviewLayout = "wide" | "tablet" | "phone";
 
@@ -151,7 +152,7 @@ export function AskAiHeader({ layout, existingTitle, title, onTitle, counts, onF
               <PopoverTrigger asChild>
                 <Button variant="outline" className={BTN_OUTLINE} disabled={locked}><Wand2 className="h-3.5 w-3.5" aria-hidden /> Refine…</Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-[420px] max-w-[calc(100vw-2rem)]">
+              <PopoverContent align="end" className={cn("w-[420px] max-w-[calc(100vw-2rem)]", REVIEW_LAYER.nested)}>
                 <RefineForm refine={refine} onDone={() => setRefineOpen(false)} />
               </PopoverContent>
             </Popover>
@@ -160,11 +161,11 @@ export function AskAiHeader({ layout, existingTitle, title, onTitle, counts, onF
           </div>
         ) : (
           <div className="flex shrink-0 items-center gap-1.5">
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button size="icon" variant="ghost" className={cn(BTN_ICON, "h-9 w-9")} aria-label="More actions" disabled={locked}><MoreHorizontal className="h-4 w-4" /></Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className={REVIEW_LAYER.nested}>
                 {fixes > 0 && <DropdownMenuItem onClick={onApplyFixes}>Apply {fixes} fix{fixes === 1 ? "" : "es"}</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => setRefineOpen(true)}><Wand2 className="mr-2 h-3.5 w-3.5" /> Refine…</DropdownMenuItem>
                 {canUndo && <DropdownMenuItem onClick={onUndo}><Undo2 className="mr-2 h-3.5 w-3.5" /> Undo</DropdownMenuItem>}
@@ -179,7 +180,7 @@ export function AskAiHeader({ layout, existingTitle, title, onTitle, counts, onF
       {primary.disabledReason && layout !== "phone" && <p id="ask-ai-primary-reason" className="text-right text-[11px] text-amber-300">{primary.disabledReason}</p>}
       {!wide && (
         <Sheet open={refineOpen} onOpenChange={setRefineOpen}>
-          <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto">
+          <SheetContent side="bottom" overlayClassName={REVIEW_LAYER.nestedOverlay} className={cn("max-h-[85dvh] overflow-y-auto", REVIEW_LAYER.nested)}>
             <SheetHeader className="text-left">
               <SheetTitle>Refine the draft</SheetTitle>
               <SheetDescription>Say what to change. The AI revises this draft instead of starting over.</SheetDescription>
