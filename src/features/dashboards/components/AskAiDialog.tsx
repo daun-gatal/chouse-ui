@@ -122,6 +122,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [refineText, setRefineText] = useState("");
 
+  const scrollRoot = useRef<HTMLDivElement>(null);
   const dispatch = useCallback((action: ReviewAction): void => setReview((r) => (r ? reviewReducer(r, action) : r)), []);
 
   // A request still running when the window goes away is dropped.
@@ -196,7 +197,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
   };
 
   const accept = useMutation({
-    mutationFn: async (): Promise<{ id: string; added: string[] }> => {
+    mutationFn: async (): Promise<{ id: string; added: string[]; charts: number }> => {
       if (!review || !pinned) throw new Error("Nothing to add");
       // Read at the moment of saving: the panels were checked on the pinned connection only.
       if (useAuthStore.getState().activeConnectionId !== pinned.id) throw new Error(`Switch back to ${pinnedName} to add these panels`);
@@ -214,7 +215,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
           title: review.draft.title.trim(), description: review.draft.description.trim(), timeRange: "6h", refreshSeconds: 60, connectionScope: scopeForNew(pinned.id),
           variables: review.draft.variables, annotations: [...DEFAULT_ANNOTATION_SOURCES], panels: added,
         });
-        return { id: created.dashboard.id, added: [] };
+        return { id: created.dashboard.id, added: [], charts: 0 };
       }
       // Re-read so the save is at the current version, with the panels as they are now; the new ones go below them.
       const fresh = await getDashboard(existing.dashboard.id);
@@ -225,11 +226,13 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
       const { variables } = mergeVariables(input.variables, review.draft.variables);
       const saved = await updateDashboard(existing.dashboard.id, fresh.dashboard.version, { ...input, variables, panels: [...input.panels, ...shiftDown(added, bottom)] });
       const before = new Set(fresh.panels.map((p) => p.id));
-      return { id: existing.dashboard.id, added: saved.panels.filter((p) => !before.has(p.id)).map((p) => p.id) };
+      const created = saved.panels.filter((p) => !before.has(p.id));
+      return { id: existing.dashboard.id, added: created.map((p) => p.id), charts: created.filter((p) => p.kind === "chart").length };
     },
-    onSuccess: async ({ id, added }) => {
+    onSuccess: async ({ id, added, charts }) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
-      toast.success(existing ? `Added ${added.length} panel${added.length === 1 ? "" : "s"}` : "Dashboard created");
+      // Counted as the button counted them: charts, not the section headings placed with them.
+      toast.success(existing ? `Added ${charts} panel${charts === 1 ? "" : "s"}` : "Dashboard created");
       onOpenChange(false);
       const state: AddedPanelsState | undefined = added.length > 0 ? { highlightPanels: added } : undefined;
       navigate(`/dashboards/${id}`, state ? { state } : undefined);
@@ -315,6 +318,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
     ? [
       ...(review.draft.variables.length > 0 ? [`Variables: ${review.draft.variables.map((v) => v.label).join(", ")}${skipped.length > 0 ? ` (this dashboard already has ${skipped.join(", ")}; its own definitions are kept)` : ""}`] : []),
       ...review.draft.problems,
+      ...review.draft.regenerateNotes.filter((n) => !review.draft.problems.includes(n)),
     ]
     : [];
 
@@ -333,7 +337,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
   );
   const detail = (onBack: (() => void) | null): React.ReactNode => selected && review && (
     <AskAiPanelDetail
-      key={`${selected.id}:${review.history.length}`}
+      key={`${selected.id}:${review.version}`}
       panel={selected}
       onBack={onBack}
       onInclude={(include) => dispatch({ type: "include", ids: [selected.id], include })}
@@ -345,7 +349,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
     />
   );
   const preview = review && (
-    <AskAiPreview panels={panels} sections={sections} run={run} existingPanels={existingPanels.length} selectedId={selectedId} onSelect={selectPanel} />
+    <AskAiPreview panels={panels} sections={sections} run={run} existingPanels={existingPanels.length} selectedId={selectedId} onSelect={selectPanel} scrollRoot={scrollRoot} />
   );
 
   const opLabel = op?.kind === "refine"
@@ -358,7 +362,10 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}>
       <DialogContent
         overlayClassName={REVIEW_LAYER.overlay}
-        className="z-[90] left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0"
+        className={cn(
+          REVIEW_LAYER.content,
+          "left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0",
+        )}
         onboardingSurfaceDismissible={false}
         data-testid="ask-ai"
       >
@@ -449,7 +456,7 @@ export function AskAiDialog({ open, onOpenChange, existing }: Props): React.Reac
                     ))}
                   </div>
                 )}
-                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+                <div ref={scrollRoot} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
                   {layout === "wide" || tab === "preview" ? preview : list}
                 </div>
               </main>

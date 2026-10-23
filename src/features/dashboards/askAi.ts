@@ -23,6 +23,8 @@ export interface ReviewDraft {
   description: string;
   variables: Variable[];
   problems: string[];
+  /** Notes on the last Regenerate only; replaced by the next one. */
+  regenerateNotes: string[];
   panels: ReviewPanel[];
 }
 
@@ -35,6 +37,8 @@ export interface ReviewState {
   /** The drafts before each Refine or Regenerate, oldest first. */
   history: ReviewDraft[];
   nextId: number;
+  /** Bumped whenever the AI or Undo replaces panels, so views of a panel start afresh. */
+  version: number;
 }
 
 export const MAX_HISTORY = 5;
@@ -64,11 +68,12 @@ function reviewPanels(panels: DraftPanel[], nextId: number): { panels: ReviewPan
 export function initialReview(draft: DashboardDraft): ReviewState {
   const { panels, nextId } = reviewPanels(draft.panels, 1);
   return {
-    draft: { title: draft.title, description: draft.description, variables: draft.variables, problems: draft.problems, panels },
+    draft: { title: draft.title, description: draft.description, variables: draft.variables, problems: draft.problems, regenerateNotes: [], panels },
     titleEdited: false,
     dirty: false,
     history: [],
     nextId,
+    version: 0,
   };
 }
 
@@ -154,11 +159,13 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         dirty: true,
         history: withHistory(state),
         nextId,
+        version: state.version + 1,
         draft: {
           title: state.titleEdited ? state.draft.title : action.draft.title,
           description: action.draft.description,
           variables: action.draft.variables,
           problems: action.draft.problems,
+          regenerateNotes: [],
           panels: next,
         },
       };
@@ -172,10 +179,11 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         ...state,
         dirty: true,
         history: withHistory(state),
+        version: state.version + 1,
         draft: {
           ...state.draft,
           variables: unionVariables(state.draft.variables, action.draft.variables),
-          problems: [...new Set([...state.draft.problems, ...action.draft.problems])],
+          regenerateNotes: action.draft.problems,
           panels: next,
         },
       };
@@ -183,7 +191,7 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
     case "undo": {
       const previous = state.history[state.history.length - 1];
       if (!previous) return state;
-      return { ...state, dirty: true, history: state.history.slice(0, -1), draft: previous };
+      return { ...state, dirty: true, history: state.history.slice(0, -1), version: state.version + 1, draft: previous };
     }
   }
 }

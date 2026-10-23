@@ -55,7 +55,7 @@ describe("initialReview", () => {
   it("gives each panel a stable id and includes everything that can be added", () => {
     const state = start();
     expect(state.draft.panels.map((p) => [p.id, p.include])).toEqual([["p1", true], ["p2", true], ["p3", false]]);
-    expect(state).toMatchObject({ dirty: false, titleEdited: false, history: [], nextId: 4 });
+    expect(state).toMatchObject({ dirty: false, titleEdited: false, history: [], nextId: 4, version: 0 });
   });
 });
 
@@ -130,11 +130,13 @@ describe("reviewReducer", () => {
     const changed = reviewReducer(start(), { type: "include", ids: ["p1"], include: false });
     const refined = reviewReducer(changed, { type: "refined", draft: draftOf([panel("Disk"), BLOCKED], { variables: [variable("db")], problems: ["x"] }) });
     expect(refined.draft.panels.map((p) => [p.id, p.draft.title, p.include])).toEqual([["p4", "Disk", true], ["p5", "Bad", false]]);
-    expect(refined.draft).toMatchObject({ variables: [variable("db")], problems: ["x"], description: "Kafka to MergeTree" });
+    expect(refined.draft).toMatchObject({ variables: [variable("db")], problems: ["x"], regenerateNotes: [], description: "Kafka to MergeTree" });
+    expect(refined.version).toBe(1);
     expect(refined.history).toEqual([changed.draft]);
     const undone = reviewReducer(refined, { type: "undo" });
     expect(undone.draft).toBe(changed.draft);
     expect(undone.history).toEqual([]);
+    expect(undone.version).toBe(2);
     expect(reviewReducer(undone, { type: "undo" })).toBe(undone);
   });
 
@@ -145,13 +147,22 @@ describe("reviewReducer", () => {
     expect(state.history[0].panels[0].draft.title).toBe("Run 1");
   });
 
-  it("regenerates one panel in place, keeping the rest, the draft's variables and its problems", () => {
+  it("regenerates one panel in place, keeping the rest, the draft's variables and its problems, with only the last reply's notes", () => {
     const base = initialReview(draftOf([panel("A"), panel("B")], { variables: [variable("db", "Mine")], problems: ["old"] }));
     const left = reviewReducer(base, { type: "include", ids: ["p1"], include: false });
     const out = reviewReducer(left, { type: "regenerated", id: "p2", draft: draftOf([panel("B2")], { variables: [variable("db", "Theirs"), variable("table")], problems: ["new", "old"] }) });
     expect(out.draft.panels.map((p) => [p.id, p.draft.title, p.include])).toEqual([["p1", "A", false], ["p2", "B2", true]]);
     expect(out.draft.variables.map((v) => v.label)).toEqual(["Mine", "table"]);
-    expect(out.draft.problems).toEqual(["old", "new"]);
+    expect(out.draft.problems).toEqual(["old"]);
+    expect(out.draft.regenerateNotes).toEqual(["new", "old"]);
+    expect(out.version).toBe(1);
+    const again = reviewReducer(out, { type: "regenerated", id: "p2", draft: draftOf([panel("B3")]) });
+    expect(again.draft.regenerateNotes).toEqual([]);
+    // Past the history cap the version still moves, so a panel's details start afresh.
+    let many = again;
+    for (let i = 0; i < MAX_HISTORY + 2; i += 1) many = reviewReducer(many, { type: "regenerated", id: "p2", draft: draftOf([panel(`B${i}`)]) });
+    expect(many.history).toHaveLength(MAX_HISTORY);
+    expect(many.version).toBe(again.version + MAX_HISTORY + 2);
     expect(out.draft.title).toBe("Orders pipeline");
     expect(out.history).toEqual([left.draft]);
   });

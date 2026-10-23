@@ -20,6 +20,13 @@ vi.mock("@/stores", async (importOriginal) => {
   return { ...actual, useRbacStore: (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state) };
 });
 const nav = vi.hoisted(() => ({ navigate: vi.fn() }));
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", async (importOriginal) => ({ ...(await importOriginal<typeof import("sonner")>()), toast: toasts }));
+// Requests go to the dock's active connection: the same one the auth store holds in the app.
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  getConnectionId: () => useAuthStore.getState().activeConnectionId,
+}));
 vi.mock("react-router", async (importOriginal) => ({ ...(await importOriginal<typeof import("react-router")>()), useNavigate: () => nav.navigate }));
 
 const STAT = { version: 2 as const, type: "stat" as const, x: null, y: ["v"], series: null, unit: "count" as const, decimals: null, thresholds: [], colorScheme: "violet" as const, reduce: "last" as const, links: [], baseline: null };
@@ -136,9 +143,14 @@ describe("AskAiDialog on a wide screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply 1 fix" }));
     expect(primary().textContent).toContain("Create dashboard · 2");
     fireEvent.change(screen.getByLabelText("Dashboard title"), { target: { value: "My orders" } });
+    // The fix changed one panel's SQL, so that panel ran again.
+    await waitFor(() => expect(api.previewPanel).toHaveBeenCalledTimes(3));
     fireEvent.click(primary());
 
     await waitFor(() => expect(api.createDashboard).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Dashboard created"));
+    // The save invalidates the dashboards cache; the review's previews are not part of it and do not run again.
+    expect(api.previewPanel).toHaveBeenCalledTimes(3);
     const input = api.createDashboard.mock.calls[0][0];
     expect(input).toMatchObject({ title: "My orders", description: "Kafka to MergeTree", timeRange: "6h", connectionScope: { kind: "only", connectionIds: ["c1"] } });
     expect(input.panels.map((p: { kind: string; title: string; sql?: string }) => [p.kind, p.title, p.sql ?? null])).toEqual([
@@ -342,7 +354,7 @@ describe("AskAiDialog adding to an existing dashboard", () => {
   it("drafts with the dashboard as context, previews below its panels, and adds the new ones at its current version", async () => {
     const detail = existingDashboard({ variables: [{ name: "db", label: "DB", kind: "string", options: { source: "static", values: ["a"] }, default: "a" }] });
     api.getDashboard.mockResolvedValue(detail);
-    api.updateDashboard.mockImplementation(async (_id: string, _v: number, input: { panels: unknown[] }) => ({ ...detail, panels: [...detail.panels, { ...detail.panels[0], id: "n1" }, { ...detail.panels[0], id: "n2" }], _input: input }));
+    api.updateDashboard.mockImplementation(async (_id: string, _v: number, input: { panels: unknown[] }) => ({ ...detail, panels: [...detail.panels, { ...detail.panels[0], id: "n1", kind: "heading" }, { ...detail.panels[0], id: "n2" }], _input: input }));
     setup(detail);
     expect(screen.getByText("What should Orders also show?")).toBeTruthy();
     await draftIt();
@@ -359,6 +371,8 @@ describe("AskAiDialog adding to an existing dashboard", () => {
     expect([id, version]).toEqual(["d1", 4]);
     expect(input.panels.map((p: { id: string | null; kind: string; layout: { y: number } }) => [p.id, p.kind, p.layout.y])).toEqual([["e0", "chart", 0], [null, "heading", 4], [null, "chart", 6]]);
     await waitFor(() => expect(nav.navigate).toHaveBeenCalledWith("/dashboards/d1", { state: { highlightPanels: ["n1", "n2"] } }));
+    // The section heading placed with the chart is not counted, as the button did not count it.
+    expect(toasts.success).toHaveBeenCalledWith("Added 1 panel");
   });
 
   it("does not add more panels than the dashboard can hold, counting section headings", async () => {

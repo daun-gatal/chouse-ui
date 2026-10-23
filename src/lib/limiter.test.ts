@@ -71,6 +71,14 @@ describe("createLimiter", () => {
     expect(ran).toBe(false);
   });
 
+  it("frees the slot of a task that throws before returning a promise", async () => {
+    const limit = createLimiter(1);
+    await expect(limit(() => {
+      throw new Error("bad request body");
+    })).rejects.toThrow("bad request body");
+    expect(await limit(() => Promise.resolve("next"))).toBe("next");
+  });
+
   it("needs a size of at least one", () => {
     expect(() => createLimiter(0)).toThrow();
   });

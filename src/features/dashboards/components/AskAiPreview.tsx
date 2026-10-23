@@ -6,11 +6,12 @@
  * time, so a long draft does not fire every query at once.
  */
 
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, type RefObject } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CircleAlert, CircleCheck, Layers, Loader2 } from "lucide-react";
 
 import { PanelMessage, PanelVisual } from "@/components/charts/PanelVisual";
+import { getConnectionId } from "@/api/client";
 import { arrangePanels, previewPanel, type ArrangeSection, type ChartPanelInput, type ConnectionScope } from "@/api/dashboards";
 import { useDebounce, useInView } from "@/hooks";
 import { createLimiter } from "@/lib/limiter";
@@ -22,6 +23,14 @@ import { DashboardCanvas, type CanvasItem } from "./DashboardCanvas";
 import { HeadingPanelCard } from "./PanelCard";
 
 const previewLimit = createLimiter(3);
+/**
+ * Outside the ["dashboards"] prefix on purpose: a save invalidates that prefix,
+ * and the review's previews must not run again (and hold the save up) for it.
+ */
+export const askAiKeys = {
+  arrange: (sections: ArrangeSection[]) => ["ask-ai-draft", "arrange", sections] as const,
+  preview: (...parts: unknown[]) => ["ask-ai-draft", "preview", ...parts] as const,
+};
 const noop = (): void => undefined;
 /** Card header and padding around the chart (PanelCard's chrome, without the footer). */
 const CARD_CHROME_PX = 40 + 24;
@@ -44,13 +53,15 @@ interface Props {
   existingPanels: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** The element the preview scrolls in: panels start running a little before they reach it. */
+  scrollRoot: RefObject<HTMLElement | null>;
 }
 
-export function AskAiPreview({ panels, sections, run, existingPanels, selectedId, onSelect }: Props): React.ReactElement {
+export function AskAiPreview({ panels, sections, run, existingPanels, selectedId, onSelect, scrollRoot }: Props): React.ReactElement {
   // Waits for ticking to settle, so quick changes ask the layout engine once.
   const settled = useDebounce(sections, 250);
   const arrange = useQuery({
-    queryKey: ["dashboards", "ai-draft-arrange", settled],
+    queryKey: askAiKeys.arrange(settled),
     queryFn: () => arrangePanels(settled),
     enabled: settled.length > 0,
     placeholderData: keepPreviousData,
@@ -107,6 +118,7 @@ export function AskAiPreview({ panels, sections, run, existingPanels, selectedId
                 selected={selectedId === item.key}
                 onSelect={() => onSelect(item.key)}
                 run={run}
+                scrollRoot={scrollRoot}
               />
             );
           }}
@@ -123,17 +135,22 @@ interface CardProps {
   selected: boolean;
   onSelect: () => void;
   run: PreviewRun;
+  scrollRoot: RefObject<HTMLElement | null>;
 }
 
-function DraftPreviewCard({ panel, height, status, selected, onSelect, run }: CardProps): React.ReactElement {
-  const ref = useRef<HTMLElement>(null);
-  const seen = useInView(ref);
+function DraftPreviewCard({ panel, height, status, selected, onSelect, run, scrollRoot }: CardProps): React.ReactElement {
+  const [ref, seen] = useInView<HTMLElement>({ root: scrollRoot });
   const { sql, fleet } = panel;
   const preview = useQuery({
     // The chart settings are not in the key: a fix to the chart redraws the result without running it again.
-    queryKey: ["dashboards", "ai-draft-preview", run.connectionId, sql, fleet, run.variables, run.values, run.range, run.connectionScope],
+    queryKey: askAiKeys.preview(run.connectionId, sql, fleet, run.variables, run.values, run.range, run.connectionScope),
     queryFn: ({ signal }) => previewLimit(
-      () => previewPanel({ sql, viz: panel.viz, fleet, variables: run.variables, values: run.values, range: run.range, connectionScope: run.connectionScope }, signal),
+      () => {
+        // A request goes to the dock's active connection: one that waited for a slot while the user
+        // switched must not run there and be kept as this connection's result.
+        if (getConnectionId() !== run.connectionId) throw new Error("The connection changed before this panel ran");
+        return previewPanel({ sql, viz: panel.viz, fleet, variables: run.variables, values: run.values, range: run.range, connectionScope: run.connectionScope }, signal);
+      },
       signal,
     ),
     enabled: seen && run.blocked === null,

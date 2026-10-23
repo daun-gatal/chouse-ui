@@ -25,7 +25,8 @@ export function createLimiter(size: number): Limiter {
       function start(): void {
         signal?.removeEventListener("abort", aborted);
         running += 1;
-        task().then(resolve, reject).finally(release);
+        // Through a promise, so a task that throws before returning one still frees its slot.
+        Promise.resolve().then(task).then(resolve, reject).finally(release);
       }
       if (signal?.aborted) {
         reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
