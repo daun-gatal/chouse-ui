@@ -135,7 +135,7 @@ describe("agent drafts", () => {
       tuning: { stepBudget: 500, recursionLimit: 2, timeoutMs: null, maxOutputTokens: 10, why: "x" },
       model: { configId: "no-such-model", why: "x" },
     }));
-    expect(result.input.tuning).toEqual({ stepBudget: 100, recursionLimit: 8, timeoutMs: null, maxOutputTokens: 256, fallbackModelConfigId: null, modelRetries: null, toolRetries: null, maxModelCalls: null, maxToolCalls: null, promptCaching: true, clearOldToolResults: false, forkedSubagents: [] });
+    expect(result.input.tuning).toEqual({ stepBudget: 100, recursionLimit: 8, timeoutMs: null, maxOutputTokens: 256, fallbackModelConfigId: null, modelRetries: null, toolRetries: null, maxModelCalls: null, maxToolCalls: null, promptCaching: true, clearOldToolResults: false, forkedSubagents: [], memory: false });
     expect(result.input.modelConfigId).toBeNull();
     expect(result.fixes.join("\n")).toContain("Model 'no-such-model' is not configured");
     expect(agentDraft(goodAgent({ model: { configId: "model-1", why: "Pinned" } })).input.modelConfigId).toBe("model-1");

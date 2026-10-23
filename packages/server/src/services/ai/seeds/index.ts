@@ -306,7 +306,7 @@ export const SEED_AGENTS: SeedAgent[] = [
   {
     id: "builtin-agent-clickhouse-data", slug: "clickhouse-data", name: "ClickHouse Data",
     description: "Answers questions about ClickHouse data: databases, tables, columns, SQL, query performance, server state and charts.",
-    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12 },
+    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12, memory: true },
     requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query", ...CHAT_ACTION_TOOLS], skills: ALL_SKILLS, subagents: [],
   },
   {
@@ -344,7 +344,7 @@ export const SEED_AGENTS: SeedAgent[] = [
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",
     description: "Routes each chat request to ClickHouse Data or CHouse Admin, and combines their answers for questions that span both.",
-    kind: "router", systemPrompt: ROUTER_PROMPT, taskTemplate: null, harness: "router", tuning: { stepBudget: 10, timeoutMs: 180_000 },
+    kind: "router", systemPrompt: ROUTER_PROMPT, taskTemplate: null, harness: "router", tuning: { stepBudget: 10, timeoutMs: 180_000, memory: true },
     requiredPermissions: [], tools: [], skills: [], subagents: ["clickhouse-data", "chouse-admin"],
   },
 ];

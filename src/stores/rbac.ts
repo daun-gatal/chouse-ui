@@ -520,6 +520,8 @@ export const RBAC_PERMISSIONS = {
   AI_GUARDRAILS_VIEW: 'ai_guardrails:view',
   AI_GUARDRAILS_MANAGE: 'ai_guardrails:manage',
   AI_BUDGETS_MANAGE: 'ai_budgets:manage',
+  // ADR 0024: review, edit and delete team memories about a connection.
+  AI_MEMORIES_MANAGE: 'ai_memories:manage',
   // ADR 0020: everyone's AI usage, cost and data egress (without it, only your own).
   AI_USAGE_VIEW: 'ai_usage:view',
 

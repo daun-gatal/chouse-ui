@@ -394,6 +394,11 @@
     "category": "AI Agents",
     "anchor": "ai-agents"
   },
+  "ai_memories:manage": {
+    "name": "Manage AI Team Memories",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
   "sso:view": {
     "name": "View SSO Configuration",
     "category": "SSO Management",

@@ -196,6 +196,7 @@ const AUDIT_AREAS: Record<string, string> = {
   ai_guardrail: "AI guardrails",
   ai_budget: "AI budgets",
   ai_action: "AI approved actions",
+  ai_memory: "AI memory",
 };
 
 function auditEventsPage(): string {

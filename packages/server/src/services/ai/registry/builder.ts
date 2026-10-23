@@ -41,6 +41,7 @@ import { runtimeMiddleware } from "../runtime/middleware";
 import { skillIncludeTools } from "./skillTools";
 import { logger } from "../../../utils/logger";
 import type { GuardrailRunner } from "../guardrails/runner";
+import { buildRememberTool, memoryPrompt, type RunMemory } from "../memory/runtime";
 
 /** Maximum agent-tree depth: root → agent → subagent. */
 export const MAX_AGENT_DEPTH = 3;
@@ -246,6 +247,8 @@ export interface BuildContext {
   checkpointer?: BaseCheckpointSaver;
   /** Live run steps (ADR 0024): every tool call of the tree, as it starts and ends. */
   onToolEvent?: (event: ToolEvent) => void;
+  /** Memory (ADR 0024 phase 3), loaded on first use by an agent with memory turned on. */
+  memory?: () => Promise<RunMemory>;
 }
 
 function harnessFor(agent: AgentDef, snapshot: RegistrySnapshot): HarnessDef {
@@ -269,6 +272,8 @@ interface NodeParts {
   sources: string[];
   skills: SkillDef[];
   subagents: Array<SubAgent | CompiledSubAgent>;
+  /** The memory section for this node's system prompt ("" when memory is off). */
+  memorySection: string;
 }
 
 /** Resolve the agent's fallback model; a fallback that no longer resolves is skipped, never fatal. */
@@ -326,7 +331,7 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
       subagents.push({
         name: child.slug,
         description: child.description,
-        systemPrompt: childNode.systemPrompt,
+        systemPrompt: withMemory(childNode.systemPrompt, parts.memorySection),
         mode: "fork",
         model: childNode.model.model as never,
         tools: parts.tools,
@@ -339,6 +344,16 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     const limit = child.tuning.recursionLimit ?? recursionLimitFor(child.tuning.stepBudget);
     subagents.push({ name: child.slug, description: child.description, runnable: runnable.withConfig({ recursionLimit: limit }) } as CompiledSubAgent);
   }
+  // Memory: notes in the prompt; `remember` only where a person sees what was kept (chat).
+  let memorySection = "";
+  if (agent.tuning.memory && build.memory) {
+    const memory = await build.memory();
+    const { ctx } = build.runtime;
+    const canRemember = ctx.actionMode === "approve" && Boolean(ctx.userId);
+    if (canRemember) tools.push(...guardDuplicateTools([buildRememberTool(ctx, agent.slug, memory)], build.calls, node.path, usage, build.onToolEvent));
+    memorySection = memoryPrompt(memory, canRemember);
+  }
+
   const generalPurpose = generalPurposeSubagent(harness, tools, sources);
   if (generalPurpose) subagents.push(generalPurpose);
 
@@ -352,7 +367,11 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     sources.length > 0 ? createSkillsMiddleware({ backend: () => skillsBackend(skills), sources, tools: skillTools }) : null,
     ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
   ].filter((m): m is AgentMiddleware => m !== null);
-  return { tools, middleware, sources, skills, subagents };
+  return { tools, middleware, sources, skills, subagents, memorySection };
+}
+
+function withMemory(systemPrompt: string, memorySection: string): string {
+  return memorySection ? `${systemPrompt}\n\n${memorySection}` : systemPrompt;
 }
 
 /**
@@ -383,7 +402,7 @@ async function buildNode(agent: AgentDef, build: BuildContext, node: NodeOptions
   return createDeepAgent({
     model: node.model.model as never,
     tools: parts.tools,
-    systemPrompt: node.systemPrompt,
+    systemPrompt: withMemory(node.systemPrompt, parts.memorySection),
     backend: skillsBackend(parts.skills),
     permissions: FILESYSTEM_PERMISSIONS,
     subagents: parts.subagents,

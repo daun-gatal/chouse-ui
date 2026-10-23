@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TableMemories } from "@/features/agents/memories/TableMemories";
 import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { useAiModelId } from "@/hooks";
@@ -403,6 +404,7 @@ export function ContextTab(): ReactElement {
             </div>
             {/* Remount on another table or a saved change only, so a background refetch never wipes an unsaved draft. */}
             <CuratedEditor key={`${selected}:${context.data.curated?.updatedAt ?? 0}`} context={context.data} />
+            <TableMemories database={context.data.database} table={context.data.table} />
             <div className="grid gap-4 xl:grid-cols-2">
               <MetricsEditor context={context.data} />
               <DerivedFacts context={context.data} />

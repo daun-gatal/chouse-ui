@@ -159,6 +159,9 @@ export const PERMISSIONS = {
   // AI budgets (ADR 0024): token and cost caps per feature and per user.
   AI_BUDGETS_MANAGE: 'ai_budgets:manage',
 
+  // AI memory (ADR 0024): approve, edit and delete team memories about a connection.
+  AI_MEMORIES_MANAGE: 'ai_memories:manage',
+
   // SSO Management
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
@@ -311,6 +314,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_GUARDRAILS_VIEW,
     PERMISSIONS.AI_GUARDRAILS_MANAGE,
     PERMISSIONS.AI_BUDGETS_MANAGE,
+    PERMISSIONS.AI_MEMORIES_MANAGE,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
@@ -662,6 +666,13 @@ export const AUDIT_ACTIONS = {
   // Approved actions (ADR 0024): a person deciding what an AI agent asked to do.
   AI_ACTION_APPROVE: 'ai_action.approve',
   AI_ACTION_REJECT: 'ai_action.reject',
+
+  // AI memory (ADR 0024): notes agents keep about a user or a connection.
+  AI_MEMORY_CREATE: 'ai_memory.create',
+  AI_MEMORY_UPDATE: 'ai_memory.update',
+  AI_MEMORY_DELETE: 'ai_memory.delete',
+  AI_MEMORY_APPROVE: 'ai_memory.approve',
+  AI_MEMORY_REJECT: 'ai_memory.reject',
 
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',

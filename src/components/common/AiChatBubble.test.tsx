@@ -546,6 +546,18 @@ describe("AiChatBubble", () => {
       expect(mocks.streamChatRun.mock.calls[0][0]).toMatchObject({ message: "why is it slow?", skills: ["query-optimization"] });
     });
 
+    it("shows what the reply kept in memory (ADR 0024 phase 3)", async () => {
+      mocks.streamChatRun.mockImplementationOnce(async (_request: unknown, onEvent: (event: unknown) => void) => {
+        onEvent({ type: "run", run: run("run-mem") });
+        onEvent({ type: "final", result: { ...answer("Noted: UTC from now on."), toolCalls: [{ name: "remember", args: { note: "Prefers UTC", scope: "user" }, result: { saved: true, memoryId: "m1", scope: "user", status: "active", note: "Prefers UTC" } }] } });
+      });
+      await openNewChat();
+      await send("Always use UTC");
+      expect(await screen.findByText("Noted: UTC from now on.")).not.toBeNull();
+      expect(screen.getByText("Saved to your memory")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Undo “Prefers UTC”" })).not.toBeNull();
+    });
+
     describe("approvals (ADR 0024 phase 2)", () => {
       const pending = { id: "int-1", toolCallId: "c1", actionId: "act-1", name: "kill_query", title: "Kill a query", args: { queryId: "q-7" }, description: 'KILL QUERY WHERE query_id = "q-7"', expiresAt: Date.now() + 15 * 60_000 };
 

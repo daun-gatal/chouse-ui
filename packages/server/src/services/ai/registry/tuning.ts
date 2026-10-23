@@ -1,7 +1,7 @@
 /**
  * Agent tuning: step budget and limits (ADR 0019) plus the runtime settings of
  * ADR 0024 (fallback model, retries, call caps, prompt caching, context
- * editing, forked subagents). Stored as one JSON column; every reader goes
+ * editing, forked subagents, memory). Stored as one JSON column; every reader goes
  * through `normalizeTuning`, so rows written before ADR 0024 get the defaults.
  */
 
@@ -33,5 +33,6 @@ export function normalizeTuning(value: Record<string, unknown>): AgentTuning {
     promptCaching: value.promptCaching !== false,
     clearOldToolResults: value.clearOldToolResults === true,
     forkedSubagents: [...new Set(forked)],
+    memory: value.memory === true,
   };
 }

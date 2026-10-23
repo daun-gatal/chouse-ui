@@ -66,6 +66,8 @@ export interface AgentTuning {
   clearOldToolResults?: boolean;
   /** Subagent ids that inherit the parent's conversation (mode "fork"). */
   forkedSubagents?: string[];
+  /** ADR 0024 phase 3: show the user's and the connection's memories, and offer `remember` in chat. */
+  memory?: boolean;
 }
 
 export interface AgentSkillLink {

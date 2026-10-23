@@ -6,13 +6,14 @@
  * AI agents: the chat and every AI feature; AI activity (ADR 0020) shows what
  * they cost and the data they sent to providers; Guardrails (ADR 0022) control
  * what passes through every AI run and MCP tool result. Approvals (ADR 0024)
- * lists the write actions agents asked for and holds background ones for review.
+ * lists the write actions agents asked for and holds background ones for review;
+ * Memories holds the notes agents keep about a user or a connection.
  */
 
 import { useState, type ReactElement } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Activity, Bot, ClipboardCheck, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, Bot, Brain, ClipboardCheck, ListChecks, Pause, Play, Plug, Shield, ShieldCheck, Sparkles } from "lucide-react";
 
 import type { AgentSession } from "@/api/agents";
 import { AiModelButton } from "@/components/common/AiModelButton";
@@ -24,6 +25,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { ApprovalsPanel } from "@/features/agents/approvals/ApprovalsPanel";
 import { usePendingAiActionCount } from "@/features/agents/approvals/hooks";
 import { AssistantPanel } from "@/features/agents/assistant/AssistantPanel";
+import { MemoriesPanel } from "@/features/agents/memories/MemoriesPanel";
+import { usePendingMemoryCount } from "@/features/agents/memories/hooks";
 import { GuardrailsPanel } from "@/features/agents/guardrails/GuardrailsPanel";
 import { AiActivityPanel } from "@/features/agents/usage/AiActivityPanel";
 import { McpPanel } from "@/features/agents/McpPanel";
@@ -35,7 +38,7 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage" | "approvals";
+type Tab = "sessions" | "policies" | "mcp" | "assistant" | "guardrails" | "usage" | "approvals" | "memories";
 /**
  * External agents (MCP / tokens) need agents:view; the built-in AI agents need
  * ai_agents:view. AI activity (ADR 0020) shows everyone's usage with
@@ -49,6 +52,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Bot; permissions: stri
   { key: "guardrails", label: "Guardrails", icon: ShieldCheck, permissions: [RBAC_PERMISSIONS.AI_GUARDRAILS_VIEW] },
   { key: "usage", label: "AI activity", icon: Activity, permissions: [RBAC_PERMISSIONS.AI_USAGE_VIEW, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
   { key: "approvals", label: "Approvals", icon: ClipboardCheck, permissions: [RBAC_PERMISSIONS.AI_ACT, RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE] },
+  { key: "memories", label: "Memories", icon: Brain, permissions: [RBAC_PERMISSIONS.AI_CHAT, RBAC_PERMISSIONS.AI_OPTIMIZE, RBAC_PERMISSIONS.AI_MEMORIES_MANAGE] },
 ];
 
 /** Tabs about external agents, which share the agent KPIs and the pause switch. */
@@ -182,6 +186,7 @@ export default function Agents(): ReactElement {
   const [confirmPause, setConfirmPause] = useState(false);
   const defaultBudget = policies.data?.find((p) => p.scopeKind === "default")?.dailyBytes ?? null;
   const pendingApprovals = usePendingAiActionCount(tabs.some((t) => t.key === "approvals"));
+  const pendingMemories = usePendingMemoryCount(hasPermission(RBAC_PERMISSIONS.AI_MEMORIES_MANAGE));
 
   const togglePause = async (paused: boolean): Promise<void> => {
     try {
@@ -201,7 +206,7 @@ export default function Agents(): ReactElement {
         title="AI Governance"
         navLabel="AI Governance sections"
         layout="start"
-        nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink count={t.key === "approvals" ? pendingApprovals.data : undefined} />)}
+        nav={tabs.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/ai/${t.key}`)} noShrink count={t.key === "approvals" ? pendingApprovals.data : t.key === "memories" ? pendingMemories.data : undefined} />)}
         actions={
           <>
             <AiModelButton />
@@ -232,6 +237,7 @@ export default function Agents(): ReactElement {
           {active === "guardrails" && <GuardrailsPanel />}
           {active === "usage" && <AiActivityPanel />}
           {active === "approvals" && <ApprovalsPanel />}
+          {active === "memories" && <MemoriesPanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

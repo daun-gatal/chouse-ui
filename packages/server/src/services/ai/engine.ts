@@ -45,6 +45,7 @@ import type {
 } from "./types";
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
 import type { DeepAgent } from "deepagents";
+import { lazyRunMemory } from "./memory/runtime";
 
 export type { InvokedToolCall } from "./registry/builder";
 
@@ -188,6 +189,7 @@ async function buildContext(
 ): Promise<BuildContext> {
   registerHarnessBaseline(root.config.model.modelId);
   return {
+    memory: lazyRunMemory(base.runtime.ctx),
     ...base,
     snapshot,
     rootModel: modelLabel(root),

@@ -43,6 +43,8 @@ export interface AgentTuning {
   clearOldToolResults?: boolean;
   /** Subagents that see the parent's conversation. */
   forkedSubagents?: string[];
+  /** ADR 0024: read the user's and the connection's memories, and keep new ones in chat. */
+  memory?: boolean;
 }
 
 export interface AgentSkillLink {

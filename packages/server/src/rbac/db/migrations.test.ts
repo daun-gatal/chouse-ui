@@ -23,7 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
-import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
+import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -466,6 +466,17 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.permissionExists("ai:act")).toBe(true);
     for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
       expect(await h.roleHasPermission(role, "ai:act")).toBe(role === "super_admin" || role === "admin" || role === "developer");
+    }
+  },
+  "1.67.0": async () => {
+    // ADR 0024 phase 3: memories go with their user or connection; admins review team memories.
+    expect(AI_MEMORY_TABLE_NAMES).toEqual(["ai_memories", "ai_memory_settings"]);
+    for (const t of AI_MEMORY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_MEMORY_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["scope", "owner_id", "connection_id", "content", "status", "flag", "proposed_by"]) expect(await h.columnExists("ai_memories", c)).toBe(true);
+    expect(await h.permissionExists("ai_memories:manage")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai_memories:manage")).toBe(role === "super_admin" || role === "admin");
     }
   },
 };

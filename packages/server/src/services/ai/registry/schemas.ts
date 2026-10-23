@@ -23,6 +23,7 @@ export const tuningSchema = z.object({
   promptCaching: z.boolean().optional(),
   clearOldToolResults: z.boolean().optional(),
   forkedSubagents: z.array(z.string().min(1)).max(20).optional(),
+  memory: z.boolean().optional(),
 });
 
 export const agentSchema = z.object({

@@ -70,6 +70,8 @@ import {
 } from '@/lib/chatComposer';
 import { ComposerChips, SkillSuggestions, type ComposerAttachment } from '@/components/common/ai-chat/ComposerExtras';
 import { ApprovalCard } from '@/components/common/ai-chat/ApprovalCard';
+import { MemoryNotes } from '@/components/common/ai-chat/MemoryNotes';
+import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
 import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
@@ -176,6 +178,8 @@ interface UIMessage {
     runId?: string;
     /** Tool calls waiting for the user's approval. */
     pending?: PendingApproval[];
+    /** Notes the assistant kept during this reply (ADR 0024 phase 3). */
+    memories?: SavedMemoryNote[];
     /** Names of files sent with a user message. */
     attachments?: string[];
 }
@@ -304,6 +308,14 @@ function activityLabelFor(step: ToolCallStep): { label: string; category: string
         optimize_query: { label: 'Analyzing query performance', category: 'Optimization' },
         query_node: { label: 'Checking fleet node', category: 'Fleet' },
         render_chart: { label: 'Building visualization', category: 'Chart' },
+        remember: { label: 'Saving to memory', category: 'Memory' },
+        kill_query: { label: 'Stopping a query', category: 'Action' },
+        create_saved_query: { label: 'Saving a query', category: 'Action' },
+        create_scheduled_query: { label: 'Scheduling a query', category: 'Action' },
+        create_health_promise: { label: 'Creating a health promise', category: 'Action' },
+        create_dashboard: { label: 'Creating a dashboard', category: 'Action' },
+        update_table_context: { label: 'Updating table context', category: 'Action' },
+        propose_remediation: { label: 'Proposing a fix', category: 'Action' },
     };
 
     const mapped = map[step.tool] ?? {
@@ -909,6 +921,7 @@ function answerPatch(result: ChatRunAnswer, steps: ToolCallStep[]): Partial<UIMe
             agent: call.agent,
         })),
         chartSpecs: result.chartSpecs,
+        memories: savedMemories(result.toolCalls),
         agentName: result.agent?.name,
     };
 }
@@ -1678,6 +1691,7 @@ export default function AiChatBubble() {
                     id: m.id,
                     role: m.role,
                     ...(m.role === 'user' ? splitAttachments(m.content) : { content: m.content }),
+                    memories: m.role === 'assistant' ? savedMemories(m.toolCalls) : undefined,
                     toolCalls: m.toolCalls?.map((tc, index) => ({
                         id: `saved_${m.id}_${index}`,
                         tool: tc.name,
@@ -2440,6 +2454,7 @@ export default function AiChatBubble() {
                                                                                         {preprocessMarkdown(msg.content) + (msg.isInvoking && !msg.toolStatus ? ' ▊' : '')}
                                                                                     </ReactMarkdown>
                                                                                 </div>
+                                                                                {msg.memories && msg.memories.length > 0 && <MemoryNotes notes={msg.memories} />}
                                                                             </>
                                                                         )}
                                                                     </>

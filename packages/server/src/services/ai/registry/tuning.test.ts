@@ -17,6 +17,7 @@ describe("normalizeTuning", () => {
       promptCaching: true,
       clearOldToolResults: false,
       forkedSubagents: [],
+      memory: false,
     });
   });
 
@@ -39,5 +40,11 @@ describe("normalizeTuning", () => {
     expect(t.promptCaching).toBe(false);
     expect(t.clearOldToolResults).toBe(true);
     expect(t.forkedSubagents).toEqual(["a", "b"]);
+  });
+
+  it("turns memory on only when it is exactly true", () => {
+    expect(normalizeTuning({ stepBudget: 5, memory: true }).memory).toBe(true);
+    expect(normalizeTuning({ stepBudget: 5, memory: "yes" }).memory).toBe(false);
+    expect(normalizeTuning({ stepBudget: 5 }).memory).toBe(false);
   });
 });

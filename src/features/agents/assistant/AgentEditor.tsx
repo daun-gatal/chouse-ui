@@ -474,6 +474,13 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
                       <span className="block text-[11px] text-paper-faint">Long runs drop older tool output once the context is 60% full.</span>
                     </span>
                   </label>
+                  <label className="flex items-start gap-2">
+                    <Switch className={`${SWITCH_CLASS} mt-0.5`} checked={draft.tuning.memory === true} onCheckedChange={(v) => setTuning({ memory: v })} disabled={readOnly} aria-label="Memory" />
+                    <span>
+                      <span className="block text-[12px] text-paper">Memory</span>
+                      <span className="block text-[11px] text-paper-faint">Sees the user&apos;s memories and approved team memories; in chat it can keep new ones (AI Governance › Memories).</span>
+                    </span>
+                  </label>
                 </div>
               </div>
               <Field label="Required permissions" hint="Chat users need at least one of these to see the agent (comma-separated). Empty: anyone with ai:chat.">

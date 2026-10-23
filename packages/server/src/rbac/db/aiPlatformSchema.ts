@@ -99,6 +99,38 @@ const ACTION_TABLES: string[] = [
   `CREATE INDEX IF NOT EXISTS ai_actions_run_idx ON ai_actions (run_id)`,
 ];
 
+/**
+ * 1.67.0 — memory. A user memory belongs to `owner_id` and goes with the
+ * user; a connection (team) memory goes with its connection, and outlives the
+ * person who proposed it (`proposed_by` is not a foreign key).
+ */
+const MEMORY_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS ai_memories (
+    id              TEXT PRIMARY KEY NOT NULL,
+    scope           TEXT NOT NULL,
+    owner_id        TEXT REFERENCES rbac_users(id) ON DELETE CASCADE,
+    connection_id   TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    agent_slug      TEXT,
+    thread_id       TEXT,
+    flag            TEXT,
+    proposed_by     TEXT,
+    decided_by      TEXT,
+    decided_at      {BIGINT},
+    created_at      {BIGINT} NOT NULL,
+    updated_at      {BIGINT} NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_memories_owner_idx ON ai_memories (owner_id, status)`,
+  `CREATE INDEX IF NOT EXISTS ai_memories_connection_idx ON ai_memories (connection_id, status)`,
+  `CREATE TABLE IF NOT EXISTS ai_memory_settings (
+    user_id         TEXT PRIMARY KEY NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    updated_at      {BIGINT} NOT NULL
+  )`,
+];
+
 function render(statements: string[], dialect: Dialect): string[] {
   const bigint = dialect === "sqlite" ? "INTEGER" : "BIGINT";
   const real = dialect === "sqlite" ? "REAL" : "DOUBLE PRECISION";
@@ -130,3 +162,10 @@ export function aiActionsSchemaStatements(dialect: Dialect): string[] {
 
 export const AI_ACTION_TABLE_NAMES: string[] = tableNames(ACTION_TABLES);
 export const AI_ACTION_INDEX_NAMES: string[] = indexNames(ACTION_TABLES);
+
+export function aiMemorySchemaStatements(dialect: Dialect): string[] {
+  return render(MEMORY_TABLES, dialect);
+}
+
+export const AI_MEMORY_TABLE_NAMES: string[] = tableNames(MEMORY_TABLES);
+export const AI_MEMORY_INDEX_NAMES: string[] = indexNames(MEMORY_TABLES);

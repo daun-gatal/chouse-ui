@@ -10,7 +10,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES, type Permission } from '../schema/base';
 import { getDatabaseType, type PostgresDb, type RbacDb, type SqliteDb } from './index';
-import { aiActionsSchemaStatements, aiRuntimeSchemaStatements } from './aiPlatformSchema';
+import { aiActionsSchemaStatements, aiMemorySchemaStatements, aiRuntimeSchemaStatements } from './aiPlatformSchema';
 import type { Migration } from './migrations';
 
 type Row = Record<string, unknown>;
@@ -79,6 +79,19 @@ export const AI_PLATFORM_MIGRATIONS: Migration[] = [
       }
       await grantDefaults(db, [PERMISSIONS.AI_ACT]);
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.66.0] Created AI action tables (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.67.0',
+    name: 'ai_memories',
+    description: 'ADR 0024 phase 3 — memory (ai_memories, ai_memory_settings); the ai_memories:manage permission for Admin and Super Admin.',
+    up: async (db) => {
+      for (const statement of aiMemorySchemaStatements(dialect())) {
+        await exec(db, sql.raw(statement));
+      }
+      await grantDefaults(db, [PERMISSIONS.AI_MEMORIES_MANAGE]);
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.67.0] Created AI memory tables (${dialect()})`);
     },
     down: async () => { /* forward-only */ },
   },
