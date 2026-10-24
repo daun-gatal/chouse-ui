@@ -48,7 +48,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0021](0021-custom-dashboards.md) | Custom Dashboards and AI-Drafted Dashboards | Proposed |
 | [0022](0022-ai-guardrails.md) | AI Guardrails for CHouse's Own Agents and MCP | Proposed |
 | [0023](0023-dashboards-v2.md) | Dashboards v2: Canvas, Intent-Based AI Layout, Context, Baselines and Production Features | Proposed |
-| [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Proposed |
+| [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Accepted |
 
 ## Conventions
 

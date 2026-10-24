@@ -57,8 +57,12 @@ For the **Chat**: *Answered by \<agent\> in \<time\>*, the answer, and the tool 
 | *No AI model is configured* | Add one in [AI models](/docs/ai-models/) |
 | A timeout | The run exceeded the agent's timeout (default 4 minutes for a feature, 2 in the chat) or the model's *Run timeout* |
 
+## Saving a test case
+
+After a run, **Save as test case** adds the message (or feature input) and the tools the run called as a test case of the agent, for [evals](/docs/ai-evals/). Add a rubric on the agent's **Evals** tab.
+
 ## What the console does not do
 
 - It doesn't save anything — a draft stays a draft until you **Save** it in the editor.
-- It never writes to ClickHouse or CHouse: every tool an agent can have is read-only.
+- It never writes to ClickHouse or CHouse: [action tools](/docs/ai-approvals/) only say what they would do, and nothing is recorded in Approvals.
 - Features that write their result somewhere in the product (a Doctor report, a brief on a job) are not changed by a test, but a cached answer may be reused or refreshed.

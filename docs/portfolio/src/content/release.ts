@@ -30,13 +30,13 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.16",
   kind: "minor",
-  summary: "Dashboards on a free canvas that show what changed, what is normal and why it spiked — with snapshots, reports and Grafana import.",
+  summary: "Dashboards that show what changed and why it spiked, and AI agents that act with your approval, remember and investigate.",
   highlights: [
     { label: "Dashboard canvas", href: "/docs/dashboards/#the-canvas" },
     { label: "Explain this spike", href: "/docs/dashboards/#annotations-and-notes" },
-    { label: "Expected ranges", href: "/docs/dashboards/#compare-and-expected-ranges" },
-    { label: "Scheduled reports", href: "/docs/dashboards/#scheduled-reports" },
-    { label: "Grafana import", href: "/docs/dashboards/#import-from-grafana" },
+    { label: "AI actions with approval", href: "/docs/ai-approvals/" },
+    { label: "Auto-triage", href: "/docs/ai-triage/" },
+    { label: "Agent memory", href: "/docs/ai-memory/" },
   ],
 };
 

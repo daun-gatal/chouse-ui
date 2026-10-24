@@ -66,4 +66,4 @@ Any chat agent you create in **AI Governance › Assistant** shows up in the pic
 
 ## Limits
 
-A chat run stops after 2 minutes unless the agent sets its own timeout (CHouse Assistant allows 3, since it waits for subagents), and after its step budget. Tool calls are read-only on every agent. Picking a model in the chat overrides the agent's model for the agent and its subagents that have no model of their own.
+A chat run stops after 2 minutes unless the agent sets its own timeout (CHouse Assistant allows 3, since it waits for subagents), and after its step budget. Tools that change something wait for your approval in the chat (see [Using the chat](/docs/ai-chat/#actions-that-wait-for-you)). Picking a model in the chat overrides the agent's model for the agent and its subagents that have no model of their own.

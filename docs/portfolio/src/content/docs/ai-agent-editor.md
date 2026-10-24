@@ -84,11 +84,26 @@ Check the agents this one may delegate to. Only chat agents (no task template) c
 | **Max output tokens** | 256–200,000. The budget of the formatter that turns the agent's final notes into the feature's JSON when its own answer doesn't parse |
 | **Required permissions** | Chat agents: a user needs at least one of these to see and use the agent. Empty: anyone with `ai:chat`. Admins see every agent |
 
+**Runtime** settings change how a run copes with failures and long work:
+
+| Setting | What it does |
+| --- | --- |
+| **Fallback model** | Answers when the agent's own model keeps failing after its retries |
+| **Model retries** | Retries of a model call that failed with a transient provider error (rate limit, timeout, overloaded) |
+| **Tool retries** | Retries of a tool call that timed out or hit a busy server |
+| **Max model calls**, **Max tool calls** | Caps per run. At the model cap the agent answers with what it has; at the tool cap it is told the cap is reached |
+| **Prompt caching** | Anthropic and Bedrock reuse the unchanged start of each prompt; [AI activity](/docs/ai-usage/) shows the savings. On unless turned off |
+| **Clear old tool results** | Long runs drop older tool output once the context is 60% full |
+| **Memory** | The agent sees the user's and the connection's memories, and keeps new ones in the chat. See [Memory](/docs/ai-memory/) |
+
+On the **Subagents** tab, **Inherit conversation** lets a subagent see the whole conversation instead of only its task (not for a subagent that has subagents of its own).
+
 The *Recursion limit* and *Run timeout* runtime parameters of a model in [AI models](/docs/ai-models/) override the agent's values for every run on that model.
 
-## Test and History
+## Test, Evals and History
 
 - **Test** runs the editor's **unsaved draft** in the [test console](/docs/ai-test-console/), against the agent's first bound feature (or any other you pick).
+- **Evals** holds the agent's test cases, runs them against the draft and sets the **eval threshold** a draft must pass before it can be saved. See [Agent evals](/docs/ai-evals/).
 - **History** lists every saved version of the agent with who saved it and why; **Restore** brings an older version back as a new version. See [Versions, upgrades & audit](/docs/ai-versions/).
 
 ## Saving, duplicating and deleting

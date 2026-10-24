@@ -38,6 +38,10 @@ Credentials are stored encrypted and never returned to the browser; to rotate th
 
 Each provider model can have a **price** in USD per 1M tokens: **Input**, **Output**, and optionally **Cached input** and **Cache write** (they default to the input price). [AI activity](/docs/ai-usage/) uses it to estimate cost. Leave every price empty to show tokens only; enter `0` for a free, self-hosted model. A new price applies to requests from then on. The **Price per 1M** column shows input / output.
 
+### Chat attachments
+
+**Chat attachments** says what users may attach in the chat besides text files: **Images** and **PDFs**, for models that read them. Leave both off for a text-only model. Images and PDFs aren't scanned by [guardrails](/docs/ai-guardrails/). See [Using the chat](/docs/ai-chat/#files).
+
 ## 3. Create a deployment
 
 **Deployments › Add configuration**: a friendly **deployment name** people will see, and the provider model it uses. Mark it **Active**, and **Set as default** for the deployment used when nobody picks one.

@@ -744,7 +744,7 @@ const TABBED_ROUTES: Record<string, { base: string; file: string; name: string }
   "/monitoring/:tab?": { base: "/monitoring", file: "src/pages/Monitoring.tsx", name: "TAB_CONFIG" },
   "/data/:tab?/:a?/:b?": { base: "/data", file: "src/pages/Data.tsx", name: "TAB_META" },
   "/admin/:tab?": { base: "/admin", file: "src/pages/Admin.tsx", name: "ADMIN_TAB_CONFIG" },
-  "/agents/:tab?/:id?": { base: "/agents", file: "src/pages/Agents.tsx", name: "TABS" },
+  "/ai/:tab?/:id?": { base: "/ai", file: "src/pages/Agents.tsx", name: "TABS" },
 };
 
 /** Routes that are flows, not screens a reader looks for. */
