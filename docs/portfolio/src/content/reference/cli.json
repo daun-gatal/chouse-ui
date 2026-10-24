@@ -99,6 +99,69 @@
   ],
   "commands": [
     {
+      "path": "chouse action",
+      "use": "chouse action",
+      "short": "AI write tools: list, run, status, undo, activity",
+      "long": "The same write tools the CHouse Assistant and MCP agents use (ADR 0025),\nchecked the same way. An undoable change runs at once; a change that asks\nonce prompts on a terminal (or needs --yes); a high-risk change is always\nsent to a second person to approve in CHouse — --yes never covers it.\nYour token's write policy decides which tools you get.",
+      "example": "  chouse action tools\n  chouse action run create_saved_query name=orders query=\"SELECT 1\"\n  chouse action run run_sql_change sql=\"INSERT INTO db.t VALUES (1)\" --yes\n  chouse action undo 3f2a…",
+      "aliases": [
+        "actions"
+      ],
+      "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse action activity",
+      "use": "chouse action activity [flags]",
+      "short": "What AI agents changed for you, newest first",
+      "example": "  chouse action activity --limit 20",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max actions (1-200)"
+        }
+      ]
+    },
+    {
+      "path": "chouse action run",
+      "use": "chouse action run <tool> [key=value ...] [flags]",
+      "short": "Run one write tool",
+      "long": "Values are JSON when they parse as JSON (numbers, booleans, arrays,\nobjects) and strings otherwise; --args takes a whole JSON object.",
+      "example": "  chouse action run pause_scheduled_job id=3f2a…\n  chouse action run create_dashboard --args '{\"title\":\"Ingest\",\"panels\":[…]}'",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "args",
+          "type": "string",
+          "usage": "the tool's arguments as one JSON object"
+        }
+      ]
+    },
+    {
+      "path": "chouse action status",
+      "use": "chouse action status <id>",
+      "short": "Show one action: its status, result and whether it can be undone",
+      "example": "  chouse action status 3f2a…",
+      "runnable": true
+    },
+    {
+      "path": "chouse action tools",
+      "use": "chouse action tools",
+      "short": "List the write tools your token may run, with how each is checked",
+      "example": "  chouse action tools -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse action undo",
+      "use": "chouse action undo <id>",
+      "short": "Undo an undoable action (within 24 hours, unless it changed since)",
+      "example": "  chouse action undo 3f2a… --yes",
+      "runnable": true
+    },
+    {
       "path": "chouse agents",
       "use": "chouse agents",
       "short": "Agent activity: sessions, queries, budgets (agents:view)",

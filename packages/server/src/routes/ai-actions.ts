@@ -27,10 +27,14 @@ import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES, type Permission } from "../rb
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
 import { getUserConnections } from "../rbac/services/connections";
 import { extractTokenFromHeader } from "../rbac/services/jwt";
-import { actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
-import { performAction, undoAction, undoAvailable, UndoError } from "../services/ai/actions/executor";
+import { ACTION_DEFINITIONS, actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
+import { fileForApproval, performAction, undoAction, undoAvailable, UndoError } from "../services/ai/actions/executor";
 import { ACTION_STATUSES, decideAction, getAction, listActions, userNames, type AiAction } from "../services/ai/actions/store";
+import { resolveTier } from "../services/ai/actions/tiers";
+import { getTokenPolicy, handlingFor, toolkitAllowed, type Handling } from "../services/ai/actions/tokenPolicy";
+import { nominalTier } from "../services/ai/actions/tools";
 import type { Tier, Toolkit } from "../services/ai/actions/types";
+import { getMcpSettings } from "../mcp/settings";
 import { InProcessApiClient } from "../services/ai/registry/inProcessApi";
 import { AppError, requireParam } from "../types";
 
@@ -186,6 +190,94 @@ aiActions.get("/activity", zValidator("query", activityQuery), async (c) => {
     ? (await Promise.all(wanted.map((id) => getAction(id)))).filter((a): a is AiAction => a !== null && a.userId === viewer.id)
     : await listActions({ userId: viewer.id, runId, limit: limit ?? 50 });
   return ok(c, { actions: await views(actions, viewer, await canAct(viewer)) });
+});
+
+/**
+ * How a call of this tier is handled for this caller: a personal access token
+ * follows its write policy under the administrator's ceiling (ADR 0025 §4); a
+ * browser session runs T1, confirms T2 and files T3, as the chat does.
+ */
+async function handlingForCaller(c: Context, tier: Tier): Promise<Handling> {
+  const patId: string | undefined = c.get("patId");
+  if (c.get("authMethod") !== "pat" || !patId) return tier === "t1" ? "auto" : tier === "t2" ? "confirm" : "approver";
+  const settings = await getMcpSettings();
+  return handlingFor(tier, await getTokenPolicy(patId), { toolkits: settings.actionToolkits, maxTier: settings.actionMaxTier });
+}
+
+async function toolkitForCaller(c: Context, toolkit: Toolkit): Promise<boolean> {
+  const patId: string | undefined = c.get("patId");
+  if (c.get("authMethod") !== "pat" || !patId) return true;
+  const settings = await getMcpSettings();
+  return toolkitAllowed(toolkit, await getTokenPolicy(patId), { toolkits: settings.actionToolkits, maxTier: settings.actionMaxTier });
+}
+
+/** GET /tools — the write tools this caller may run (the CLI's `chouse action tools`). */
+aiActions.get("/tools", async (c) => {
+  const viewer = viewerOf(c);
+  const tools = [];
+  for (const definition of ACTION_DEFINITIONS) {
+    if (!(await toolkitForCaller(c, definition.toolkit))) continue;
+    if (!viewer.superAdmin && definition.permissions.length > 0 && !definition.permissions.some((p) => viewer.permissions.includes(p))) continue;
+    tools.push({
+      name: definition.name,
+      title: definition.title,
+      toolkit: definition.toolkit,
+      tier: nominalTier(definition),
+      description: definition.description,
+      arguments: Object.keys(definition.schema.shape),
+    });
+  }
+  return ok(c, { tools });
+});
+
+const runBody = z.object({
+  tool: z.string().min(1).max(100),
+  args: z.record(z.string(), z.unknown()).default({}),
+  /** The caller confirmed it (an interactive "yes" or --yes); never enough for T3. */
+  confirmed: z.boolean().default(false),
+});
+
+/**
+ * POST /run — run one write tool as the caller (the CLI's `chouse action run`).
+ * T1 runs; T2 answers 409 CONFIRMATION_REQUIRED until confirmed; T3 is always
+ * filed for a second approver; a tier the token's policy turns off is refused.
+ */
+aiActions.post("/run", zValidator("json", runBody), async (c) => {
+  const viewer = viewerOf(c);
+  const body = c.req.valid("json");
+  if (!(await canAct(viewer))) throw AppError.forbidden("You need the ai:act permission to let an agent change things.");
+  const definition = actionDefinition(body.tool);
+  if (!definition) throw AppError.notFound(`'${body.tool}' is not a write tool (chouse action tools lists them).`);
+  if (!(await toolkitForCaller(c, definition.toolkit))) throw new AppError(`This token's write policy does not include ${definition.toolkit} tools.`, "ACTION_OFF", "permission", 403);
+  const parsed = parseEditedArgs(definition, body.args);
+  if (!parsed.ok) throw AppError.badRequest(parsed.message);
+  const token = extractTokenFromHeader(c.req.header("Authorization"));
+  if (!token) throw AppError.unauthorized("Sign in again to run this action.");
+  const connectionId: string | null = c.req.header("X-Connection-Id") || null;
+  const actor = {
+    api: new InProcessApiClient(token, connectionId ?? undefined),
+    userId: viewer.id,
+    connectionId,
+    origin: "cli" as const,
+    tokenId: c.get("patId") ?? null,
+  };
+  const { tier, production } = await resolveTier(definition, parsed.args, actor);
+  const handling = await handlingForCaller(c, tier);
+  const description = definition.describe(parsed.args);
+  if (handling === "off") throw new AppError(`This call is ${tier.toUpperCase()}${production ? " on a production connection" : ""}, which this token's write policy turns off. Do it in CHouse.`, "ACTION_OFF", "permission", 403);
+  if (tier === "t3") {
+    const filed = await fileForApproval(definition, parsed.args, actor);
+    return c.json({ success: true, data: { submitted: true, actionId: filed.id, tier, description, status: "Sent for a second person's approval in CHouse." } }, 202);
+  }
+  if (handling === "confirm" && !body.confirmed) {
+    throw new AppError(`Confirm: ${description}`, "CONFIRMATION_REQUIRED", "validation", 409, { tier, production, description });
+  }
+  try {
+    const { action, result } = await performAction(definition, parsed.args, actor, { tier });
+    return ok(c, { done: true, actionId: action.id, tier, description, undoAvailable: undoAvailable(action), result });
+  } catch (error) {
+    throw AppError.badRequest(error instanceof Error ? error.message : "The action failed");
+  }
 });
 
 aiActions.get("/:id", async (c) => {

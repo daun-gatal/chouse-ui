@@ -68,6 +68,7 @@ beforeAll(async () => {
     deletes.push({ id: c.req.param("id"), auth: c.req.header("Authorization") });
     return c.json({ success: true, data: { deleted: true } });
   });
+  api.get("/api/live-queries", (c) => c.json({ success: true, data: { queries: [{ query_id: "bobs-q", rbac_user_id: BOB }] } }));
   api.post("/api/live-queries/kill", async (c) => {
     const body = (await c.req.json()) as { queryId: string };
     kills.push({ queryId: body.queryId, auth: c.req.header("Authorization") });
@@ -236,5 +237,41 @@ describe("/api/ai-actions", () => {
     const again = await call("POST", `/ai-actions/${action.id}/undo`, carol);
     expect(again.status).toBe(409);
     expect(again.error?.code).toBe("UNDO_ALREADY_UNDONE");
+  });
+
+  it("lists only the write tools the caller holds a permission for", async () => {
+    const listed = await call<{ tools: Array<{ name: string; tier: string; toolkit: string; arguments: string[] }> }>("GET", "/ai-actions/tools", await token(ALICE, ["ai:act", "live_queries:kill"]));
+    expect(listed.status).toBe(200);
+    expect(listed.data.tools.find((t) => t.name === "kill_query")).toMatchObject({ toolkit: "data", arguments: ["queryId"] });
+    expect(listed.data.tools.map((t) => t.name)).not.toContain("create_user");
+  });
+
+  it("runs a write for the CLI: ai:act, a known tool and valid arguments first", async () => {
+    expect((await call("POST", "/ai-actions/run", await token(ALICE, ["ai:chat", "live_queries:kill"]), { tool: "kill_query", args: { queryId: "q" } })).status).toBe(403);
+    expect((await call("POST", "/ai-actions/run", await token(ALICE, ["ai:act"]), { tool: "drop_everything", args: {} })).status).toBe(404);
+    expect((await call("POST", "/ai-actions/run", await token(ALICE, ["ai:act", "live_queries:kill"]), { tool: "kill_query", args: {} })).status).toBe(400);
+  });
+
+  it("asks before a T2 run until confirmed, then runs it as the caller", async () => {
+    kills.length = 0;
+    const bearer = await token(ALICE, ["ai:act", "live_queries:kill"]);
+    const asked = await call("POST", "/ai-actions/run", bearer, { tool: "kill_query", args: { queryId: "own-q" } });
+    expect(asked.status).toBe(409);
+    expect(asked.error?.code).toBe("CONFIRMATION_REQUIRED");
+    expect(kills).toEqual([]);
+    const ran = await call<{ done: boolean; actionId: string; tier: string }>("POST", "/ai-actions/run", bearer, { tool: "kill_query", args: { queryId: "own-q" }, confirmed: true });
+    expect(ran.status).toBe(200);
+    expect(ran.data).toMatchObject({ done: true, tier: "t2" });
+    expect(kills).toEqual([{ queryId: "own-q", auth: `Bearer ${bearer}` }]);
+    expect(await getAction(ran.data.actionId)).toMatchObject({ origin: "cli", status: "executed", userId: ALICE });
+  });
+
+  it("files a T3 run for a second approver even when confirmed", async () => {
+    kills.length = 0;
+    const filed = await call<{ submitted: boolean; actionId: string; tier: string }>("POST", "/ai-actions/run", await token(ALICE, ["ai:act", "live_queries:kill_all"]), { tool: "kill_query", args: { queryId: "bobs-q" }, confirmed: true });
+    expect(filed.status).toBe(202);
+    expect(filed.data).toMatchObject({ submitted: true, tier: "t3" });
+    expect(kills).toEqual([]);
+    expect(await getAction(filed.data.actionId)).toMatchObject({ status: "pending", tier: "t3", origin: "cli" });
   });
 });
