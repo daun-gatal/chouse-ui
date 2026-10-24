@@ -17,9 +17,14 @@ A **connection** is a ClickHouse server CHouse UI talks to. You can register man
    - **Username** and **Password** — encrypted with AES-256-GCM on the server and never sent to the browser
    - **Default database** (optional) — empty uses the server's default
    - **SSL / TLS** — connect over HTTPS
+   - **Environment** (optional) — see [below](#environment)
 3. **Test Connection** shows the server version and latency. Save.
 
 `CLICKHOUSE_DEFAULT_URL`, `CLICKHOUSE_DEFAULT_USER` and `CLICKHOUSE_PRESET_URLS` pre-fill the form — see [Environment variables](/docs/configuration-env/#clickhouse-connection-defaults).
+
+## Environment
+
+**Environment** (*Not set*, *Production*, *Staging*, *Development*) labels what the connection is. A **Production** connection shows a badge in the list, and makes every AI change on it [one tier stricter](/docs/ai-approvals/#tiers): undoable changes ask once, and changes that ask once need a second approver. Leave it *Not set* for no effect.
 
 ## Who can use it
 

@@ -17,7 +17,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 
 | Feature | Where | Needs | Tools may use | Built-in agent |
 | --- | --- | --- | --- | --- |
-| [Chat](#chat) | Chat | `ai:chat` | ClickHouse session, Your CHouse access | [ClickHouse Data](#clickhouse-data) |
+| [Chat](#chat) | Chat | `ai:chat` | ClickHouse session, Your CHouse access | [CHouse Assistant](#chouse-assistant) |
 | [Optimize query](#optimize-query) | SQL editor | `ai:optimize` | ClickHouse session | [SQL Optimizer](#sql-optimizer) |
 | [Debug query](#debug-query) | SQL editor | `ai:optimize` | ClickHouse session | [SQL Debugger](#sql-debugger) |
 | [Optimization pre-screen](#optimization-pre-screen) | SQL editor | `ai:optimize` | ClickHouse session | [Query Evaluator](#query-evaluator) |
@@ -55,7 +55,7 @@ ID `chat` · needs `ai:chat` · free-form chat answer
 
 The chat bubble. The bound agent answers when a thread has no agent picked; users can pick any top-level chat agent they may use.
 
-**Tools may use:** ClickHouse session, Your CHouse access. **Built-in agent:** [ClickHouse Data](#clickhouse-data).
+**Tools may use:** ClickHouse session, Your CHouse access. **Built-in agent:** [CHouse Assistant](#chouse-assistant).
 
 No template variables — chat agents render without any.
 
@@ -437,7 +437,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 34 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 33 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -833,32 +833,17 @@ Drafts and refines custom harnesses with a decision for every built-in tool.
 
 ### ClickHouse Data
 
-Answers questions about ClickHouse data: databases, tables, columns, SQL, query performance, server state and charts.
+Read-only investigator for CHouse Assistant: databases, tables, columns, SQL, query performance, server state and charts.
 
 | Setting | Value |
 | --- | --- |
 | Slug | `clickhouse-data` |
 | Kind | Chat agent |
-| Used by | [Chat](#chat), subagent of CHouse Assistant |
+| Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 12 steps |
-| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query`, `kill_query`, `create_saved_query`, `create_scheduled_query`, `create_health_promise`, `create_dashboard`, `update_table_context`, `propose_remediation` |
+| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query` |
 | Skills | all built-in skills on demand |
-
-### CHouse Admin
-
-Answers read-only questions about CHouse itself: users, roles, permissions, data access, connections, scheduled jobs, data health, alerts, incidents, fixes, Doctor reports, performance, capacity, upgrades, collectors, AI models, AI agents and usage, external agents and the audit log.
-
-| Setting | Value |
-| --- | --- |
-| Slug | `chouse-admin` |
-| Kind | Chat agent |
-| Used by | subagent of CHouse Assistant |
-| Harness | Delegating |
-| Tuning | 10 steps |
-| Tools | `whoami` |
-| Skills | none |
-| Subagents | [Access Auditor](#access-auditor), [Operations Analyst](#operations-analyst), [Platform Auditor](#platform-auditor) |
 
 ### Access Auditor
 
@@ -868,7 +853,7 @@ Users, roles, permissions, data access policies, personal access tokens, SSO, an
 | --- | --- |
 | Slug | `access-auditor` |
 | Kind | Chat agent |
-| Used by | subagent of CHouse Admin |
+| Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 8 steps |
 | Tools | `whoami`, `list_users`, `get_user`, `list_roles`, `get_role`, `list_permissions`, `list_data_access_policies`, `list_my_access_tokens`, `list_clickhouse_users`, `list_clickhouse_roles`, `get_sso_settings` |
@@ -882,7 +867,7 @@ Scheduled jobs and runs, Data Health promises and incidents, alerting, observabi
 | --- | --- |
 | Slug | `operations-analyst` |
 | Kind | Chat agent |
-| Used by | subagent of CHouse Admin |
+| Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 8 steps |
 | Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
@@ -896,7 +881,7 @@ Connections, AI models, CHouse's AI agents and their usage, cost, data sent to p
 | --- | --- |
 | Slug | `platform-auditor` |
 | Kind | Chat agent |
-| Used by | subagent of CHouse Admin |
+| Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 8 steps |
 | Tools | `whoami`, `list_connections`, `list_ai_models`, `list_ai_agents`, `list_ai_guardrails`, `list_ai_guardrail_triggers`, `get_ai_usage`, `list_ai_requests`, `get_ai_request`, `list_agent_sessions`, `get_agent_governance`, `audit_log` |
@@ -904,15 +889,15 @@ Connections, AI models, CHouse's AI agents and their usage, cost, data sent to p
 
 ### CHouse Assistant
 
-Routes each chat request to ClickHouse Data or CHouse Admin, and combines their answers for questions that span both.
+Chobi's assistant: answers, investigates with read-only investigators, and makes changes in CHouse and ClickHouse — each checked by its tier.
 
 | Setting | Value |
 | --- | --- |
 | Slug | `chouse-assistant` |
-| Kind | Router |
-| Used by | — |
-| Harness | Router |
-| Tuning | 10 steps · 180 s timeout |
-| Tools | none |
-| Skills | none |
-| Subagents | [ClickHouse Data](#clickhouse-data), [CHouse Admin](#chouse-admin) |
+| Kind | Chat agent |
+| Used by | [Chat](#chat) |
+| Harness | Assistant |
+| Tuning | 16 steps · 240 s timeout |
+| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query`, `whoami`, `load_toolkit`, `navigate`, `open_entity`, `fill_form`, `kill_query`, `create_saved_query`, `update_saved_query`, `delete_saved_query`, `share_saved_query`, `create_database`, `create_table`, `drop_table`, `drop_database`, `run_sql_change`, `create_scheduled_query`, `update_scheduled_job`, `pause_scheduled_job`, `resume_scheduled_job`, `run_scheduled_job`, `delete_scheduled_job`, `create_health_promise`, `watch_table`, `update_health_promise`, `pause_health_promise`, `resume_health_promise`, `run_health_check`, `acknowledge_health_incident`, `snooze_health_incident`, `delete_health_promise`, `propose_remediation`, `create_alert_rule`, `update_alert_rule`, `mute_alert_rule`, `test_alert_channel`, `post_alert_message`, `clear_alert_events`, `acknowledge_observe_incident`, `dismiss_suggestion`, `pin_table_criticality`, `add_notebook_cell`, `update_cost_rates`, `update_collector_schedule`, `start_codec_trial`, `run_doctor_scan`, `update_doctor_schedule`, `update_fleet_alert_config`, `run_upgrade_assessment`, `run_canary_replay`, `create_dashboard`, `update_dashboard`, `add_panel`, `update_panel`, `remove_panel`, `restore_dashboard_version`, `delete_dashboard`, `add_dashboard_note`, `delete_dashboard_note`, `share_dashboard`, `update_table_context`, `upsert_metric`, `delete_metric`, `create_user`, `update_user`, `deactivate_user`, `assign_role`, `create_role`, `update_role`, `delete_role`, `create_data_access_policy`, `update_data_access_policy`, `delete_data_access_policy`, `set_role_policies`, `create_clickhouse_role`, `update_clickhouse_role`, `draft_ai_agent`, `run_ai_eval`, `publish_ai_agent`, `update_my_preferences` |
+| Skills | all built-in skills on demand |
+| Subagents | [ClickHouse Data](#clickhouse-data), [Operations Analyst](#operations-analyst), [Access Auditor](#access-auditor), [Platform Auditor](#platform-auditor) |

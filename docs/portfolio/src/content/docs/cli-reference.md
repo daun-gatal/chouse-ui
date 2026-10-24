@@ -1783,6 +1783,101 @@ chouse remediation reject 6e0b… --comment "reviewed" --yes
 
 ## AI and agents
 
+### chouse action
+
+AI write tools: list, run, status, undo, activity.
+
+The same write tools the CHouse Assistant and MCP agents use (ADR 0025),
+checked the same way. An undoable change runs at once; a change that asks
+once prompts on a terminal (or needs --yes); a high-risk change is always
+sent to a second person to approve in CHouse — --yes never covers it.
+Your token's write policy decides which tools you get.
+
+```bash
+chouse action
+```
+
+Aliases: `actions`
+
+```bash
+chouse action tools
+chouse action run create_saved_query name=orders query="SELECT 1"
+chouse action run run_sql_change sql="INSERT INTO db.t VALUES (1)" --yes
+chouse action undo 3f2a…
+```
+
+#### chouse action activity
+
+What AI agents changed for you, newest first.
+
+```bash
+chouse action activity [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit` | `int` | `50` | max actions (1-200) |
+
+```bash
+chouse action activity --limit 20
+```
+
+#### chouse action run
+
+Run one write tool.
+
+Values are JSON when they parse as JSON (numbers, booleans, arrays,
+objects) and strings otherwise; --args takes a whole JSON object.
+
+```bash
+chouse action run <tool> [key=value ...] [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--args` | `string` |   | the tool's arguments as one JSON object |
+
+```bash
+chouse action run pause_scheduled_job id=3f2a…
+chouse action run create_dashboard --args '{"title":"Ingest","panels":[…]}'
+```
+
+#### chouse action status
+
+Show one action: its status, result and whether it can be undone.
+
+```bash
+chouse action status <id>
+```
+
+```bash
+chouse action status 3f2a…
+```
+
+#### chouse action tools
+
+List the write tools your token may run, with how each is checked.
+
+```bash
+chouse action tools
+```
+
+```bash
+chouse action tools -o json
+```
+
+#### chouse action undo
+
+Undo an undoable action (within 24 hours, unless it changed since).
+
+```bash
+chouse action undo <id>
+```
+
+```bash
+chouse action undo 3f2a… --yes
+```
+
 ### chouse agents
 
 Agent activity: sessions, queries, budgets (agents:view).

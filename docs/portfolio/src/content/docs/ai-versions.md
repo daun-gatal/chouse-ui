@@ -58,4 +58,4 @@ Every change made in AI Governance › Assistant is written to the [audit log](/
 | `ai_registry.reset` | An agent, harness or skill is reset to its built-in |
 | `ai_registry.rollback` | An older version is restored |
 
-Filter **Admin › Audit** by these actions — or ask CHouse Admin in the chat, *"what changed in the AI agents this week?"*. All audit actions are listed in [Audit events](/docs/audit-events/).
+Filter **Admin › Audit** by these actions — or ask [Chobi](/docs/chobi/), *"what changed in the AI agents this week?"*. All audit actions are listed in [Audit events](/docs/audit-events/).

@@ -27,6 +27,8 @@ Three ways to add one:
 
 Then write the rubric: a case without expected tools or a rubric only checks that the agent answers.
 
+**CHouse Assistant ships with 40 cases**, marked *shipped with CHouse*: reads and first writes, loading the right toolkit before using its tools, watches and their limits, delegating to investigators, opening pages and filling the SQL editor, plans of two or more changes, the [never-for-AI list](/docs/ai-approvals/#the-write-tools) and instructions hidden in data. Edit or delete them like your own; a deleted one stays deleted until a later release ships a new set.
+
 ## Running evals
 
 **Run evals on this draft** runs every case against the unsaved draft, one after another, as you, on your active connection. Write tools only say what they would do; nothing is changed or saved. The tab shows the result as it finishes: the share of cases passed, each case's result, which expected tools were missing, the judge's reason and the start of the answer, plus tokens and cost. **Regressions** are cases that passed in the previous run and fail now.

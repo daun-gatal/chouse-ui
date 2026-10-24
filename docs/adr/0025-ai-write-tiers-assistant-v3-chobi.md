@@ -117,6 +117,8 @@ activity feed and audit show one history.
   confirms in CHouse instead, where the decision is audited.
 - If a token's policy cannot be read, the token gets no write tools: the
   endpoint fails closed rather than failing.
+- A token gets write tools only when its user has `ai:act` (or is an
+  administrator) — the same rule as the chat and the CLI.
 
 ### 5. CHouse Assistant v3
 
@@ -197,11 +199,17 @@ uncustomized built-ins on boot.
 
 | Step | Commit |
 |---|---|
-| Action framework v2, tiers, undo, grants, environment | see PR |
-| Write tools (three toolkit batches), "No" list, coverage test | see PR |
-| Chat approvals (Done · Undo, plans, grants) | see PR |
-| MCP approvals, toolsets, admin ceiling | see PR |
-| CLI `chouse action` | see PR |
-| Chobi (layering, panel, mascot, briefing, nudges, watches, drag to ask, Focus) | see PR |
-| CHouse Assistant v3 | see PR |
-| Evals, docs | see PR |
+| Action framework v2, tiers, undo, grants, environment (1.71.0) | `c30f143` |
+| Write tools (three toolkit batches), "No" list, coverage test | `8dd0d84`, `40b8fb5`, `0730db1` |
+| Chat approvals (Done · Undo, plans, grants) | `7eae470` |
+| MCP approvals, toolsets, admin ceiling (1.72.0) | `8756c86` |
+| CLI `chouse action` | `8066913` |
+| Chobi: layering, panel, mascot, Chat and Activity | `7e14d69` |
+| Chobi: Now briefing, nudges, plain mode | `ed3a985` |
+| Watches (1.73.0), drag to ask, quick ask | `5ec71a8` |
+| Hand off (notebook, alert channel) | `f2a375e` |
+| CHouse Assistant v3 | `65f2d7f` |
+| Built-in evals | `cf7d416` |
+| Docs, release notes, MCP `ai:act` gate | this PR's last commit |
+
+Differences from the plan: Focus is a panel size (with the thread history docked) rather than a separate mode; the handoff to a notebook goes to an open incident's notebook, so it is readable by whoever can see the incident; nudges come from the briefing's data (a new item since the last look), polled every minute while the page is visible, rather than a server event stream.

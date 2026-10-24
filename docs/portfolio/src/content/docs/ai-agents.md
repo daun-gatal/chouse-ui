@@ -83,7 +83,7 @@ The per-model runtime parameters set in AI models — *recursion limit* and *run
 - [Prompt templates](/docs/ai-prompt-templates/) — variables, sections, skill includes and the preview
 - [Harnesses](/docs/ai-harnesses/) — how an agent is run, and the three built-in harnesses
 - [Skills](/docs/ai-skills/) — on-demand and pinned instructions, and writing your own
-- [Chat agents](/docs/ai-chat-agents/) — the agent picker, the router and CHouse Admin
+- [Chat agents](/docs/ai-chat-agents/) — CHouse Assistant, its investigators and the agent picker
 - [Draft with AI](/docs/ai-draft-with-ai/) — describe an agent, harness or skill and review a complete draft
 - [Test console](/docs/ai-test-console/) — try a feature, an agent or an unsaved draft
 - [Versions, upgrades & audit](/docs/ai-versions/) — history, restore, built-in updates and the audit trail
