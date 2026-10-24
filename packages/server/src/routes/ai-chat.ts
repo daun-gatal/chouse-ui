@@ -366,6 +366,8 @@ aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema
 
 /** Stream a run's events as server-sent events until it finishes or pauses. */
 function streamRun(c: Context<{ Variables: Variables }>, runId: string, initial: ChatRun) {
+    // Steps must reach the browser as they happen: ask nginx-style proxies not to buffer the stream.
+    c.header("X-Accel-Buffering", "no");
     return streamSSE(c, async (stream) => {
         const send = (event: ChatRunEvent): Promise<void> => stream.writeSSE({ event: event.type, data: JSON.stringify(event) });
         const ends = (event: ChatRunEvent): boolean => event.type === "final" || event.type === "error" || (event.type === "status" && event.status === "awaiting_approval");
