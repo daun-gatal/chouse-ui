@@ -16,3 +16,6 @@ type: minor
 ### Changed
 - **Chat agents** — the chat runs CHouse Assistant; ClickHouse Data becomes its read-only investigator, and CHouse Admin is retired (agents and features that used it move to its replacements; a customized copy stays)
 - **AI approvals** — undoable AI changes no longer pause for approval: they run and show Undo
+
+### Fixed
+- **Alert channel deliveries time out** — a webhook or Slack channel that never answers fails the delivery after 15 seconds instead of holding the request or the scheduler open
