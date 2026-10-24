@@ -33,6 +33,7 @@ import { resetRegistryCache } from "./cache";
 import { deleteAgent, loadSnapshot, saveAgent, saveGuardrail, saveHarness, saveSkill, setBinding } from "./store";
 import { SEED_GUARDRAILS } from "../seeds/guardrails";
 import { guardrailRow, guardrailSeedHash } from "../guardrails/service";
+import { syncBuiltinEvalCases } from "../evals/builtin";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 
 export interface SeedSyncResult {
@@ -165,6 +166,11 @@ export async function syncRegistrySeeds(): Promise<SeedSyncResult> {
 
   result.retired = await retireAgents();
   result.bindingsMoved = await moveBindings();
+  try {
+    await syncBuiltinEvalCases();
+  } catch (error) {
+    logger.warn({ module: "AIRegistry", err: error instanceof Error ? error.message : String(error) }, "Built-in eval cases could not be added");
+  }
 
   const after = await loadSnapshot();
   for (const [featureId, slug] of Object.entries(SEED_BINDINGS)) {
