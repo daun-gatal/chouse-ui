@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, ChevronRight, CircleAlert, Info, RefreshCw, Sparkles, WifiOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, CircleAlert, Info, MessageCircleQuestion, RefreshCw, Sparkles, WifiOff } from "lucide-react";
 
 import type { Briefing, BriefingItem, ConnectionBriefing } from "@/api/chobi";
 import { dataPaths } from "@/features/observe/paths";
@@ -9,6 +9,7 @@ import { formatAgo } from "@/features/observe/lib";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores";
+import { askContext, useChobiStore } from "@/stores/chobi";
 import { useRefreshBriefing } from "./hooks";
 
 interface NowTabProps {
@@ -23,6 +24,7 @@ interface NowTabProps {
 
 const SEVERITY_ICON = { bad: CircleAlert, warn: AlertTriangle, info: Info } as const;
 const SEVERITY_TONE = { bad: "text-red-400", warn: "text-amber-400", info: "text-paper-faint" } as const;
+const SEVERITY_LABEL = { bad: "Problem", warn: "Warning", info: "Note" } as const;
 
 /** Where an item leads; null when it opens something inside Chobi. */
 export function itemPath(item: BriefingItem): string | null {
@@ -32,6 +34,15 @@ export function itemPath(item: BriefingItem): string | null {
   if (ref?.type === "promise") return dataPaths.promises();
   if (item.kind === "connection") return "/fleet";
   return null;
+}
+
+/** Ask Chobi to look into an item, with the item attached so it starts from the facts. */
+export function askAbout(item: BriefingItem, connectionName: string | null): void {
+  const where = connectionName ? ` on ${connectionName}` : "";
+  useChobiStore.getState().askChobi(`Look into this${where}: ${item.title}. What happened, why, and what should I do?`, {
+    context: askContext(`${item.kind}.json`, JSON.stringify({ ...item, connection: connectionName }, null, 2)),
+    send: true,
+  });
 }
 
 /** Your connections first-hand: the active one first, then those that need a look, then the quiet ones. */
@@ -105,7 +116,7 @@ export function NowTab({ briefing, loading, error, onOpenActivity, onNavigated }
 
       {briefing.general.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1.5 px-3">
-          {briefing.general.map((item) => <Item key={item.key} item={item} onOpen={open} />)}
+          {briefing.general.map((item) => <Item key={item.key} item={item} onOpen={open} onAsk={null} />)}
         </ul>
       )}
 
@@ -130,7 +141,7 @@ export function NowTab({ briefing, loading, error, onOpenActivity, onNavigated }
             <p className="px-1 pb-1 text-[11px] text-paper-faint">Nothing needs a look.</p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {connection.items.map((item) => <Item key={item.key} item={item} onOpen={open} />)}
+              {connection.items.map((item) => <Item key={item.key} item={item} onOpen={open} onAsk={item.kind === "watch" ? null : () => askAbout(item, connection.name)} />)}
             </ul>
           )}
         </section>
@@ -154,24 +165,39 @@ export function NowTab({ briefing, loading, error, onOpenActivity, onNavigated }
   );
 }
 
-function Item({ item, onOpen }: { item: BriefingItem; onOpen: (item: BriefingItem) => void }): React.JSX.Element {
+function Item({ item, onOpen, onAsk }: { item: BriefingItem; onOpen: (item: BriefingItem) => void; onAsk: (() => void) | null }): React.JSX.Element {
   const Icon = SEVERITY_ICON[item.severity];
   const actionable = item.kind === "approval" || itemPath(item) !== null;
   return (
-    <li>
+    <li className="group/item relative">
       <button
         type="button"
         disabled={!actionable}
         onClick={() => onOpen(item)}
         className="group flex w-full items-start gap-2 rounded-sm px-1.5 py-1.5 text-left hover:bg-ink-200/60 disabled:cursor-default disabled:hover:bg-transparent"
       >
-        <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", SEVERITY_TONE[item.severity])} aria-label={item.severity} />
+        <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", SEVERITY_TONE[item.severity])} aria-hidden />
+        <span className="sr-only">{SEVERITY_LABEL[item.severity]}: </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[12px] text-paper">{item.title}</span>
           {item.detail && <span className="mt-0.5 line-clamp-2 block text-[11px] text-paper-muted">{item.detail}</span>}
         </span>
-        {item.at && <span className="shrink-0 font-mono text-[10px] text-paper-faint">{formatAgo(item.at)}</span>}
+        {item.at && (
+          <span className="shrink-0 font-mono text-[10px] text-paper-faint">
+            {item.kind === "watch" ? `until ${new Date(item.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : formatAgo(item.at)}
+          </span>
+        )}
       </button>
+      {onAsk && (
+        <button
+          type="button"
+          onClick={onAsk}
+          className="absolute right-1 top-1 hidden h-6 items-center gap-1 rounded-xs border border-ink-500 bg-ink-100 px-1.5 text-[10px] text-paper-muted hover:border-brand hover:text-brand focus-visible:flex group-hover/item:flex"
+          aria-label={`Ask Chobi about ${item.title}`}
+        >
+          <MessageCircleQuestion className="h-3 w-3" /> Ask
+        </button>
+      )}
     </li>
   );
 }

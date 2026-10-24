@@ -41,10 +41,10 @@ describe("chobi store", () => {
 
   it("queues a question for the chat, which takes it once", async () => {
     const { useChobiStore } = await import("./chobi");
-    useChobiStore.getState().askChobi("Why is this slow?", { context: { label: "Query", content: "SELECT 1" }, send: true });
+    useChobiStore.getState().askChobi("Why is this slow?", { context: { name: "query.sql", content: "SELECT 1" }, send: true });
     const ask = useChobiStore.getState().ask;
     expect(useChobiStore.getState()).toMatchObject({ open: true, tab: "chat" });
-    expect(ask).toMatchObject({ text: "Why is this slow?", send: true, context: { label: "Query", content: "SELECT 1" } });
+    expect(ask).toMatchObject({ text: "Why is this slow?", send: true, context: { name: "query.sql", content: "SELECT 1" } });
 
     useChobiStore.getState().takeAsk((ask?.id ?? 0) + 1);
     expect(useChobiStore.getState().ask).not.toBeNull();
@@ -82,6 +82,19 @@ describe("chobi store", () => {
     const restored = restoreChobiState({ size: "huge", tab: "secrets", side: "up", y: "x", quietHours: { start: 25, end: 3 }, mutedUntil: "soon" }, useChobiStore.getState());
     expect(restored).toMatchObject({ size: "bubble", tab: "now", side: "right", y: 0.72, quietHours: null, mutedUntil: null });
     expect(restoreChobiState(null, useChobiStore.getState())).toMatchObject({ size: "bubble", tab: "now" });
+  });
+});
+
+describe("askContext", () => {
+  it("names the attachment safely and keeps it short", async () => {
+    const { askContext, ASK_CONTEXT_MAX_CHARS } = await import("./chobi");
+    expect(askContext("query.sql", "SELECT 1")).toEqual({ name: "query.sql", content: "SELECT 1" });
+    expect(askContext("Incident: orders late!", "x").name).toBe("Incident-orders-late.txt");
+    expect(askContext("../../etc/passwd", "x").name).toBe("..-..-etc-passwd.txt");
+    expect(askContext("", "x").name).toBe("context.txt");
+    const long = askContext("big.txt", "a".repeat(ASK_CONTEXT_MAX_CHARS + 10));
+    expect(long.content.startsWith("a".repeat(ASK_CONTEXT_MAX_CHARS))).toBe(true);
+    expect(long.content).toContain("cut at");
   });
 });
 

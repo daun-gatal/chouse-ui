@@ -363,6 +363,43 @@ describe("Chobi chat", () => {
     await waitFor(() => expect(useChobiStore.getState().open).toBe(false));
   });
 
+  it("sends a question asked from elsewhere in a new thread, with its context attached", async () => {
+    mocks.createThread.mockResolvedValueOnce({ id: "thread-ask", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" });
+    render(<Chobi />, { wrapper: MemoryRouter });
+    await screen.findByRole("button", { name: /open chobi/i });
+
+    act(() => {
+      useChobiStore.getState().askChobi("Why is this slow?", { context: { name: "query.sql", content: "SELECT 1" }, send: true });
+    });
+
+    await waitFor(() => expect(mocks.streamChatRun).toHaveBeenCalledTimes(1));
+    const request = mocks.streamChatRun.mock.calls[0][0] as { threadId: string; message: string; attachments?: Array<{ name: string; mimeType: string; data: string }> };
+    expect(request).toMatchObject({ threadId: "thread-ask", message: "Why is this slow?" });
+    expect(request.attachments).toEqual([{ name: "query.sql", mimeType: "application/sql", data: btoa("SELECT 1") }]);
+    expect(useChobiStore.getState().ask).toBeNull();
+    expect(screen.getByRole("tab", { name: "Chat" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("puts dropped context in the composer without sending or wiping a draft", async () => {
+    mocks.createThread.mockResolvedValueOnce({ id: "thread-drop", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" });
+    render(<Chobi />, { wrapper: MemoryRouter });
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "Chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
+    await waitFor(() => {
+      fireEvent.change(screen.getByPlaceholderText(COMPOSER), { target: { value: "my draft" } });
+      expect(screen.getByPlaceholderText<HTMLTextAreaElement>(COMPOSER).value).toBe("my draft");
+    });
+
+    act(() => {
+      useChobiStore.getState().askChobi("", { context: { name: "selection.txt", content: "orders are late" } });
+    });
+
+    expect(await screen.findByText("selection.txt")).not.toBeNull();
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(COMPOSER).value).toBe("my draft");
+    expect(mocks.streamChatRun).not.toHaveBeenCalled();
+  });
+
   it("lets a new chat run while another thread is still answering", async () => {
     const first = deferredRun();
     mocks.streamChatRun.mockImplementationOnce(first.implementation);

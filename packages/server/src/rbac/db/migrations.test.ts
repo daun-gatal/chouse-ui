@@ -518,6 +518,13 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const c of ["pat_id", "toolkits", "t1", "t2", "t3", "updated_at"]) expect(await h.columnExists("mcp_token_policies", c)).toBe(true);
     expect(await h.rowCount("mcp_token_policies")).toBe(0);
   },
+  "1.73.0": async () => {
+    // ADR 0025: watches are promises with an expiry; every existing promise stays permanent.
+    expect(await h.columnExists("data_health_promises", "expires_at")).toBe(true);
+    expect(await h.indexExists("dh_promises_expires_idx")).toBe(true);
+    const expiring = await h.rawAll(sql`SELECT COUNT(*) AS n FROM data_health_promises WHERE expires_at IS NOT NULL`);
+    expect(Number(expiring[0]?.n ?? 0)).toBe(0);
+  },
 };
 
 // ---------------------------------------------------------------------------

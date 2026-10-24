@@ -5,9 +5,10 @@ import { usePendingAiActionCount } from "@/features/agents/approvals/hooks";
 import { useOnboardingGuideActive } from "@/features/onboarding";
 import { useWindowSize } from "@/hooks/useWindowSize";
 import { INITIAL_NUDGE_STATE, nextNudge, type Nudge, type NudgeState } from "@/lib/chobiNudges";
+import { isInsideChobi } from "@/lib/layers";
 import { useOnboardingSurfaceDismissAction } from "@/lib/onboardingSurfaces";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
-import { CHOBI_TABS, nudgesMuted, useChobiStore } from "@/stores/chobi";
+import { askContext, CHOBI_TABS, nudgesMuted, useChobiStore } from "@/stores/chobi";
 import { ActivityTab } from "./ActivityTab";
 import { ChobiChat } from "./chat/ChobiChat";
 import { ChobiLayer } from "./ChobiLayer";
@@ -22,6 +23,13 @@ import { Panel } from "./Panel";
 const HAPPY_MS = 4000;
 /** How long a nudge stays beside the launcher. */
 const NUDGE_MS = 12_000;
+
+/** Text the user has selected on the page (not inside Chobi), for quick ask. */
+function pageSelection(): string {
+  const selection = typeof window === "undefined" ? null : window.getSelection();
+  if (!selection || selection.isCollapsed || isInsideChobi(selection.anchorNode?.parentElement ?? null)) return "";
+  return selection.toString().trim();
+}
 
 /** Whether AI chat is set up, rechecked when an admin changes AI settings. */
 function useAiChatEnabled(allowed: boolean): boolean | null {
@@ -85,7 +93,8 @@ export function Chobi(): React.JSX.Element | null {
   const pendingApprovals = useChobiStore((s) => s.pendingApprovals);
   const mutedUntil = useChobiStore((s) => s.mutedUntil);
   const quietHours = useChobiStore((s) => s.quietHours);
-  const { openPanel, close, toggle, setSize, setTab, moveLauncher, setPendingApprovals } = useChobiStore.getState();
+  const { openPanel, close, setSize, setTab, moveLauncher, setPendingApprovals, setAvailable, askChobi } = useChobiStore.getState();
+  const toggle = useChobiStore((s) => s.toggle);
   const tab = CHOBI_TABS.includes(storedTab) ? storedTab : "now";
 
   // Chobi's place and size are kept per user: load them again when the signed-in user changes.
@@ -94,6 +103,11 @@ export function Chobi(): React.JSX.Element | null {
   }, [userId]);
 
   const ready = hasPermission && aiEnabled === true;
+  // Other features (the SQL editor, item actions) offer "Ask Chobi" only when Chobi is there to answer.
+  useEffect(() => {
+    setAvailable(ready);
+    return () => setAvailable(false);
+  }, [ready, setAvailable]);
   const pending = usePendingAiActionCount(ready);
   useEffect(() => {
     if (pending.data !== undefined) setPendingApprovals(pending.data);
@@ -131,14 +145,21 @@ export function Chobi(): React.JSX.Element | null {
 
   useEffect(() => {
     if (!ready) return undefined;
+    // Quick ask: Ctrl/⌘+J opens the chat — with the text you selected on the page attached — or closes Chobi.
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key.toLowerCase() !== "j" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.defaultPrevented) return;
       event.preventDefault();
-      toggle();
+      if (useChobiStore.getState().open) {
+        close();
+        return;
+      }
+      const selected = pageSelection();
+      if (selected) askChobi("", { context: askContext("selection.txt", selected) });
+      else openPanel({ tab: "chat" });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ready, toggle]);
+  }, [ready, askChobi, close, openPanel]);
 
   const showChat = useCallback((): void => openPanel({ tab: "chat" }), [openPanel]);
   const showActivity = useCallback((): void => openPanel({ tab: "activity" }), [openPanel]);
@@ -189,6 +210,7 @@ export function Chobi(): React.JSX.Element | null {
           onMove={moveLauncher}
           onPeek={showNow}
           onDismissPeek={() => setNudge(null)}
+          onDropContext={(context) => askChobi("", { context })}
         />
       )}
       <Panel

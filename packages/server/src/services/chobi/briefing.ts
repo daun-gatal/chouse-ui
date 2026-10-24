@@ -56,6 +56,7 @@ interface JobRow { id: string; name: string; kind: string; connectionId: string;
 /** `capturedAt` is in unix seconds, as the fleet poller stores it. */
 interface SnapshotRow { connectionId: string; capturedAt: number; metrics: Record<string, { error: string | null } | undefined> }
 interface Snapshots { connections: SnapshotRow[]; workerEnabled: boolean }
+interface PromiseRow { id: string; name: string; connectionId: string; databaseName: string | null; tableName: string | null; ownerId: string | null; status: string; expiresAt?: number | null }
 interface ActionRow { id: string; title: string; description: string; status: string; tier: string | null; source: string; origin: string; connectionId: string | null; createdAt: number; decidedAt: number | null; undoAvailable: boolean; canDecide: boolean; expiresAt: number }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -96,13 +97,15 @@ function byPriority(a: BriefingItem, b: BriefingItem): number {
 export async function buildBriefing(api: ActionApi, viewer: BriefingViewer, now: number = Date.now()): Promise<Briefing> {
   const seeIncidents = can(viewer, PERMISSIONS.OBSERVE_VIEW, PERMISSIONS.DATA_HEALTH_VIEW);
   const seeSchedules = can(viewer, PERMISSIONS.SCHEDULED_QUERIES_VIEW);
-  const [connections, incidents, jobs, snapshots, inbox, activity] = await Promise.all([
+  const seeWatches = can(viewer, PERMISSIONS.DATA_HEALTH_VIEW);
+  const [connections, incidents, jobs, snapshots, inbox, activity, promises] = await Promise.all([
     settle(api.get<ConnectionRow[]>("/api/rbac/connections/my")),
     seeIncidents ? settle(api.get<{ incidents: IncidentRow[] }>("/api/observe/incidents")) : Promise.resolve(null),
     seeSchedules ? settle(api.get<{ jobs: JobRow[] }>("/api/scheduled-queries")) : Promise.resolve(null),
     settle(api.get<Snapshots>("/api/fleet/snapshots")),
     settle(api.get<{ actions: ActionRow[] }>("/api/ai-actions/inbox")),
     settle(api.get<{ actions: ActionRow[] }>("/api/ai-actions/activity", { limit: "200" })),
+    seeWatches ? settle(api.get<{ promises: PromiseRow[] }>("/api/data-health")) : Promise.resolve(null),
   ]);
 
   const unavailable: string[] = [];
@@ -148,6 +151,22 @@ export async function buildBriefing(api: ActionApi, viewer: BriefingViewer, now:
       at: job.lastRun?.finishedAt ?? job.lastRun?.startedAt ?? null,
       connectionId: job.connectionId,
       ref: { type: "job", id: job.id },
+    });
+  }
+
+  // Your own watches: what Chobi keeps an eye on for you. A broken one is already an incident above.
+  for (const promise of promises?.ok ? promises.value.promises : []) {
+    if (promise.ownerId !== viewer.id || promise.expiresAt == null || promise.expiresAt <= now) continue;
+    const target = promise.databaseName && promise.tableName ? `${promise.databaseName}.${promise.tableName}` : promise.name;
+    add(promise.connectionId, {
+      key: `watch:${promise.id}`,
+      kind: "watch",
+      severity: "info",
+      title: `Watching ${target}`,
+      detail: promise.status === "healthy" ? "Healthy so far" : promise.status === "unknown" ? "First check pending" : `Now ${promise.status}`,
+      at: promise.expiresAt,
+      connectionId: promise.connectionId,
+      ref: { type: "promise", id: promise.id },
     });
   }
 

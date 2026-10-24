@@ -23,12 +23,29 @@ export type ChobiSide = "left" | "right";
 export const CHOBI_SIZES: readonly ChobiSize[] = ["bubble", "docked", "focus"];
 export const CHOBI_TABS: readonly ChobiTab[] = ["now", "chat", "activity"];
 
+/** What a question is about, attached to the message as a text file (e.g. `query.sql`, `incident.json`). */
+export interface AskContext {
+  name: string;
+  content: string;
+}
+
+/** Context is attached as a file; anything longer is cut, and says so. */
+export const ASK_CONTEXT_MAX_CHARS = 20_000;
+
+export function askContext(name: string, content: string): AskContext {
+  const safeName = name.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "context.txt";
+  return {
+    name: /\.[a-z0-9]{1,5}$/i.test(safeName) ? safeName : `${safeName}.txt`,
+    content: content.length > ASK_CONTEXT_MAX_CHARS ? `${content.slice(0, ASK_CONTEXT_MAX_CHARS)}\n… (cut at ${ASK_CONTEXT_MAX_CHARS} characters)` : content,
+  };
+}
+
 /** A question handed to the chat from elsewhere (drag to ask, quick ask, an item's "Ask Chobi"). */
 export interface ChobiAsk {
   id: number;
   text: string;
-  /** Context for the question (a selection, a row, an item), sent as an attachment. */
-  context?: { label: string; content: string };
+  /** Context for the question (a selection, a row, an item), attached as a text file. */
+  context?: AskContext;
   /** Send at once rather than leave it in the composer. */
   send: boolean;
 }
@@ -46,6 +63,8 @@ export interface ChobiState {
   side: ChobiSide;
   /** The launcher's vertical centre, as a fraction of the window height. */
   y: number;
+  /** Chobi is on for this user (AI set up, ai:chat): asking from elsewhere makes sense. */
+  available: boolean;
   /** A chat reply is running. */
   busy: boolean;
   /** Approvals waiting for this user (their own plans and second-approver requests). */
@@ -61,6 +80,7 @@ export interface ChobiState {
   setSize: (size: ChobiSize) => void;
   setTab: (tab: ChobiTab) => void;
   moveLauncher: (side: ChobiSide, y: number) => void;
+  setAvailable: (available: boolean) => void;
   setBusy: (busy: boolean) => void;
   setPendingApprovals: (count: number) => void;
   askChobi: (text: string, options?: { context?: ChobiAsk["context"]; send?: boolean }) => void;
@@ -155,6 +175,7 @@ export const useChobiStore = create<ChobiState>()(
       tab: "now",
       side: "right",
       y: 0.72,
+      available: false,
       busy: false,
       pendingApprovals: 0,
       ask: null,
@@ -171,6 +192,7 @@ export const useChobiStore = create<ChobiState>()(
       setSize: (size) => set({ size }),
       setTab: (tab) => set({ tab }),
       moveLauncher: (side, y) => set({ side, y: clampLauncherY(y) }),
+      setAvailable: (available) => set((state) => (state.available === available ? state : { available })),
       setBusy: (busy) => set((state) => (state.busy === busy ? state : { busy })),
       setPendingApprovals: (count) => set((state) => {
         const next = Math.max(0, Math.floor(count));

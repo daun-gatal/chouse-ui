@@ -64,7 +64,7 @@ import { ActionReceipts } from '@/components/common/ai-chat/ActionReceipts';
 import { actionReceipts } from '@/lib/aiActionReceipts';
 import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
-import { useChobiStore } from '@/stores/chobi';
+import { useChobiStore, type AskContext } from '@/stores/chobi';
 import { log } from '@/lib/log';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import { OPEN_CHAT_THREAD_EVENT } from '@/features/agents/usage/lib';
@@ -1709,6 +1709,51 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
 
         await runInvoke(activeThreadId, trimmed, messageHistory, extras);
     }, [input, isInvoking, activeThreadId, messages, runInvoke, updateThreadMessages, attachments, skillNames, modelModalities]);
+
+    // A question from elsewhere in CHouse: drag to ask, quick ask, an item's "Ask Chobi".
+    const ask = useChobiStore((state) => state.ask);
+    const takeAsk = useChobiStore((state) => state.takeAsk);
+    /** An ask waiting for its thread; `after` is the thread that was active when a new one was requested. */
+    const askRef = useRef<{ text: string; context: AskContext | undefined; send: boolean; after: string | null | undefined } | null>(null);
+    const [askSeq, setAskSeq] = useState(0);
+    /** An ask that sends: false when none waits, else the attachment it waits for (null for none). */
+    const sendAskRef = useRef<string | null | false>(false);
+    useEffect(() => {
+        if (!ask || !isOpen) return;
+        takeAsk(ask.id);
+        // A question to send is a new topic; one to finish typing joins the current chat when there is one.
+        const newThread = ask.send || !activeThreadId || isInvoking;
+        askRef.current = { text: ask.text, context: ask.context, send: ask.send, after: newThread ? activeThreadId : undefined };
+        if (newThread) void handleNewThread();
+        setAskSeq((n) => n + 1);
+    }, [ask, isOpen, takeAsk, activeThreadId, isInvoking, handleNewThread]);
+    // Applied once its thread is active: switching threads restores that thread's draft first.
+    useEffect(() => {
+        const pending = askRef.current;
+        if (!pending || !activeThreadId) return undefined;
+        if (pending.after !== undefined && activeThreadId === pending.after) return undefined;
+        askRef.current = null;
+        // Context alone never wipes a draft the user is typing.
+        if (pending.text) setInput(pending.text);
+        if (pending.context) void addFiles([new File([pending.context.content], pending.context.name, { type: 'text/plain' })]);
+        sendAskRef.current = pending.send ? pending.context?.name ?? null : false;
+        const timer = setTimeout(() => inputRef.current?.focus(), 0);
+        return () => clearTimeout(timer);
+    }, [activeThreadId, askSeq, addFiles]);
+    useEffect(() => {
+        const awaited = sendAskRef.current;
+        if (awaited === false || !activeThreadId || isInvoking || !input.trim()) return;
+        if (awaited !== null && !attachments.some((a) => a.name === awaited)) return;
+        sendAskRef.current = false;
+        void handleSend();
+    }, [activeThreadId, attachments, handleSend, input, isInvoking]);
+
+    // Showing the Chat tab puts the cursor in the composer.
+    useEffect(() => {
+        if (!visible || !isOpen) return;
+        const timer = setTimeout(() => inputRef.current?.focus(), 0);
+        return () => clearTimeout(timer);
+    }, [visible, isOpen]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
         if (!retryPrompt || isInvoking || !activeThreadId) return;

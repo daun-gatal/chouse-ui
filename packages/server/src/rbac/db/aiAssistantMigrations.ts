@@ -65,4 +65,17 @@ export const AI_ASSISTANT_MIGRATIONS: Migration[] = [
     },
     down: async () => { /* forward-only */ },
   },
+  {
+    version: '1.73.0',
+    name: 'data_health_watches',
+    description: 'ADR 0025 — watches: data_health_promises.expires_at marks a personal, expiring promise ("keep an eye on X" from Chobi). Null keeps every existing promise permanent; the scheduler removes a watch once it expires.',
+    up: async (db) => {
+      if (!(await hasColumn(db, 'data_health_promises', 'expires_at'))) {
+        await exec(db, sql.raw(`ALTER TABLE data_health_promises ADD COLUMN expires_at ${dialect() === 'sqlite' ? 'INTEGER' : 'BIGINT'}`));
+      }
+      await exec(db, sql.raw('CREATE INDEX IF NOT EXISTS dh_promises_expires_idx ON data_health_promises (expires_at)'));
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.73.0] Added watch expiry to Data Health promises (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
 ];

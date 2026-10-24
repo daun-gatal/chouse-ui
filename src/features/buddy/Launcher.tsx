@@ -2,10 +2,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LAYERS, leftOfRail } from "@/lib/layers";
 import { cn } from "@/lib/utils";
-import type { ChobiSide } from "@/stores/chobi";
+import { askContext, type AskContext, type ChobiSide } from "@/stores/chobi";
 import { Mascot, MOOD_LABELS, type ChobiMood } from "./Mascot";
 
 const SIZE = 56;
+
+/** Items other features make draggable to Chobi carry this, as JSON `{ name, content }`. */
+export const CHOBI_DRAG_TYPE = "application/x-chobi-context";
+
+/** What was dropped on Chobi: one of our items, or plain text (a selection dragged from the page). */
+export function droppedContext(data: Pick<DataTransfer, "getData" | "types">): AskContext | null {
+  if (data.types.includes(CHOBI_DRAG_TYPE)) {
+    try {
+      const parsed: unknown = JSON.parse(data.getData(CHOBI_DRAG_TYPE));
+      if (parsed && typeof parsed === "object" && "name" in parsed && "content" in parsed && typeof parsed.name === "string" && typeof parsed.content === "string") {
+        return askContext(parsed.name, parsed.content);
+      }
+    } catch {
+      // Fall back to the plain text below.
+    }
+  }
+  const text = data.types.includes("text/plain") ? data.getData("text/plain").trim() : "";
+  return text ? askContext("selection.txt", text) : null;
+}
 /** Pointer travel before a press becomes a drag. */
 const DRAG_THRESHOLD = 5;
 
@@ -26,6 +45,8 @@ interface LauncherProps {
   onMove: (side: ChobiSide, y: number) => void;
   /** The peek was clicked: show what it is about. */
   onPeek?: () => void;
+  /** Something was dropped on Chobi: ask about it. */
+  onDropContext?: (context: AskContext) => void;
   onDismissPeek?: () => void;
 }
 
@@ -34,12 +55,13 @@ interface LauncherProps {
  * panel; drag to move it — it snaps to the nearer side. Hover or focus shows a
  * peek of what it has to say.
  */
-export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals, peek, unavailable, onToggle, onMove, onPeek, onDismissPeek }: LauncherProps): React.JSX.Element {
+export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals, peek, unavailable, onToggle, onMove, onPeek, onDropContext, onDismissPeek }: LauncherProps): React.JSX.Element {
   const press = useRef<{ x: number; y: number; id: number; dragging: boolean } | null>(null);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   /** A drag ends with a click on the same button; that click must not toggle. */
   const dragged = useRef(false);
   const [hover, setHover] = useState(false);
+  const [dropping, setDropping] = useState(false);
   const [viewport, setViewport] = useState(() => ({ height: typeof window === "undefined" ? 800 : window.innerHeight }));
 
   useEffect(() => {
@@ -104,10 +126,35 @@ export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals,
     : drag
       ? { position: "fixed", left: drag.x - SIZE / 2, top: drag.y - SIZE / 2, zIndex: LAYERS.chobiLauncher }
       : { position: "fixed", ...(side === "left" ? { left: leftOfRail(10) } : { right: 10 }), top, zIndex: LAYERS.chobiLauncher };
-  const peekText = unavailable ? null : peek ?? (hover && !open ? `${MOOD_LABELS[mood]} · Ctrl/⌘ J` : null);
+  const peekText = unavailable ? null : dropping ? "Drop to ask me about it" : peek ?? (hover && !open ? `${MOOD_LABELS[mood]} · Ctrl/⌘ J` : null);
+  const accepts = (event: React.DragEvent): boolean => Boolean(onDropContext) && !unavailable && (event.dataTransfer.types.includes(CHOBI_DRAG_TYPE) || event.dataTransfer.types.includes("text/plain"));
 
   return (
-    <div style={style} className="group" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <div
+      style={style}
+      className="group"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onDragEnter={(event) => {
+        if (accepts(event)) setDropping(true);
+      }}
+      onDragOver={(event) => {
+        if (!accepts(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget instanceof Node ? event.relatedTarget : null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        if (!accepts(event)) return;
+        event.preventDefault();
+        const context = droppedContext(event.dataTransfer);
+        if (context) onDropContext?.(context);
+      }}
+      data-testid="chobi-drop-target"
+    >
       <button
         type="button"
         data-onboarding-id="ai-assistant"
@@ -129,12 +176,13 @@ export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals,
           "relative grid touch-none select-none place-items-center rounded-full border border-ink-500 bg-ink-100/95 shadow-lg shadow-black/40 backdrop-blur transition-[transform,border-color] duration-200",
           "hover:-translate-y-0.5 hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
           drag ? "cursor-grabbing" : "cursor-pointer",
-          open && "border-brand",
+          (open || dropping) && "border-brand",
+          dropping && "scale-110",
           unavailable && "cursor-not-allowed opacity-60 hover:translate-y-0 hover:border-ink-500",
         )}
         style={{ width: SIZE, height: SIZE }}
       >
-        <Mascot mood={unavailable ? "sleeping" : mood} plain={plain} size={plain ? 30 : 44} />
+        <Mascot mood={unavailable ? "sleeping" : dropping ? "happy" : mood} plain={plain} size={plain ? 30 : 44} />
         {pendingApprovals > 0 && !unavailable && (
           <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold text-ink-50 ring-2 ring-ink-100" aria-hidden>
             {pendingApprovals > 9 ? "9+" : pendingApprovals}

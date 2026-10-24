@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Briefing, BriefingItem } from "@/api/chobi";
+import { useChobiStore } from "@/stores/chobi";
 import { itemPath, NowTab, orderConnections } from "./NowTab";
 
 const auth = vi.hoisted(() => ({ activeConnectionId: "dev" as string | null, setActiveConnection: vi.fn() }));
@@ -78,7 +79,7 @@ describe("NowTab", () => {
 
   it("switches to the item's connection before opening it", () => {
     const { onNavigated } = renderNow();
-    fireEvent.click(screen.getByRole("button", { name: /Title i1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Problem:\s*Title i1/ }));
     expect(auth.setActiveConnection).toHaveBeenCalledWith("prod", "Production");
     expect(screen.getByTestId("where").textContent).toBe("/data/incidents/data_health/i1");
     expect(onNavigated).toHaveBeenCalled();
@@ -89,6 +90,17 @@ describe("NowTab", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 change waiting for your answer/ }));
     expect(onOpenActivity).toHaveBeenCalled();
     expect(screen.getByTestId("where").textContent).toBe("/fleet");
+  });
+
+  it("asks Chobi to look into an item, with the facts attached", () => {
+    renderNow();
+    fireEvent.click(screen.getByRole("button", { name: "Ask Chobi about Title i1" }));
+    const ask = useChobiStore.getState().ask;
+    expect(ask).toMatchObject({ send: true, text: "Look into this on Production: Title i1. What happened, why, and what should I do?" });
+    expect(ask?.context?.name).toBe("incident.json");
+    expect(JSON.parse(ask?.context?.content ?? "{}")).toMatchObject({ key: "i1", connection: "Production" });
+    // Approvals are answered, not discussed: no Ask on them.
+    expect(screen.queryByRole("button", { name: /Ask Chobi about 1 change/ })).toBeNull();
   });
 
   it("says all clear when nothing needs a look", () => {

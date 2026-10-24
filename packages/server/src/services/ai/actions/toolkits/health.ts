@@ -26,6 +26,54 @@ const PROMISE_SCHEDULE_KEYS = SCHEDULE_KEYS.filter((k) => k !== "timezone");
 const { timezone: _timezone, ...promiseScheduleFields } = optionalScheduleFields;
 
 const promiseId = z.string().min(1).describe("Data Health promise id (from list_health_checks)");
+
+/** A watch checks every 15 minutes, lasts until 09:00 tomorrow unless told otherwise, and at most a week. */
+const WATCH_CRON = "*/15 * * * *";
+const WATCH_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
+function validTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** How far `timeZone` is ahead of UTC at `utcMs`. */
+function zoneOffsetMs(utcMs: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(utcMs));
+  const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second")) - utcMs;
+}
+
+/** 09:00 tomorrow in `timeZone`, as epoch ms. */
+export function tomorrowAtNine(now: number, timeZone: string): number {
+  const today = new Date(now + zoneOffsetMs(now, timeZone));
+  const guess = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 9, 0, 0);
+  // Two passes settle a daylight-saving change between now and tomorrow morning.
+  const first = guess - zoneOffsetMs(guess, timeZone);
+  return guess - zoneOffsetMs(first, timeZone);
+}
+
+/** When a watch ends: the `until` asked for, or 09:00 tomorrow in the given timezone. */
+export function watchExpiry(args: Record<string, unknown>, now: number = Date.now()): number {
+  const timeZone = typeof args.timezone === "string" && validTimeZone(args.timezone) ? args.timezone : "UTC";
+  if (typeof args.until === "string" && args.until) {
+    const at = Date.parse(args.until);
+    if (Number.isNaN(at)) throw new Error(`'${args.until}' is not a date and time (use ISO 8601, e.g. 2026-10-25T09:00:00Z)`);
+    if (at <= now) throw new Error("A watch must end in the future");
+    if (at > now + WATCH_MAX_MS) throw new Error("A watch lasts at most 7 days");
+    return at;
+  }
+  return tomorrowAtNine(now, timeZone);
+}
+
+/** A watch asks one question: are new rows still arriving? */
+function watchChecks(args: Record<string, unknown>): Array<Record<string, unknown>> {
+  const minutes = typeof args.maxAgeMinutes === "number" ? args.maxAgeMinutes : 60;
+  return [{ checkKey: "fresh", name: `New rows within ${minutes} minutes`, type: "freshness", severity: "critical", config: { eventTimeColumn: str(args.eventTimeColumn), maxAgeSeconds: minutes * 60 } }];
+}
 const incidentId = z.string().min(1).describe("Data Health incident id (from list_health_incidents)");
 
 export const HEALTH_ACTIONS: ActionDefinition[] = [
@@ -68,6 +116,56 @@ export const HEALTH_ACTIONS: ActionDefinition[] = [
       ...(typeof args.criticality === "string" ? { criticality: args.criticality } : {}),
       ...scheduleBody(args),
       checks: args.checks,
+    }),
+    undo: { mode: "delete-created", resource: "health_promise", id: (result) => idOf(result) },
+  },
+  {
+    name: "watch_table",
+    title: "Keep an eye on a table",
+    toolkit: "health",
+    category: "operations",
+    tier: "t1",
+    connectionScoped: true,
+    permissions: [PERMISSIONS.DATA_HEALTH_EDIT],
+    description: "Watch a table on the active connection for a while (\"keep an eye on shop.orders until tomorrow\"): a personal Data Health promise, checked every 15 minutes, that says when new rows stop arriving and removes itself when the watch ends — 09:00 tomorrow by default, at most 7 days, five per connection. Needs the table's event-time column (look it up with the table's columns first).",
+    schema: z.object({
+      database: z.string().min(1).max(64),
+      table: z.string().min(1).max(64),
+      eventTimeColumn: z.string().min(1).max(64).describe("Column holding each row's event time: the watch checks that new rows keep arriving"),
+      eventTimeEncoding: z.enum(EVENT_TIME_ENCODINGS).optional().describe("How the event time is stored (default native)"),
+      maxAgeMinutes: z.number().int().min(1).max(7 * 24 * 60).optional().describe("The newest row may be at most this old (default 60)"),
+      until: z.string().max(40).optional().describe("When the watch ends, ISO 8601 (e.g. 2026-10-25T09:00:00Z); default 09:00 tomorrow"),
+      timezone: z.string().max(100).optional().describe("IANA timezone for the default end (09:00 tomorrow); default UTC"),
+    }),
+    describe: (args) => {
+      const target = `${str(args.database)}.${str(args.table)}`;
+      const check = `new rows within ${typeof args.maxAgeMinutes === "number" ? args.maxAgeMinutes : 60} min`;
+      let until = "09:00 tomorrow";
+      try {
+        until = new Date(watchExpiry(args)).toISOString().replace(".000Z", "Z");
+      } catch {
+        // describe never throws; execute reports the problem.
+      }
+      return `Watch ${target} (${check}) until ${until}, checked every 15 minutes`;
+    },
+    execute: async (args, ctx) => ctx.api.post("/api/data-health", {
+      connectionId: needConnection(ctx),
+      name: `Watch: ${str(args.database)}.${str(args.table)}`,
+      description: "A watch from Chobi: removed when it ends.",
+      source: {
+        sourceType: "table",
+        databaseName: str(args.database),
+        tableName: str(args.table),
+        eventTimeColumn: str(args.eventTimeColumn),
+        eventTimeEncoding: str(args.eventTimeEncoding, "native"),
+      },
+      frequency: "cron",
+      cronExpr: WATCH_CRON,
+      breachAfter: 1,
+      recoverAfter: 1,
+      retentionDays: 7,
+      checks: watchChecks(args),
+      expiresAt: watchExpiry(args),
     }),
     undo: { mode: "delete-created", resource: "health_promise", id: (result) => idOf(result) },
   },

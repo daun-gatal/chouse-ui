@@ -129,6 +129,25 @@ describe("buildBriefing", () => {
     expect(briefing.connections[0].items.at(-1)).toMatchObject({ kind: "connection", severity: "info", title: "No fresh fleet data", detail: "Last snapshot 60 minutes ago.", at: NOW - 3_600_000 });
   });
 
+  it("lists the viewer's own watches that are still running, quietly", async () => {
+    const withWatches = {
+      ...base,
+      "/api/data-health": {
+        promises: [
+          { id: "w1", name: "Watch: shop.orders", connectionId: "prod", databaseName: "shop", tableName: "orders", ownerId: "u1", status: "healthy", expiresAt: NOW + 3_600_000 },
+          { id: "w2", name: "Watch: shop.old", connectionId: "prod", databaseName: "shop", tableName: "old", ownerId: "u1", status: "healthy", expiresAt: NOW - 1 },
+          { id: "w3", name: "Bob's watch", connectionId: "prod", databaseName: "shop", tableName: "x", ownerId: "bob", status: "healthy", expiresAt: NOW + 3_600_000 },
+          { id: "p1", name: "orders promise", connectionId: "prod", databaseName: "shop", tableName: "orders", ownerId: "u1", status: "healthy", expiresAt: null },
+        ],
+      },
+    };
+    const briefing = await buildBriefing(fakeApi(withWatches), { ...everything, permissions: [...everything.permissions, PERMISSIONS.DATA_HEALTH_VIEW] }, NOW);
+    const watches = briefing.connections.flatMap((c) => c.items).filter((i) => i.kind === "watch");
+    expect(watches).toEqual([
+      expect.objectContaining({ key: "watch:w1", severity: "info", title: "Watching shop.orders", detail: "Healthy so far", at: NOW + 3_600_000, ref: { type: "promise", id: "w1" } }),
+    ]);
+  });
+
   it("ignores fleet snapshots while the fleet poller is off", async () => {
     const off = { ...base, "/api/fleet/snapshots": { workerEnabled: false, connections: [{ connectionId: "dev", capturedAt: 1, metrics: { summary: { error: "old error" } } }] } };
     const briefing = await buildBriefing(fakeApi(off), everything, NOW);

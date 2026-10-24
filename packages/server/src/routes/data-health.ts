@@ -107,7 +107,15 @@ const promiseBodySchema = z.object({
   channelIds: z.array(z.string()).default([]),
   checks: z.array(dataHealthCheckDefinitionSchema).min(1).max(100),
   runNow: z.boolean().default(true),
+  /** A watch (ADR 0025): personal, and removed once this time (ms) passes. Only on create. */
+  expiresAt: z.number().int().positive().nullish(),
 });
+
+/** A watch lasts at most a week, and each person keeps a handful per connection. */
+export const WATCH_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+export const WATCH_LIMIT = 5;
+/** Clock skew between the browser or agent that picked the time and this server. */
+const WATCH_SLACK_MS = 60_000;
 
 type PromiseBody = z.infer<typeof promiseBodySchema>;
 
@@ -252,7 +260,16 @@ function metadataInput(body: PromiseBody, scheduledQueryId: string, ownerId: str
     retentionDays: body.retentionDays,
     schemaSnapshot: schemaSnapshotFromBody(body),
     createdBy,
+    expiresAt: body.expiresAt ?? null,
   };
+}
+
+async function assertWatchAllowed(userId: string, connectionId: string, expiresAt: number, now: number = Date.now()): Promise<void> {
+  if (expiresAt <= now) throw AppError.badRequest("A watch must end in the future");
+  if (expiresAt > now + WATCH_MAX_MS + WATCH_SLACK_MS) throw AppError.badRequest("A watch lasts at most 7 days");
+  if ((await healthStore.countActiveWatches(userId, connectionId, now)) >= WATCH_LIMIT) {
+    throw new AppError(`You already watch ${WATCH_LIMIT} things on this connection. Stop one before adding another.`, "WATCH_LIMIT", "validation", 409);
+  }
 }
 
 function jobInput(body: PromiseBody, query: string): scheduledStore.JobInput {
@@ -452,7 +469,9 @@ dataHealth.post(
     const { compiled, eventTimeType } = await compile(c, body, upstreamJob);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
     const user = currentUser(c);
-    const ownerId = canViewAll(c) ? body.ownerId ?? user.sub : user.sub;
+    if (body.expiresAt != null) await assertWatchAllowed(user.sub, body.connectionId, body.expiresAt);
+    // A watch is always its creator's: it is how they asked to be told.
+    const ownerId = body.expiresAt == null && canViewAll(c) ? body.ownerId ?? user.sub : user.sub;
     const jobId = await scheduledStore.createJob(jobInput(body, compiled.sql), ownerId, "data_health_check");
 
     let promiseId: string;
@@ -616,7 +635,8 @@ dataHealth.patch(
     const oldChecks = await healthStore.getChecks(promise.id);
     const oldChannels = await scheduledStore.getJobChannelIds(existingJob.id);
     const user = currentUser(c);
-    const ownerId = canViewAll(c) ? body.ownerId ?? promise.ownerId ?? user.sub : promise.ownerId ?? user.sub;
+    // A watch stays with the person who asked for it.
+    const ownerId = canViewAll(c) && promise.expiresAt == null ? body.ownerId ?? promise.ownerId ?? user.sub : promise.ownerId ?? user.sub;
     try {
       await scheduledStore.updateJob(existingJob.id, jobInput(body, compiled.sql));
       await healthStore.updatePromiseMetadata(promise.id, metadataInput(body, existingJob.id, ownerId, promise.createdBy ?? user.sub, eventTimeType));

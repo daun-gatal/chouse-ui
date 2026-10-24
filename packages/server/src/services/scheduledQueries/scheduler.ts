@@ -13,6 +13,7 @@ import { sendChannelMessage } from "../alerting/deliver";
 import { logger } from "../../utils/logger";
 import { clientForConnection } from "./chClient";
 import * as store from "./store";
+import { listExpiredWatches } from "../dataHealth/store";
 import { lastScheduledFireMs } from "./cadence";
 import * as runner from "./runner";
 
@@ -72,6 +73,7 @@ export class ScheduledQueryScheduler {
     try {
       await this.reaperPass();
       await this.outboxDeliverPass();
+      await this.expireWatchesPass();
       await this.claimAndRunPass();
       await store.pruneOldRuns();
     } catch (err) {
@@ -116,6 +118,22 @@ export class ScheduledQueryScheduler {
     } catch {
       /* best-effort */
     }
+  }
+
+  // --- watches (ADR 0025) ----------------------------------------------------
+
+  /**
+   * Remove watches whose time is up, before they could run again. Deleting the
+   * execution job cascades to the promise, its checks and incidents; another
+   * replica deleting the same watch first makes this a no-op.
+   */
+  async expireWatchesPass(now: number = Date.now()): Promise<number> {
+    const expired = await listExpiredWatches(now);
+    for (const watch of expired) await store.deleteJob(watch.scheduledQueryId);
+    if (expired.length > 0) {
+      logger.info({ module: "ScheduledQueries", count: expired.length, ids: expired.map((w) => w.id) }, "Removed expired watches");
+    }
+    return expired.length;
   }
 
   // --- claim + run (D5) -----------------------------------------------------
