@@ -14,13 +14,45 @@ import { Parser, AST } from 'node-sql-parser';
 // Initialize parser with MySQL dialect (ClickHouse SQL is similar)
 const parser = new Parser();
 
+export interface TableRef {
+  database?: string;
+  table: string;
+  /**
+   * Read from by the statement rather than written to (a subquery, UNION arm,
+   * INSERT … SELECT source, dictionary lookup). Checked for read access only.
+   */
+  source?: boolean;
+}
+
 export interface ParsedStatement {
   statement: string;
   type: 'select' | 'insert' | 'update' | 'delete' | 'create' | 'drop' | 'alter' | 'truncate' | 'show' | 'describe' | 'use' | 'set' | 'explain' | 'exists' | 'check' | 'kill' | 'unknown';
-  tables: Array<{ database?: string; table: string }>;
+  tables: TableRef[];
+  /** Lower-cased names of table functions used as a FROM/JOIN source, e.g. `remote`. */
+  tableFunctions?: string[];
   ast?: AST | AST[];
   warnings?: string[];
 }
+
+/**
+ * Table functions that only generate or parse inline data and can't reach a
+ * table, file, URL or other server. Any other table function (remote, cluster,
+ * merge, url, file, s3, mysql, …) can read data outside the user's data access
+ * rules, so it is denied to non-admins.
+ */
+export const SAFE_TABLE_FUNCTIONS: ReadonlySet<string> = new Set([
+  'numbers',
+  'numbers_mt',
+  'zeros',
+  'zeros_mt',
+  'generaterandom',
+  'generate_series',
+  'generateseries',
+  'values',
+  'null',
+  'input',
+  'format',
+]);
 
 export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 
@@ -152,23 +184,30 @@ export function parseStatement(statement: string): ParsedStatement {
 
     // Determine statement type from AST
     if (Array.isArray(ast)) {
-      // Multiple statements in one (shouldn't happen after splitting, but handle it)
+      // The splitter and the parser disagree on where statements end (e.g. an
+      // escaped quote). Only the first would be checked, so fail closed: an
+      // unknown type is always denied.
       const firstStmt = ast[0];
-      result.type = getStatementTypeFromAST(firstStmt);
+      result.type = ast.length === 1 ? getStatementTypeFromAST(firstStmt) : 'unknown';
       result.tables = extractTablesFromAST(firstStmt);
+      result.tableFunctions = extractTableFunctionsFromAST(firstStmt);
     } else {
       result.type = getStatementTypeFromAST(ast);
       result.tables = extractTablesFromAST(ast);
+      result.tableFunctions = extractTableFunctionsFromAST(ast);
     }
   } catch (error) {
     // If parsing fails, fall back to simple pattern matching
     // This handles edge cases like system queries, ClickHouse-specific syntax, etc.
-    // Suppress warning for common parse errors as fallback is robust
-    // console.warn('[SQL Parser] Failed to parse statement, using fallback:', error instanceof Error ? error.message : String(error));
     result.type = getStatementTypeFallback(statement);
-    result.tables = extractTablesFallback(statement);
+    result.tables = extractTablesFallback(statement, result.type);
+    result.tableFunctions = extractTableFunctionsFallback(statement);
     result.warnings = [`Failed to parse statement (using fallback): ${error instanceof Error ? error.message : String(error)}`];
   }
+
+  // Dictionary / Join-engine lookups read table data from inside an expression,
+  // where neither the AST walk nor the FROM/JOIN patterns look.
+  result.tables.push(...extractDictionaryReads(statement));
 
   return result;
 }
@@ -204,10 +243,16 @@ function getStatementTypeFromAST(ast: AST): ParsedStatement['type'] {
 }
 
 /**
- * Extract tables from AST
+ * Extract tables from AST.
+ *
+ * Tables are collected from the statement's own FROM/JOIN/target clauses and
+ * from every statement nested anywhere inside it — scalar subqueries, IN /
+ * EXISTS subqueries, UNION arms, INSERT … SELECT and CREATE … AS SELECT
+ * sources. Missing one lets a query read a table its data access rules deny,
+ * so nested tables are found by walking the whole tree, not a fixed set of keys.
  */
-function extractTablesFromAST(ast: AST, scopedCtes?: Set<string>): Array<{ database?: string; table: string }> {
-  const tables: Array<{ database?: string; table: string }> = [];
+function extractTablesFromAST(ast: AST, scopedCtes?: Set<string>, nested = false): TableRef[] {
+  const tables: TableRef[] = [];
   const localCtes = new Set(scopedCtes);
 
   if (!ast || typeof ast !== 'object') {
@@ -216,105 +261,103 @@ function extractTablesFromAST(ast: AST, scopedCtes?: Set<string>): Array<{ datab
 
   const astAny = ast as any;
 
-  // Handle WITH clause (CTEs)
+  // Register CTE names first so references to them are not treated as tables.
+  // Their bodies are reached by the nested-statement walk below.
   if (astAny.with) {
     const withClause = Array.isArray(astAny.with) ? astAny.with : [astAny.with];
     for (const cte of withClause) {
       if (cte.name && cte.name.value) {
-        // Add CTE name to local scope to avoid treating it as a real table
         localCtes.add(String(cte.name.value).toLowerCase());
-      }
-      if (cte.stmt && cte.stmt.ast) {
-        // Recursively extract tables from the CTE query itself
-        const cteTables = extractTablesFromAST(cte.stmt.ast, localCtes);
-        tables.push(...cteTables);
       }
     }
   }
 
-  // Handle different statement types
-  // SELECT: from, join
+  const type = typeof astAny.type === 'string' ? astAny.type.toLowerCase() : '';
+  // A top-level SELECT reads its FROM tables; DELETE writes its FROM table.
+  // Everything found inside a nested statement is only ever read.
+  const fromIsSource = nested || !type.includes('delete');
+
   if (astAny.from) {
-    extractTablesFromFromClause(astAny.from, tables, localCtes);
+    extractTablesFromFromClause(astAny.from, tables, localCtes, fromIsSource);
   }
 
-  // INSERT: into
+  // INSERT / UPDATE / DDL target
   if (astAny.table) {
-    extractTableFromTableClause(astAny.table, tables, localCtes);
+    extractTableFromTableClause(astAny.table, tables, localCtes, nested);
   }
 
-  // UPDATE: table
-  if (astAny.table && astAny.type?.toLowerCase().includes('update')) {
-    extractTableFromTableClause(astAny.table, tables, localCtes);
-  }
-
-  // DELETE: from
-  if (astAny.from && astAny.type?.toLowerCase().includes('delete')) {
-    extractTablesFromFromClause(astAny.from, tables, localCtes);
-  }
-
-  // DDL: table name in various places
-  if (astAny.table && (astAny.type?.toLowerCase().includes('create') ||
-    astAny.type?.toLowerCase().includes('drop') ||
-    astAny.type?.toLowerCase().includes('alter') ||
-    astAny.type?.toLowerCase().includes('truncate'))) {
-    extractTableFromTableClause(astAny.table, tables, localCtes);
-  }
+  collectNestedStatementTables(astAny, localCtes, tables, new Set([astAny]));
 
   return tables;
 }
 
+const STATEMENT_NODE_TYPES = new Set(['select', 'insert', 'replace', 'update', 'delete']);
+
+function isStatementNode(node: unknown): boolean {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return false;
+  const type = (node as { type?: unknown }).type;
+  return typeof type === 'string' && STATEMENT_NODE_TYPES.has(type.toLowerCase());
+}
+
+/** Walk every value under `node` and extract tables from each nested statement. */
+function collectNestedStatementTables(node: unknown, scopedCtes: Set<string>, tables: TableRef[], seen: Set<unknown>): void {
+  if (!node || typeof node !== 'object') return;
+  const children = Array.isArray(node) ? node : Object.values(node as Record<string, unknown>);
+  for (const child of children) {
+    if (!child || typeof child !== 'object' || seen.has(child)) continue;
+    seen.add(child);
+    if (isStatementNode(child)) {
+      // The nested call walks its own subtree.
+      tables.push(...extractTablesFromAST(child as AST, scopedCtes, true));
+    } else {
+      collectNestedStatementTables(child, scopedCtes, tables, seen);
+    }
+  }
+}
+
+/** A name only refers to a CTE when it is unqualified. `db.t` is always a table. */
+function isCteReference(database: string | undefined, table: string, scopedCtes: Set<string>): boolean {
+  return !database && scopedCtes.has(table.toLowerCase());
+}
+
 /**
- * Extract tables from FROM clause (handles joins, subqueries, etc.)
+ * Extract tables from FROM clause (handles joins and table references).
+ * Subqueries in FROM are reached by the nested-statement walk.
  */
-function extractTablesFromFromClause(from: any, tables: Array<{ database?: string; table: string }>, scopedCtes: Set<string>): void {
+function extractTablesFromFromClause(from: any, tables: TableRef[], scopedCtes: Set<string>, source: boolean): void {
   if (!from) return;
 
-  // Handle array of tables (JOINs)
   if (Array.isArray(from)) {
-    from.forEach(item => extractTablesFromFromClause(item, tables, scopedCtes));
+    from.forEach(item => extractTablesFromFromClause(item, tables, scopedCtes, source));
     return;
   }
 
-  // Handle subquery first (before table extraction to avoid duplicates)
-  // node-sql-parser may put subquery AST in .ast or .expr.ast
-  const subqueryAst = from.ast || (from.expr && from.expr.ast);
-  if (subqueryAst) {
-    const subqueryTables = extractTablesFromAST(subqueryAst, scopedCtes);
-    tables.push(...subqueryTables);
-  }
-
-  // Handle table reference - prefer direct db.table extraction over recursive call to avoid duplicates
   if (from.db || from.table) {
     const db = from.db ? String(from.db).replace(/[`"]/g, '') : undefined;
     const table = from.table ? String(from.table).replace(/[`"]/g, '') : undefined;
-    if (table) {
-      // ONLY add if it's NOT a CTE
-      if (!scopedCtes.has(table.toLowerCase())) {
-        tables.push({ database: db, table });
-      }
+    if (table && !isCteReference(db, table, scopedCtes)) {
+      tables.push({ database: db, table, ...(source ? { source: true } : {}) });
     }
-  } else if (from.table) {
-    // Fallback: if db is not directly available, use recursive extraction
-    extractTableFromTableClause(from.table, tables, scopedCtes);
   }
 }
 
 /**
  * Extract table from table clause
  */
-function extractTableFromTableClause(table: any, tables: Array<{ database?: string; table: string }>, scopedCtes: Set<string>): void {
+function extractTableFromTableClause(table: any, tables: TableRef[], scopedCtes: Set<string>, source: boolean): void {
   if (!table) return;
 
   if (Array.isArray(table)) {
-    table.forEach(t => extractTableFromTableClause(t, tables, scopedCtes));
+    table.forEach(t => extractTableFromTableClause(t, tables, scopedCtes, source));
     return;
   }
 
+  const flag = source ? { source: true } : {};
+
   if (typeof table === 'string') {
     const tableName = table.replace(/[`"]/g, '');
-    if (!scopedCtes.has(tableName.toLowerCase())) {
-      tables.push({ table: tableName });
+    if (!isCteReference(undefined, tableName, scopedCtes)) {
+      tables.push({ table: tableName, ...flag });
     }
     return;
   }
@@ -324,12 +367,86 @@ function extractTableFromTableClause(table: any, tables: Array<{ database?: stri
     const tableName = table.table ? String(table.table).replace(/[`"]/g, '') :
       table.name ? String(table.name).replace(/[`"]/g, '') : undefined;
 
-    if (tableName) {
-      if (!scopedCtes.has(tableName.toLowerCase())) {
-        tables.push({ database: db, table: tableName });
-      }
+    if (tableName && !isCteReference(db, tableName, scopedCtes)) {
+      tables.push({ database: db, table: tableName, ...flag });
     }
   }
+}
+
+/** Name of a function node, whatever shape node-sql-parser gave it. */
+function functionName(expr: any): string | undefined {
+  const name = expr?.name;
+  if (typeof name === 'string') return name;
+  if (Array.isArray(name?.name)) {
+    return name.name.map((part: any) => part?.value ?? '').filter(Boolean).join('.') || undefined;
+  }
+  return undefined;
+}
+
+/** Table functions used as a FROM/JOIN source anywhere in the statement. */
+function extractTableFunctionsFromAST(ast: AST): string[] {
+  const found = new Set<string>();
+  const seen = new Set<unknown>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    const from = (node as { from?: unknown }).from;
+    if (Array.isArray(from)) {
+      for (const item of from) {
+        const expr = (item as { expr?: { type?: string } } | null)?.expr;
+        if (expr?.type === 'function') {
+          const name = functionName(expr);
+          if (name) found.add(name.toLowerCase());
+        }
+      }
+    }
+    Object.values(node as Record<string, unknown>).forEach(visit);
+  };
+  visit(ast);
+  return [...found];
+}
+
+/** Strip comments and string/identifier literals so patterns only see SQL. */
+function stripLiterals(sql: string): string {
+  return sql
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:[^'\\]|\\.|'')*'/g, "''");
+}
+
+/** Fallback: table functions in FROM/JOIN position, e.g. `FROM remote(...)`. */
+function extractTableFunctionsFallback(statement: string): string[] {
+  const found = new Set<string>();
+  const pattern = /\b(?:FROM|JOIN)\s+([A-Za-z_][\w]*)\s*\(/gi;
+  let match;
+  while ((match = pattern.exec(stripLiterals(statement))) !== null) {
+    found.add(match[1].toLowerCase());
+  }
+  return [...found];
+}
+
+/**
+ * `dictGet('db.dict', …)`, `joinGet('db.table', …)` and friends read a
+ * dictionary or Join-engine table named by a string argument. Report the named
+ * object as a read so it is checked like any other table.
+ */
+function extractDictionaryReads(statement: string): TableRef[] {
+  const tables: TableRef[] = [];
+  const cleaned = statement.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const pattern = /\b(?:dictGet\w*|dictHas|dictIsIn|joinGet\w*)\s*\(\s*'([^']+)'/gi;
+  let match;
+  while ((match = pattern.exec(cleaned)) !== null) {
+    const name = match[1].replace(/[`"]/g, '');
+    const dot = name.indexOf('.');
+    tables.push(dot > 0
+      ? { database: name.slice(0, dot), table: name.slice(dot + 1), source: true }
+      : { table: name, source: true });
+  }
+  return tables;
 }
 
 /**
@@ -363,8 +480,10 @@ function getStatementTypeFallback(statement: string): ParsedStatement['type'] {
  * Fallback: Extract tables using regex patterns
  * Used when AST parsing fails
  */
-function extractTablesFallback(statement: string): Array<{ database?: string; table: string }> {
-  const tables: Array<{ database?: string; table: string }> = [];
+function extractTablesFallback(statement: string, type: ParsedStatement['type']): TableRef[] {
+  const tables: TableRef[] = [];
+  // DELETE FROM names its target; every other FROM/JOIN is a source read.
+  const fromIsSource = type !== 'delete';
   const normalizedSql = statement.replace(/\s+/g, ' ').trim();
 
   // Extract CTE names to filter them out
@@ -386,19 +505,19 @@ function extractTablesFallback(statement: string): Array<{ database?: string; ta
   ];
 
   for (const pattern of patterns) {
+    const isSourcePattern = fromIsSource && /^(?:FROM|JOIN)/.test(pattern.source);
     let match;
     while ((match = pattern.exec(normalizedSql)) !== null) {
       const clean = (s: string) => s.replace(/[`"]/g, '');
       const db = match[2] ? clean(match[1]) : undefined;
       const table = match[2] ? clean(match[2]) : clean(match[1]);
 
-      // Filter out CTE names
-      if (!cteNames.has(table.toLowerCase())) {
-        if (db) {
-          tables.push({ database: db, table });
-        } else {
-          tables.push({ table });
-        }
+      if (!isCteReference(db, table, cteNames)) {
+        tables.push({
+          ...(db ? { database: db } : {}),
+          table,
+          ...(isSourcePattern ? { source: true } : {}),
+        });
       }
     }
   }

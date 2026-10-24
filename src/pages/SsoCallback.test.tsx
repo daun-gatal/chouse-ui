@@ -136,6 +136,16 @@ describe("SsoCallback", () => {
     });
   });
 
+  it("redirect guard: navigates to '/' when the target hides a protocol-relative URL behind a tab", async () => {
+    mockCompleteSsoLogin.mockResolvedValueOnce("/\t/evil.com");
+
+    const { getLocation } = renderAt("?code=c1&state=s1");
+
+    await waitFor(() => {
+      expect(getLocation()?.pathname).toBe("/");
+    });
+  });
+
   it("StrictMode: completeSsoLogin is called exactly once despite double-invoke", async () => {
     mockCompleteSsoLogin.mockResolvedValueOnce("/fleet");
 

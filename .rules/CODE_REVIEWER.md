@@ -41,6 +41,7 @@ Checklist and process for reviewing code changes. For coding standards and examp
 - [ ] No SQL injection vulnerabilities
 - [ ] No XSS vulnerabilities (`dangerouslySetInnerHTML` avoided or sanitized)
 - [ ] Sensitive data not logged
+- [ ] For auth, data access, SQL, CORS, outbound-request or dependency changes: the [SECURITY.md](SECURITY.md) security review checklist passes
 
 ### Performance
 - [ ] Expensive computations memoized

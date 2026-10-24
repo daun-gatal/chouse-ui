@@ -19,7 +19,9 @@ import {
   splitSqlStatements,
   parseStatement,
   getAccessTypeFromStatementType,
-  type ParsedStatement
+  SAFE_TABLE_FUNCTIONS,
+  type ParsedStatement,
+  type TableRef,
 } from './sqlParser';
 import { PERMISSIONS } from '../rbac/schema/base';
 import { logger } from '../utils/logger';
@@ -377,21 +379,31 @@ async function validateSingleStatement(
   // Used for data access rule checks (read/write/admin) when validating table access
   const accessType = getAccessTypeFromStatementType(parsed.type);
 
-  let tables = parsed.tables;
-
-  // Deduplicate tables: prefer entries with database names over those without
-  const tableMap = new Map<string, { database?: string; table: string }>();
-  for (const table of tables) {
-    const key = table.table || '';
-    if (!key) continue;
-
-    const existing = tableMap.get(key);
-    // Prefer entry with database name, or keep existing if it already has one
-    if (!existing || (!existing.database && table.database)) {
-      tableMap.set(key, table);
-    }
+  // Table functions such as remote(), cluster(), merge(), url() or file() read
+  // data the per-table rules below never see, so only the inline-data ones are
+  // allowed.
+  const tableFunctions = parsed.tableFunctions ?? [];
+  const unsafeFunction = tableFunctions.find((fn) => !SAFE_TABLE_FUNCTIONS.has(fn));
+  if (unsafeFunction) {
+    return {
+      allowed: false,
+      reason: `Statement ${statementIndex + 1}: Table function '${unsafeFunction}' is not allowed by your data access rules`,
+      statementIndex,
+    };
   }
-  tables = Array.from(tableMap.values());
+
+  // Deduplicate on database + table + role. Keying on the table name alone let
+  // `public.t` hide `secret.t` in the same statement.
+  const tableMap = new Map<string, TableRef>();
+  for (const table of parsed.tables) {
+    if (!table.table) continue;
+    // The fallback patterns report a table function call (`FROM numbers(10)`)
+    // as a table; it was vetted above.
+    if (!table.database && tableFunctions.includes(table.table.toLowerCase())) continue;
+    const key = `${table.database ?? ''}\u0000${table.table}\u0000${table.source ? 'r' : 'w'}`;
+    if (!tableMap.has(key)) tableMap.set(key, table);
+  }
+  const tables = Array.from(tableMap.values());
 
   // If no tables detected, allow (might be a system query)
   if (tables.length === 0) {
@@ -422,7 +434,8 @@ async function validateSingleStatement(
 
   // Check each table against data access rules
   // Note: System databases are hidden from UI but queries are still allowed if user has permissions
-  for (const { database, table } of tables) {
+  for (const { database, table, source } of tables) {
+    const tableAccessType: AccessType = source ? 'read' : accessType;
     let db = database || defaultDatabase || 'default';
     let tbl = table || '*';
 
@@ -510,12 +523,12 @@ async function validateSingleStatement(
 
     // System databases are hidden from Explorer UI but queries are still allowed
     // Check user access normally (don't block system database queries)
-    const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
+    const result = await checkUserAccess(userId, db, tbl, tableAccessType, connectionId);
 
     if (!result.allowed) {
       return {
         allowed: false,
-        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${accessType} permission)`,
+        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${tableAccessType} permission)`,
         statementIndex,
       };
     }

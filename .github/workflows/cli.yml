@@ -39,7 +39,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
           cache-dependency-path: cli/go.sum
 
       - name: Vet
@@ -69,7 +69,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
           cache-dependency-path: cli/go.sum
 
       # Same script the release uses — proves all five platforms compile and
@@ -109,7 +109,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
 
       - name: Build and exercise binary offline
         run: |

@@ -87,6 +87,10 @@ bunx vitest run                # Frontend tests
 - Client: `PermissionGuard` component for UI gating
 - SQL injection prevention via `node-sql-parser` middleware
 - Never use `dangerouslySetInnerHTML` without DOMPurify
+- Data access rules are only as strong as the SQL parser: every table a statement touches (subqueries, UNION, INSERT/CREATE … SELECT, `dictGet`) must be checked, unknown shapes fail closed, and server-built DDL goes through `checkDatabaseAccess`/`checkTableAccess`
+- Server-built SQL: `escapeIdentifier` for names, `quoteStringLiteral` for strings (ClickHouse treats `\` as an escape), whole-string grammar checks for types/engines/key expressions
+- Never key a security limit on a client-controlled header (`X-Forwarded-For`); never send credentialed CORS for a wildcard origin
+- Full rules and the security review checklist: **[.rules/SECURITY.md](.rules/SECURITY.md)**
 
 ### Testing
 - Test files co-located with source: `file.ts` -> `file.test.ts`
@@ -217,6 +221,7 @@ data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
 | Planning a **big / multi-component** change before writing code | **[.rules/ADR.md](.rules/ADR.md)** — when an ADR is required, the draft → discuss → accept → implement flow, and conventions. See [Architecture Decision Records](#architecture-decision-records-adr). |
 | Writing or modifying any code | **[.rules/CODE_CHANGES.md](.rules/CODE_CHANGES.md)** — standards, patterns, pre-commit checklist |
 | Reviewing a PR or diff, or self-checking before marking a task done | **[.rules/CODE_REVIEWER.md](.rules/CODE_REVIEWER.md)** — review checklist, approval criteria, common issues |
+| Touching auth, RBAC/data access rules, SQL generation or the SQL parser, CORS/redirects, outbound requests, secrets, AI tools, or dependencies — or reviewing such a change | **[.rules/SECURITY.md](.rules/SECURITY.md)** — threat model, data-access and SQL-building rules, rate limiting, SSRF, dependency/scanner policy, security review checklist |
 | After finishing a task — scan files you touched | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — remove unused imports, symbols, exports left behind |
 | Proactively scanning the codebase for cleanup | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — full scan process including dependency and barrel-export checks |
 | A change is user-visible (new feature, bug fix, removal) | Drop a fragment in `changelogs/unreleased/<pr-number>-<slug>.md` — never edit `CHANGELOG.md` directly |

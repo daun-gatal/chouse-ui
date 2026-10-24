@@ -7,6 +7,7 @@ import { corsMiddleware } from "./middleware/cors";
 import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
 import { rateLimiter } from "hono-rate-limiter";
 import { DbRateLimitStore, cleanupExpiredRateLimits } from "./middleware/rateLimitStore";
+import { loginAccountKey, rateLimitClientKey } from "./middleware/rateLimitKeys";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
@@ -212,8 +213,19 @@ app.use('/api/rbac/auth/login', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10, // 10 attempts per 15 minutes
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('login:', LOGIN_WINDOW_MS),
+}));
+
+// Login: 20 attempts per 15 minutes per account, from any number of addresses.
+// The per-IP limit alone can't stop a guesser spread across many addresses
+// (or one that spoofs X-Forwarded-For with no proxy in front).
+app.use('/api/rbac/auth/login', rateLimiter({
+  windowMs: LOGIN_WINDOW_MS,
+  limit: 20,
+  standardHeaders: true,
+  keyGenerator: loginAccountKey,
+  store: new DbRateLimitStore('login-account:', LOGIN_WINDOW_MS),
 }));
 
 // SSO start + callback share the login budget: 10 attempts per 15 minutes per IP.
@@ -223,14 +235,14 @@ app.use('/api/rbac/auth/sso/*/start', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('sso-start:', LOGIN_WINDOW_MS),
 }));
 app.use('/api/rbac/auth/sso/callback', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('sso-cb:', LOGIN_WINDOW_MS),
 }));
 
@@ -253,7 +265,7 @@ app.use('/api/ai/*', rateLimiter({
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   limit: 1000, // 1000 requests per minute
-  keyGenerator: (c: Context) => c.get('rbacUserId') || c.req.header('X-Forwarded-For') || 'unknown',
+  keyGenerator: (c: Context) => c.get('rbacUserId') || rateLimitClientKey(c),
 }));
 
 // ============================================
