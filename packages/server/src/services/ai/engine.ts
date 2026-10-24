@@ -47,6 +47,7 @@ import type {
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
 import type { DeepAgent } from "deepagents";
 import { lazyRunMemory } from "./memory/runtime";
+import { EMPTY_ANSWER_NUDGE } from "./runtime/internalMessages";
 
 export type { InvokedToolCall } from "./registry/builder";
 
@@ -138,7 +139,7 @@ export function finalTextFromState(state: unknown): string {
 }
 
 /** Sent once when a chat turn ends without answer text, so the model writes it from what it already found. */
-export const EMPTY_ANSWER_NUDGE = "Write your final answer to my last question now, in plain prose, using the tool results you already have. Do not call more tools unless you must.";
+export { EMPTY_ANSWER_NUDGE };
 
 function structuredInstructions<T>(
   instructions: string,

@@ -7,6 +7,7 @@
 
 import { api } from './client';
 import { readSse } from '@/lib/sse';
+import type { AiActionTier } from './aiActions';
 
 // ============================================
 // Types
@@ -213,12 +214,19 @@ export interface PendingApproval {
     /** What will happen, in one line. */
     description: string;
     expiresAt: number;
+    /** How the call is checked (ADR 0025); several calls paused together form a plan. */
+    tier: AiActionTier;
+    /** The connection is marked production, which raised the tier. */
+    production: boolean;
 }
+
+/** Skip this tool's confirmation for the rest of the thread, or for an hour (T2 only). */
+export type ApprovalRemember = 'thread' | 'hour';
 
 /** The user's answer to one pending approval. */
 export type ApprovalDecision =
-    | { actionId: string; type: 'approve' }
-    | { actionId: string; type: 'edit'; args: Record<string, unknown> }
+    | { actionId: string; type: 'approve'; remember?: ApprovalRemember }
+    | { actionId: string; type: 'edit'; args: Record<string, unknown>; remember?: ApprovalRemember }
     | { actionId: string; type: 'reject'; message?: string };
 
 export interface ChatRunAnswer {

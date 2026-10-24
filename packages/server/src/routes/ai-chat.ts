@@ -25,6 +25,7 @@ import type { AgentContentPart, AgentMessage, AgentRunContext } from "../service
 import { actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
 import { decideAction } from "../services/ai/actions/store";
 import { mayAct } from "../services/ai/actions/tools";
+import { createGrant, GRANT_SCOPES } from "../services/ai/actions/grants";
 import {
     activeRunForThread,
     cancelChatRun,
@@ -476,6 +477,8 @@ export const DecisionSchema = z.object({
     args: z.record(z.string(), z.unknown()).optional(),
     /** Why it was rejected, for the agent (reject only). */
     message: z.string().trim().max(1000).optional(),
+    /** Skip this confirmation for the tool for the rest of the thread or for an hour (T2 approvals only, ADR 0025). */
+    remember: z.enum(GRANT_SCOPES).optional(),
 });
 
 export const ResumeRequestSchema = z.object({
@@ -529,6 +532,10 @@ aiChat.post("/runs/:id/resume", zValidator("json", ResumeRequestSchema), async (
             resourceId: decided.id,
             details: { origin: "ai", tool: decided.tool, description: definition && args ? definition.describe(args) : decided.description, edited: decision.type === "edit", runId: paused.id },
         });
+        // A grant only ever skips a T2 confirmation, and only one given while approving.
+        if (decision.remember && decision.type !== "reject" && pending.tier === "t2") {
+            await createGrant({ userId, tool: pending.name, scope: decision.remember, threadId: paused.threadId });
+        }
         resume[pending.id] = decision.type === "approve"
             ? { type: "approve" }
             : decision.type === "edit"

@@ -6,7 +6,7 @@ import type { PendingApproval } from "@/api/ai-chat";
 import { ApprovalCard } from "./ApprovalCard";
 
 function item(n: number, extra: Partial<PendingApproval> = {}): PendingApproval {
-  return { id: `int-${n}`, toolCallId: `c${n}`, actionId: `act-${n}`, name: "kill_query", title: `Kill query ${n}`, args: { queryId: `q${n}` }, description: `KILL q${n}`, expiresAt: Date.now() + 60_000, ...extra };
+  return { id: `int-${n}`, toolCallId: `c${n}`, actionId: `act-${n}`, name: "kill_query", title: `Kill query ${n}`, args: { queryId: `q${n}` }, description: `KILL q${n}`, expiresAt: Date.now() + 60_000, tier: "t2", production: false, ...extra };
 }
 
 afterEach(() => {

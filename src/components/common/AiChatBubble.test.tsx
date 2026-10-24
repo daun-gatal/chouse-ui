@@ -559,7 +559,7 @@ describe("AiChatBubble", () => {
     });
 
     describe("approvals (ADR 0024 phase 2)", () => {
-      const pending = { id: "int-1", toolCallId: "c1", actionId: "act-1", name: "kill_query", title: "Kill a query", args: { queryId: "q-7" }, description: 'KILL QUERY WHERE query_id = "q-7"', expiresAt: Date.now() + 15 * 60_000 };
+      const pending = { id: "int-1", toolCallId: "c1", actionId: "act-1", name: "kill_query", title: "Kill a query", args: { queryId: "q-7" }, description: 'KILL QUERY WHERE query_id = "q-7"', expiresAt: Date.now() + 15 * 60_000, tier: "t2", production: false };
 
       async function pause(): Promise<void> {
         mocks.streamChatRun.mockImplementationOnce(async (_request: unknown, onEvent: (event: unknown) => void) => {

@@ -666,6 +666,7 @@ export const AUDIT_ACTIONS = {
   // Approved actions (ADR 0024): a person deciding what an AI agent asked to do.
   AI_ACTION_APPROVE: 'ai_action.approve',
   AI_ACTION_REJECT: 'ai_action.reject',
+  AI_ACTION_UNDO: 'ai_action.undo',
 
   // AI memory (ADR 0024): notes agents keep about a user or a connection.
   AI_MEMORY_CREATE: 'ai_memory.create',

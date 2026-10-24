@@ -4,6 +4,7 @@
  */
 
 import { api } from "./client";
+import type { AiActionTier, AiToolkit } from "./aiActions";
 
 export type ToolContextKind = "session" | "fleet" | "userApi";
 export type FeatureSurface = "sql-editor" | "doctor" | "diagnostics" | "dataops" | "observe" | "dashboards" | "chat" | "governance";
@@ -127,8 +128,10 @@ export interface CatalogTool {
   domain: "clickhouse" | "chouse";
   category: string;
   access: "read" | "write" | "destructive";
-  /** Write tools (ADR 0024): low risk pauses for approval; high risk only files a proposal. */
-  risk?: "low" | "high";
+  /** Write tools (ADR 0025): how a call is checked, or "varies" when it depends on the call. */
+  tier?: AiActionTier | "varies";
+  /** Write tools: the toolkit the tool belongs to. */
+  toolkit?: AiToolkit;
   requires: ToolContextKind | null;
   permissions: string[];
   description: string;

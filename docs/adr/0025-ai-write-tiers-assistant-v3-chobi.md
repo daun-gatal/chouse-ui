@@ -42,8 +42,9 @@ The effective tier of a call is computed in one place (`resolveTier`):
 
 1. the tool's base tier (a function of the arguments where it matters, e.g.
    raw SQL is tiered by statement type, `kill_query` by whose query it is);
-2. **production bump**: on a connection whose new `environment` is
-   `production`, T1 → T2 and T2 → T3;
+2. **production bump**: on a connection an admin marked `production` (the
+   connection's new Environment field, kept in its metadata), T1 → T2 and
+   T2 → T3;
 3. **self-access**: a call that changes the caller's own access (their roles,
    policies, ClickHouse grants) is always T3 with a different approver.
 
@@ -153,7 +154,7 @@ lives above every dialog and is the single place for AI in the UI:
 
 | Migration | Change |
 |---|---|
-| 1.71.0 | `ai_actions`: `tier`, `origin`, `token_id`, `undo`, `undo_expires_at`, `undone_at`, `undone_by`; new `ai_action_grants`; `rbac_clickhouse_connections.environment` |
+| 1.71.0 | `ai_actions`: `tier`, `origin`, `token_id`, `undo`, `undo_expires_at`, `undone_at`, `undone_by`, `tool_call_id`; new `ai_action_grants` |
 | 1.72.0 | `mcp_token_policies` (per-token toolkits and tier handling) |
 | 1.73.0 | health promises: `owner_id`, `expires_at` (watches) |
 
