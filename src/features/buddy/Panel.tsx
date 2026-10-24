@@ -57,6 +57,8 @@ interface PanelProps {
   pendingApprovals: number;
   /** What the header says under the name (a reply's progress, or the mood). */
   status?: string | null;
+  /** Extra header controls (the nudge menu). */
+  controls?: ReactNode;
   onClose: () => void;
   onSize: (size: ChobiSize) => void;
   onTab: (tab: ChobiTab) => void;
@@ -69,7 +71,7 @@ interface PanelProps {
  * side sheet, Focus fills the screen. Every tab stays mounted while the panel
  * is closed, so a reply in progress keeps streaming.
  */
-export function Panel({ open, size, tab, tabs, side, y, mood, plain, pendingApprovals, status, onClose, onSize, onTab, children }: PanelProps): React.JSX.Element {
+export function Panel({ open, size, tab, tabs, side, y, mood, plain, pendingApprovals, status, controls, onClose, onSize, onTab, children }: PanelProps): React.JSX.Element {
   const { width: viewportWidth, height: viewportHeight, breakpoint } = useWindowSize();
   const mobile = breakpoint === "mobile";
   const geometry = panelGeometry(size, side, y, viewportWidth, viewportHeight, mobile);
@@ -114,6 +116,7 @@ export function Panel({ open, size, tab, tabs, side, y, mood, plain, pendingAppr
               {status ?? MOOD_LABELS[mood]}
             </p>
           </div>
+          {controls}
           {!mobile && (
             <div className="flex items-center gap-0.5" role="group" aria-label="Panel size">
               {SIZE_OPTIONS.map(({ size: option, label, icon: Icon }) => (

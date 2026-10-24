@@ -639,6 +639,7 @@ export const AUDIT_ACTIONS = {
   AGENT_POLICY_UPDATE: 'agent.policy_update',
   AGENT_ACCESS_PAUSE: 'agent.access_pause',
   AGENT_MCP_UPDATE: 'agent.mcp_update',
+  CHOBI_SETTINGS_UPDATE: 'chobi.settings_update',
 
   // AI agent registry (ADR 0019)
   AI_AGENT_CREATE: 'ai_agent.create',

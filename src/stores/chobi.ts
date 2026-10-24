@@ -152,7 +152,7 @@ export const useChobiStore = create<ChobiState>()(
     (set) => ({
       open: false,
       size: "bubble",
-      tab: "chat",
+      tab: "now",
       side: "right",
       y: 0.72,
       busy: false,

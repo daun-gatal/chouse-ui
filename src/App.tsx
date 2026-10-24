@@ -110,7 +110,7 @@ const MainLayout = () => {
       {/* Floating Dock / Sidebar Navigation */}
       <FloatingDock />
 
-      {/* AI Chat Assistant Bubble */}
+      {/* Chobi, the CHouse buddy (ADR 0025) */}
       <Chobi />
 
       {/* Global Cmd/Ctrl+K command palette */}

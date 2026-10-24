@@ -24,6 +24,8 @@ interface LauncherProps {
   unavailable?: "loading" | "off";
   onToggle: () => void;
   onMove: (side: ChobiSide, y: number) => void;
+  /** The peek was clicked: show what it is about. */
+  onPeek?: () => void;
   onDismissPeek?: () => void;
 }
 
@@ -32,7 +34,7 @@ interface LauncherProps {
  * panel; drag to move it — it snaps to the nearer side. Hover or focus shows a
  * peek of what it has to say.
  */
-export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals, peek, unavailable, onToggle, onMove, onDismissPeek }: LauncherProps): React.JSX.Element {
+export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals, peek, unavailable, onToggle, onMove, onPeek, onDismissPeek }: LauncherProps): React.JSX.Element {
   const press = useRef<{ x: number; y: number; id: number; dragging: boolean } | null>(null);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   /** A drag ends with a click on the same button; that click must not toggle. */
@@ -143,13 +145,20 @@ export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals,
         <div
           role="status"
           className={cn(
-            "absolute top-1/2 w-max max-w-[240px] -translate-y-1/2 rounded-md border border-ink-500 bg-ink-100 px-3 py-2 text-[12px] text-paper shadow-xl",
+            "absolute top-1/2 flex w-max max-w-[260px] -translate-y-1/2 items-start gap-2 rounded-md border bg-ink-100 px-3 py-2 text-[12px] text-paper shadow-xl",
+            peek ? "border-brand/60" : "border-ink-500",
             side === "right" ? "right-full mr-2" : "left-full ml-2",
           )}
         >
-          {peekText}
+          {peek && onPeek ? (
+            <button type="button" className="text-left hover:text-brand" onClick={onPeek} data-testid="chobi-nudge">
+              {peekText}
+            </button>
+          ) : (
+            <span>{peekText}</span>
+          )}
           {peek && onDismissPeek && (
-            <button type="button" className="ml-2 text-[10px] text-paper-faint hover:text-paper" onClick={onDismissPeek} aria-label="Dismiss">
+            <button type="button" className="text-[10px] leading-5 text-paper-faint hover:text-paper" onClick={onDismissPeek} aria-label="Dismiss">
               ✕
             </button>
           )}

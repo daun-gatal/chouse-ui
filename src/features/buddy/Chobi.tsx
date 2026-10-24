@@ -4,19 +4,24 @@ import { getChatStatus } from "@/api/ai-chat";
 import { usePendingAiActionCount } from "@/features/agents/approvals/hooks";
 import { useOnboardingGuideActive } from "@/features/onboarding";
 import { useWindowSize } from "@/hooks/useWindowSize";
+import { INITIAL_NUDGE_STATE, nextNudge, type Nudge, type NudgeState } from "@/lib/chobiNudges";
 import { useOnboardingSurfaceDismissAction } from "@/lib/onboardingSurfaces";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
-import { useChobiStore, type ChobiTab } from "@/stores/chobi";
+import { CHOBI_TABS, nudgesMuted, useChobiStore } from "@/stores/chobi";
 import { ActivityTab } from "./ActivityTab";
 import { ChobiChat } from "./chat/ChobiChat";
 import { ChobiLayer } from "./ChobiLayer";
+import { useBriefing, useChobiSettings } from "./hooks";
 import { Launcher } from "./Launcher";
 import type { ChobiMood } from "./Mascot";
+import { NowTab } from "./NowTab";
+import { NudgeMenu } from "./NudgeMenu";
 import { Panel } from "./Panel";
 
-const TABS: readonly ChobiTab[] = ["chat", "activity"];
 /** How long Chobi looks pleased after a reply finishes. */
 const HAPPY_MS = 4000;
+/** How long a nudge stays beside the launcher. */
+const NUDGE_MS = 12_000;
 
 /** Whether AI chat is set up, rechecked when an admin changes AI settings. */
 function useAiChatEnabled(allowed: boolean): boolean | null {
@@ -39,8 +44,8 @@ function useAiChatEnabled(allowed: boolean): boolean | null {
   return enabled;
 }
 
-/** Chobi's face follows what it is doing: working, waiting on you, just done. */
-function useMood(busy: boolean, pendingApprovals: number): ChobiMood {
+/** Chobi's face follows what it is doing: working, news for you, waiting on you, just done. */
+function useMood(busy: boolean, pendingApprovals: number, nudging: boolean): ChobiMood {
   const [happy, setHappy] = useState(false);
   const wasBusy = useRef(busy);
   useEffect(() => {
@@ -52,6 +57,7 @@ function useMood(busy: boolean, pendingApprovals: number): ChobiMood {
     return () => clearTimeout(timer);
   }, [busy]);
   if (busy) return "thinking";
+  if (nudging) return "alert";
   if (pendingApprovals > 0) return "waiting";
   if (happy) return "happy";
   return "idle";
@@ -77,8 +83,10 @@ export function Chobi(): React.JSX.Element | null {
   const y = useChobiStore((s) => s.y);
   const busy = useChobiStore((s) => s.busy);
   const pendingApprovals = useChobiStore((s) => s.pendingApprovals);
+  const mutedUntil = useChobiStore((s) => s.mutedUntil);
+  const quietHours = useChobiStore((s) => s.quietHours);
   const { openPanel, close, toggle, setSize, setTab, moveLauncher, setPendingApprovals } = useChobiStore.getState();
-  const tab = TABS.includes(storedTab) ? storedTab : "chat";
+  const tab = CHOBI_TABS.includes(storedTab) ? storedTab : "now";
 
   // Chobi's place and size are kept per user: load them again when the signed-in user changes.
   useEffect(() => {
@@ -91,7 +99,34 @@ export function Chobi(): React.JSX.Element | null {
     if (pending.data !== undefined) setPendingApprovals(pending.data);
   }, [pending.data, setPendingApprovals]);
 
-  const mood = useMood(busy, pendingApprovals);
+  const settings = useChobiSettings(ready);
+  const plain = settings.data?.plainMode ?? false;
+  const orgNudges = settings.data?.nudges ?? true;
+  const nowShowing = open && tab === "now";
+  // Without nudges, the briefing is only needed while someone is looking at it.
+  const briefing = useBriefing(ready && (nowShowing || orgNudges));
+
+  const [nudge, setNudge] = useState<Nudge | null>(null);
+  const nudgeState = useRef<NudgeState>(INITIAL_NUDGE_STATE);
+  useEffect(() => {
+    if (!briefing.data) return;
+    const allowed = orgNudges && !nowShowing && !nudgesMuted({ mutedUntil, quietHours });
+    const next = nextNudge(nudgeState.current, briefing.data, { allowed, now: Date.now() });
+    nudgeState.current = next.state;
+    if (next.nudge) setNudge(next.nudge);
+    // Re-running on the same briefing finds nothing new, so settings changes are safe here.
+  }, [briefing.data, orgNudges, nowShowing, mutedUntil, quietHours]);
+  useEffect(() => {
+    if (!nudge) return undefined;
+    const timer = setTimeout(() => setNudge(null), NUDGE_MS);
+    return () => clearTimeout(timer);
+  }, [nudge]);
+  // Opening the panel answers the nudge.
+  useEffect(() => {
+    if (open) setNudge(null);
+  }, [open]);
+
+  const mood = useMood(busy, pendingApprovals, nudge !== null);
   useOnboardingSurfaceDismissAction(close);
 
   useEffect(() => {
@@ -106,6 +141,12 @@ export function Chobi(): React.JSX.Element | null {
   }, [ready, toggle]);
 
   const showChat = useCallback((): void => openPanel({ tab: "chat" }), [openPanel]);
+  const showActivity = useCallback((): void => openPanel({ tab: "activity" }), [openPanel]);
+  const showNow = useCallback((): void => openPanel({ tab: "now" }), [openPanel]);
+  // A panel that covers the page steps aside once you follow a link out of it.
+  const afterNavigate = useCallback((): void => {
+    if (mobile || size === "focus") close();
+  }, [close, mobile, size]);
 
   if (!hasPermission) return null;
   if (aiEnabled !== true) {
@@ -114,7 +155,7 @@ export function Chobi(): React.JSX.Element | null {
       <ChobiLayer open={false} onEscape={close}>
         <Launcher
           mood="sleeping"
-          plain={false}
+          plain={plain}
           open={false}
           side={side}
           y={y}
@@ -137,34 +178,39 @@ export function Chobi(): React.JSX.Element | null {
       {!launcherHidden && (
         <Launcher
           mood={mood}
-          plain={false}
+          plain={plain}
           open={open}
           side={side}
           y={y}
           mobile={mobile}
           pendingApprovals={pendingApprovals}
-          peek={null}
+          peek={nudge?.text ?? null}
           onToggle={toggle}
           onMove={moveLauncher}
+          onPeek={showNow}
+          onDismissPeek={() => setNudge(null)}
         />
       )}
       <Panel
         open={open}
         size={size}
         tab={tab}
-        tabs={TABS}
+        tabs={CHOBI_TABS}
         side={side}
         y={y}
         mood={mood}
-        plain={false}
+        plain={plain}
         pendingApprovals={pendingApprovals}
+        controls={<NudgeMenu enabledByOrg={orgNudges} />}
         onClose={close}
         onSize={setSize}
         onTab={setTab}
       >
         {(option, width) => option === "chat"
           ? <ChobiChat open={open} visible={open && tab === "chat"} width={width} onShowChat={showChat} />
-          : <ActivityTab active={open && tab === "activity"} />}
+          : option === "activity"
+            ? <ActivityTab active={open && tab === "activity"} />
+            : <NowTab briefing={briefing.data} loading={briefing.isLoading} error={briefing.isError} onOpenActivity={showActivity} onNavigated={afterNavigate} />}
       </Panel>
     </ChobiLayer>
   );

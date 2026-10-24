@@ -19,7 +19,7 @@ describe("chobi store", () => {
   it("opens on a tab and size, and toggles", async () => {
     const { useChobiStore } = await import("./chobi");
     const store = useChobiStore.getState();
-    expect(useChobiStore.getState()).toMatchObject({ open: false, tab: "chat", size: "bubble" });
+    expect(useChobiStore.getState()).toMatchObject({ open: false, tab: "now", size: "bubble" });
 
     store.openPanel({ tab: "activity", size: "focus" });
     expect(useChobiStore.getState()).toMatchObject({ open: true, tab: "activity", size: "focus" });
@@ -80,8 +80,8 @@ describe("chobi store", () => {
   it("ignores saved values it does not understand", async () => {
     const { useChobiStore, restoreChobiState } = await import("./chobi");
     const restored = restoreChobiState({ size: "huge", tab: "secrets", side: "up", y: "x", quietHours: { start: 25, end: 3 }, mutedUntil: "soon" }, useChobiStore.getState());
-    expect(restored).toMatchObject({ size: "bubble", tab: "chat", side: "right", y: 0.72, quietHours: null, mutedUntil: null });
-    expect(restoreChobiState(null, useChobiStore.getState())).toMatchObject({ size: "bubble", tab: "chat" });
+    expect(restored).toMatchObject({ size: "bubble", tab: "now", side: "right", y: 0.72, quietHours: null, mutedUntil: null });
+    expect(restoreChobiState(null, useChobiStore.getState())).toMatchObject({ size: "bubble", tab: "now" });
   });
 });
 

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/api/client";
@@ -100,6 +101,13 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }));
 
+vi.mock("../hooks", () => ({
+  chobiKeys: { all: ["chobi"], briefing: () => ["chobi", "briefing"], settings: () => ["chobi", "settings"] },
+  useBriefing: () => ({ data: undefined, isLoading: false, isError: false }),
+  useRefreshBriefing: () => vi.fn(),
+  useChobiSettings: () => ({ data: { plainMode: false, nudges: true, updatedAt: null } }),
+}));
+
 vi.mock("@/features/agents/approvals/hooks", () => ({
   usePendingAiActionCount: () => ({ data: 0 }),
   useAiInbox: () => ({ data: [], isLoading: false, isError: false }),
@@ -119,7 +127,8 @@ vi.mock("@/features/onboarding", () => ({
   useOnboardingGuideActive: () => false,
 }));
 
-vi.mock("@/lib/onboardingSurfaces", () => ({
+vi.mock("@/lib/onboardingSurfaces", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/onboardingSurfaces")>()),
   useOnboardingSurfaceDismissAction: vi.fn(),
 }));
 
@@ -159,12 +168,12 @@ describe("Chobi chat", () => {
   });
 
   it("creates a new thread for the connection selected after mount", async () => {
-    const { rerender } = render(<Chobi />);
+    const { rerender } = render(<Chobi />, { wrapper: MemoryRouter });
 
     await screen.findByRole("button", { name: /open chobi/i });
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<Chobi />);
+    rerender(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(screen.getByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
@@ -176,7 +185,7 @@ describe("Chobi chat", () => {
 
   it("opens a thread when AI activity asks for it", async () => {
     mocks.getThread.mockResolvedValue({ id: "thread-9", title: "Orders", agentId: null, messages: [{ id: "m1", role: "user", content: "How many orders?", createdAt: new Date().toISOString() }] });
-    render(<Chobi />);
+    render(<Chobi />, { wrapper: MemoryRouter });
     await screen.findByRole("button", { name: /open chobi/i });
 
     act(() => {
@@ -200,7 +209,7 @@ describe("Chobi chat", () => {
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
-    const { rerender } = render(<Chobi />);
+    const { rerender } = render(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
@@ -208,7 +217,7 @@ describe("Chobi chat", () => {
 
     fireEvent.click(screen.getByTitle("Close (Esc)"));
     mocks.activeConnectionId = "connection-b";
-    rerender(<Chobi />);
+    rerender(<Chobi />, { wrapper: MemoryRouter });
     fireEvent.click(screen.getByRole("button", { name: /open chobi/i }));
 
     expect(await screen.findByRole("button", { name: "Start new chat" })).not.toBeNull();
@@ -238,14 +247,14 @@ describe("Chobi chat", () => {
       connectionId === "connection-a" ? connectionARequest : connectionBRequest,
     );
     const timestamp = new Date().toISOString();
-    const { rerender } = render(<Chobi />);
+    const { rerender } = render(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(screen.getByRole("button", { name: "Thread history" }));
     await waitFor(() => expect(mocks.listThreads).toHaveBeenCalledWith("connection-a"));
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<Chobi />);
+    rerender(<Chobi />, { wrapper: MemoryRouter });
     await waitFor(() => expect(mocks.listThreads).toHaveBeenCalledWith("connection-b"));
 
     await act(async () => {
@@ -288,7 +297,7 @@ describe("Chobi chat", () => {
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
-    const { rerender } = render(<Chobi />);
+    const { rerender } = render(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
@@ -299,7 +308,7 @@ describe("Chobi chat", () => {
     const loadsBeforeSwitch = loadsOfA();
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<Chobi />);
+    rerender(<Chobi />, { wrapper: MemoryRouter });
     expect(await screen.findByRole("button", { name: "Start new chat" })).not.toBeNull();
 
     await act(async () => {
@@ -314,7 +323,7 @@ describe("Chobi chat", () => {
   });
 
   it("opens as a bubble by the launcher and switches to a docked side sheet", async () => {
-    render(<Chobi />);
+    render(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     const panel = await screen.findByRole("dialog", { name: "Chobi, the CHouse assistant" });
@@ -332,7 +341,7 @@ describe("Chobi chat", () => {
 
   it("closes with Escape typed in the composer", async () => {
     mocks.createThread.mockResolvedValueOnce({ id: "thread-esc", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" });
-    render(<Chobi />);
+    render(<Chobi />, { wrapper: MemoryRouter });
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
     const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>(COMPOSER);
@@ -345,7 +354,7 @@ describe("Chobi chat", () => {
   });
 
   it("toggles with Ctrl+J", async () => {
-    render(<Chobi />);
+    render(<Chobi />, { wrapper: MemoryRouter });
     await screen.findByRole("button", { name: /open chobi/i });
 
     fireEvent.keyDown(window, { key: "j", ctrlKey: true });
@@ -366,7 +375,7 @@ describe("Chobi chat", () => {
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
     mocks.createThread.mockResolvedValueOnce(thread("thread-1")).mockResolvedValueOnce(thread("thread-2"));
-    render(<Chobi />);
+    render(<Chobi />, { wrapper: MemoryRouter });
 
     fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
@@ -414,7 +423,7 @@ describe("Chobi chat", () => {
     it("closes the full-screen history on a phone once a thread is picked", async () => {
       mocks.breakpoint = "mobile";
       mocks.viewportWidth = 390;
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
 
@@ -428,7 +437,7 @@ describe("Chobi chat", () => {
     it("shows the history over the chat on a tablet-width sheet and closes it on pick", async () => {
       mocks.breakpoint = "tablet";
       mocks.viewportWidth = 844;
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
 
@@ -441,7 +450,7 @@ describe("Chobi chat", () => {
     it("closes the overlaid history when starting a new chat from the header", async () => {
       mocks.breakpoint = "tablet";
       mocks.viewportWidth = 844;
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       await openHistory();
 
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
@@ -452,7 +461,7 @@ describe("Chobi chat", () => {
 
     it("keeps the history docked in Focus after picking a thread", async () => {
       useChobiStore.setState({ size: "focus" });
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("false");
 
@@ -469,7 +478,7 @@ describe("Chobi chat", () => {
 
     async function openNewChat(placeholder: RegExp | string = "Ask about your databases, schemas, queries…"): Promise<HTMLTextAreaElement> {
       mocks.createThread.mockResolvedValueOnce(newThread);
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
       fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
       return screen.findByPlaceholderText<HTMLTextAreaElement>(placeholder);
@@ -540,7 +549,7 @@ describe("Chobi chat", () => {
       mocks.followChatRun.mockImplementationOnce(async (_id: string, onEvent: (event: unknown) => void) => {
         onEvent({ type: "final", result: answer("Here are the tables.") });
       });
-      render(<Chobi />);
+      render(<Chobi />, { wrapper: MemoryRouter });
       fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
       fireEvent.click(await screen.findByRole("button", { name: "Thread history" }));
       fireEvent.click(await screen.findByText("Busy chat"));
