@@ -102,6 +102,7 @@ describe("RBAC Roles Routes", () => {
     describe("POST /roles", () => {
         it("should create role", async () => {
             mockCreateRole.mockResolvedValue({ id: "new-r", name: "new-role" });
+            mockListPermissions.mockResolvedValue([{ id: "p1", name: "roles:view" }]);
 
             const res = await app.request("/roles", {
                 method: "POST",
@@ -111,6 +112,19 @@ describe("RBAC Roles Routes", () => {
 
             expect(res.status).toBe(201);
             expect(mockCreateRole).toHaveBeenCalled();
+        });
+
+        it("refuses to put a permission the caller lacks into a role", async () => {
+            mockListPermissions.mockResolvedValue([{ id: "p-admin", name: "users:delete" }]);
+
+            const res = await app.request("/roles", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ name: "Escalate", displayName: "Escalate", permissionIds: ["p-admin"], dataAccessPolicyIds: ["123e4567-e89b-12d3-a456-426614174000"] })
+            });
+
+            expect(res.status).toBe(403);
+            expect(mockCreateRole).not.toHaveBeenCalled();
         });
 
         it("should fail validation for invalid name", async () => {
@@ -138,6 +152,20 @@ describe("RBAC Roles Routes", () => {
 
             expect(res.status).toBe(200);
             expect(mockUpdateRole).toHaveBeenCalled();
+        });
+
+        it("refuses to add a permission the caller lacks to an existing role", async () => {
+            mockGetRoleById.mockResolvedValue({ id: "r1", isSystem: false });
+            mockListPermissions.mockResolvedValue([{ id: "p-admin", name: "users:delete" }]);
+
+            const res = await app.request("/roles/r1", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ permissionIds: ["p-admin"] })
+            });
+
+            expect(res.status).toBe(403);
+            expect(mockUpdateRole).not.toHaveBeenCalled();
         });
 
         it("should prevent updating system role for non-superadmin", async () => {

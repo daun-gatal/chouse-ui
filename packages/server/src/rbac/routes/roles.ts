@@ -24,6 +24,7 @@ import {
   getRbacUser,
   isSuperAdmin,
 } from '../middleware/rbacAuth';
+import type { Context } from 'hono';
 import { AppError, requireParam } from '../../types';
 
 const roleRoutes = new Hono();
@@ -31,6 +32,23 @@ const roleRoutes = new Hono();
 // ============================================
 // Schemas
 // ============================================
+
+/**
+ * A role editor may only put permissions they hold themselves into a role;
+ * otherwise `roles:create` / `roles:update` is a path to any permission.
+ */
+async function assertCanGrantPermissions(c: Context, permissionIds: string[] | undefined): Promise<void> {
+  if (!permissionIds?.length || isSuperAdmin(c)) return;
+  const held = new Set<string>((c.get('rbacPermissions') as string[] | undefined) ?? []);
+  const nameById = new Map((await listPermissions()).map((permission) => [permission.id, permission.name]));
+  for (const permissionId of permissionIds) {
+    const name = nameById.get(permissionId);
+    if (!name) throw AppError.badRequest('Permission not found');
+    if (!held.has(name)) {
+      throw AppError.forbidden(`Cannot grant permission '${name}': you do not have it`);
+    }
+  }
+}
 
 const CreateRoleSchema = z.object({
   name: z.string()
@@ -99,6 +117,8 @@ roleRoutes.post('/', requirePermission(PERMISSIONS.ROLES_CREATE), zValidator('js
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
 
+  await assertCanGrantPermissions(c, input.permissionIds);
+
   try {
     const role = await createRole(input);
 
@@ -146,6 +166,8 @@ roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator
   if (existingRole.isSystem && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot modify system role');
   }
+
+  await assertCanGrantPermissions(c, input.permissionIds);
 
   try {
     // Allow system role modification if user is super admin

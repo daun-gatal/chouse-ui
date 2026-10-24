@@ -2,6 +2,7 @@ import "./utils/configLoader";
 import { Hono, Context } from "hono";
 import { serve } from "bun";
 import { serveStatic } from "hono/bun";
+import { bodyLimit } from "hono/body-limit";
 import api from "./routes";
 import { corsMiddleware } from "./middleware/cors";
 import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
@@ -187,17 +188,12 @@ app.use("*", async (c, next) => {
 // Security Middleware (Rate Limiting & Size)
 // ============================================
 
-// 1. Request Size Limits (10MB)
-app.use('*', async (c, next) => {
-  const contentLength = c.req.header('Content-Length');
-  const maxSize = 10 * 1024 * 1024; // 10MB for JSON
-
-  if (contentLength && parseInt(contentLength) > maxSize) {
-    return c.json({ error: 'Payload too large' }, 413);
-  }
-
-  await next();
-});
+// 1. Request Size Limits (10MB). bodyLimit counts the bytes actually read, so a
+// chunked request with no Content-Length header is capped too.
+app.use('*', bodyLimit({
+  maxSize: 10 * 1024 * 1024,
+  onError: (c) => c.json({ error: 'Payload too large' }, 413),
+}));
 
 // 2. Rate Limiting Configuration
 
