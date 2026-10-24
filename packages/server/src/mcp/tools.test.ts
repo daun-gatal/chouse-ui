@@ -26,7 +26,7 @@ import { PERMISSIONS } from "../rbac/schema/base";
 import { buildMcpServer, buildMcpDeps, listToolDefinitions, toolCatalog, toolParameters } from "./server";
 import type { McpSettings } from "./settings";
 import { MCP_TOOL_CATEGORIES } from "./tools/helpers";
-import { actionToolListed } from "./tools/actions";
+import { actionToolListed, mayActOverMcp } from "./tools/actions";
 import type { McpToolContext } from "./types";
 
 type ToolSwitches = Pick<McpSettings, "toolOverrides">;
@@ -472,6 +472,16 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
     expect(result?.isError).toBe(true);
     expect(resultText(result)).toContain("FORBIDDEN");
     await harness.close();
+  });
+});
+
+describe("write tools need ai:act (ADR 0025 §4)", () => {
+  it("are offered only to a token whose user may let agents act", () => {
+    expect(mayActOverMcp({ roles: [], permissions: ["ai:act", "saved_queries:create"] })).toBe(true);
+    expect(mayActOverMcp({ roles: ["admin"], permissions: [] })).toBe(true);
+    expect(mayActOverMcp({ roles: ["super_admin"], permissions: [] })).toBe(true);
+    // Holding a tool's own permission is not enough: letting an agent act is its own decision.
+    expect(mayActOverMcp({ roles: ["custom"], permissions: ["saved_queries:create", "ai:chat"] })).toBe(false);
   });
 });
 

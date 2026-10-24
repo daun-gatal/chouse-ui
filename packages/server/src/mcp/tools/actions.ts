@@ -26,7 +26,8 @@ import { getTokenPolicy, handlingFor, toolkitAllowed, type TokenPolicy, type Wri
 import type { ActionApi, ActionContext, Tier, Toolkit } from "../../services/ai/actions/types";
 import { getMcpSettings } from "../settings";
 import type { McpApiClient } from "../api";
-import type { McpDeps, McpToolContext } from "../types";
+import type { McpDeps, McpIdentity, McpToolContext } from "../types";
+import { PERMISSIONS, SYSTEM_ROLES } from "../../rbac/schema/base";
 import { argString, registerChouseTool, runApiTool, toolContext, type McpToolCategory, type McpToolSink, type ToolExtra } from "./helpers";
 
 /** Actions that only make sense in the CHouse UI. */
@@ -57,6 +58,17 @@ export function mcpActionApi(client: McpApiClient): ActionApi {
 export interface WriteAccess {
   policy: TokenPolicy;
   ceiling: WriteCeiling;
+}
+
+/**
+ * Whether the token's user may let an agent change things at all: `ai:act`,
+ * or an administrator — the same rule as the chat and `chouse action`.
+ * Without it a token gets no write tools, whatever its policy says.
+ */
+export function mayActOverMcp(identity: Pick<McpIdentity, "roles" | "permissions">): boolean {
+  return identity.roles.includes(SYSTEM_ROLES.SUPER_ADMIN)
+    || identity.roles.includes(SYSTEM_ROLES.ADMIN)
+    || identity.permissions.includes(PERMISSIONS.AI_ACT);
 }
 
 export async function writeAccessFor(patId: string | null | undefined): Promise<WriteAccess> {

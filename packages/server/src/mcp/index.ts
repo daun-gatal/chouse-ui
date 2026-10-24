@@ -25,7 +25,7 @@ import { originGuard } from "./origin";
 import { getMcpSettings, type StoredMcpSettings } from "./settings";
 import type { McpDeps, McpIdentity, McpToolContext } from "./types";
 import { buildMcpServer } from "./server";
-import { writeAccessFor } from "./tools/actions";
+import { mayActOverMcp, writeAccessFor } from "./tools/actions";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -101,8 +101,8 @@ export function createMcpApp(deps: McpDeps, options?: McpAppOptions): { app: Hon
       timeoutMs: settings.timeoutSeconds * 1000,
     };
 
-    // Without its write policy a token gets no write tools: fail closed, never fail the endpoint.
-    const writeAccess = await writeAccessFor(identity.patId).catch((err: unknown) => {
+    // Write tools need ai:act; without its write policy a token gets none either: fail closed, never fail the endpoint.
+    const writeAccess = !mayActOverMcp(identity) ? null : await writeAccessFor(identity.patId).catch((err: unknown) => {
       logger.warn({ module: "Mcp", err: err instanceof Error ? err.message : String(err) }, "Could not load the token's write policy; listing no write tools");
       return null;
     });
