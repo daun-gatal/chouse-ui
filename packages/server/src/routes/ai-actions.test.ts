@@ -182,9 +182,18 @@ describe("/api/ai-actions", () => {
     expect(kills).toEqual([]);
   });
 
+  it("never offers a T3 action on a connection the approver cannot reach", async () => {
+    const action = await createAction({ source: "background", origin: "chat", tier: "t3", userId: ALICE, connectionId: "conn-unreachable", tool: "kill_query", args: { queryId: "q-far" }, description: "KILL q-far" });
+    const bearer = await token(BOB, ["ai:act", "live_queries:kill_all"]);
+    const inbox = await call<{ actions: View[] }>("GET", "/ai-actions/inbox", bearer);
+    expect(inbox.data.actions.map((a) => a.id)).not.toContain(action.id);
+    expect((await call("POST", `/ai-actions/${action.id}/approve`, bearer, {})).status).toBe(403);
+  });
+
   it("needs a second approver with ai:act and the tool's own permission for T3", async () => {
     kills.length = 0;
-    const action = await createAction({ source: "background", origin: "mcp", tier: "t3", userId: ALICE, connectionId: "conn-1", tool: "kill_query", args: { queryId: "q-t3b" }, description: "KILL q-t3b" });
+    // No connection: the approver's connection access is not in question here.
+    const action = await createAction({ source: "background", origin: "mcp", tier: "t3", userId: ALICE, connectionId: null, tool: "kill_query", args: { queryId: "q-t3b" }, description: "KILL q-t3b" });
     expect((await call("POST", `/ai-actions/${action.id}/approve`, await token(BOB, ["ai:act"]), {})).status).toBe(403);
     expect((await call("POST", `/ai-actions/${action.id}/approve`, await token(BOB, ["live_queries:kill_all"]), {})).status).toBe(403);
     const inbox = await call<{ actions: View[] }>("GET", "/ai-actions/inbox", await token(BOB, ["ai:act", "live_queries:kill_all"]));

@@ -32,13 +32,13 @@ export function needConnection(ctx: ActionContext): string {
   return ctx.connectionId;
 }
 
-export const FREQUENCIES = ["hourly", "daily", "weekly", "monthly", "cron"] as const;
+/** The cadences scheduled queries and promises accept; hourly and finer is a cron expression. */
+export const FREQUENCIES = ["daily", "weekly", "monthly", "cron"] as const;
 
 export function scheduleText(args: Record<string, unknown>): string {
   const hour = typeof args.hour === "number" ? `${String(args.hour).padStart(2, "0")}:00` : "08:00";
   const tz = str(args.timezone, "UTC");
   switch (args.frequency) {
-    case "hourly": return "every hour";
     case "daily": return `daily at ${hour} ${tz}`;
     case "weekly": return `weekly on day ${typeof args.dayOfWeek === "number" ? args.dayOfWeek : 1} at ${hour} ${tz}`;
     case "monthly": return `monthly on day ${typeof args.dayOfMonth === "number" ? args.dayOfMonth : 1} at ${hour} ${tz}`;
@@ -48,7 +48,7 @@ export function scheduleText(args: Record<string, unknown>): string {
 }
 
 export const scheduleFields = {
-  frequency: z.enum(FREQUENCIES).describe("How often it runs"),
+  frequency: z.enum(FREQUENCIES).describe("How often it runs; for hourly or finer use cron with cronExpr (e.g. \"0 * * * *\")"),
   hour: z.number().int().min(0).max(23).optional().describe("Hour of day (daily, weekly, monthly)"),
   dayOfWeek: z.number().int().min(0).max(6).optional().describe("0 = Sunday (weekly)"),
   dayOfMonth: z.number().int().min(1).max(28).optional().describe("Day of month (monthly)"),

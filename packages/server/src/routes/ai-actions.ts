@@ -25,6 +25,7 @@ import { zValidator } from "@hono/zod-validator";
 import { getRbacUser, rbacAuthMiddleware, requireAnyPermission } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES, type Permission } from "../rbac/schema/base";
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
+import { getUserConnections } from "../rbac/services/connections";
 import { extractTokenFromHeader } from "../rbac/services/jwt";
 import { actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
 import { performAction, undoAction, undoAvailable, UndoError } from "../services/ai/actions/executor";
@@ -47,15 +48,22 @@ interface Viewer {
   superAdmin: boolean;
   admin: boolean;
   permissions: string[];
+  /** The connections the viewer can reach, loaded once per request. */
+  connections: () => Promise<Set<string>>;
 }
 
 function viewerOf(c: Context): Viewer {
   const user = getRbacUser(c);
+  let connections: Promise<Set<string>> | null = null;
   return {
     id: user.sub,
     superAdmin: user.roles.includes(SYSTEM_ROLES.SUPER_ADMIN),
     admin: user.roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || user.roles.includes(SYSTEM_ROLES.ADMIN),
     permissions: c.get("rbacPermissions") ?? [],
+    connections: () => {
+      connections ??= getUserConnections(user.sub).then((list) => new Set(list.map((conn) => conn.id)));
+      return connections;
+    },
   };
 }
 
@@ -83,6 +91,8 @@ async function mayDecide(action: AiAction, viewer: Viewer, actor: boolean, now: 
     if (viewer.superAdmin) return true;
     const definition = actionDefinition(action.tool);
     if (!definition) return false;
+    // The approval runs as the approver: they must reach the action's connection.
+    if (definition.connectionScoped && action.connectionId && !(await viewer.connections()).has(action.connectionId)) return false;
     for (const permission of definition.permissions) if (await holds(viewer, permission)) return true;
     return false;
   }
