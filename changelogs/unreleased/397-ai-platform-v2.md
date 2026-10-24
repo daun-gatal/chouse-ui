@@ -18,3 +18,4 @@ type: minor
 
 ### Fixed
 - **Dependency security updates** — DOMPurify 3.4.17, js-yaml 4.3.2, body-parser 2.4.0, Hono 4.13.13, ip-address 10.7.4 and zod 4.6.7 fix newly published advisories
+- **Chat answers showing raw tool output** — when a model ended its turn with an empty message after a tool call, the chat showed the tool's JSON result as the answer. The answer now comes only from the agent's final message, and an empty one gets one retry before the chat reports an error

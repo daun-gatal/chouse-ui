@@ -30,6 +30,7 @@ import {
 } from "./registry/builder";
 import { checkpointSaver } from "./runtime/checkpointer";
 import { Command } from "@langchain/langgraph";
+import { HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
 import { registerHarnessBaseline } from "./registry/harness";
 import { runnerForRun } from "./guardrails/runtime";
 import { guardrailErrorIn, type GuardrailRunner } from "./guardrails/runner";
@@ -112,14 +113,32 @@ function messageText(message: unknown): string {
   return "";
 }
 
-function finalTextFromState(state: unknown): string {
+/** Messages that are never the answer: tool results, the user's turns and instructions. */
+function isNonAnswerMessage(message: unknown): boolean {
+  if (ToolMessage.isInstance(message) || HumanMessage.isInstance(message) || SystemMessage.isInstance(message)) return true;
+  if (!message || typeof message !== "object") return true;
+  const { type, role } = message as { type?: unknown; role?: unknown };
+  const kind = typeof type === "string" ? type : typeof role === "string" ? role : "";
+  return ["tool", "human", "user", "system"].includes(kind);
+}
+
+/**
+ * The answer is the last AI message's text. Earlier messages are never used:
+ * when a model ends its turn with an empty message (some providers do after a
+ * tool call), walking further back would surface a tool's raw JSON result or
+ * a "let me check" preamble as the answer.
+ */
+export function finalTextFromState(state: unknown): string {
   const messages = (state as { messages?: unknown[] } | undefined)?.messages ?? [];
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const text = messageText(messages[i]);
-    if (text.trim()) return text;
+    if (isNonAnswerMessage(messages[i])) continue;
+    return messageText(messages[i]);
   }
   return "";
 }
+
+/** Sent once when a chat turn ends without answer text, so the model writes it from what it already found. */
+export const EMPTY_ANSWER_NUDGE = "Write your final answer to my last question now, in plain prose, using the tool results you already have. Do not call more tools unless you must.";
 
 function structuredInstructions<T>(
   instructions: string,
@@ -571,12 +590,28 @@ export async function invokeChat(
     const input = durable?.resume
       ? new Command({ resume: durable.resume })
       : { messages: normalizeMessages(messages), ...pinned };
-    const result = await deepAgent.invoke(input as never, config).catch((error: unknown) => {
+    const invoke = (next: unknown): Promise<unknown> => deepAgent.invoke(next as never, config).catch((error: unknown) => {
       throw guardrailErrorIn(error) ?? error;
-    }).finally(() => disposeAll(disposers));
+    });
+    let result: unknown;
+    let content = "";
+    try {
+      result = await invoke(input);
+      content = interruptsOf(result).length > 0 ? "" : finalTextFromState(result);
+      if (interruptsOf(result).length === 0 && !content.trim()) {
+        // A checkpointed run keeps its state, so only the nudge is sent; otherwise the
+        // whole conversation goes again (messages keep their ids, so none repeat).
+        const nudge = { role: "user", content: EMPTY_ANSWER_NUDGE };
+        const prior = (result as { messages?: unknown[] } | undefined)?.messages ?? [];
+        result = await invoke({ messages: durable ? [nudge] : [...prior, nudge] });
+        content = interruptsOf(result).length > 0 ? "" : finalTextFromState(result);
+      }
+    } finally {
+      disposeAll(disposers);
+    }
     const interrupts = interruptsOf(result);
     return {
-      content: interrupts.length > 0 ? "" : finalTextFromState(result),
+      content,
       toolCalls: calls,
       agent: { id: agent.id, slug: agent.slug, name: agent.name },
       interrupts,

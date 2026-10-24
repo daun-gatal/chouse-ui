@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { AppError } from "../../types";
@@ -55,7 +56,7 @@ const finishedRuns: Array<InstanceType<typeof realUsage.UsageRun>> = [];
 mock.module("./usage", () => ({ ...realUsage, persistUsageRun: (run: InstanceType<typeof realUsage.UsageRun>) => { finishedRuns.push(run); } }));
 const { runAsCaller } = await import("./usage/origin");
 
-const { invokeChat, runStructuredCapability, runFeature } = await import("./engine");
+const { invokeChat, runStructuredCapability, runFeature, EMPTY_ANSWER_NUDGE, finalTextFromState } = await import("./engine");
 
 // ============================================
 // Fixtures
@@ -355,6 +356,50 @@ describe("invokeChat", () => {
     const result = await invokeChat(CTX, [{ role: "user", content: "hi" }]);
     expect(result).toEqual({ content: "Complete answer", toolCalls: [], agent: { id: "a-chat", slug: "chat-agent", name: "Chat" }, interrupts: [] });
     expect(lastInvoke().input.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
+
+  it("never answers with a tool's raw result or the user's message", async () => {
+    const toolJson = '{"rows":[{"count":42}],"rowCount":1}';
+    const tool = new ToolMessage({ content: toolJson, tool_call_id: "c1" });
+    // An empty final AI message, as some providers send after a tool call, then a real answer on the nudge.
+    invokeMock.mockImplementationOnce(async () => ({ messages: [new HumanMessage("count?"), new AIMessage({ content: "", tool_calls: [{ id: "c1", name: "run_query", args: {} }] }), tool, new AIMessage("")] }));
+    invokeMock.mockImplementationOnce(async () => ({ messages: [new HumanMessage("count?"), tool, new AIMessage("There are 42 rows.")] }));
+    const result = await invokeChat(CTX, [{ role: "user", content: "count?" }]);
+    expect(result.content).toBe("There are 42 rows.");
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    // Not checkpointed: the nudge goes with the conversation so far.
+    const retried = lastInvoke().input.messages;
+    expect(retried.at(-1)).toEqual({ role: "user", content: EMPTY_ANSWER_NUDGE });
+    expect(retried).toContain(tool as never);
+  });
+
+  it("returns no answer instead of tool JSON when the nudge also comes back empty", async () => {
+    invokeResult = { messages: [new HumanMessage("count?"), new ToolMessage({ content: '{"rows":[]}', tool_call_id: "c1" })] };
+    const result = await invokeChat(CTX, [{ role: "user", content: "count?" }]);
+    expect(result.content).toBe("");
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends only the nudge on a checkpointed run", async () => {
+    invokeMock.mockImplementationOnce(async () => ({ messages: [new AIMessage("")] }));
+    invokeMock.mockImplementationOnce(async () => ({ messages: [new AIMessage("Done.")] }));
+    const result = await invokeChat(CTX, [{ role: "user", content: "hi" }], { run: { id: "run-1" } });
+    expect(result.content).toBe("Done.");
+    expect(lastInvoke().input.messages).toEqual([{ role: "user", content: EMPTY_ANSWER_NUDGE }]);
+  });
+
+  it("does not nudge a run that paused for approval", async () => {
+    invokeResult = { messages: [new AIMessage("")], __interrupt__: [{ id: "i1", value: { type: "tool_approval", tool_call_id: "c1", name: "kill_query", args: {}, description: "kill" } }] };
+    await invokeChat(CTX, [{ role: "user", content: "hi" }], { run: { id: "run-2" } });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the answer from the last AI message only, whatever form the messages take", () => {
+    // Plain objects as a checkpoint or another runtime hands them back.
+    expect(finalTextFromState({ messages: [{ role: "assistant", content: "Answer" }, { type: "tool", content: '{"ok":true}' }] })).toBe("Answer");
+    expect(finalTextFromState({ messages: [{ type: "ai", content: "Let me check." }, { type: "tool", content: "{}" }, { type: "ai", content: "" }] })).toBe("");
+    expect(finalTextFromState({ messages: [{ role: "user", content: "hi" }] })).toBe("");
+    expect(finalTextFromState({ messages: [new AIMessage({ content: [{ type: "text", text: "Part " }, { type: "text", text: "two" }] })] })).toBe("Part two");
   });
 
   it("uses a picked agent the user may use, and refuses feature agents or forbidden ones", async () => {
