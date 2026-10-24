@@ -65,6 +65,7 @@ import { actionReceipts } from '@/lib/aiActionReceipts';
 import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
 import { useChobiStore, type AskContext } from '@/stores/chobi';
+import { HandoffDialog } from './HandoffDialog';
 import { log } from '@/lib/log';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import { OPEN_CHAT_THREAD_EVENT } from '@/features/agents/usage/lib';
@@ -103,6 +104,7 @@ import {
     Copy,
     Pencil,
     Download,
+    Share2,
     XCircle,
     Paperclip,
 } from 'lucide-react';
@@ -1633,6 +1635,17 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
         setEditingThreadId(null);
     }, []);
 
+    // Hand off: the conversation for whoever picks it up (a notebook, a file, an alert channel).
+    const [handoffOpen, setHandoffOpen] = useState(false);
+    const handoffMessages = useMemo(
+        () => messages.map((m) => ({ role: m.role, content: m.content, attachments: m.attachments })),
+        [messages],
+    );
+    const handoffActionIds = useMemo(() => [...new Set(messages.flatMap((m) => m.actions ?? []))].slice(0, 50), [messages]);
+    const handoffTitle = threads.find((t) => t.id === activeThreadId)?.title
+        ?? messages.find((m) => m.role === 'user')?.content.slice(0, 80)
+        ?? 'Chobi conversation';
+
     const handleExportThread = useCallback(() => {
         if (!activeThreadId || messages.length === 0) return;
         const thread = threads.find((t) => t.id === activeThreadId);
@@ -1923,6 +1936,15 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
                                         aria-label="Export thread"
                                     >
                                         <Download className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => setHandoffOpen(true)}
+                                        disabled={!activeThreadId || messages.length === 0}
+                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Hand off"
+                                        aria-label="Hand off"
+                                    >
+                                        <Share2 className="w-4 h-4" />
                                     </button>
                                     <button
                                         onClick={handleNewThreadFromHeader}
@@ -2373,6 +2395,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
                                     )}
                                 </div>
                             </div>
+            {handoffOpen && <HandoffDialog open onClose={() => setHandoffOpen(false)} title={handoffTitle} messages={handoffMessages} actionIds={handoffActionIds} />}
         </div>
     );
 }

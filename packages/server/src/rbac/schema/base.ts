@@ -596,6 +596,7 @@ export const AUDIT_ACTIONS = {
   ALERTING_CHANNEL_UPDATE: 'alerting.channel_update',
   ALERTING_CHANNEL_DELETE: 'alerting.channel_delete',
   ALERTING_CHANNEL_TEST: 'alerting.channel_test',
+  ALERTING_CHANNEL_MESSAGE: 'alerting.channel_message',
   ALERTING_EVENTS_CLEAR: 'alerting.events_clear',
 
   // Scheduled Queries (DataOps)

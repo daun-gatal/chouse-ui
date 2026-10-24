@@ -120,6 +120,23 @@ export const OBSERVE_ACTIONS: ActionDefinition[] = [
     execute: async (args, ctx) => ctx.api.post(`/api/alerting/channels/${seg(args.id)}/test`, {}),
   },
   {
+    name: "post_alert_message",
+    title: "Post to an alert channel",
+    toolkit: "observe",
+    category: "alerting",
+    tier: "t2",
+    connectionScoped: false,
+    permissions: [PERMISSIONS.ALERTING_EDIT],
+    description: "Post a short message to an alert channel (Slack, email…) — a handoff, a status update. It reaches real people and cannot be taken back, so write it for them.",
+    schema: z.object({
+      id: z.string().min(1).describe("Alert channel id (from list_alerting with kind channels)"),
+      title: z.string().min(1).max(200),
+      text: z.string().min(1).max(4000),
+    }),
+    describe: (args) => `Post ${quote(str(args.title))} to the channel ${quote(str(args.id))}`,
+    execute: async (args, ctx) => ctx.api.post(`/api/alerting/channels/${seg(args.id)}/message`, { title: str(args.title), text: str(args.text) }),
+  },
+  {
     name: "clear_alert_events",
     title: "Clear recent alerts",
     toolkit: "observe",

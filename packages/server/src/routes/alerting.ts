@@ -27,7 +27,7 @@ import {
 import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
-import { sendChannelTest } from "../services/alerting/deliver";
+import { sendChannelMessage, sendChannelTest } from "../services/alerting/deliver";
 
 const alerting = new Hono();
 
@@ -222,6 +222,37 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
       errorMessage: message,
       details: { type: ch.type },
     });
+    return c.json({ success: false, error: message }, 502);
+  }
+});
+
+/**
+ * POST /channels/:id/message — post a message to an alert channel: a handoff
+ * from Chobi, or an agent's post the user confirmed (ADR 0025 §6). It reaches
+ * real people, so it is audited with its title and length, never its text.
+ */
+const channelMessageSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(4000),
+});
+
+alerting.post("/channels/:id/message", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", channelMessageSchema), async (c) => {
+  const id = requireParam(c, "id");
+  const { title, text } = c.req.valid("json");
+  const ch = await store.getChannel(id);
+  if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
+  if (!ch.enabled) return c.json({ success: false, error: "This channel is turned off" }, 409);
+  const stored = JSON.parse(ch.config) as Record<string, unknown>;
+  const decrypted = store.decryptChannelConfig(ch.type, stored);
+  const audit = { resourceType: "notification_channel", resourceId: id, details: { type: ch.type, title, length: text.length } };
+  try {
+    await sendChannelMessage(ch.type, decrypted, { title, text });
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_MESSAGE, userId(c), { ...audit, status: "success" });
+    return c.json({ success: true, data: { sent: true, channel: ch.name } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Delivery failed";
+    logger.warn({ module: "Alerting", channelId: id, err: message }, "Channel message failed");
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_MESSAGE, userId(c), { ...audit, status: "failed", errorMessage: message });
     return c.json({ success: false, error: message }, 502);
   }
 });
