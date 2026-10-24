@@ -15,3 +15,6 @@ type: minor
 ### Changed
 - **DeepAgents 1.15 and LangChain 1.5** — the AI runtime is upgraded; agents keep a to-do list again where their harness allows `write_todos`
 - **Test console** — write tools only say what they would do; nothing is changed or recorded
+
+### Fixed
+- **Dependency security updates** — DOMPurify 3.4.17, js-yaml 4.3.2, body-parser 2.4.0, Hono 4.13.13, ip-address 10.7.4 and zod 4.6.7 fix newly published advisories

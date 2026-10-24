@@ -41,7 +41,7 @@
     "croner": "^10.0.1",
     "deepagents": "^1.15.1",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.34",
+    "hono": "^4.13.13",
     "hono-rate-limiter": "^0.5.3",
     "jose": "^5.9.6",
     "langchain": "^1.5.19",

@@ -18,3 +18,15 @@
 #   again and forces a re-review. On expiry, check whether braces, micromatch or
 #   deepagents shipped a fix, then remove this entry or renew with a new date.
 CVE-2026-93687 exp:2027-01-31
+
+# zod 3.25.76 - CVE-2023-54404 (High)
+#   Denial of service via unbounded array validation.
+#   Why ignored: the only fix is zod 4.6.6+. The 3.x line has no patched release
+#   (3.25.76 is the latest 3.x). The server pins zod ^3 for its route schemas
+#   (116 files), so the fix is a v3 -> v4 migration, not a bump. Every zod 4 copy
+#   in the tree (frontend, deepagents, langchain, MCP SDK) is already on 4.6.7.
+#   Exposure: request bodies validated by server route schemas. Most routes sit
+#   behind rbacAuthMiddleware, so an attacker needs a valid session.
+#   Expiry: migrate packages/server to zod 4 before this date, then remove the
+#   entry. On expiry the scan fails again and forces that re-review.
+CVE-2023-54404 exp:2026-12-31
