@@ -28,6 +28,7 @@ import {
   type InvokedToolCall,
   type ToolEvent,
 } from "./registry/builder";
+import { pagePromptSection } from "./assistant/tools";
 import { checkpointSaver } from "./runtime/checkpointer";
 import { Command } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
@@ -580,7 +581,8 @@ export async function invokeChat(
         onToolEvent: durable.onToolEvent && ((event: ToolEvent) => durable.onToolEvent?.(event.type === "tool_start" && event.agent === agent.slug ? { ...event, agent: undefined } : event)),
       } : {}),
     });
-    const deepAgent = await buildAgentTree(agent, prompts.system, build);
+    const page = pagePromptSection(ctx.page ?? null);
+    const deepAgent = await buildAgentTree(agent, page ? `${prompts.system}\n\n${page}` : prompts.system, build);
     const overrides = runtimeOverrides(resolved.config);
     const config = {
       recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),

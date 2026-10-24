@@ -270,6 +270,8 @@ export interface ChatRunRequest {
     agentId?: string | null;
     skills?: string[];
     attachments?: ChatAttachmentInput[];
+    /** The in-app path the user chats from (ADR 0025 §5): context and the page's toolkit. */
+    page?: string;
 }
 
 const RUN_EVENT_TYPES = new Set(['run', 'step', 'status', 'final', 'error']);
@@ -308,8 +310,8 @@ export async function followChatRun(runId: string, onEvent: (event: ChatRunEvent
 }
 
 /** Answer a paused run's approvals and stream the rest of it. */
-export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; signal?: AbortSignal } = {}): Promise<void> {
-    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}) };
+export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; page?: string; signal?: AbortSignal } = {}): Promise<void> {
+    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}), ...(options.page ? { page: options.page } : {}) };
     const response = await api.stream('POST', `/ai-chat/runs/${runId}/resume`, body, options.signal);
     await consume(response, onEvent, options.signal);
 }

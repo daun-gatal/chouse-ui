@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/api/client";
@@ -398,6 +398,35 @@ describe("Chobi chat", () => {
     expect(await screen.findByText("selection.txt")).not.toBeNull();
     expect(screen.getByPlaceholderText<HTMLTextAreaElement>(COMPOSER).value).toBe("my draft");
     expect(mocks.streamChatRun).not.toHaveBeenCalled();
+  });
+
+  it("sends the page with the turn and opens what a navigate step asks for", async () => {
+    mocks.createThread.mockResolvedValueOnce({ id: "thread-nav", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" });
+    const step = (status: "running" | "done", extra: Record<string, unknown> = {}) => ({ id: "s1", name: "navigate", args: { path: "/data/incidents" }, status, summary: null, startedAt: 1, endedAt: null, ...extra });
+    mocks.streamChatRun.mockImplementationOnce(async (_request: unknown, onEvent: (event: unknown) => void) => {
+      onEvent({ type: "run", run: run("run-nav") });
+      onEvent({ type: "step", step: step("running") });
+      onEvent({ type: "step", step: step("done") });
+      // A step that was never seen running (a replay) does nothing.
+      onEvent({ type: "step", step: { ...step("done"), id: "s2", args: { path: "/admin" } } });
+      onEvent({ type: "final", result: answer("Opened.") });
+    });
+    function Where(): React.JSX.Element {
+      return <span data-testid="where">{useLocation().pathname}</span>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/fleet?node=a"]}>
+        <Chobi />
+        <Routes><Route path="*" element={<Where />} /></Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "Chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
+    await send("show me the incidents");
+
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/data/incidents"));
+    expect(mocks.streamChatRun.mock.calls[0][0]).toMatchObject({ page: "/fleet?node=a" });
   });
 
   it("lets a new chat run while another thread is still answering", async () => {

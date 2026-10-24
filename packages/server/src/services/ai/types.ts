@@ -62,6 +62,11 @@ export interface AgentRunContext {
    * are recorded for. It is not the run's user, so usage stays "background".
    */
   proposeAs?: string;
+  /**
+   * The in-app path the user chats from (ADR 0025 §5): context for the
+   * prompt and which toolkit the assistant starts with. Already sanitized.
+   */
+  page?: string;
 }
 
 /** A content block of a chat message: text, or an attachment the model reads (ADR 0024). */

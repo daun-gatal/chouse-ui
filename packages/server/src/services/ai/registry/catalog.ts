@@ -21,6 +21,7 @@ import { recordChouseSource } from "../usage";
 import { ACTION_STATUSES } from "../../remediation/store";
 import { summarizeRegistry, type RegistryPayload } from "./summary";
 import { ACTION_TOOLS } from "../actions/tools";
+import { ASSISTANT_TOOLS } from "../assistant/tools";
 import type { ToolContextKind } from "./types";
 import type { Tier, Toolkit } from "../actions/types";
 
@@ -655,6 +656,7 @@ export const TOOL_CATALOG: readonly CatalogTool[] = [
   ...managementTools,
   ...operationsTools,
   ...ACTION_TOOLS,
+  ...ASSISTANT_TOOLS,
 ];
 
 const BY_NAME = new Map(TOOL_CATALOG.map((entry) => [entry.name, entry]));

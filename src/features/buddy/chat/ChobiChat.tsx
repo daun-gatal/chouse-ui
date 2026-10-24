@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import ReactMarkdown from 'react-markdown';
@@ -14,7 +15,7 @@ import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
 import json from 'highlight.js/lib/languages/json';
 import 'highlight.js/styles/github-dark.min.css';
-import { useRbacStore, RBAC_PERMISSIONS, useAuthStore } from '@/stores';
+import { useRbacStore, RBAC_PERMISSIONS, useAuthStore, useWorkspaceStore, genTabId } from '@/stores';
 import {
     getChatStatus,
     listThreads,
@@ -65,6 +66,7 @@ import { actionReceipts } from '@/lib/aiActionReceipts';
 import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
 import { useChobiStore, type AskContext } from '@/stores/chobi';
+import { uiActionFor, UI_TOOL_NAMES } from '@/lib/chobiUi';
 import { HandoffDialog } from './HandoffDialog';
 import { log } from '@/lib/log';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
@@ -955,6 +957,8 @@ function useAiChatInvoke({
     selectedModelId,
     selectedAgentId,
     activeConnectionId,
+    page,
+    onUiStep,
 }: {
     updateThreadMessages: UpdateThreadMessages;
     loadThreads: () => void;
@@ -962,6 +966,10 @@ function useAiChatInvoke({
     /** Chat agent for this thread; null = the default agent. */
     selectedAgentId: string | null;
     activeConnectionId: string | null;
+    /** Where the user is (ADR 0025 §5), sent with every turn. */
+    page: string;
+    /** A UI tool call finished while the user watched: the browser does its part. */
+    onUiStep: (step: ToolCallStep) => void;
 }) {
     /** threadId → current status line; a key is present while that thread is generating. */
     const [statusByThread, setStatusByThread] = useState<Record<string, string>>({});
@@ -1025,6 +1033,8 @@ function useAiChatInvoke({
                 case 'step': {
                     const next = stepToToolCall(event.step);
                     const index = steps.findIndex((s) => s.id === next.id);
+                    // Only a call seen running in this session acts: re-attaching never replays a navigation.
+                    if (index >= 0 && steps[index].status === 'running' && next.status === 'done' && UI_TOOL_NAMES.includes(next.tool)) onUiStep(next);
                     steps = index >= 0 ? steps.map((s, i) => (i === index ? next : s)) : [...steps, next];
                     patch({ toolCalls: steps, toolStatus: statusOf(steps) });
                     setThreadStatus(threadId, statusOf(steps));
@@ -1082,7 +1092,7 @@ function useAiChatInvoke({
             }
             if (isCurrent()) loadThreads();
         }
-    }, [activeConnectionId, loadThreads, setThreadStatus, updateThreadMessages]);
+    }, [activeConnectionId, loadThreads, onUiStep, setThreadStatus, updateThreadMessages]);
 
     const runInvoke = useCallback(async (
         threadId: string,
@@ -1098,8 +1108,9 @@ function useAiChatInvoke({
             agentId: selectedAgentId,
             ...(extras.skills?.length ? { skills: extras.skills } : {}),
             ...(extras.attachments?.length ? { attachments: extras.attachments } : {}),
+            page,
         }, onEvent, signal), prompt);
-    }, [driveRun, selectedAgentId, selectedModelId]);
+    }, [driveRun, page, selectedAgentId, selectedModelId]);
 
     /** Re-attach to a run that is still going (after a reload or reopening the thread). */
     const followRun = useCallback(async (threadId: string, run: ChatRun): Promise<void> => {
@@ -1114,7 +1125,7 @@ function useAiChatInvoke({
         updateThreadMessages(threadId, (previous) => patchLastAssistant(previous, (last) => ({ ...last, pending: undefined, isInvoking: true, toolStatus: statusOf(steps) })));
         await driveRun(
             threadId,
-            (onEvent, signal) => resumeChatRun(runId, decisions, onEvent, { modelId: selectedModelId || undefined, signal }),
+            (onEvent, signal) => resumeChatRun(runId, decisions, onEvent, { modelId: selectedModelId || undefined, page, signal }),
             undefined,
             steps,
             (error) => {
@@ -1124,7 +1135,7 @@ function useAiChatInvoke({
                 return true;
             },
         );
-    }, [driveRun, selectedModelId, updateThreadMessages]);
+    }, [driveRun, page, selectedModelId, updateThreadMessages]);
 
     /** Stop one thread's reply: the server finishes the run as stopped. */
     const stopThread = useCallback((threadId: string) => {
@@ -1407,12 +1418,33 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
     }, [activeConnectionId]);
 
     const canAct = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_ACT));
+    // CHouse Assistant's UI tools (ADR 0025 §5): the page goes with each turn, and the browser does what a finished UI call asks.
+    const location = useLocation();
+    const navigate = useNavigate();
+    const page = `${location.pathname}${location.search}`;
+    const handleUiStep = useCallback((step: ToolCallStep): void => {
+        const action = uiActionFor({ name: step.tool, args: step.args });
+        if (!action) return;
+        if (action.kind === 'fill_sql') {
+            useWorkspaceStore.getState().addTab({ id: genTabId(), title: 'From Chobi', type: 'sql', content: action.sql, isSaved: false });
+            navigate('/explorer');
+            toast.success('Chobi put the SQL in a new editor tab: review it, then run it yourself');
+        } else {
+            navigate(action.path);
+        }
+        // A Focus panel covers the page it just opened.
+        const chobi = useChobiStore.getState();
+        if (chobi.size === 'focus') chobi.setSize('docked');
+    }, [navigate]);
+
     const { runInvoke, followRun, answerApprovals, statusByThread, stopThread, cancelAll } = useAiChatInvoke({
         updateThreadMessages,
         loadThreads,
         selectedModelId,
         selectedAgentId,
         activeConnectionId,
+        page,
+        onUiStep: handleUiStep,
     });
     const isInvoking = activeThreadId !== null && activeThreadId in statusByThread;
     const toolStatus = activeThreadId ? statusByThread[activeThreadId] ?? null : null;

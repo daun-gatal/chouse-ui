@@ -43,6 +43,7 @@ import { currentUsageRun, runInToolStep, type ModelRef, type ToolContext } from 
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 import { guardrailMiddleware } from "../guardrails/middleware";
 import { runtimeMiddleware } from "../runtime/middleware";
+import { LOAD_TOOLKIT_TOOL, toolkitMiddleware } from "../assistant/tools";
 import { skillIncludeTools } from "./skillTools";
 import { logger } from "../../../utils/logger";
 import type { GuardrailRunner } from "../guardrails/runner";
@@ -380,6 +381,8 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
     harness.excludedTools.includes("write_todos") ? null : todoListMiddleware(),
     harnessToolMiddleware(harness),
+    // An agent that loads toolkits sees only the write tools of those it loaded (ADR 0025 §5).
+    baseGrants.includes(LOAD_TOOLKIT_TOOL) ? toolkitMiddleware(build.runtime.ctx) : null,
     build.guardrails ? guardrailMiddleware(build.guardrails, { agentId: agent.id, agentSlug: agent.slug, path: node.path, isRoot: node.depth === 0 }) : null,
     sources.length > 0 ? createSkillsMiddleware({ backend: () => skillsBackend(skills), sources, tools: skillTools }) : null,
     ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
