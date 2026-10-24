@@ -20,7 +20,7 @@ export type ChobiSize = "bubble" | "docked" | "focus";
 export type ChobiTab = "now" | "chat" | "activity";
 export type ChobiSide = "left" | "right";
 
-export const CHOBI_SIZES: readonly ChobiSize[] = ["bubble", "docked", "focus"];
+const CHOBI_SIZES: readonly ChobiSize[] = ["bubble", "docked", "focus"];
 export const CHOBI_TABS: readonly ChobiTab[] = ["now", "chat", "activity"];
 
 /** What a question is about, attached to the message as a text file (e.g. `query.sql`, `incident.json`). */

@@ -112,7 +112,7 @@ const promiseBodySchema = z.object({
 });
 
 /** A watch lasts at most a week, and each person keeps a handful per connection. */
-export const WATCH_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+const WATCH_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 export const WATCH_LIMIT = 5;
 /** Clock skew between the browser or agent that picked the time and this server. */
 const WATCH_SLACK_MS = 60_000;

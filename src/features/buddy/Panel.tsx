@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { ChobiSide, ChobiSize, ChobiTab } from "@/stores/chobi";
 import { Mascot, MOOD_LABELS, type ChobiMood } from "./Mascot";
 
-export const TAB_LABELS: Record<ChobiTab, string> = { now: "Now", chat: "Chat", activity: "Activity" };
+const TAB_LABELS: Record<ChobiTab, string> = { now: "Now", chat: "Chat", activity: "Activity" };
 
 const SIZE_OPTIONS: Array<{ size: ChobiSize; label: string; icon: typeof PanelRight }> = [
   { size: "bubble", label: "Bubble", icon: MessageCircle },
@@ -18,7 +18,7 @@ const SIZE_OPTIONS: Array<{ size: ChobiSize; label: string; icon: typeof PanelRi
 const LAUNCHER_GAP = 76;
 const EDGE = 16;
 
-export interface PanelGeometry {
+interface PanelGeometry {
   top?: number;
   bottom?: number;
   /** A CSS length on the left: past the dock rail when it shows. */
@@ -29,7 +29,7 @@ export interface PanelGeometry {
 }
 
 /** Where the panel sits for a size, next to the launcher's side and height. */
-export function panelGeometry(size: ChobiSize, side: ChobiSide, y: number, width: number, height: number, mobile: boolean): PanelGeometry {
+function panelGeometry(size: ChobiSize, side: ChobiSide, y: number, width: number, height: number, mobile: boolean): PanelGeometry {
   if (mobile) return { top: 0, left: 0, right: 0, bottom: 0 };
   if (size === "focus") {
     const w = Math.min(1200, width - 2 * 24);

@@ -15,7 +15,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const DEFAULT_QUIET: QuietHours = { start: 22, end: 7 };
 
 /** 09:00 tomorrow, local time. */
-export function tomorrowMorning(now: Date = new Date()): number {
+function tomorrowMorning(now: Date = new Date()): number {
   const next = new Date(now);
   next.setDate(next.getDate() + 1);
   next.setHours(9, 0, 0, 0);

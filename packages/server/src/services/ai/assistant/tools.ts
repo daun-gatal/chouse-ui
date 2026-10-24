@@ -199,7 +199,7 @@ export function entityPath(kind: EntityKind, args: { id?: string; source?: strin
 }
 
 /** Forms that accept being filled by the assistant; the browser fills, the person saves. */
-export const FILLABLE_FORMS = ["sql_editor"] as const;
+const FILLABLE_FORMS = ["sql_editor"] as const;
 
 function navigateTool(): ReturnType<typeof createAgentTool> {
   return createAgentTool("navigate", {
@@ -261,6 +261,3 @@ export const ASSISTANT_TOOLS: CatalogTool[] = [
   assistantTool("open_entity", "Open an item", "ui", openEntityTool),
   assistantTool("fill_form", "Fill a form", "ui", fillFormTool),
 ];
-
-/** UI tools: their result asks the browser to do something. */
-export const UI_TOOLS = ["navigate", "open_entity", "fill_form"] as const;

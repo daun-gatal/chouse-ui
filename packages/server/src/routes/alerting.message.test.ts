@@ -21,6 +21,7 @@ const USER = "alerting-poster";
 let app: Hono;
 const received: Array<{ body: unknown; auth: string | null }> = [];
 let hook: ReturnType<typeof Bun.serve>;
+let silent: ReturnType<typeof Bun.serve>;
 
 async function post(path: string, body: unknown, permissions = ["alerting:edit"]): Promise<{ status: number; body: { success: boolean; error?: string; data?: { sent: boolean; channel: string } } }> {
   const token = await generateAccessToken({ sub: USER, email: "p@test.local", username: "poster", roles: ["custom"], permissions, sessionId: "s1" });
@@ -34,6 +35,8 @@ beforeAll(async () => {
   await freshDatabase("sqlite");
   await runMigrations();
   await rawRun(sql`INSERT INTO rbac_users (id, email, username, password_hash, is_active, created_at, updated_at) VALUES (${USER}, 'p@test.local', 'poster', 'x', 1, unixepoch(), unixepoch())`);
+  // A channel that never answers.
+  silent = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => undefined) });
   hook = Bun.serve({
     port: 0,
     fetch: async (req) => {
@@ -48,6 +51,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   hook.stop(true);
+  silent.stop(true);
   await closeDatabase();
 });
 
@@ -75,6 +79,14 @@ describe("POST /alerting/channels/:id/message", () => {
     expect((await post(`/alerting/channels/${id}/message`, { title: "", text: "x" })).status).toBe(400);
     expect((await post(`/alerting/channels/${id}/message`, { title: "t", text: "x".repeat(4001) })).status).toBe(400);
   });
+
+  it("gives up on a channel that never answers, instead of hanging", async () => {
+    const id = await createChannel({ name: "silent", type: ChannelType.Webhook, config: { url: `http://127.0.0.1:${silent.port}/hook` }, enabled: true });
+    const started = Date.now();
+    const res = await post(`/alerting/channels/${id}/message`, { title: "t", text: "x" });
+    expect(res.status).toBe(502);
+    expect(Date.now() - started).toBeLessThan(20_000);
+  }, 25_000);
 
   it("reports a delivery failure", async () => {
     const id = await createChannel({ name: "broken", type: ChannelType.Webhook, config: { url: "http://127.0.0.1:1/never" }, enabled: true });

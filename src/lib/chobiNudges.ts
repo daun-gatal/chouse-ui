@@ -31,7 +31,7 @@ export interface Nudge {
 
 export const INITIAL_NUDGE_STATE: NudgeState = { seen: null, shownAt: [] };
 
-export function briefingItems(briefing: Briefing): BriefingItem[] {
+function briefingItems(briefing: Briefing): BriefingItem[] {
   return [...briefing.general, ...briefing.connections.flatMap((c) => c.items)];
 }
 
