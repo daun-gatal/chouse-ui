@@ -95,7 +95,7 @@ clickhouseRolesRoutes.post('/generate-ddl', rbacAuthMiddleware, requirePermissio
   try {
     const parsed = createRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const ddl = generateCreateRoleDDL(parsed.data);
     return c.json({ success: true, data: { statements: ddl, fullDDL: ddl.map((s) => `${s};`).join('\n') } });
@@ -112,7 +112,7 @@ clickhouseRolesRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhous
     const service = await getClickHouseService(c);
     const parsed = createRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const input = parsed.data;
 
@@ -139,7 +139,7 @@ clickhouseRolesRoutes.post('/:name/generate-ddl', rbacAuthMiddleware, requirePer
     const name = decodeURIComponent(requireParam(c, 'name'));
     const parsed = updateRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const service = await getClickHouseService(c);
     const current = await getRoleGrants(service, name);
@@ -159,7 +159,7 @@ clickhouseRolesRoutes.patch('/:name', rbacAuthMiddleware, requirePermission('cli
     const name = decodeURIComponent(requireParam(c, 'name'));
     const parsed = updateRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
 
     await updateClickHouseRole(service, name, parsed.data);

@@ -21,13 +21,29 @@ Prompt and response text are **not** stored. The chat keeps the question and the
 
 | Section | What it shows |
 | --- | --- |
-| Tiles | Requests, tokens (in and out), estimated cost, bytes ClickHouse read for the AI, and rows sent to providers |
+| Tiles | Requests, tokens (in and out), estimated cost, bytes ClickHouse read for the AI, rows sent to providers, and **Prompt cache**: the share of input the provider served from its cache, and what that saved when the model has cache prices |
 | By origin | Requests, tokens and cost split by where they came from (see below) |
 | Data sent to providers | Each ClickHouse table, or CHouse record type (users, audit log, tokens…), that reached a model: columns, rows, users and providers. Most rows first; the top 100 are listed, with *Top 100 of N* when there are more, and the search finds any of them |
 | Usage by model | Requests, tokens, the share of input served from the provider's cache, and cost per model |
 | Recent AI requests | Newest first, 25, 50 or 100 per page. Each request with its user, agent, tokens, cost, ClickHouse read, rows sent and status; an MCP or token request also names its client and token. Filter by origin, and search by user, agent, feature, table, client or token name |
 
 Pick **Today**, **7 days** or **30 days** at the top. The two top panels keep the same size and scroll inside; so does a long page of requests.
+
+## Budgets
+
+Below the tiles, **Budgets** caps what AI spends. Each budget has:
+
+| Field | What it is |
+| --- | --- |
+| **Feature** | One AI feature, such as the Chat, or *All AI features* |
+| **Applies to** | *Each user* (every user gets the limit), *Everyone together*, or *One user* |
+| **Period** | Per day or per month; resets at 00:00 UTC |
+| **Token limit**, **Cost limit, USD** | Input plus output tokens, and estimated cost (priced models only). Set either or both |
+| **When it runs out** | *Stop AI requests* until it resets, or *Switch to a cheaper model* you pick |
+
+CHouse checks budgets before each AI request. A stopped request says which budget ran out and when it resets. The list shows each budget's spend this period (the top user's for *Each user*), how many users are at the cap, and when it resets.
+
+Anyone who sees the tab sees the budgets that apply to them; `ai_budgets:manage` (Admin and Super Admin) adds, edits and deletes them. Changes are audited as `ai_budget.*`.
 
 ## Where a request came from
 

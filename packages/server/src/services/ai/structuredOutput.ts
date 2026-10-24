@@ -21,7 +21,7 @@ import { logger } from "../../utils/logger";
 import type { AgentMessage } from "./types";
 
 /** 3-tier JSON extraction (whole text → fenced ```json block → first {...} span). */
-export function extractJson<T>(text: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T {
+export function extractJson<T>(text: string, schema: z.ZodType<T, unknown>): T {
   const cleaned = text.trim();
 
   try {
@@ -55,7 +55,7 @@ export function extractJson<T>(text: string, schema: z.ZodType<T, z.ZodTypeDef, 
 
 export interface StructuredOutputOptions<T> {
   model: BaseChatModel;
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
+  schema: z.ZodType<T, unknown>;
   /** The agent's raw final text (parsed first). */
   raw: string;
   /** Messages for the structured fallback (system + user). */

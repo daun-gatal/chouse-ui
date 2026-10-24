@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { AppError } from "../types";
 import { requestId } from "./requestId";
-import { ZodError } from "zod";
+import { z } from "zod";
 
 const mockError = vi.fn();
 const mockWarn = vi.fn();
@@ -54,14 +54,11 @@ describe("Error Handler Middleware", () => {
     });
 
     it("should handle ZodError correctly", async () => {
+        // A real parse failure: zod 4's `new ZodError()` is not an Error subclass,
+        // only the error `.parse()` throws is, and Hono's onError needs one.
         app.get("/zod", () => {
-            throw new ZodError([{
-                code: "invalid_type",
-                expected: "string",
-                received: "number",
-                path: ["username"],
-                message: "Expected string, received number"
-            }]);
+            z.object({ username: z.string() }).parse({ username: 1 });
+            return new Response(null);
         });
 
         const res = await app.request("/zod");

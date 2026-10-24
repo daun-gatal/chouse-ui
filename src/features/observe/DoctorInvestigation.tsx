@@ -6,6 +6,7 @@
 
 import type { ReactElement } from "react";
 
+import { AiInvestigatedBadge } from "@/features/agents/triage/AiInvestigatedBadge";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useAttachedNotebook } from "./hooks";
 import { NotebookPanel } from "./NotebookPanel";
@@ -17,6 +18,7 @@ export function DoctorInvestigation({ reportId }: { reportId: string }): ReactEl
   const canRemediate = hasAnyPermission([RBAC_PERMISSIONS.REMEDIATION_PROPOSE, RBAC_PERMISSIONS.REMEDIATION_APPROVE, RBAC_PERMISSIONS.REMEDIATION_APPROVE_HIGH]);
   return (
     <div className="mt-6 space-y-4" data-onboarding-id="doctor-investigation">
+      <AiInvestigatedBadge trigger="doctor_report" subjectId={reportId} />
       <NotebookPanel kind="doctor_report" attachedRef={reportId} title="Doctor report" />
       {canRemediate && notebook.data && <RemediationPanel context={{ notebookId: notebook.data.notebook.id }} title="Fixes from this report" />}
     </div>

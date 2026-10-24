@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, Bot, ChevronDown, SlidersHorizont
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -20,6 +21,7 @@ import {
     type CreateAiBaseModelInput, type UpdateAiBaseModelInput
 } from '@/api/rbac';
 import {
+    INPUT_MODALITIES,
     NUMBER_PARAM_FIELDS,
     PROVIDER_PARAM_KEYS,
     REASONING_EFFORT_OPTIONS,
@@ -30,6 +32,7 @@ import {
     validateAiModelParams,
     type AiModelParamKey,
     type AiModelParams,
+    type InputModality,
     type ParamGroup,
     type ReasoningEffort,
     type Verbosity,
@@ -89,6 +92,8 @@ export default function BaseModelsTab() {
     const [paramsOpen, setParamsOpen] = useState(false);
     const [paramsDraft, setParamsDraft] = useState<ParamsDraft>({});
     const [stopSeqText, setStopSeqText] = useState('');
+    // ADR 0024: what the chat may attach besides text.
+    const [inputModalities, setInputModalities] = useState<InputModality[]>([]);
     const [extraJson, setExtraJson] = useState('');
     const [safetyJson, setSafetyJson] = useState('');
     const [paramsError, setParamsError] = useState<string | null>(null);
@@ -146,6 +151,7 @@ export default function BaseModelsTab() {
             const params = editingItem?.params ?? null;
             setParamsDraft(draftFromParams(params));
             setStopSeqText(params?.stopSequences?.join('\n') ?? '');
+            setInputModalities(params?.inputModalities ?? []);
             setExtraJson(params?.extra ? JSON.stringify(params.extra, null, 2) : '');
             setSafetyJson(params?.safetySettings ? JSON.stringify(params.safetySettings, null, 2) : '');
             setParamsError(null);
@@ -199,6 +205,10 @@ export default function BaseModelsTab() {
         const structuredOutputPolicy = paramsDraft.structuredOutputPolicy;
         if (structuredOutputPolicy && isAllowed('structuredOutputPolicy') && isStructuredOutputPolicy(structuredOutputPolicy)) {
             built.structuredOutputPolicy = structuredOutputPolicy;
+        }
+
+        if (isAllowed('inputModalities') && inputModalities.length > 0) {
+            built.inputModalities = INPUT_MODALITIES.filter((m) => inputModalities.includes(m));
         }
 
         if (isAllowed('stopSequences')) {
@@ -578,6 +588,25 @@ export default function BaseModelsTab() {
                                                         </div>
                                                     );
                                                 })}
+
+                                                {isAllowed('inputModalities') && (
+                                                    <fieldset className="space-y-1.5">
+                                                        <legend className={fieldLabelClass}>Chat attachments</legend>
+                                                        <div className="flex flex-wrap gap-4">
+                                                            {INPUT_MODALITIES.map((modality) => (
+                                                                <label key={modality} className="flex items-center gap-2 text-[12px] text-paper">
+                                                                    <Checkbox
+                                                                        checked={inputModalities.includes(modality)}
+                                                                        onCheckedChange={(v) => setInputModalities((prev) => (v === true ? [...prev, modality] : prev.filter((m) => m !== modality)))}
+                                                                        aria-label={modality === 'image' ? 'Accepts images' : 'Accepts PDFs'}
+                                                                    />
+                                                                    {modality === 'image' ? 'Images' : 'PDFs'}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                        <span className="block text-[11px] text-paper-faint">What users may attach in the chat besides text files. Turn on only what the model reads; images and PDFs aren't scanned by guardrails.</span>
+                                                    </fieldset>
+                                                )}
 
                                                 {isAllowed('stopSequences') && (
                                                     <label className="flex flex-col gap-1">

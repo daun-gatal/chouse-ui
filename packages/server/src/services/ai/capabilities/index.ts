@@ -34,6 +34,7 @@ import { compileWatcherCapability, draftTableContextCapability, explainIncidentC
 import { draftAiAgentCapability, draftAiHarnessCapability, draftAiSkillCapability } from "./authoring";
 import { draftDashboardCapability, explainSpikeCapability } from "./dashboards";
 import { draftGuardrailCapability } from "./guardrails";
+import { triageIncidentCapability } from "./triage";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -64,6 +65,7 @@ export const CAPABILITIES = {
   "draft-dashboard": draftDashboardCapability,
   "explain-spike": explainSpikeCapability,
   "draft-guardrail": draftGuardrailCapability,
+  "triage-incident": triageIncidentCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;

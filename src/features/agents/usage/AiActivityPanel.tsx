@@ -33,6 +33,7 @@ import {
   requestTokens,
   USAGE_WINDOWS,
 } from "./lib";
+import { BudgetsPanel } from "./BudgetsPanel";
 import { RequestSheet } from "./RequestSheet";
 
 /** Rows per page of the request list; the first is the default. */
@@ -64,10 +65,15 @@ function costMeta(summary: AiUsageSummary): string {
 function Kpis({ summary }: { summary: AiUsageSummary }): ReactElement {
   const own = summary.scope === "own";
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
       <Kpi label={own ? "Your AI requests" : "AI requests"} value={formatCount(summary.requests)} meta={own ? `${summary.failedRequests} failed` : `${plural(summary.users, "user")} · ${plural(summary.agents, "agent")}`} />
       <Kpi label="Tokens" value={`${summary.incompleteCalls > 0 ? "≥ " : ""}${formatTokens(summary.inputTokens + summary.outputTokens)}`} meta={`${formatTokens(summary.inputTokens)} in · ${formatTokens(summary.outputTokens)} out`} />
       <Kpi label="Est. cost" value={formatUsd(summary.costUsd)} meta={costMeta(summary)} tone={summary.costUsd !== null && summary.unpricedCalls > 0 ? "warn" : undefined} />
+      <Kpi
+        label="Prompt cache"
+        value={cachedShare(summary.inputTokens, summary.cacheReadTokens) === null ? "—" : `${cachedShare(summary.inputTokens, summary.cacheReadTokens)}%`}
+        meta={summary.cacheSavingsUsd !== null ? `of input cached · saved ${formatUsd(summary.cacheSavingsUsd)}` : summary.cacheReadTokens > 0 ? "of input cached · set cache prices to see savings" : "No cached input yet"}
+      />
       <Kpi label="ClickHouse read by AI" value={formatBytes(summary.chReadBytes)} meta={`${formatCount(summary.chQueries)} queries`} />
       <Kpi label="Sent to providers" value={plural(summary.egressRows, "row", formatCount(summary.egressRows))} meta={`${plural(summary.egressSources, "source")} · ${formatBytes(summary.egressBytes)}`} />
     </div>
@@ -307,7 +313,7 @@ export function AiActivityPanel(): ReactElement {
         </Select>
       </div>
 
-      {summary.isLoading ? <LoadingGrid count={5} className="lg:grid-cols-5" /> : summary.isError || !summary.data ? (
+      {summary.isLoading ? <LoadingGrid count={6} className="lg:grid-cols-3 2xl:grid-cols-6" /> : summary.isError || !summary.data ? (
         <ErrorState title="AI usage could not be loaded." error={summary.error} />
       ) : (
         <>
@@ -334,6 +340,7 @@ export function AiActivityPanel(): ReactElement {
         <EgressPanel days={days} own={own} />
         <ModelsPanel days={days} />
       </div>
+      <BudgetsPanel />
       <RequestsPanel days={days} own={own} onOpen={setOpen} />
       <RequestSheet requestId={open} onClose={() => setOpen(null)} />
     </div>

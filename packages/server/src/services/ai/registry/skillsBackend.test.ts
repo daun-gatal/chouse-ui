@@ -79,9 +79,9 @@ describe("RegistrySkillsBackend", () => {
     expect(String(read.content)).toContain("name: query-optimizer");
 
     const middleware = createSkillsMiddleware({ backend: composite, sources: ["/skills/ai-chat", "/skills/ai-optimizer", "/skills/references"] }) as unknown as {
-      beforeAgent: (state: unknown) => Promise<{ skillsMetadata?: Array<{ name: string; path: string }> }>;
+      beforeModel: (state: unknown) => Promise<{ skillsMetadata?: Array<{ name: string; path: string }> }>;
     };
-    const loaded = await middleware.beforeAgent({});
+    const loaded = await middleware.beforeModel({});
     expect(loaded.skillsMetadata?.map((s) => `${s.name}@${s.path}`)).toEqual([
       "data-exploration@/skills/ai-chat/data-exploration/SKILL.md",
       "query-optimizer@/skills/ai-optimizer/optimizer/SKILL.md",

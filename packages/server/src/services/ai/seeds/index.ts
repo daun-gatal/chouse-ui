@@ -26,6 +26,7 @@ import {
   OPTIMIZER_PROMPT,
   PARTS_DIAGNOSE_PROMPT,
   SCHEMA_DIAGNOSE_PROMPT,
+  TRIAGE_PROMPT,
 } from "./prompts";
 import {
   ACCESS_AUDITOR_PROMPT,
@@ -101,7 +102,7 @@ export const SEED_HARNESSES: SeedHarness[] = [
     slug: "focused",
     name: "Focused",
     description: "Tool-first and bounded: no planning, no delegation, no filesystem beyond reading skills. Every built-in AI feature and the ClickHouse chat agent use it.",
-    excludedTools: ["task", "write_todos", "ls", "write_file", "edit_file", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
+    excludedTools: ["task", "write_todos", "ls", "write_file", "edit_file", "delete", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
     generalPurpose: { enabled: false },
     promptSuffix: "For Chouse AI runs, use the concrete tools directly. Do not plan or delegate work to subagents; each capability already has focused instructions and a bounded tool set.",
     toolDescriptionOverrides: {},
@@ -111,7 +112,7 @@ export const SEED_HARNESSES: SeedHarness[] = [
     slug: "delegating",
     name: "Delegating",
     description: "For agents with subagents: keeps the task tool so the agent can delegate, reads skills, and hides planning and file-writing tools.",
-    excludedTools: ["write_todos", "ls", "write_file", "edit_file", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
+    excludedTools: ["write_todos", "ls", "write_file", "edit_file", "delete", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
     generalPurpose: { enabled: false },
     promptSuffix: "Delegate each focused sub-question to the matching subagent with the task tool and give it the full context it needs; subagents do not see this conversation. Use your own tools directly for simple lookups.",
     toolDescriptionOverrides: {},
@@ -121,7 +122,7 @@ export const SEED_HARNESSES: SeedHarness[] = [
     slug: "router",
     name: "Router",
     description: "Only the task tool: the agent routes requests to its subagents and combines their answers.",
-    excludedTools: ["write_todos", "ls", "read_file", "write_file", "edit_file", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
+    excludedTools: ["write_todos", "ls", "read_file", "write_file", "edit_file", "delete", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
     generalPurpose: { enabled: false },
     promptSuffix: null,
     toolDescriptionOverrides: {},
@@ -171,6 +172,15 @@ const PINNED_PLAYBOOK: SeedSkillLink = { skill: "clickhouse-playbook", mode: "pi
 // ============================================
 // Agents
 // ============================================
+
+/**
+ * Write tools the chat can ask to run (ADR 0024): each low-risk call waits for
+ * the user's approval, and a fix only becomes a proposal in Fixes.
+ */
+const CHAT_ACTION_TOOLS = [
+  "kill_query", "create_saved_query", "create_scheduled_query", "create_health_promise",
+  "create_dashboard", "update_table_context", "propose_remediation",
+];
 
 const CORE_SESSION_TOOLS = [
   "list_databases", "list_tables", "get_table_schema", "get_table_ddl", "get_table_size", "get_table_sample",
@@ -250,6 +260,14 @@ export const SEED_AGENTS: SeedAgent[] = [
     taskTemplate: "Current ClickHouse fleet overview (one object per node). Investigation window: last {{ctx.hours}} hours (the `recentHeavyQueries` field covers this window; scope your system.query_log tool queries to it too). Investigate and produce the structured health report.\n\n```json\n{{ctx.overview}}\n```",
     tools: ["query_node"], tuning: { stepBudget: 12, maxOutputTokens: 16000 },
   }),
+  // --- Auto-triage (ADR 0024) ---------------------------------------------------------------
+  featureAgent({
+    id: "builtin-agent-incident-triager", slug: "incident-triager", name: "Incident Triager",
+    description: "Investigates new incidents, fleet alerts, failed scheduled runs and Doctor findings on its own, and proposes actions for approval.",
+    systemPrompt: TRIAGE_PROMPT,
+    taskTemplate: "New {{ctx.trigger}}: {{ctx.title}}\n\nConnections you may query with query_node (use the id):\n{{ctx.nodes}}\n\nWhat CHouse recorded:\n```json\n{{ctx.evidence}}\n```\n\nInvestigate, propose an action only if you are confident, then produce the structured triage report.",
+    tools: ["query_node", "kill_query", "propose_remediation"], tuning: { stepBudget: 10, maxOutputTokens: 4000 },
+  }),
   // --- Dashboards (ADR 0021) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-dashboard-drafter", "dashboard-drafter", "Dashboard Drafter", "Turns a monitoring goal into a reviewed dashboard draft (Dashboards › Ask AI).", "draft-dashboard",
     { stepBudget: 8, maxOutputTokens: 8000 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "validate_sql"]),
@@ -297,8 +315,8 @@ export const SEED_AGENTS: SeedAgent[] = [
   {
     id: "builtin-agent-clickhouse-data", slug: "clickhouse-data", name: "ClickHouse Data",
     description: "Answers questions about ClickHouse data: databases, tables, columns, SQL, query performance, server state and charts.",
-    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12 },
-    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query"], skills: ALL_SKILLS, subagents: [],
+    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12, memory: true },
+    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query", ...CHAT_ACTION_TOOLS], skills: ALL_SKILLS, subagents: [],
   },
   {
     id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin",
@@ -335,7 +353,7 @@ export const SEED_AGENTS: SeedAgent[] = [
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",
     description: "Routes each chat request to ClickHouse Data or CHouse Admin, and combines their answers for questions that span both.",
-    kind: "router", systemPrompt: ROUTER_PROMPT, taskTemplate: null, harness: "router", tuning: { stepBudget: 10, timeoutMs: 180_000 },
+    kind: "router", systemPrompt: ROUTER_PROMPT, taskTemplate: null, harness: "router", tuning: { stepBudget: 10, timeoutMs: 180_000, memory: true },
     requiredPermissions: [], tools: [], skills: [], subagents: ["clickhouse-data", "chouse-admin"],
   },
 ];
@@ -373,4 +391,5 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-dashboard": "dashboard-drafter",
   "explain-spike": "spike-explainer",
   "draft-guardrail": "guardrail-drafter",
+  "triage-incident": "incident-triager",
 };

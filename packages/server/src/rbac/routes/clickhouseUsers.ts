@@ -129,7 +129,7 @@ clickhouseUsersRoutes.post('/generate-ddl', rbacAuthMiddleware, requirePermissio
   try {
     const parsed = createUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     return c.json({ success: true, data: generateUserDDL(parsed.data) });
   } catch (error) {
@@ -145,7 +145,7 @@ clickhouseUsersRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhous
     const service = await getClickHouseService(c);
     const parsed = createUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const input = parsed.data;
 
@@ -184,7 +184,7 @@ clickhouseUsersRoutes.post('/:username/generate-ddl', rbacAuthMiddleware, requir
     const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = updateUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const service = await getClickHouseService(c);
     const current = await getCurrentUserState(service, username);
@@ -203,7 +203,7 @@ clickhouseUsersRoutes.patch('/:username', rbacAuthMiddleware, requirePermission(
     const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = updateUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
     const input = parsed.data;
 
@@ -240,7 +240,7 @@ clickhouseUsersRoutes.post('/:username/extract-role', rbacAuthMiddleware, requir
     const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = extractRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.issues } }, 400);
     }
 
     await extractRoleFromUser(service, username, parsed.data.roleName, parsed.data.cluster);

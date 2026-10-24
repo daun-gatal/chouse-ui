@@ -132,8 +132,11 @@ const DOMAIN_LABELS: Record<CatalogTool["domain"], string> = { clickhouse: "Clic
 export function groupTools(tools: CatalogTool[]): ToolGroup[] {
   const groups = new Map<string, ToolGroup>();
   for (const tool of tools) {
-    const key = `${tool.domain}:${tool.category}`;
-    const group = groups.get(key) ?? { key, label: `${DOMAIN_LABELS[tool.domain]} · ${tool.category}`, tools: [] };
+    // Write tools (ADR 0024) get groups of their own, so a "read-only" group never holds one.
+    const write = tool.access !== "read";
+    const key = `${tool.domain}:${write ? "actions:" : ""}${tool.category}`;
+    const domain = write ? "Actions (approval required)" : DOMAIN_LABELS[tool.domain];
+    const group = groups.get(key) ?? { key, label: `${domain} · ${tool.category}`, tools: [] };
     group.tools.push(tool);
     groups.set(key, group);
   }
@@ -322,4 +325,43 @@ export function draftableFeatures(registry: AiRegistry): AiFeature[] {
   return registry.features
     .filter((f) => f.delivery === "structured" && f.surface !== "governance")
     .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+const FRONT_MATTER = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/;
+
+/** Tools a SKILL.md lists under `metadata.include_tools` (ADR 0024); the agent sees them once it reads the skill. */
+export function skillIncludeTools(skillMd: string): string[] {
+  const match = FRONT_MATTER.exec(skillMd);
+  if (!match) return [];
+  const lines = match[1].split("\n");
+  const start = lines.findIndex((line) => /^metadata:\s*$/.test(line));
+  if (start < 0) return [];
+  for (const line of lines.slice(start + 1)) {
+    if (!/^\s+\S/.test(line)) break;
+    const field = /^\s+include_tools:\s*(.*)$/.exec(line);
+    if (!field) continue;
+    const raw = field[1].trim().replace(/^\[|\]$/g, "");
+    return [...new Set(raw.split(/[\s,]+/).map((n) => n.trim().replace(/^["']|["']$/g, "")).filter(Boolean))];
+  }
+  return [];
+}
+
+/** Rewrite `metadata.include_tools` in a SKILL.md (removing the block when it ends up empty), keeping the rest. */
+export function withSkillIncludeTools(skillMd: string, tools: string[]): string {
+  const match = FRONT_MATTER.exec(skillMd);
+  if (!match) return skillMd;
+  const value = [...new Set(tools.map((t) => t.trim()).filter(Boolean))].join(" ");
+  const lines = match[1].split("\n");
+  const start = lines.findIndex((line) => /^metadata:\s*$/.test(line));
+  if (start < 0) {
+    if (!value) return skillMd;
+    lines.push("metadata:", `  include_tools: ${value}`);
+  } else {
+    let end = start + 1;
+    while (end < lines.length && /^\s+\S/.test(lines[end])) end += 1;
+    const block = lines.slice(start + 1, end).filter((line) => !/^\s+include_tools:/.test(line));
+    if (value) block.push(`  include_tools: ${value}`);
+    lines.splice(start, end - start, ...(block.length > 0 ? ["metadata:", ...block] : []));
+  }
+  return skillMd.replace(match[0], `---\n${lines.join("\n")}\n---\n`);
 }

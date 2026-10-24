@@ -6,6 +6,8 @@
 
 import { z } from "zod";
 
+import { normalizeTuning } from "./tuning";
+
 import type { AgentInput, HarnessInput, SkillInput } from "./service";
 
 export const tuningSchema = z.object({
@@ -13,6 +15,16 @@ export const tuningSchema = z.object({
   recursionLimit: z.number().int().nullable().optional(),
   timeoutMs: z.number().int().nullable().optional(),
   maxOutputTokens: z.number().int().nullable().optional(),
+  fallbackModelConfigId: z.string().min(1).nullable().optional(),
+  modelRetries: z.number().int().nullable().optional(),
+  toolRetries: z.number().int().nullable().optional(),
+  maxModelCalls: z.number().int().nullable().optional(),
+  maxToolCalls: z.number().int().nullable().optional(),
+  promptCaching: z.boolean().optional(),
+  clearOldToolResults: z.boolean().optional(),
+  forkedSubagents: z.array(z.string().min(1)).max(20).optional(),
+  memory: z.boolean().optional(),
+  evalThreshold: z.number().gt(0).max(1).nullable().optional(),
 });
 
 export const agentSchema = z.object({
@@ -47,25 +59,21 @@ export const harnessSchema = z.object({
     systemPrompt: z.string().max(100_000).nullable().optional(),
   }),
   promptSuffix: z.string().max(4_000).nullable(),
-  toolDescriptionOverrides: z.record(z.string().max(4_000)),
+  toolDescriptionOverrides: z.record(z.string(), z.string().max(4_000)),
+  analysis: z.boolean().optional(),
 });
 
 export const skillSchema = z.object({
   path: z.string().trim().min(3).max(130),
   skillMd: z.string().min(1).max(1024 * 1024),
-  files: z.record(z.string().max(1024 * 1024)),
+  files: z.record(z.string(), z.string().max(1024 * 1024)),
   enabled: z.boolean(),
 });
 
 export function normalizedAgent(body: z.infer<typeof agentSchema>): AgentInput {
   return {
     ...body,
-    tuning: {
-      stepBudget: body.tuning.stepBudget,
-      recursionLimit: body.tuning.recursionLimit ?? null,
-      timeoutMs: body.tuning.timeoutMs ?? null,
-      maxOutputTokens: body.tuning.maxOutputTokens ?? null,
-    },
+    tuning: normalizeTuning(body.tuning),
   };
 }
 

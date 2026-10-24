@@ -3,9 +3,8 @@
 # Mirrors .trivyignore, which holds the full rationale. See SECURITY.md,
 # "Known accepted vulnerabilities".
 #
-# Grype has no expiry field. Review this entry on the same date as the
-# .trivyignore expiry (2027-01-31) and remove it as soon as a patched braces,
-# micromatch or deepagents release is available.
+# Grype has no expiry field. Review each entry on the same date as its
+# .trivyignore expiry and remove it as soon as the fix lands.
 ignore:
   # braces 3.0.3 - High - stack-exhaustion DoS via deeply nested brace patterns.
   # No patched release exists upstream. Only reachable through the AI agent's

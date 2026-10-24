@@ -19,6 +19,7 @@ import type { AgentInput, HarnessInput, SkillInput } from "./service";
 import { templateReferences } from "./template";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef, SkillLinkMode } from "./types";
 import { introducedProblems, parseSkillFrontMatter, SLUG_RE, TUNING_LIMITS, withChanges } from "./validation";
+import { normalizeTuning } from "./tuning";
 import {
   AGENT_SECTIONS,
   draftMode,
@@ -439,12 +440,12 @@ export function mapAgentDraft(parsed: AgentDraft, ctx: DraftContext): Mapped<Age
     fixes.push(`Model '${modelConfigId}' is not configured; the agent inherits the default model`);
     modelConfigId = null;
   }
-  const tuning = {
+  const tuning = normalizeTuning({
     stepBudget: clampTuning(parsed.tuning.stepBudget, "stepBudget", fixes) ?? 8,
     recursionLimit: clampTuning(parsed.tuning.recursionLimit, "recursionLimit", fixes),
     timeoutMs: clampTuning(parsed.tuning.timeoutMs, "timeoutMs", fixes),
     maxOutputTokens: clampTuning(parsed.tuning.maxOutputTokens, "maxOutputTokens", fixes),
-  };
+  });
   meta.rationale.settings = [
     { subject: `harness: ${harness?.slug ?? parsed.harness.slug}`, why: oneLine(parsed.harness.why) },
     { subject: `model: ${modelConfigId ?? "inherit the default"}`, why: oneLine(parsed.model.why) },

@@ -27,13 +27,14 @@ Open a harness from **AI Governance › Assistant › Harnesses**. A change appl
 - **Name**, **Slug** and **Description** — the slug follows the same rules as agent slugs.
 - **Built-in tools** — switch a tool off to hide it from the model. An agent with subagents needs `task`; the server rejects a harness change that would take `task` away from such an agent.
 - **General-purpose subagent** — when on, every agent using the harness gets an extra subagent named `general-purpose` that has the agent's own tools and skills. It's DeepAgents' generic helper for context-heavy sub-tasks; you can replace its description and system prompt. Off in all built-in harnesses.
+- **Analysis sandbox** — when on, agents using the harness get `js_eval`: JavaScript or TypeScript run in a QuickJS interpreter with no network, no modules and no files, 64 MB of memory and 15 seconds per call (including the tool calls it makes). Inside it, the agent's read-only tools are async functions (`await tools.runSelectQuery({...})`), so it can fetch rows and compute over them without the rows passing through the model. Write tools are never available there, and every tool call from the sandbox passes the run's [guardrails](/docs/ai-guardrails/) like any other. Off in all built-in harnesses.
 - **Prompt suffix** — up to 4,000 characters, appended after the rest of the system prompt (after the output contract on feature agents).
 - **Tool description overrides** — one per line as `tool_name: new description`. Replaces the description the model reads for a built-in or catalog tool, for agents on this harness only. Use it to steer *when* a tool is used without touching the tool.
 - **History** — earlier versions, with **Restore**.
 
 ## What a harness cannot do
 
-The filesystem tools work on an in-memory scratch space that is discarded when the run ends; skills are mounted read-only under `/skills/`, and a write there is refused. `execute` needs a sandbox backend, which CHouse never provides, and the async-task tools are for remote subagents CHouse doesn't use — the built-in harnesses hide them all. Turning them on gives an agent nothing it could use to change your systems: catalog tools are the only way out of the run, and they are all read-only.
+The filesystem tools work on an in-memory scratch space that is discarded when the run ends; skills are mounted read-only under `/skills/`, and a write there is refused. `execute` needs a sandbox backend, which CHouse never provides, and the async-task tools are for remote subagents CHouse doesn't use — the built-in harnesses hide them all. Turning them on gives an agent nothing it could use to change your systems: catalog tools are the only way out of the run, and the ones that change things wait for a person's approval (see [Approvals](/docs/ai-approvals/)).
 
 ## Built-ins, reset and delete
 

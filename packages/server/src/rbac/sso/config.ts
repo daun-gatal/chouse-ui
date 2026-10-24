@@ -66,9 +66,9 @@ const CommonProviderSchema = z.object({
   clientSecret: z.string().min(1),
   scopes: z.string().min(1),
   roleMappingClaim: z.string().optional(),
-  roleMapping: z.record(z.string()).optional(),
+  roleMapping: z.record(z.string(), z.string()).optional(),
   // Extra params merged into the authorization request (e.g. prompt, hd, audience).
-  authParams: z.record(z.string()).optional(),
+  authParams: z.record(z.string(), z.string()).optional(),
 });
 
 const OidcProviderSchema = CommonProviderSchema.extend({
@@ -79,7 +79,7 @@ const OidcProviderSchema = CommonProviderSchema.extend({
   authorizationEndpoint: z.string().url().optional(),
   tokenEndpoint: z.string().url().optional(),
   userinfoEndpoint: z.string().url().optional(),
-  claimMapping: z.record(z.string()).optional(),
+  claimMapping: z.record(z.string(), z.string()).optional(),
 });
 
 const Oauth2ProviderSchema = CommonProviderSchema.extend({
@@ -93,7 +93,7 @@ const Oauth2ProviderSchema = CommonProviderSchema.extend({
   // the IdP sends a stable `iss` (GitHub: https://github.com/login/oauth)
   // to validate it strictly instead.
   issuer: z.string().url().optional(),
-  claimMapping: z.record(z.string()).default({ subject: 'sub', email: 'email', username: 'username' }),
+  claimMapping: z.record(z.string(), z.string()).default({ subject: 'sub', email: 'email', username: 'username' }),
 });
 
 const SamlProviderSchema = z.object({
@@ -106,9 +106,9 @@ const SamlProviderSchema = z.object({
   samlNameIdFormat: z.string().optional(),
   samlAllowIdpInitiated: z.boolean().optional(),
   samlTrustEmailVerified: z.boolean().optional(),
-  claimMapping: z.record(z.string()).optional(),
+  claimMapping: z.record(z.string(), z.string()).optional(),
   roleMappingClaim: z.string().optional(),
-  roleMapping: z.record(z.string()).optional(),
+  roleMapping: z.record(z.string(), z.string()).optional(),
 });
 
 const ProviderSchema = z.discriminatedUnion('type', [OidcProviderSchema, Oauth2ProviderSchema, SamlProviderSchema]);

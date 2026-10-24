@@ -69,8 +69,8 @@ export const actionParamsSchema = z.discriminatedUnion("type", [
   // ADR 0023 §10. Proposed only from a dashboard panel: its prior state re-reads the panel and must match.
   z.object({
     type: z.literal("create_panel_rollup"),
-    dashboardId: z.string().uuid(),
-    panelId: z.string().uuid(),
+    dashboardId: z.guid(),
+    panelId: z.guid(),
     database: ident,
     table: ident,
     timeColumn: ident,

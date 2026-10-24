@@ -23,6 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
+import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_EVAL_INDEX_NAMES, AI_EVAL_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -443,6 +444,63 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
     expect(await h.columnExists("dashboard_panels", "height")).toBe(false);
     expect(await h.columnExists("dashboard_panels", "position")).toBe(true);
+  },
+  "1.65.0": async () => {
+    // ADR 0024 phase 1: chat runs, LangGraph checkpoints, budgets; ai_budgets:manage for admins only.
+    expect(AI_RUNTIME_TABLE_NAMES).toEqual(["ai_chat_runs", "ai_checkpoints", "ai_checkpoint_writes", "ai_budgets"]);
+    for (const t of AI_RUNTIME_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_RUNTIME_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["steps", "pending", "cancel_requested", "heartbeat_at"]) expect(await h.columnExists("ai_chat_runs", c)).toBe(true);
+    for (const c of ["applies_to", "limit_tokens", "limit_cost_usd", "on_exhaust", "fallback_model_config_id"]) expect(await h.columnExists("ai_budgets", c)).toBe(true);
+    expect(await h.permissionExists("ai_budgets:manage")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai_budgets:manage")).toBe(role === "super_admin" || role === "admin");
+    }
+  },
+  "1.66.0": async () => {
+    // ADR 0024 phase 2: approved actions; ai:act for the roles that change things (not analysts, viewers or guests).
+    expect(AI_ACTION_TABLE_NAMES).toEqual(["ai_actions"]);
+    for (const t of AI_ACTION_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_ACTION_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["source", "run_id", "interrupt_id", "tool", "args", "status", "decided_by", "expires_at"]) expect(await h.columnExists("ai_actions", c)).toBe(true);
+    expect(await h.permissionExists("ai:act")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai:act")).toBe(role === "super_admin" || role === "admin" || role === "developer");
+    }
+  },
+  "1.67.0": async () => {
+    // ADR 0024 phase 3: memories go with their user or connection; admins review team memories.
+    expect(AI_MEMORY_TABLE_NAMES).toEqual(["ai_memories", "ai_memory_settings"]);
+    for (const t of AI_MEMORY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_MEMORY_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["scope", "owner_id", "connection_id", "content", "status", "flag", "proposed_by"]) expect(await h.columnExists("ai_memories", c)).toBe(true);
+    expect(await h.permissionExists("ai_memories:manage")).toBe(true);
+    for (const role of ["super_admin", "admin", "developer", "analyst", "viewer", "guest"]) {
+      expect(await h.roleHasPermission(role, "ai_memories:manage")).toBe(role === "super_admin" || role === "admin");
+    }
+  },
+  "1.68.0": async () => {
+    // ADR 0024 phase 4: auto-triage rules (none until turned on) and one run per subject.
+    expect(AI_TRIAGE_TABLE_NAMES).toEqual(["ai_triage_rules", "ai_triage_runs"]);
+    for (const t of AI_TRIAGE_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_TRIAGE_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["enabled", "cooldown_minutes", "daily_token_budget", "channel_ids", "propose_as", "watermark"]) expect(await h.columnExists("ai_triage_rules", c)).toBe(true);
+    for (const c of ["trigger", "subject_id", "status", "action_ids", "tokens", "notebook_id"]) expect(await h.columnExists("ai_triage_runs", c)).toBe(true);
+    expect(await h.rowCount("ai_triage_rules")).toBe(0);
+  },
+  "1.69.0": async () => {
+    // ADR 0024 phase 5: the analysis sandbox is a harness switch, off for every harness until turned on.
+    expect(await h.columnExists("ai_harnesses", "analysis")).toBe(true);
+    const on = await h.rawAll(sql`SELECT COUNT(*) AS n FROM ai_harnesses WHERE analysis <> 0`);
+    expect(Number(on[0]?.n ?? 0)).toBe(0);
+  },
+  "1.70.0": async () => {
+    // ADR 0024 phase 6: eval cases and scored runs, keyed by the draft they scored.
+    expect(AI_EVAL_TABLE_NAMES).toEqual(["ai_eval_cases", "ai_eval_runs"]);
+    for (const t of AI_EVAL_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_EVAL_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["agent_id", "kind", "feature_id", "input", "expected_tools", "rubric", "source"]) expect(await h.columnExists("ai_eval_cases", c)).toBe(true);
+    for (const c of ["draft_hash", "status", "score", "results", "regressions", "tokens"]) expect(await h.columnExists("ai_eval_runs", c)).toBe(true);
   },
 };
 
@@ -1420,7 +1478,7 @@ for (const dialect of DIALECTS) {
     });
 
     it("then drops the old sizes, and the store reads every converted dashboard", async () => {
-      expect((await runMigrations()).migrationsApplied).toEqual(["1.64.0"]);
+      expect((await runMigrations({ through: "1.64.0" })).migrationsApplied).toEqual(["1.64.0"]);
       expect(await h.columnExists("dashboard_panels", "width")).toBe(false);
       const migration = MIGRATIONS.find((m) => m.version === "1.64.0")!;
       const { getDatabase } = await import("./index");

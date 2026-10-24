@@ -1,9 +1,9 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 64 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 71 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
-Every catalog tool is read-only; the server rejects an agent that grants anything else. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
+Catalog tools only read, except the [action tools](#action-tools), which wait for a person to approve each call. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
 ## ClickHouse tools
 
@@ -29,7 +29,7 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `generate_query` | Draft SQL from a description | — | — | Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools. After calling this, you MUST output the generated query in a `sql` code block. If the user wants the query executed, call run_select_query with that SQL. | 1 |
 | `optimize_query` | Optimize a query (runs the optimize-query feature) | ClickHouse session | — | Get AI-powered optimization suggestions for a SQL query. | 1 |
 | `run_bounded_aggregate` | Run a bounded aggregate | ClickHouse session | — | Run one read-only aggregate SELECT for a health recommendation. Raw-row SELECTs and SELECT * are rejected. | 1 |
-| `query_node` | Query a node's system tables | Fleet nodes | — | Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows. | 5 |
+| `query_node` | Query a node's system tables | Fleet nodes | — | Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows. | 6 |
 
 ## CHouse tools
 
@@ -79,6 +79,20 @@ Every catalog tool is read-only; the server rejects an agent that grants anythin
 | `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings. | 1 |
 | `get_dashboard_annotations` | Dashboard annotations | Your CHouse access | `dashboards:view` | What changed around a dashboard's charts on the active connection over a recent range: DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes, newest first. Each kind says if it could not be read and why. | 1 |
 
+## Action tools
+
+These tools change something, so nothing runs until a person says so. In a chat the run pauses on each low-risk call and the user approves, edits or rejects it; running it needs `ai:act`. In a run with nobody there, the call is saved for approval in **AI Governance › Approvals**. High-risk changes only file a proposal in **Fixes**, where the remediation approval rules decide.
+
+| Tool | Title | Risk | Needs any of | What it does | Built-in agents |
+| --- | --- | --- | --- | --- | --- |
+| `kill_query` | Kill a query | low | `live_queries:kill`, `live_queries:kill_all` | Stop a running ClickHouse query by its query_id (from get_running_queries). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 2 |
+| `create_saved_query` | Save a query | low | `saved_queries:create` | Save a SQL query to the user's saved queries on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `create_scheduled_query` | Schedule a query | low | `scheduled_queries:edit` | Create a scheduled report query (read-only SELECT, no materialization) on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `create_health_promise` | Create a data health promise | low | `data_health:edit` | Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `create_dashboard` | Create a dashboard | low | `dashboards:edit` | Create a dashboard on the active connection from panels (title, SQL, chart type and columns). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `update_table_context` | Update table context | low | `context:edit` | Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
+| `propose_remediation` | Propose a fix | high | `remediation:propose` | File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes. | 2 |
+
 ## Built-in DeepAgents tools
 
 DeepAgents gives every agent these tools on top of its catalog tools. A harness hides the ones its agents should not see — here is what each built-in harness keeps:
@@ -93,6 +107,7 @@ DeepAgents gives every agent these tools on top of its catalog tools. A harness 
 | `grep` | Search file contents. | hidden | hidden | hidden |
 | `write_file` | Write a scratch file in the run's in-memory filesystem (never to disk; skills stay read-only). | hidden | hidden | hidden |
 | `edit_file` | Edit a scratch file in the run's in-memory filesystem. | hidden | hidden | hidden |
+| `delete` | Delete a scratch file or folder in the run's in-memory filesystem (skills stay read-only). | hidden | hidden | hidden |
 | `execute` | Run a shell command — only available with a sandbox backend; CHouse never provides one. | hidden | hidden | hidden |
 | `start_async_task` | Start a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
 | `check_async_task` | Check a remote async subagent (not used by CHouse). | hidden | hidden | hidden |

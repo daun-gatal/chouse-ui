@@ -339,6 +339,11 @@
     "category": "AI Assistant",
     "anchor": "ai-assistant"
   },
+  "ai:act": {
+    "name": "Let AI Agents Run Approved Actions",
+    "category": "AI Assistant",
+    "anchor": "ai-assistant"
+  },
   "ai_models:view": {
     "name": "View AI Models",
     "category": "AI Models Management",
@@ -381,6 +386,16 @@
   },
   "ai_guardrails:manage": {
     "name": "Manage AI Guardrails",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
+  "ai_budgets:manage": {
+    "name": "Manage AI Budgets",
+    "category": "AI Agents",
+    "anchor": "ai-agents"
+  },
+  "ai_memories:manage": {
+    "name": "Manage AI Team Memories",
     "category": "AI Agents",
     "anchor": "ai-agents"
   },

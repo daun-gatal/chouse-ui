@@ -125,6 +125,7 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
   'AI Assistant': [
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_ACT,
   ],
   'AI Models Management': [
     PERMISSIONS.AI_MODELS_VIEW,
@@ -138,6 +139,8 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.AI_USAGE_VIEW,
     PERMISSIONS.AI_GUARDRAILS_VIEW,
     PERMISSIONS.AI_GUARDRAILS_MANAGE,
+    PERMISSIONS.AI_BUDGETS_MANAGE,
+    PERMISSIONS.AI_MEMORIES_MANAGE,
   ],
   'SSO Management': [
     PERMISSIONS.SSO_VIEW,
@@ -235,6 +238,7 @@ export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.QUERY_HISTORY_VIEW_ALL]: 'View All Query History',
   [PERMISSIONS.AI_OPTIMIZE]: 'AI Query Optimization',
   [PERMISSIONS.AI_CHAT]: 'AI Chat Assistant',
+  [PERMISSIONS.AI_ACT]: 'Let AI Agents Run Approved Actions',
   [PERMISSIONS.SAVED_QUERIES_VIEW]: 'View Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_CREATE]: 'Create Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_UPDATE]: 'Update Saved Queries',
@@ -270,6 +274,8 @@ export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.AI_USAGE_VIEW]: 'View AI Usage, Cost and Data Egress',
   [PERMISSIONS.AI_GUARDRAILS_VIEW]: 'View AI Guardrails and Their Triggers',
   [PERMISSIONS.AI_GUARDRAILS_MANAGE]: 'Manage AI Guardrails',
+  [PERMISSIONS.AI_BUDGETS_MANAGE]: 'Manage AI Budgets',
+  [PERMISSIONS.AI_MEMORIES_MANAGE]: 'Manage AI Team Memories',
   [PERMISSIONS.SSO_VIEW]: 'View SSO Configuration',
   [PERMISSIONS.SSO_EDIT]: 'Edit SSO Configuration',
   [PERMISSIONS.SSO_DELETE]: 'Delete SSO Providers',

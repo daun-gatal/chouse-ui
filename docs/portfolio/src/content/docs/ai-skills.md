@@ -53,6 +53,10 @@ An agent can do both with the same skill. To inline a skill at a specific place 
 
 Each agent sees only the skills linked to it, even if other skills share their group. Subagents link their own.
 
+A skill can name tools in its frontmatter (`include_tools`, edited as **Tools this skill unlocks** in the skill editor). Those tools stay hidden from an agent until it reads the skill, which keeps the tool list short for agents with many skills; the agent still needs the tools granted. Only read-only tools can be listed.
+
+In the chat, `/` picks a skill for the next message: its instructions go to the agent with that message, as if it had read the skill. See [Using the chat](/docs/ai-chat/#skills).
+
 ## Managing skills
 
 **AI Governance › Assistant › Skills** lists every skill with its description, path, files, how many agents use it, and its status. Open one to edit:

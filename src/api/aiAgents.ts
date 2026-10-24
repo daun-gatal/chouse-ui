@@ -33,6 +33,20 @@ export interface AgentTuning {
   recursionLimit?: number | null;
   timeoutMs?: number | null;
   maxOutputTokens?: number | null;
+  /** ADR 0024 runtime settings. */
+  fallbackModelConfigId?: string | null;
+  modelRetries?: number | null;
+  toolRetries?: number | null;
+  maxModelCalls?: number | null;
+  maxToolCalls?: number | null;
+  promptCaching?: boolean;
+  clearOldToolResults?: boolean;
+  /** Subagents that see the parent's conversation. */
+  forkedSubagents?: string[];
+  /** ADR 0024: read the user's and the connection's memories, and keep new ones in chat. */
+  memory?: boolean;
+  /** ADR 0024: share of eval cases (0–1) a draft must pass to be saved; null = no gate. */
+  evalThreshold?: number | null;
 }
 
 export interface AgentSkillLink {
@@ -90,6 +104,8 @@ export interface HarnessInput {
   generalPurpose: GeneralPurposeConfig;
   promptSuffix: string | null;
   toolDescriptionOverrides: Record<string, string>;
+  /** ADR 0024: agents get `js_eval`, a sandbox that can call their read-only tools. */
+  analysis?: boolean;
 }
 
 export type AiHarness = HarnessInput & RowMeta;
@@ -111,6 +127,8 @@ export interface CatalogTool {
   domain: "clickhouse" | "chouse";
   category: string;
   access: "read" | "write" | "destructive";
+  /** Write tools (ADR 0024): low risk pauses for approval; high risk only files a proposal. */
+  risk?: "low" | "high";
   requires: ToolContextKind | null;
   permissions: string[];
   description: string;
@@ -127,6 +145,10 @@ export interface TuningLimits {
   recursionLimit: { min: number; max: number };
   timeoutMs: { min: number; max: number };
   maxOutputTokens: { min: number; max: number };
+  modelRetries: { min: number; max: number };
+  toolRetries: { min: number; max: number };
+  maxModelCalls: { min: number; max: number };
+  maxToolCalls: { min: number; max: number };
 }
 
 export interface AiRegistry {
@@ -368,6 +390,7 @@ export function harnessInputOf(harness: AiHarness): HarnessInput {
     generalPurpose: { ...harness.generalPurpose },
     promptSuffix: harness.promptSuffix,
     toolDescriptionOverrides: { ...harness.toolDescriptionOverrides },
+    analysis: harness.analysis === true,
   };
 }
 

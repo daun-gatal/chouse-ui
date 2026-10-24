@@ -44,8 +44,8 @@ describe("capability registry", () => {
     expect(getCapability("nope")).toBeUndefined();
   });
 
-  it("exposes all 27 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(28);
+  it("exposes all 29 capabilities", () => {
+    expect(CAPABILITY_IDS).toHaveLength(29);
     expect(CAPABILITY_IDS).toContain("explain-incident");
     expect(CAPABILITY_IDS).toContain("compile-watcher");
     expect(CAPABILITY_IDS).toContain("draft-table-context");
@@ -270,12 +270,11 @@ describe("structured-output schema compatibility", () => {
       const options: z.ZodTypeAny[] = schema.options;
       return options.flatMap((option, index) => unsafeOptionalFields(option, `${path}|${index}`, seen));
     }
-    if (schema instanceof z.ZodEffects) return unsafeOptionalFields(schema.innerType(), path, seen);
-    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+    if (schema instanceof z.ZodPipe) return unsafeOptionalFields(schema.in, path, seen);
+    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodDefault) {
       return unsafeOptionalFields(schema.unwrap(), path, seen);
     }
-    if (schema instanceof z.ZodDefault) return unsafeOptionalFields(schema.removeDefault(), path, seen);
-    if (schema instanceof z.ZodRecord) return unsafeOptionalFields(schema.valueSchema, `${path}{}`, seen);
+    if (schema instanceof z.ZodRecord) return unsafeOptionalFields(schema.valueType, `${path}{}`, seen);
     return [];
   }
 

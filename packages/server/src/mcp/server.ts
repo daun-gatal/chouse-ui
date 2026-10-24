@@ -106,16 +106,24 @@ export interface McpToolCatalogEntry {
 interface ZodLike {
   description?: string;
   isOptional?: () => boolean;
-  _def?: { typeName?: string; innerType?: ZodLike; values?: unknown };
+  _def?: { type?: string; innerType?: ZodLike; entries?: Record<string, unknown> };
 }
 
+const WRAPPER_TYPES = new Set(["optional", "default", "prefault", "nullable"]);
+
 function zodTypeName(schema: ZodLike): string {
-  const typeName = schema._def?.typeName ?? "";
-  if ((typeName === "ZodOptional" || typeName === "ZodDefault" || typeName === "ZodNullable") && schema._def?.innerType) {
-    return zodTypeName(schema._def.innerType);
-  }
-  if (typeName === "ZodEnum" && Array.isArray(schema._def?.values)) return schema._def.values.join(" | ");
-  return typeName.replace(/^Zod/, "").toLowerCase() || "unknown";
+  const type = schema._def?.type ?? "";
+  if (WRAPPER_TYPES.has(type) && schema._def?.innerType) return zodTypeName(schema._def.innerType);
+  if (type === "enum" && schema._def?.entries) return Object.values(schema._def.entries).join(" | ");
+  return type || "unknown";
+}
+
+// Zod 4 keeps .describe() on the schema it was called on, so a description set
+// before .optional() or .default() lives on the wrapped schema.
+function zodDescription(schema: ZodLike): string | null {
+  if (schema.description) return schema.description;
+  const inner = WRAPPER_TYPES.has(schema._def?.type ?? "") ? schema._def?.innerType : undefined;
+  return inner ? zodDescription(inner) : null;
 }
 
 /** Input parameters of a tool as plain data for the catalog. */
@@ -126,7 +134,7 @@ export function toolParameters(tool: Pick<ChouseToolRegistration, "inputSchema">
       name,
       type: zodTypeName(zod),
       required: !(zod.isOptional?.() ?? false),
-      description: zod.description ?? null,
+      description: zodDescription(zod),
     };
   });
 }

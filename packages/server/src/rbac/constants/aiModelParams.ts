@@ -13,6 +13,8 @@
 import type { ProviderType } from './aiProviders';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+export const INPUT_MODALITIES = ['image', 'pdf'] as const;
+export type InputModality = (typeof INPUT_MODALITIES)[number];
 export type Verbosity = 'low' | 'medium' | 'high';
 export const STRUCTURED_OUTPUT_POLICIES = ['auto', 'native', 'tool', 'json', 'plain'] as const;
 export type StructuredOutputPolicy = (typeof STRUCTURED_OUTPUT_POLICIES)[number];
@@ -84,6 +86,11 @@ export interface AiModelParams {
    * when LangChain's model profile does not know the model (see modelProfile.ts).
    */
   contextWindow?: number;
+  /**
+   * Attachments the chat may send to this model besides text (ADR 0024):
+   * images and PDFs. Absent = text only.
+   */
+  inputModalities?: InputModality[];
 
   // — Escape hatch —
   /**
@@ -100,6 +107,7 @@ const ENGINE_KEYS: readonly AiModelParamKey[] = [
   'runTimeoutMs',
   'structuredOutputPolicy',
   'contextWindow',
+  'inputModalities',
 ];
 
 const COMMON_KEYS: readonly AiModelParamKey[] = [
@@ -253,6 +261,13 @@ export function validateAiModelParams(params: AiModelParams, providerType: Provi
   if (params.structuredOutputPolicy !== undefined
       && !isStructuredOutputPolicy(params.structuredOutputPolicy)) {
     errors.push(`'structuredOutputPolicy' must be one of: ${STRUCTURED_OUTPUT_POLICIES.join(', ')}`);
+  }
+
+  if (params.inputModalities !== undefined) {
+    const values: unknown = params.inputModalities;
+    if (!Array.isArray(values) || values.some((v) => !INPUT_MODALITIES.some((m) => m === v))) {
+      errors.push(`'inputModalities' must list only: ${INPUT_MODALITIES.join(', ')}`);
+    }
   }
 
   if (isFiniteNumber(params.maxTokens) && isFiniteNumber(params.contextWindow) && params.maxTokens >= params.contextWindow) {

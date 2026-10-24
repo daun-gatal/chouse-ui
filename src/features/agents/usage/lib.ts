@@ -204,3 +204,41 @@ export const OPEN_CHAT_THREAD_EVENT = "chouse:open-chat-thread";
 export function openChatThread(threadId: string): void {
   window.dispatchEvent(new CustomEvent<{ threadId: string }>(OPEN_CHAT_THREAD_EVENT, { detail: { threadId } }));
 }
+
+// ============================================
+// Budgets (ADR 0024)
+// ============================================
+
+/** How much of a budget its spend uses, 0–1+, by whichever limit is closer. */
+export function budgetUsedShare(budget: { limitTokens: number | null; limitCostUsd: number | null; spend: { tokens: number; costUsd: number } }): number {
+  const tokens = budget.limitTokens ? budget.spend.tokens / budget.limitTokens : 0;
+  const cost = budget.limitCostUsd ? budget.spend.costUsd / budget.limitCostUsd : 0;
+  return Math.max(tokens, cost);
+}
+
+/** "Chat · each user · per day", for the budget list. */
+export function budgetScopeLabel(budget: { featureId: string | null; appliesTo: "all" | "each_user" | "user"; period: "day" | "month" }, userName?: string | null): string {
+  const feature = budget.featureId ? featureLabel(budget.featureId) : "All AI";
+  const who = budget.appliesTo === "all" ? "everyone together" : budget.appliesTo === "each_user" ? "each user" : (userName ?? "one user");
+  return `${feature} · ${who} · per ${budget.period}`;
+}
+
+/** "100k tokens", "$5.00", or both. */
+export function budgetLimitLabel(budget: { limitTokens: number | null; limitCostUsd: number | null }): string {
+  const parts: string[] = [];
+  if (budget.limitTokens !== null) parts.push(`${formatTokens(budget.limitTokens)} tokens`);
+  if (budget.limitCostUsd !== null) parts.push(formatUsd(budget.limitCostUsd));
+  return parts.join(" or ");
+}
+
+/** What blocks saving a budget, in the order the form reads; empty when it can be saved. */
+export function budgetFormProblems(input: { name: string; limitTokens: number | null; limitCostUsd: number | null; appliesTo: string; userId: string | null; onExhaust: string; fallbackModelConfigId: string | null }): string[] {
+  const problems: string[] = [];
+  if (!input.name.trim()) problems.push("Give the budget a name.");
+  if (input.limitTokens === null && input.limitCostUsd === null) problems.push("Set a token limit, a cost limit or both.");
+  if (input.limitTokens !== null && input.limitTokens <= 0) problems.push("The token limit must be above 0.");
+  if (input.limitCostUsd !== null && input.limitCostUsd <= 0) problems.push("The cost limit must be above $0.");
+  if (input.appliesTo === "user" && !input.userId) problems.push("Pick the user this budget applies to.");
+  if (input.onExhaust === "fallback" && !input.fallbackModelConfigId) problems.push("Pick the model to switch to.");
+  return problems;
+}

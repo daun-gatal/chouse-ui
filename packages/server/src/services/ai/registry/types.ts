@@ -35,6 +35,8 @@ export interface HarnessDef {
   /** Appended to the agent's rendered system prompt (profile `systemPromptSuffix`). */
   promptSuffix: string | null;
   toolDescriptionOverrides: Record<string, string>;
+  /** ADR 0024 phase 5: give its agents `js_eval`, the analysis sandbox. Off unless set. */
+  analysis?: boolean;
   isSystem: boolean;
   seedHash: string | null;
   customized: boolean;
@@ -50,6 +52,26 @@ export interface AgentTuning {
   recursionLimit?: number | null;
   timeoutMs?: number | null;
   maxOutputTokens?: number | null;
+  /** ADR 0024: model used when the agent's own model fails (modelFallbackMiddleware). */
+  fallbackModelConfigId?: string | null;
+  /** Retries of a failed model call; null = none. */
+  modelRetries?: number | null;
+  /** Retries of a tool call that failed with a transient error; null = none. */
+  toolRetries?: number | null;
+  /** Cap on model calls per run; null = no cap beyond the step budget. */
+  maxModelCalls?: number | null;
+  /** Cap on tool calls per run; null = no cap beyond the step budget. */
+  maxToolCalls?: number | null;
+  /** Provider prompt caching (Anthropic, Bedrock); on unless turned off. */
+  promptCaching?: boolean;
+  /** Clear old tool results once the context grows (contextEditingMiddleware). */
+  clearOldToolResults?: boolean;
+  /** Subagent ids that inherit the parent's conversation (mode "fork"). */
+  forkedSubagents?: string[];
+  /** ADR 0024 phase 3: show the user's and the connection's memories, and offer `remember` in chat. */
+  memory?: boolean;
+  /** ADR 0024 phase 6: share of eval cases (0–1) a draft must pass before it can be saved; null = no gate. */
+  evalThreshold?: number | null;
 }
 
 export interface AgentSkillLink {

@@ -27,7 +27,7 @@ function registry(drafting = true): AiRegistry {
     tools: [{ name: "list_tables", title: "List tables", domain: "clickhouse", category: "schema", access: "read", requires: "session", permissions: [], description: "List tables" }],
     builtinTools: [],
     contexts: ["session", "fleet", "userApi"],
-    limits: { stepBudget: { min: 1, max: 100 }, recursionLimit: { min: 8, max: 1000 }, timeoutMs: { min: 5000, max: 1800000 }, maxOutputTokens: { min: 256, max: 200000 } },
+    limits: { stepBudget: { min: 1, max: 100 }, recursionLimit: { min: 8, max: 1000 }, timeoutMs: { min: 5000, max: 1800000 }, maxOutputTokens: { min: 256, max: 200000 }, modelRetries: { min: 0, max: 5 }, toolRetries: { min: 0, max: 5 }, maxModelCalls: { min: 1, max: 500 }, maxToolCalls: { min: 1, max: 500 } },
     problems: [],
     drafting: { agent: drafting, harness: drafting, skill: drafting },
   };

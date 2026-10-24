@@ -36,6 +36,15 @@ export function ContextBadge({ kind }: { kind: ToolContextKind }): ReactElement 
   );
 }
 
+/** Write tools (ADR 0024): what happens before one runs. */
+export function ApprovalBadge({ risk }: { risk: "low" | "high" | undefined }): ReactElement {
+  return risk === "high" ? (
+    <span title="Only files a proposal; approvers decide in Fixes" className="rounded-xs border border-red-400/40 px-1.5 py-0.5 font-mono text-[10px] text-red-400">proposal only</span>
+  ) : (
+    <span title="A person approves, edits or rejects every call: in the chat, or in AI Governance › Approvals for runs with nobody there" className="rounded-xs border border-amber-400/40 px-1.5 py-0.5 font-mono text-[10px] text-amber-500">approval required</span>
+  );
+}
+
 export function Field({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }): ReactElement {
   return (
     <div className="space-y-1.5">

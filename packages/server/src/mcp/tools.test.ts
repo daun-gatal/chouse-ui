@@ -18,6 +18,7 @@ mock.module("./guardrails", () => ({ guardMcpResult: async (_tool: string, resul
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { z } from "zod";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types";
@@ -347,6 +348,17 @@ describe("tool catalog", () => {
       { name: "table", type: "string", required: true, description: "Table name" },
       { name: "limit", type: "number", required: false, description: "Rows to sample (max 20)" },
       { name: "connection_id", type: "string", required: false, description: "Connection id (defaults to the request/header connection)" },
+    ]);
+  });
+
+  it("reads enums and descriptions set before .optional() or .default()", () => {
+    const inputSchema = {
+      mode: z.enum(["fast", "full"]).describe("Scan mode").optional(),
+      limit: z.number().describe("Max rows").default(10),
+    };
+    expect(toolParameters({ inputSchema })).toEqual([
+      { name: "mode", type: "fast | full", required: false, description: "Scan mode" },
+      { name: "limit", type: "number", required: false, description: "Max rows" },
     ]);
   });
 });

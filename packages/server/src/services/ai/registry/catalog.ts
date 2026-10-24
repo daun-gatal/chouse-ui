@@ -20,6 +20,7 @@ import { InProcessApiClient } from "./inProcessApi";
 import { recordChouseSource } from "../usage";
 import { ACTION_STATUSES } from "../../remediation/store";
 import { summarizeRegistry, type RegistryPayload } from "./summary";
+import { ACTION_TOOLS } from "../actions/tools";
 import type { ToolContextKind } from "./types";
 
 export type ToolDomain = "clickhouse" | "chouse";
@@ -38,6 +39,11 @@ export interface CatalogTool {
   domain: ToolDomain;
   category: string;
   access: ToolAccess;
+  /**
+   * Write tools only (ADR 0024): `low` pauses a chat for the user's approval,
+   * `high` only files a proposal that the remediation queue decides.
+   */
+  risk?: "low" | "high";
   /** Run context the tool needs; null when it needs nothing. */
   requires: ToolContextKind | null;
   /**
@@ -644,6 +650,7 @@ export const TOOL_CATALOG: readonly CatalogTool[] = [
   queryNode,
   ...managementTools,
   ...operationsTools,
+  ...ACTION_TOOLS,
 ];
 
 const BY_NAME = new Map(TOOL_CATALOG.map((entry) => [entry.name, entry]));
@@ -679,7 +686,7 @@ export function buildGrantedTools(grants: string[], runtime: ToolRuntime): Agent
 /** Static description of every entry, for the UI (built against a placeholder context). */
 export function describeCatalog(): Array<Omit<CatalogTool, "build"> & { description: string }> {
   const placeholder: ToolRuntime = {
-    ctx: { userId: "", isAdmin: true, permissions: [], clickhouseService: {} as never, bearerToken: "placeholder" },
+    ctx: { userId: "placeholder", isAdmin: true, permissions: [], clickhouseService: {} as never, bearerToken: "placeholder", actionMode: "approve" },
     fleetNodes: [{ id: "node", name: "node" }],
   };
   return TOOL_CATALOG.map(({ build, ...entry }) => ({ ...entry, description: build(placeholder)?.description ?? "" }));

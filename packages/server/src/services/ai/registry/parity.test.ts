@@ -66,9 +66,26 @@ function ctxFor(session: boolean): AgentRunContext {
   };
 }
 
+// The fixture was captured under zod 3. Zod 4 emits draft 2020-12, spells out
+// that record keys are strings (`propertyNames`), and LangChain keeps zod's
+// Standard Schema hook on the result. None of that changes the tool contract
+// the model sees, so it is left out of the comparison on both sides.
+function comparableSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(comparableSchema);
+  if (typeof schema !== "object" || schema === null) return schema;
+  const entries = Object.entries(schema).filter(([key, value]) =>
+    key !== "$schema" && key !== "~standard"
+    && !(key === "propertyNames" && JSON.stringify(value) === '{"type":"string"}'));
+  return Object.fromEntries(entries.map(([key, value]) => [key, comparableSchema(value)]));
+}
+
+function comparableTools(tools: FixtureTool[]): FixtureTool[] {
+  return tools.map((t) => ({ ...t, schema: comparableSchema(t.schema) }));
+}
+
 function toolInfo(tools: Array<{ name: string; description: string; schema: unknown }>): FixtureTool[] {
   return tools
-    .map((t) => ({ name: t.name, description: t.description, schema: toJsonSchema(t.schema as never) }))
+    .map((t) => ({ name: t.name, description: t.description, schema: comparableSchema(toJsonSchema(t.schema as never)) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -120,7 +137,7 @@ describe("registry parity with the pre-registry capabilities", () => {
           const agent = boundAgent(snapshot, id);
           if (cap.delivery === "invoke") {
             expect(renderAgentPrompts(agent, {}, snapshot).system).toBe(c.instructions);
-            expect(toolInfo(buildGrantedTools(agent.tools, featureRuntime(ctx, cap.contexts)))).toEqual(c.tools);
+            expect(toolInfo(buildGrantedTools(agent.tools, featureRuntime(ctx, cap.contexts)))).toEqual(comparableTools(c.tools));
             return;
           }
           const variables = cap.templateVariables(c.prepared, ctx);
@@ -133,7 +150,7 @@ describe("registry parity with the pre-registry capabilities", () => {
             expect(cap.fallbackMessages).toBeUndefined();
           }
           const runtime = featureRuntime(ctx, cap.contexts, cap.fleetNodes?.(c.prepared));
-          expect(toolInfo(buildGrantedTools(agent.tools, runtime))).toEqual(c.tools);
+          expect(toolInfo(buildGrantedTools(agent.tools, runtime))).toEqual(comparableTools(c.tools));
         });
       }
     });

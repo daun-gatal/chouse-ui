@@ -37,7 +37,7 @@ export type SnapshotResult =
 const windowSchema = z.object({ from: z.number(), to: z.number(), intervalSeconds: z.number() });
 const panelDataSchema = z.object({
   columns: z.array(z.object({ name: z.string(), type: z.string() })),
-  rows: z.array(z.record(z.unknown())),
+  rows: z.array(z.record(z.string(), z.unknown())),
   elapsedMs: z.number(),
   readRows: z.number(),
   readBytes: z.number(),
@@ -53,7 +53,7 @@ const snapshotResultSchema = z.union([
   z.object({ ok: z.literal(true), kind: z.literal("fleet"), window: windowSchema, connections: z.array(fleetEntrySchema), omitted: z.number() }),
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
-const storedResultsSchema = z.object({ values: variableValuesSchema, panels: z.record(snapshotResultSchema) });
+const storedResultsSchema = z.object({ values: variableValuesSchema, panels: z.record(z.string(), snapshotResultSchema) });
 type StoredResults = z.infer<typeof storedResultsSchema>;
 const roleIdsSchema = z.array(z.string());
 

@@ -402,8 +402,9 @@ class ApiClient {
             // Let's just throw for now to avoid complexity in this loop
           }
 
-          // Handle 429 Too Many Requests with backoff
-          if (response.status === 429 && attempt < maxRetries) {
+          // Handle 429 Too Many Requests with backoff. A used-up AI budget is
+          // not a rate limit: retrying cannot succeed before it resets.
+          if (response.status === 429 && attempt < maxRetries && data?.error?.code !== 'AI_BUDGET_EXHAUSTED') {
             const retryAfterHeader = response.headers.get('Retry-After');
             let waitTime = 1000 * Math.pow(2, attempt); // Exponential backoff: 1s, 2s, 4s
 
@@ -445,6 +446,55 @@ class ApiClient {
     }
 
     throw new ApiError('Max retries exceeded', 429, 'RATE_LIMIT_EXCEEDED', 'network');
+  }
+
+  /**
+   * Open a streaming response (server-sent events). Uses the same headers and
+   * token refresh as every other request; a non-2xx answer is read as the
+   * usual JSON error and thrown as an ApiError.
+   */
+  async stream(method: 'GET' | 'POST', path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'text/event-stream',
+        ...connectionIdentityHeaders(),
+      };
+      const rbacToken = getRbacAccessToken();
+      if (rbacToken) headers['Authorization'] = `Bearer ${rbacToken}`;
+      const response = await fetch(this.buildUrl(path), {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: 'include',
+        signal,
+      });
+      if (response.ok) return response;
+      if (response.status === 401 && attempt === 0) {
+        if (!this.isRefreshing) {
+          this.isRefreshing = true;
+          this.refreshPromise = refreshTokens().finally(() => {
+            this.isRefreshing = false;
+            this.refreshPromise = null;
+          });
+        }
+        if (await this.refreshPromise) continue;
+        clearSession();
+        clearRbacTokens();
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        throw new ApiError('Session expired', 401, 'UNAUTHORIZED', 'authentication');
+      }
+      const text = await response.text();
+      let data: ApiResponse<unknown> | undefined;
+      try {
+        data = text ? JSON.parse(text) : undefined;
+      } catch {
+        data = undefined;
+      }
+      throw new ApiError(data?.error?.message || text || 'Request failed', response.status, data?.error?.code || 'UNKNOWN_ERROR', data?.error?.category || 'unknown', data?.error?.details);
+    }
+    throw new ApiError('Session expired', 401, 'UNAUTHORIZED', 'authentication');
   }
 
   // HTTP Methods

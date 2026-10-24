@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { DH_PRIMARY } from "@/features/data-health/lib";
+import { useEvalMutations } from "@/features/agents/evals/hooks";
+import { caseFromConsole } from "@/features/agents/evals/lib";
 import { EmptyState, Mono } from "@/features/observe/ui";
 import { useAgentTest, useModelOptions } from "./hooks";
 import { compatibleAgents, formatDuration, parseJsonInput, sampleInput } from "./lib";
@@ -111,6 +113,25 @@ export function TestConsole({ registry, draft, defaultFeatureId, canManage }: {
   const [result, setResult] = useState<TestResult | null>(null);
 
   const agents = feature ? compatibleAgents(feature, registry) : [];
+  const evalMutations = useEvalMutations();
+  // The agent a saved case belongs to: the edited draft, the picked agent, or the feature's bound agent.
+  const caseAgentId = draft ? draft.agentId : agentChoice === BOUND ? feature?.agentId ?? null : agentChoice;
+
+  const saveAsCase = async (): Promise<void> => {
+    if (!result || !feature || !caseAgentId) return;
+    const testCase = result.kind === "chat"
+      ? caseFromConsole({ kind: "chat", message: message.trim(), tools: result.toolCalls.map((c) => c.name) })
+      : (() => {
+          const parsed = parseJsonInput(input);
+          return caseFromConsole({ kind: "feature", featureId: feature.id, featureTitle: feature.title, input: parsed.ok ? parsed.value as Record<string, unknown> : {}, tools: result.trace?.calls.map((c) => c.name) ?? [] });
+        })();
+    try {
+      await evalMutations.create.mutateAsync({ agentId: caseAgentId, input: testCase, source: "console" });
+      toast.success("Saved as a test case: add a rubric in the Evals tab");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not save the test case"));
+    }
+  };
 
   const chooseFeature = (id: string): void => {
     setFeatureId(id);
@@ -180,7 +201,7 @@ export function TestConsole({ registry, draft, defaultFeatureId, canManage }: {
         </Field>
       </div>
       {feature?.delivery === "invoke" ? (
-        <Field label="Message" hint="Runs as you, on your active connection. Read-only tools only.">
+        <Field label="Message" hint="Runs as you, on your active connection. Write tools only say what they would do.">
           <Textarea className={TEXTAREA_CLASS} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Who can edit connections?" />
         </Field>
       ) : (
@@ -194,7 +215,18 @@ export function TestConsole({ registry, draft, defaultFeatureId, canManage }: {
         </Button>
         {!canManage && <span className="text-[11px] text-paper-faint">Testing needs ai_agents:manage.</span>}
       </div>
-      {result && <ResultView result={result} />}
+      {result && (
+        <>
+          {canManage && caseAgentId && (
+            <div className="flex justify-end">
+              <Button variant="outline" className="h-8 rounded-xs text-[11px]" disabled={evalMutations.create.isPending} onClick={() => void saveAsCase()}>
+                <FlaskConical className="mr-1 h-3 w-3" /> Save as test case
+              </Button>
+            </div>
+          )}
+          <ResultView result={result} />
+        </>
+      )}
     </div>
   );
 }

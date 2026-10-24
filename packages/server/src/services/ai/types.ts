@@ -45,11 +45,34 @@ export interface AgentRunContext {
    * in-process as that user. Absent for background runs.
    */
   bearerToken?: string;
+  /**
+   * How write tools behave (ADR 0024 §Phase 2). `approve`: a chat run pauses
+   * for the user's approval, then the tool runs. `propose` (the default, for
+   * runs with no person in the loop): the tool only records a pending action.
+   * `simulate` (test console, evals): the tool says what it would do and
+   * records nothing.
+   */
+  actionMode?: "approve" | "propose" | "simulate";
+  /** The durable chat run this context belongs to (ADR 0024). */
+  runId?: string;
+  /** The chat thread, so an action links back to it. */
+  threadId?: string;
+  /**
+   * Background runs with no user (auto-triage): who their proposed actions
+   * are recorded for. It is not the run's user, so usage stays "background".
+   */
+  proposeAs?: string;
 }
+
+/** A content block of a chat message: text, or an attachment the model reads (ADR 0024). */
+export type AgentContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; mimeType: string; data: string }
+  | { type: "file"; mimeType: string; data: string; filename?: string };
 
 export type AgentMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | AgentContentPart[];
 };
 
 // ============================================
@@ -119,9 +142,9 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> exten
    * looser than the resulting `TInput` output type) remain assignable here —
    * only the parsed `Output` (`TInput`) is ever relied on.
    */
-  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  inputSchema: z.ZodType<TInput, unknown>;
   /** Schema the agent's final JSON must satisfy. Same `.default()` note as `inputSchema` above. */
-  outputSchema: z.ZodType<TParsed, z.ZodTypeDef, unknown>;
+  outputSchema: z.ZodType<TParsed, unknown>;
 
   /** Resolve everything the run needs before the model is called. */
   prepare(input: TInput, ctx: AgentRunContext): Promise<TPrepared> | TPrepared;

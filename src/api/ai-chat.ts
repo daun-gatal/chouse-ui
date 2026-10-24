@@ -6,6 +6,7 @@
  */
 
 import { api } from './client';
+import { readSse } from '@/lib/sse';
 
 // ============================================
 // Types
@@ -81,6 +82,8 @@ export interface AiModelSimple {
     name: string;
     provider: string;
     isDefault: boolean;
+    /** Attachments the model accepts besides text (ADR 0024). */
+    inputModalities?: Array<'image' | 'pdf'>;
 }
 
 // ============================================
@@ -177,4 +180,152 @@ export async function invokeChatMessage(
         { threadId, message, messages, modelId, agentId },
         { signal },
     );
+}
+
+// ============================================
+// Durable chat runs (ADR 0024)
+// ============================================
+
+export type ChatRunStatus = 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'cancelled';
+
+/** One tool call of a run, as it happens. */
+export interface ChatRunStep {
+    id: string;
+    name: string;
+    args: Record<string, unknown>;
+    agent?: string;
+    status: 'running' | 'done' | 'failed';
+    summary: string | null;
+    startedAt: number;
+    endedAt: number | null;
+}
+
+/** A tool call waiting for the user's approval (ADR 0024 §Phase 2). */
+export interface PendingApproval {
+    id: string;
+    toolCallId: string;
+    /** The recorded action the decision is about. */
+    actionId: string;
+    name: string;
+    /** The tool's title, e.g. "Kill a query". */
+    title: string;
+    args: Record<string, unknown>;
+    /** What will happen, in one line. */
+    description: string;
+    expiresAt: number;
+}
+
+/** The user's answer to one pending approval. */
+export type ApprovalDecision =
+    | { actionId: string; type: 'approve' }
+    | { actionId: string; type: 'edit'; args: Record<string, unknown> }
+    | { actionId: string; type: 'reject'; message?: string };
+
+export interface ChatRunAnswer {
+    messageId: string | null;
+    content: string;
+    toolCalls: ChatToolCall[];
+    chartSpecs: ChartSpec[];
+    agent: { id: string; slug: string; name: string };
+}
+
+export interface ChatRun {
+    id: string;
+    threadId: string;
+    status: ChatRunStatus;
+    steps: ChatRunStep[];
+    pending: PendingApproval[];
+    result: ChatRunAnswer | null;
+    error: string | null;
+    createdAt: number;
+}
+
+export type ChatRunEvent =
+    | { type: 'run'; run: ChatRun }
+    | { type: 'step'; step: ChatRunStep }
+    | { type: 'status'; status: ChatRunStatus; pending: PendingApproval[] }
+    | { type: 'final'; result: ChatRunAnswer }
+    | { type: 'error'; message: string; code: string; status: ChatRunStatus };
+
+/** A file sent with a chat message (base64). */
+export interface ChatAttachmentInput {
+    name: string;
+    mimeType: string;
+    data: string;
+}
+
+export interface ChatRunRequest {
+    threadId: string;
+    message: string;
+    messages?: Array<{ role: string; content: string }>;
+    modelId?: string;
+    agentId?: string | null;
+    skills?: string[];
+    attachments?: ChatAttachmentInput[];
+}
+
+const RUN_EVENT_TYPES = new Set(['run', 'step', 'status', 'final', 'error']);
+
+function isRunEvent(value: unknown): value is ChatRunEvent {
+    return Boolean(value) && typeof value === 'object' && RUN_EVENT_TYPES.has(String((value as { type?: unknown }).type));
+}
+
+async function consume(response: Response, onEvent: (event: ChatRunEvent) => void, signal?: AbortSignal): Promise<void> {
+    for await (const raw of readSse(response, signal)) {
+        if (!RUN_EVENT_TYPES.has(raw.event)) continue;
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(raw.data);
+        } catch {
+            continue;
+        }
+        if (isRunEvent(parsed)) onEvent(parsed);
+    }
+}
+
+/**
+ * Start a chat turn and stream it. Resolves when the stream ends (the run
+ * finished, paused for approval, failed or was stopped) or `signal` aborts —
+ * aborting only closes the stream; the run keeps going on the server.
+ */
+export async function streamChatRun(request: ChatRunRequest, onEvent: (event: ChatRunEvent) => void, signal?: AbortSignal): Promise<void> {
+    const response = await api.stream('POST', '/ai-chat/runs', request, signal);
+    await consume(response, onEvent, signal);
+}
+
+/** Re-attach to a run (after a refresh) and stream the rest of it. */
+export async function followChatRun(runId: string, onEvent: (event: ChatRunEvent) => void, signal?: AbortSignal): Promise<void> {
+    const response = await api.stream('GET', `/ai-chat/runs/${runId}/events`, undefined, signal);
+    await consume(response, onEvent, signal);
+}
+
+/** Answer a paused run's approvals and stream the rest of it. */
+export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; signal?: AbortSignal } = {}): Promise<void> {
+    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}) };
+    const response = await api.stream('POST', `/ai-chat/runs/${runId}/resume`, body, options.signal);
+    await consume(response, onEvent, options.signal);
+}
+
+export async function getChatRun(runId: string): Promise<ChatRun> {
+    return api.get<ChatRun>(`/ai-chat/runs/${runId}`);
+}
+
+/** Stop a run; the server finishes it as cancelled. */
+export async function cancelChatRun(runId: string): Promise<ChatRun> {
+    return api.post<ChatRun>(`/ai-chat/runs/${runId}/cancel`);
+}
+
+/** The thread's run that is still going or waiting for approval, or null. */
+export async function getActiveChatRun(threadId: string): Promise<ChatRun | null> {
+    return api.get<ChatRun | null>(`/ai-chat/threads/${threadId}/active-run`);
+}
+
+export interface ChatSkill {
+    name: string;
+    description: string;
+}
+
+/** Skills the agent reads — what the composer offers as /skill: commands. */
+export async function getChatSkills(agentId: string | null): Promise<ChatSkill[]> {
+    return api.get<ChatSkill[]>('/ai-chat/skills', { params: agentId ? { agentId } : undefined });
 }

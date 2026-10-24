@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { AiAgent, AiFeature, AiRegistry, CatalogTool, DraftResult, SectionStatus } from "@/api/aiAgents";
 import {
+  skillIncludeTools,
+  withSkillIncludeTools,
   agentOrigin,
   agentSubtree,
   agentTree,
@@ -56,7 +58,7 @@ function registry(agents: AiAgent[], features: AiFeature[] = []): AiRegistry {
     version: 1, features, agents,
     harnesses: [{ id: "h-focused", slug: "focused", name: "Focused", description: "", excludedTools: [], generalPurpose: { enabled: false }, promptSuffix: null, toolDescriptionOverrides: {}, ...meta }],
     skills: [], tools, builtinTools: [], contexts: ["session", "fleet", "userApi"],
-    limits: { stepBudget: { min: 1, max: 100 }, recursionLimit: { min: 8, max: 1000 }, timeoutMs: { min: 5000, max: 1800000 }, maxOutputTokens: { min: 256, max: 200000 } },
+    limits: { stepBudget: { min: 1, max: 100 }, recursionLimit: { min: 8, max: 1000 }, timeoutMs: { min: 5000, max: 1800000 }, maxOutputTokens: { min: 256, max: 200000 }, modelRetries: { min: 0, max: 5 }, toolRetries: { min: 0, max: 5 }, maxModelCalls: { min: 1, max: 500 }, maxToolCalls: { min: 1, max: 500 } },
     problems: [],
     drafting: { agent: true, harness: true, skill: true },
   };
@@ -112,6 +114,13 @@ describe("assistant lib", () => {
 
   it("groups tools by domain and category", () => {
     expect(groupTools(tools).map((g) => g.label)).toEqual(["CHouse (read-only) · access", "ClickHouse · fleet", "ClickHouse · schema"]);
+  });
+
+  it("keeps write tools out of the read-only groups", () => {
+    const write = { ...tools[0], name: "kill_query", category: "access", access: "write" as const, risk: "low" as const };
+    const groups = groupTools([...tools, write]);
+    expect(groups.map((g) => g.label)).toEqual(["Actions (approval required) · access", "CHouse (read-only) · access", "ClickHouse · fleet", "ClickHouse · schema"]);
+    expect(groups.find((g) => g.label === "CHouse (read-only) · access")?.tools.some((t) => t.access !== "read")).toBe(false);
   });
 
   it("makes slugs and keeps them unique", () => {
@@ -195,5 +204,29 @@ describe("assistant lib", () => {
       ]);
       expect(draftableFeatures(reg).map((f) => f.id)).toEqual(["optimize-query"]);
     });
+  });
+});
+
+describe("skill tools (ADR 0024)", () => {
+  const md = "---\nname: tuning\ndescription: Tune\nmetadata:\n  author: me\n  include_tools: explain_query analyze_query\n---\nBody\n";
+
+  it("reads, replaces and removes metadata.include_tools without touching the rest", () => {
+    expect(skillIncludeTools(md)).toEqual(["explain_query", "analyze_query"]);
+    const replaced = withSkillIncludeTools(md, ["get_slow_queries"]);
+    expect(skillIncludeTools(replaced)).toEqual(["get_slow_queries"]);
+    expect(replaced).toContain("  author: me");
+    expect(replaced.endsWith("Body\n")).toBe(true);
+    const cleared = withSkillIncludeTools(md, []);
+    expect(cleared).not.toContain("include_tools");
+    expect(cleared).toContain("metadata:\n  author: me");
+  });
+
+  it("adds a metadata block when there is none and leaves files without front matter alone", () => {
+    const plain = "---\nname: x\ndescription: y\n---\nBody\n";
+    const added = withSkillIncludeTools(plain, ["explain_query", "explain_query"]);
+    expect(skillIncludeTools(added)).toEqual(["explain_query"]);
+    expect(withSkillIncludeTools(added, [])).toBe(plain);
+    expect(withSkillIncludeTools("no front matter", ["x"])).toBe("no front matter");
+    expect(skillIncludeTools("---\nname: x\nmetadata:\n  a: b\ninclude_tools: z\n---\n")).toEqual([]);
   });
 });

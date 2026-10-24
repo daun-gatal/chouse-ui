@@ -45,6 +45,8 @@ export interface AiUsageSummary {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** What prompt caching saved (ADR 0024); null when no cached model has a cache-read price. */
+  cacheSavingsUsd: number | null;
   /** Sum over priced calls; null when nothing in the window was priced. */
   costUsd: number | null;
   unpricedCalls: number;
@@ -235,4 +237,64 @@ export function listAiUsageRequests(options: { days: number; q?: string; origin?
 
 export function getAiUsageRequest(id: string): Promise<AiUsageRequestDetail> {
   return api.get<AiUsageRequestDetail>(`/ai-usage/requests/${encodeURIComponent(id)}`);
+}
+
+// ============================================
+// Budgets (ADR 0024)
+// ============================================
+
+export const BUDGET_SCOPES = ["all", "each_user", "user"] as const;
+export type BudgetScope = (typeof BUDGET_SCOPES)[number];
+export type BudgetPeriod = "day" | "month";
+export type BudgetAction = "stop" | "fallback";
+
+export interface AiBudgetInput {
+  name: string;
+  /** Feature the budget caps; null = every AI feature. */
+  featureId: string | null;
+  appliesTo: BudgetScope;
+  userId: string | null;
+  period: BudgetPeriod;
+  limitTokens: number | null;
+  limitCostUsd: number | null;
+  onExhaust: BudgetAction;
+  fallbackModelConfigId: string | null;
+  enabled: boolean;
+}
+
+export interface AiBudget extends AiBudgetInput {
+  id: string;
+  createdBy: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AiBudgetStatus extends AiBudget {
+  /** This period's spend; for per-user budgets, the highest single user's. */
+  spend: { tokens: number; costUsd: number };
+  exhausted: boolean;
+  /** Per-user budgets: how many users have used theirs up. */
+  exhaustedUsers: number;
+  resetsAt: number;
+}
+
+export interface AiBudgetList {
+  canManage: boolean;
+  budgets: AiBudgetStatus[];
+}
+
+export function listAiBudgets(): Promise<AiBudgetList> {
+  return api.get<AiBudgetList>("/ai-usage/budgets");
+}
+
+export function createAiBudget(input: AiBudgetInput): Promise<AiBudget> {
+  return api.post<AiBudget>("/ai-usage/budgets", input);
+}
+
+export function updateAiBudget(id: string, input: AiBudgetInput): Promise<AiBudget> {
+  return api.put<AiBudget>(`/ai-usage/budgets/${encodeURIComponent(id)}`, input);
+}
+
+export async function deleteAiBudget(id: string): Promise<void> {
+  await api.delete(`/ai-usage/budgets/${encodeURIComponent(id)}`);
 }

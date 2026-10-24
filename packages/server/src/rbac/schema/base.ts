@@ -134,6 +134,8 @@ export const PERMISSIONS = {
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
   AI_CHAT: 'ai:chat',
+  // ADR 0024: let an AI agent run an action the user approved (kill a query, create a job…).
+  AI_ACT: 'ai:act',
 
   // AI Models Management
   AI_MODELS_VIEW: 'ai_models:view',
@@ -153,6 +155,12 @@ export const PERMISSIONS = {
   // AI guardrails (ADR 0022): what passes through every AI run and MCP tool result.
   AI_GUARDRAILS_VIEW: 'ai_guardrails:view',
   AI_GUARDRAILS_MANAGE: 'ai_guardrails:manage',
+
+  // AI budgets (ADR 0024): token and cost caps per feature and per user.
+  AI_BUDGETS_MANAGE: 'ai_budgets:manage',
+
+  // AI memory (ADR 0024): approve, edit and delete team memories about a connection.
+  AI_MEMORIES_MANAGE: 'ai_memories:manage',
 
   // SSO Management
   SSO_VIEW: 'sso:view',
@@ -295,6 +303,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.LIVE_QUERIES_KILL_ALL,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_ACT,
     PERMISSIONS.AI_MODELS_VIEW,
     PERMISSIONS.AI_MODELS_CREATE,
     PERMISSIONS.AI_MODELS_UPDATE,
@@ -304,6 +313,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_USAGE_VIEW,
     PERMISSIONS.AI_GUARDRAILS_VIEW,
     PERMISSIONS.AI_GUARDRAILS_MANAGE,
+    PERMISSIONS.AI_BUDGETS_MANAGE,
+    PERMISSIONS.AI_MEMORIES_MANAGE,
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
@@ -350,6 +361,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_ACT,
     ...OBSERVE_VIEW_PERMISSIONS,
     PERMISSIONS.OBSERVE_EDIT,
     PERMISSIONS.CONTEXT_EDIT,
@@ -645,6 +657,31 @@ export const AUDIT_ACTIONS = {
   AI_GUARDRAIL_CREATE: 'ai_guardrail.create',
   AI_GUARDRAIL_UPDATE: 'ai_guardrail.update',
   AI_GUARDRAIL_DELETE: 'ai_guardrail.delete',
+
+  // AI budgets (ADR 0024)
+  AI_BUDGET_CREATE: 'ai_budget.create',
+  AI_BUDGET_UPDATE: 'ai_budget.update',
+  AI_BUDGET_DELETE: 'ai_budget.delete',
+
+  // Approved actions (ADR 0024): a person deciding what an AI agent asked to do.
+  AI_ACTION_APPROVE: 'ai_action.approve',
+  AI_ACTION_REJECT: 'ai_action.reject',
+
+  // AI memory (ADR 0024): notes agents keep about a user or a connection.
+  AI_MEMORY_CREATE: 'ai_memory.create',
+  AI_MEMORY_UPDATE: 'ai_memory.update',
+  AI_MEMORY_DELETE: 'ai_memory.delete',
+  AI_MEMORY_APPROVE: 'ai_memory.approve',
+  AI_MEMORY_REJECT: 'ai_memory.reject',
+
+  // Auto-triage (ADR 0024): turning a trigger on or off, or changing its limits.
+  AI_TRIAGE_UPDATE: 'ai_triage.update',
+
+  // Agent evals (ADR 0024): the test cases that gate saving an agent, and runs of them.
+  AI_EVAL_CASE_CREATE: 'ai_eval.case_create',
+  AI_EVAL_CASE_UPDATE: 'ai_eval.case_update',
+  AI_EVAL_CASE_DELETE: 'ai_eval.case_delete',
+  AI_EVAL_RUN: 'ai_eval.run',
 
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',

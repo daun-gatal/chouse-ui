@@ -124,7 +124,8 @@ describe("AI agents API", () => {
     expect(agent.tools).toEqual(["list_tables"]);
 
     const harness: AiHarness = { slug: "h", name: "H", description: "", excludedTools: ["task"], generalPurpose: { enabled: false }, promptSuffix: "s", toolDescriptionOverrides: { ls: "l" }, ...meta };
-    expect(harnessInputOf(harness)).toEqual({ slug: "h", name: "H", description: "", excludedTools: ["task"], generalPurpose: { enabled: false }, promptSuffix: "s", toolDescriptionOverrides: { ls: "l" } });
+    expect(harnessInputOf(harness)).toEqual({ slug: "h", name: "H", description: "", excludedTools: ["task"], generalPurpose: { enabled: false }, promptSuffix: "s", toolDescriptionOverrides: { ls: "l" }, analysis: false });
+    expect(harnessInputOf({ ...harness, analysis: true }).analysis).toBe(true);
 
     const skill: AiSkill = { path: "a/b", skillMd: "md", files: { "r.md": "r" }, enabled: true, name: "b", description: "d", ...meta };
     expect(skillInputOf(skill)).toEqual({ path: "a/b", skillMd: "md", files: { "r.md": "r" }, enabled: true });

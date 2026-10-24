@@ -1,6 +1,6 @@
 /** Queries behind AI Governance › AI activity (ADR 0020). */
 
-import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 
 import * as usage from "@/api/aiUsage";
 
@@ -14,6 +14,7 @@ export const aiUsageKeys = {
   requests: (days: number, q: string, origin: usage.AiRequestOrigin | null, offset: number, limit: number) =>
     [...aiUsageKeys.all, "requests", days, q, origin, offset, limit] as const,
   request: (id: string) => [...aiUsageKeys.all, "request", id] as const,
+  budgets: () => [...aiUsageKeys.all, "budgets"] as const,
 };
 
 export function useAiUsageSummary(days: number): UseQueryResult<usage.AiUsageSummary> {
@@ -51,4 +52,27 @@ export function useAiUsageRequests(
 
 export function useAiUsageRequest(id: string | null): UseQueryResult<usage.AiUsageRequestDetail> {
   return useQuery({ queryKey: aiUsageKeys.request(id ?? ""), queryFn: () => usage.getAiUsageRequest(id ?? ""), enabled: Boolean(id) });
+}
+
+export function useAiBudgets(): UseQueryResult<usage.AiBudgetList> {
+  return useQuery({ queryKey: aiUsageKeys.budgets(), queryFn: usage.listAiBudgets, refetchInterval: REFRESH_MS, retry: false });
+}
+
+type SaveBudget = { id: string | null; input: usage.AiBudgetInput };
+
+/** Create (id null) or update a budget, then refresh the list. */
+export function useSaveAiBudget(): UseMutationResult<usage.AiBudget, Error, SaveBudget> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: SaveBudget) => (id ? usage.updateAiBudget(id, input) : usage.createAiBudget(input)),
+    onSuccess: () => client.invalidateQueries({ queryKey: aiUsageKeys.budgets() }),
+  });
+}
+
+export function useDeleteAiBudget(): UseMutationResult<void, Error, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => usage.deleteAiBudget(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: aiUsageKeys.budgets() }),
+  });
 }
