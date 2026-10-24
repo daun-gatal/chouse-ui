@@ -8,7 +8,6 @@
  */
 
 import { useMemo, useState, type ReactElement } from "react";
-import { toast } from "sonner";
 import { Check, ClipboardCheck, MessageSquare, X } from "lucide-react";
 
 import type { AiAction, AiActionStatus } from "@/api/aiActions";
@@ -20,52 +19,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { formatAgo } from "@/features/observe/lib";
 import { DataTable, EmptyState, ErrorState, LoadingGrid, Panel, StatusPill } from "@/features/observe/ui";
-import { errorMessage, Field, INPUT_CLASS, TEXTAREA_CLASS } from "@/features/agents/assistant/shared";
+import { Field, INPUT_CLASS, TEXTAREA_CLASS } from "@/features/agents/assistant/shared";
 import { openChatThread } from "@/features/agents/usage/lib";
 import { argsToText, expiresIn, parseArgsText } from "@/lib/aiApprovals";
-import { useAiActions, useApprovalMutations } from "./hooks";
+import { useAiActions, useDecide, type Decide } from "./hooks";
 import { chatHint, effectiveStatus, sourceLabel, STATUS_FILTERS, STATUS_LABEL, STATUS_TONE, tierLabel, TIER_TONE } from "./lib";
 
 type Filter = AiActionStatus | "all";
 
-/** Runs an approval and says what happened: a finished action can still have failed downstream. */
-function useDecide(): { approve: (action: AiAction, args?: Record<string, unknown>) => Promise<boolean>; reject: (action: AiAction, message?: string) => Promise<boolean>; busyId: string | null } {
-  const { approve, reject } = useApprovalMutations();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  return {
-    busyId,
-    approve: async (action, args) => {
-      setBusyId(action.id);
-      try {
-        const done = await approve.mutateAsync({ id: action.id, args });
-        if (done.status === "failed") toast.error(`${done.title} failed: ${done.error ?? "unknown error"}`);
-        else toast.success(`${done.title}: done`);
-        return true;
-      } catch (error) {
-        toast.error(errorMessage(error, "Could not approve the action"));
-        return false;
-      } finally {
-        setBusyId(null);
-      }
-    },
-    reject: async (action, message) => {
-      setBusyId(action.id);
-      try {
-        await reject.mutateAsync({ id: action.id, message });
-        toast.success(`${action.title}: rejected`);
-        return true;
-      } catch (error) {
-        toast.error(errorMessage(error, "Could not reject the action"));
-        return false;
-      } finally {
-        setBusyId(null);
-      }
-    },
-  };
-}
-
 /** Keyed by the action, so a list refetch never wipes an edit in progress. */
-function ReviewSheet({ action, onClose, decide }: { action: AiAction; onClose: () => void; decide: ReturnType<typeof useDecide> }): ReactElement {
+function ReviewSheet({ action, onClose, decide }: { action: AiAction; onClose: () => void; decide: Decide }): ReactElement {
   const [draft, setDraft] = useState(() => argsToText(action.args));
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);

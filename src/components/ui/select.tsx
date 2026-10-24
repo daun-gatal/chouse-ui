@@ -3,6 +3,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useLayerProps } from "@/lib/layers"
 import { useOnboardingSurfaceRef } from "@/lib/onboardingSurfaces"
 
 const Select = SelectPrimitive.Root
@@ -70,6 +71,7 @@ const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -84,6 +86,7 @@ const SelectContent = React.forwardRef<
         )}
         position={position}
         {...props}
+        {...layer}
         data-onboarding-surface="select"
       >
         <SelectScrollUpButton />

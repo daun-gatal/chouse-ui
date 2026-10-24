@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useLayerProps, useLayerStyle } from "@/lib/layers"
 import { useOnboardingSurfaceDismiss } from "@/lib/onboardingSurfaces"
 
 const Dialog = DialogPrimitive.Root
@@ -29,6 +30,7 @@ const DialogOverlay = React.forwardRef<
       className
     )}
     {...props}
+    style={useLayerStyle(props.style)}
     data-onboarding-surface-overlay="dialog"
   />
 ))
@@ -38,6 +40,7 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
 >(({ className, children, onboardingSurfaceDismissible = true, overlayClassName, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const closeRef = React.useRef<HTMLButtonElement>(null)
   useOnboardingSurfaceDismiss(closeRef, onboardingSurfaceDismissible)
 
@@ -51,6 +54,7 @@ const DialogContent = React.forwardRef<
           className
         )}
         {...props}
+        {...layer}
         data-onboarding-surface="dialog"
       >
         {children}

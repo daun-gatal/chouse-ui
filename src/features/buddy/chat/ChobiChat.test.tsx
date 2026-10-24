@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/api/client";
 
-import AiChatBubble from "./AiChatBubble";
+import { useChobiStore } from "@/stores/chobi";
+
+import { Chobi } from "../Chobi";
 
 const mocks = vi.hoisted(() => ({
   activeConnectionId: "connection-a" as string | null,
   breakpoint: "desktop" as "mobile" | "tablet" | "desktop",
   createThread: vi.fn(),
-  getPreferences: vi.fn(),
   getThread: vi.fn(),
   streamChatRun: vi.fn(),
   followChatRun: vi.fn(),
@@ -99,15 +100,11 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }));
 
-vi.mock("@/api/rbac", () => ({
-  rbacUserPreferencesApi: {
-    getPreferences: mocks.getPreferences,
-    updatePreferences: vi.fn(),
-  },
-}));
-
-vi.mock("@/hooks/useDeviceType", () => ({
-  useDeviceType: () => "laptop",
+vi.mock("@/features/agents/approvals/hooks", () => ({
+  usePendingAiActionCount: () => ({ data: 0 }),
+  useAiInbox: () => ({ data: [], isLoading: false, isError: false }),
+  useAiActivity: () => ({ data: [], isLoading: false, isError: false }),
+  useDecide: () => ({ approve: vi.fn(), reject: vi.fn(), undo: vi.fn(), busyId: null }),
 }));
 
 vi.mock("@/hooks/useWindowSize", () => ({
@@ -126,7 +123,7 @@ vi.mock("@/lib/onboardingSurfaces", () => ({
   useOnboardingSurfaceDismissAction: vi.fn(),
 }));
 
-describe("AiChatBubble", () => {
+describe("Chobi chat", () => {
   beforeEach(() => {
     HTMLElement.prototype.scrollTo = vi.fn();
     mocks.activeConnectionId = "connection-a";
@@ -140,8 +137,7 @@ describe("AiChatBubble", () => {
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
-    mocks.getPreferences.mockReset();
-    mocks.getPreferences.mockResolvedValue({});
+    useChobiStore.setState({ open: false, size: "bubble", tab: "chat", side: "right", y: 0.7, busy: false, pendingApprovals: 0, ask: null });
     mocks.getThread.mockReset();
     mocks.streamChatRun.mockReset();
     mocks.streamChatRun.mockImplementation(async (_request: unknown, onEvent: (event: unknown) => void) => {
@@ -163,14 +159,14 @@ describe("AiChatBubble", () => {
   });
 
   it("creates a new thread for the connection selected after mount", async () => {
-    const { rerender } = render(<AiChatBubble />);
+    const { rerender } = render(<Chobi />);
 
-    await screen.findByRole("button", { name: /open ai chat/i });
+    await screen.findByRole("button", { name: /open chobi/i });
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<AiChatBubble />);
+    rerender(<Chobi />);
 
-    fireEvent.click(screen.getByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
 
     await waitFor(() => {
@@ -180,8 +176,8 @@ describe("AiChatBubble", () => {
 
   it("opens a thread when AI activity asks for it", async () => {
     mocks.getThread.mockResolvedValue({ id: "thread-9", title: "Orders", agentId: null, messages: [{ id: "m1", role: "user", content: "How many orders?", createdAt: new Date().toISOString() }] });
-    render(<AiChatBubble />);
-    await screen.findByRole("button", { name: /open ai chat/i });
+    render(<Chobi />);
+    await screen.findByRole("button", { name: /open chobi/i });
 
     act(() => {
       window.dispatchEvent(new CustomEvent("chouse:open-chat-thread", { detail: { threadId: "thread-9" } }));
@@ -190,8 +186,9 @@ describe("AiChatBubble", () => {
 
     await waitFor(() => expect(mocks.getThread).toHaveBeenCalledWith("thread-9"));
     expect(mocks.getThread).toHaveBeenCalledTimes(1);
-    // The bubble opened on its own: its close control is showing.
-    expect(await screen.findByRole("button", { name: "Close chat" })).toBeTruthy();
+    // Chobi opened on its own, on the Chat tab.
+    expect(await screen.findByRole("dialog", { name: "Chobi, the CHouse assistant" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Chat" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("clears the active chat when the connection changes while closed", async () => {
@@ -203,16 +200,16 @@ describe("AiChatBubble", () => {
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
-    const { rerender } = render(<AiChatBubble />);
+    const { rerender } = render(<Chobi />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
     await screen.findByText("New conversation");
 
     fireEvent.click(screen.getByTitle("Close (Esc)"));
     mocks.activeConnectionId = "connection-b";
-    rerender(<AiChatBubble />);
-    fireEvent.click(screen.getByRole("button", { name: /open ai chat/i }));
+    rerender(<Chobi />);
+    fireEvent.click(screen.getByRole("button", { name: /open chobi/i }));
 
     expect(await screen.findByRole("button", { name: "Start new chat" })).not.toBeNull();
     expect(screen.queryByText("New conversation")).toBeNull();
@@ -241,14 +238,14 @@ describe("AiChatBubble", () => {
       connectionId === "connection-a" ? connectionARequest : connectionBRequest,
     );
     const timestamp = new Date().toISOString();
-    const { rerender } = render(<AiChatBubble />);
+    const { rerender } = render(<Chobi />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(screen.getByRole("button", { name: "Thread history" }));
     await waitFor(() => expect(mocks.listThreads).toHaveBeenCalledWith("connection-a"));
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<AiChatBubble />);
+    rerender(<Chobi />);
     await waitFor(() => expect(mocks.listThreads).toHaveBeenCalledWith("connection-b"));
 
     await act(async () => {
@@ -291,9 +288,9 @@ describe("AiChatBubble", () => {
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
-    const { rerender } = render(<AiChatBubble />);
+    const { rerender } = render(<Chobi />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
     await screen.findByPlaceholderText(COMPOSER);
     await send("Question for connection A");
@@ -302,7 +299,7 @@ describe("AiChatBubble", () => {
     const loadsBeforeSwitch = loadsOfA();
 
     mocks.activeConnectionId = "connection-b";
-    rerender(<AiChatBubble />);
+    rerender(<Chobi />);
     expect(await screen.findByRole("button", { name: "Start new chat" })).not.toBeNull();
 
     await act(async () => {
@@ -316,18 +313,45 @@ describe("AiChatBubble", () => {
     expect(screen.getByRole("button", { name: "Start new chat" })).not.toBeNull();
   });
 
-  it("opens the sheet at the device default width, ignoring legacy floating-window sizes", async () => {
-    mocks.getPreferences.mockResolvedValue({
-      workspacePreferences: { byDevice: { laptop: { chatPreferences: { size: { width: 420, height: 0 } } } } },
-    });
-    render(<AiChatBubble />);
+  it("opens as a bubble by the launcher and switches to a docked side sheet", async () => {
+    render(<Chobi />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
-    await waitFor(() => expect(mocks.getPreferences).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
+    const panel = await screen.findByRole("dialog", { name: "Chobi, the CHouse assistant" });
+    expect(panel.dataset.size).toBe("bubble");
+    expect(panel.style.width).toBe("420px");
 
-    const sheet = (await screen.findByRole("dialog", { name: "AI chat assistant" })).parentElement;
-    expect(sheet?.style.width).toBe("760px");
-    expect(screen.queryByRole("button", { name: "Cycle sheet width" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Docked" }));
+    expect(panel.dataset.size).toBe("docked");
+    expect(panel.style.top).toBe("0px");
+    expect(panel.style.right).toBe("0px");
+    // A docked panel covers the launcher's spot; its own header closes it.
+    expect(screen.queryByRole("button", { name: /open chobi|close chobi \(/i })).toBeNull();
+    expect(useChobiStore.getState().size).toBe("docked");
+  });
+
+  it("closes with Escape typed in the composer", async () => {
+    mocks.createThread.mockResolvedValueOnce({ id: "thread-esc", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" });
+    render(<Chobi />);
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
+    const composer = await screen.findByPlaceholderText<HTMLTextAreaElement>(COMPOSER);
+    composer.focus();
+
+    fireEvent.keyDown(composer, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Chobi, the CHouse assistant" })).toBeNull());
+    expect(useChobiStore.getState().open).toBe(false);
+  });
+
+  it("toggles with Ctrl+J", async () => {
+    render(<Chobi />);
+    await screen.findByRole("button", { name: /open chobi/i });
+
+    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+    expect(await screen.findByRole("dialog", { name: "Chobi, the CHouse assistant" })).not.toBeNull();
+    fireEvent.keyDown(window, { key: "J", metaKey: true });
+    await waitFor(() => expect(useChobiStore.getState().open).toBe(false));
   });
 
   it("lets a new chat run while another thread is still answering", async () => {
@@ -342,9 +366,9 @@ describe("AiChatBubble", () => {
       updatedAt: "2026-07-17T00:00:00.000Z",
     });
     mocks.createThread.mockResolvedValueOnce(thread("thread-1")).mockResolvedValueOnce(thread("thread-2"));
-    render(<AiChatBubble />);
+    render(<Chobi />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
     await screen.findByPlaceholderText(COMPOSER);
     await send("Slow question");
@@ -382,7 +406,7 @@ describe("AiChatBubble", () => {
     });
 
     const openHistory = async (): Promise<void> => {
-      fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+      fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
       fireEvent.click(screen.getByRole("button", { name: "Thread history" }));
       await screen.findByText("Saved chat");
     };
@@ -390,7 +414,7 @@ describe("AiChatBubble", () => {
     it("closes the full-screen history on a phone once a thread is picked", async () => {
       mocks.breakpoint = "mobile";
       mocks.viewportWidth = 390;
-      render(<AiChatBubble />);
+      render(<Chobi />);
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
 
@@ -404,7 +428,7 @@ describe("AiChatBubble", () => {
     it("shows the history over the chat on a tablet-width sheet and closes it on pick", async () => {
       mocks.breakpoint = "tablet";
       mocks.viewportWidth = 844;
-      render(<AiChatBubble />);
+      render(<Chobi />);
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("true");
 
@@ -417,7 +441,7 @@ describe("AiChatBubble", () => {
     it("closes the overlaid history when starting a new chat from the header", async () => {
       mocks.breakpoint = "tablet";
       mocks.viewportWidth = 844;
-      render(<AiChatBubble />);
+      render(<Chobi />);
       await openHistory();
 
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
@@ -426,8 +450,9 @@ describe("AiChatBubble", () => {
       await waitFor(() => expect(screen.queryByTestId("ai-chat-thread-sidebar")).toBeNull());
     });
 
-    it("keeps the history docked on a wide desktop sheet after picking a thread", async () => {
-      render(<AiChatBubble />);
+    it("keeps the history docked in Focus after picking a thread", async () => {
+      useChobiStore.setState({ size: "focus" });
+      render(<Chobi />);
       await openHistory();
       expect(screen.getByTestId("ai-chat-thread-sidebar").dataset.overlay).toBe("false");
 
@@ -444,8 +469,8 @@ describe("AiChatBubble", () => {
 
     async function openNewChat(placeholder: RegExp | string = "Ask about your databases, schemas, queries…"): Promise<HTMLTextAreaElement> {
       mocks.createThread.mockResolvedValueOnce(newThread);
-      render(<AiChatBubble />);
-      fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+      render(<Chobi />);
+      fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
       fireEvent.click(await screen.findByRole("button", { name: "Start new chat" }));
       return screen.findByPlaceholderText<HTMLTextAreaElement>(placeholder);
     }
@@ -515,8 +540,8 @@ describe("AiChatBubble", () => {
       mocks.followChatRun.mockImplementationOnce(async (_id: string, onEvent: (event: unknown) => void) => {
         onEvent({ type: "final", result: answer("Here are the tables.") });
       });
-      render(<AiChatBubble />);
-      fireEvent.click(await screen.findByRole("button", { name: /open ai chat/i }));
+      render(<Chobi />);
+      fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));
       fireEvent.click(await screen.findByRole("button", { name: "Thread history" }));
       fireEvent.click(await screen.findByText("Busy chat"));
       await waitFor(() => expect(mocks.followChatRun).toHaveBeenCalledWith("run-busy", expect.any(Function), expect.any(AbortSignal)));
@@ -639,7 +664,7 @@ describe("AiChatBubble", () => {
       const composer = screen.getByPlaceholderText<HTMLTextAreaElement>(/type \/ for skills/);
       fireEvent.keyDown(composer, { key: "Escape" });
       expect(screen.queryByRole("listbox", { name: "Skills" })).toBeNull();
-      expect(screen.getByRole("dialog", { name: "AI chat assistant" })).not.toBeNull();
+      expect(screen.getByRole("dialog", { name: "Chobi, the CHouse assistant" })).not.toBeNull();
     });
   });
 });

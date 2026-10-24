@@ -1,6 +1,6 @@
 /**
  * Device type and per-device preference defaults.
- * Used by FloatingDock and AiChatBubble to store/load position and size per device.
+ * Used by FloatingDock and explorer dialogs to store/load position and size per device.
  */
 
 export type DeviceType = "mobile" | "tablet" | "laptop" | "pc";
@@ -14,14 +14,6 @@ export interface DockPreferences {
   sessionExpanded?: boolean;
 }
 
-export interface ChatPreferences {
-  /**
-   * Width of the docked AI chat sheet in px, saved only when the user drags its
-   * edge. Older floating-window `position`/`size` values are ignored on purpose.
-   */
-  sheetWidth?: number;
-}
-
 /** Per-dialog position/size for explorer windows (Upload file, AI debugger, etc.). Keyed by dialogId. */
 export interface ExplorerDialogPreferences {
   [dialogId: string]: { position: { x: number; y: number }; size: { width: number; height: number } } | undefined;
@@ -29,13 +21,11 @@ export interface ExplorerDialogPreferences {
 
 export interface DeviceWorkspacePrefs {
   dockPreferences?: DockPreferences;
-  chatPreferences?: ChatPreferences;
   explorerDialogPreferences?: ExplorerDialogPreferences;
 }
 
 export type WorkspacePreferencesMap = Record<string, unknown> & {
   dockPreferences?: DockPreferences;
-  chatPreferences?: ChatPreferences;
   explorerDialogPreferences?: ExplorerDialogPreferences;
   byDevice?: Partial<Record<DeviceType, DeviceWorkspacePrefs>>;
 };
@@ -60,17 +50,6 @@ export const DOCK_DEFAULT_PREFERENCES_BY_DEVICE: Record<DeviceType, DockPreferen
 };
 
 /**
- * Default AI chat sheet width per device: wide enough for tables and charts.
- * Callers clamp it to the viewport; mobile is always full screen.
- */
-export const CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE: Record<DeviceType, number> = {
-  mobile: 0,
-  tablet: 680,
-  laptop: 760,
-  pc: 880,
-};
-
-/**
  * Resolve dock preferences for a device: byDevice[device] → legacy dockPreferences → default.
  */
 export function getDockPrefsFromWorkspace(
@@ -82,17 +61,6 @@ export function getDockPrefsFromWorkspace(
   const legacy = workspace?.dockPreferences;
   if (legacy && Object.keys(legacy).length > 0) return legacy;
   return DOCK_DEFAULT_PREFERENCES_BY_DEVICE[deviceType];
-}
-
-/** The user's saved AI chat sheet width for a device, or the device default. */
-export function getChatSheetWidth(
-  workspace: WorkspacePreferencesMap | undefined,
-  deviceType: DeviceType
-): number {
-  const saved = workspace?.byDevice?.[deviceType]?.chatPreferences?.sheetWidth;
-  return typeof saved === "number" && Number.isFinite(saved) && saved > 0
-    ? saved
-    : CHAT_SHEET_DEFAULT_WIDTH_BY_DEVICE[deviceType];
 }
 
 /**
@@ -107,22 +75,6 @@ export function mergeDockPrefsIntoWorkspace(
   const byDevice = { ...(current.byDevice as Record<string, unknown> | undefined) };
   const deviceSlice = { ...(byDevice[deviceType] as Record<string, unknown> | undefined), dockPreferences: dockPrefs };
   byDevice[deviceType] = deviceSlice;
-  return { ...current, byDevice };
-}
-
-/**
- * Save the AI chat sheet width for a device into a copy of workspacePreferences
- * (for PUT), replacing any legacy floating-window geometry.
- */
-export function mergeChatSheetWidthIntoWorkspace(
-  workspace: WorkspacePreferencesMap | undefined,
-  deviceType: DeviceType,
-  sheetWidth: number
-): Record<string, unknown> {
-  const current = (workspace ?? {}) as Record<string, unknown>;
-  const byDevice = { ...(current.byDevice as Record<string, unknown> | undefined) };
-  const chatPreferences: ChatPreferences = { sheetWidth };
-  byDevice[deviceType] = { ...(byDevice[deviceType] as Record<string, unknown> | undefined), chatPreferences };
   return { ...current, byDevice };
 }
 

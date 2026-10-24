@@ -745,33 +745,6 @@
   }
 }
 
-/* AI Chat — mobile FAB (editorial: solid ink, hairline accent border on hover) */
-.ai-chat-fab {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 50;
-  width: 52px;
-  height: 52px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0f0f0f;
-  color: #fafafa;
-  border: 1px solid #262626;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-  transition: border-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
-}
-.ai-chat-fab:hover {
-  border-color: #ffcc01;
-  color: #ffcc01;
-  transform: translateY(-1px);
-}
-.ai-chat-fab:active {
-  transform: translateY(0);
-}
 /*
  * Global accessibility floors — applied app-wide so individual components
  * don't have to remember.
