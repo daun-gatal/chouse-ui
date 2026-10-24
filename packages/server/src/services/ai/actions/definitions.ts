@@ -11,6 +11,8 @@ import { SCHEDULING_ACTIONS } from "./toolkits/scheduling";
 import { HEALTH_ACTIONS } from "./toolkits/health";
 import { DASHBOARD_ACTIONS } from "./toolkits/dashboards";
 import { OBSERVE_ACTIONS } from "./toolkits/observe";
+import { ACCESS_ACTIONS } from "./toolkits/access";
+import { PLATFORM_ACTIONS } from "./toolkits/platform";
 
 export type { ActionDefinition } from "./types";
 export { dashboardDocument } from "./toolkits/shared";
@@ -21,6 +23,8 @@ export const ACTION_DEFINITIONS: readonly ActionDefinition[] = [
   ...HEALTH_ACTIONS,
   ...OBSERVE_ACTIONS,
   ...DASHBOARD_ACTIONS,
+  ...ACCESS_ACTIONS,
+  ...PLATFORM_ACTIONS,
 ];
 
 const BY_NAME = new Map(ACTION_DEFINITIONS.map((d) => [d.name, d]));

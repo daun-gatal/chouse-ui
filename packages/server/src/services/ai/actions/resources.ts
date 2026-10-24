@@ -333,6 +333,26 @@ const tableCriticality: ResourceAdapter = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// AI agents (read from the registry; deletes are versioned)
+// ---------------------------------------------------------------------------
+
+const AI_AGENT_FIELDS = ["slug", "name", "description", "systemPrompt", "tools", "skills", "subagents", "tuning", "harnessId", "modelConfigId", "enabled"] as const;
+
+async function findAgent(api: ActionApi, id: string): Promise<Record<string, unknown> | null> {
+  const registry = await api.get<{ agents?: Array<Record<string, unknown>> }>("/api/ai-agents/registry");
+  return (registry.agents ?? []).find((agent) => agent.id === id) ?? null;
+}
+
+const aiAgent: ResourceAdapter = {
+  read: findAgent,
+  fingerprint: (state) => stableJson(pick(state, AI_AGENT_FIELDS)),
+  remove: async (api, id) => {
+    const found = await findAgent(api, id);
+    if (found) await api.delete(`/api/ai-agents/agents/${seg(id)}?version=${encodeURIComponent(String(found.version))}`);
+  },
+};
+
 export const RESOURCES: Record<ResourceKind, ResourceAdapter> = {
   saved_query: savedQuery,
   scheduled_query: scheduledQuery,
@@ -343,4 +363,5 @@ export const RESOURCES: Record<ResourceKind, ResourceAdapter> = {
   metric,
   notebook_cell: notebookCell,
   table_criticality: tableCriticality,
+  ai_agent: aiAgent,
 };

@@ -16,7 +16,7 @@ export function record(value: unknown): Record<string, unknown> {
 }
 
 /** Routes wrap what they created in one of these keys (e.g. Data Health answers `{ promise }`). */
-export const CREATED_WRAPPERS = ["promise", "dashboard", "job", "rule", "query", "metric", "note", "cell", "incident"] as const;
+export const CREATED_WRAPPERS = ["promise", "dashboard", "job", "rule", "query", "metric", "note", "cell", "incident", "role", "user", "policy", "agent"] as const;
 
 /** The id of what a create route returned, whether bare or wrapped. */
 export function idOf(value: unknown): string | null {

@@ -77,6 +77,7 @@ export const RESOURCE_KINDS = [
   "metric",
   "notebook_cell",
   "table_criticality",
+  "ai_agent",
 ] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 
