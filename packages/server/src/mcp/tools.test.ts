@@ -26,6 +26,7 @@ import { PERMISSIONS } from "../rbac/schema/base";
 import { buildMcpServer, buildMcpDeps, listToolDefinitions, toolCatalog, toolParameters } from "./server";
 import type { McpSettings } from "./settings";
 import { MCP_TOOL_CATEGORIES } from "./tools/helpers";
+import { actionToolListed } from "./tools/actions";
 import type { McpToolContext } from "./types";
 
 type ToolSwitches = Pick<McpSettings, "toolOverrides">;
@@ -328,8 +329,38 @@ describe("tool catalog", () => {
     }
   });
 
-  it("requires a permission for every tool but whoami", () => {
-    expect(tools.filter((tool) => tool.permissions.length === 0).map((tool) => tool.name)).toEqual(["whoami"]);
+  it("requires a permission for every tool but whoami and the action helpers", () => {
+    // get_action_status and undo_action only reach the caller's own actions, and are listed only with write access (ADR 0025).
+    expect(tools.filter((tool) => tool.permissions.length === 0).map((tool) => tool.name)).toEqual(["whoami", "get_action_status", "undo_action"]);
+  });
+
+  it("generates write tools from the action registry without replacing an existing MCP tool (ADR 0025)", () => {
+    const generated = tools.filter((tool) => tool.action?.toolkit);
+    expect(generated.length).toBeGreaterThan(40);
+    const names = tools.map((tool) => tool.name);
+    expect(new Set(names).size).toBe(names.length);
+    // The original kill_query keeps its own arguments and destructive flag.
+    const kill = tools.find((tool) => tool.name === "kill_query");
+    expect(kill?.action).toBeUndefined();
+    expect(Object.keys(kill?.inputSchema ?? {})).toContain("query_id");
+    for (const tool of generated) {
+      expect(tool.access === "write" || tool.access === "destructive").toBe(true);
+      if (tool.action?.tier === "t3") expect(tool.access).toBe("destructive");
+    }
+    expect(names).not.toContain("update_my_preferences");
+  });
+
+  it("lists generated write tools only within the ceiling and the token's policy", () => {
+    const update = { toolkit: "data" as const, tier: "t1" as const };
+    const drop = { toolkit: "data" as const, tier: "t3" as const };
+    const ceiling = { toolkits: ["data" as const], maxTier: "t2" as const };
+    const policy = { toolkits: ["data" as const], t1: "auto" as const, t2: "confirm" as const, t3: "approver" as const };
+    expect(actionToolListed(update, { policy, ceiling })).toBe(true);
+    expect(actionToolListed(drop, { policy, ceiling })).toBe(false);
+    expect(actionToolListed(drop, { policy, ceiling: { ...ceiling, maxTier: "t3" } })).toBe(true);
+    expect(actionToolListed(update, { policy: { ...policy, toolkits: [] }, ceiling })).toBe(false);
+    expect(actionToolListed(update, { policy, ceiling: { ...ceiling, toolkits: [] } })).toBe(false);
+    expect(actionToolListed(update, { policy: { ...policy, t1: "off" }, ceiling })).toBe(false);
   });
 
   it("reports each tool's state and default", () => {

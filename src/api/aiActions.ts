@@ -30,7 +30,18 @@ export const AI_ORIGIN_LABELS: Record<AiActionOrigin, string> = {
   background: "Background",
 };
 
-export type AiToolkit = "data" | "scheduling" | "health" | "observe" | "dashboards" | "access" | "platform";
+export const AI_TOOLKITS = ["data", "scheduling", "health", "observe", "dashboards", "access", "platform"] as const;
+export type AiToolkit = (typeof AI_TOOLKITS)[number];
+
+export const AI_TOOLKIT_LABELS: Record<AiToolkit, string> = {
+  data: "Data & Query",
+  scheduling: "Scheduling",
+  health: "Data Health",
+  observe: "Observe & Ops",
+  dashboards: "Dashboards & Context",
+  access: "Access",
+  platform: "Platform & Audit",
+};
 
 export interface AiAction {
   id: string;

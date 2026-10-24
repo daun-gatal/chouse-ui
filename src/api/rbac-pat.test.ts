@@ -143,3 +143,23 @@ describe('rbacPatApi.revoke', () => {
     consoleSpy.mockRestore();
   });
 });
+
+describe('rbacPatApi write policy (ADR 0025)', () => {
+  it('reads the policy with the ceiling, and saves it', async () => {
+    const policy = { toolkits: ['data' as const], t1: 'auto' as const, t2: 'confirm' as const, t3: 'approver' as const };
+    let saved: unknown = null;
+    server.use(
+      http.get('/api/rbac/pats/pat-1/write-policy', () => HttpResponse.json({ success: true, data: { policy, ceiling: { toolkits: ['data', 'health'], maxTier: 't2' } } })),
+      http.put('/api/rbac/pats/pat-1/write-policy', async ({ request }) => {
+        saved = await request.json();
+        return HttpResponse.json({ success: true, data: { policy: saved } });
+      }),
+    );
+    const view = await rbacPatApi.getWritePolicy('pat-1');
+    expect(view.ceiling.maxTier).toBe('t2');
+    expect(view.policy).toEqual(policy);
+    const next = { ...policy, toolkits: ['data' as const, 'health' as const], t2: 'auto' as const };
+    expect(await rbacPatApi.setWritePolicy('pat-1', next)).toEqual(next);
+    expect(saved).toEqual(next);
+  });
+});

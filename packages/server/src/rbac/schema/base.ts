@@ -495,6 +495,7 @@ export const AUDIT_ACTIONS = {
   PAT_CREATE: 'pat.create',
   PAT_REVOKE: 'pat.revoke',
   PAT_ROTATE: 'pat.rotate',
+  PAT_WRITE_POLICY_UPDATE: 'pat.write_policy_update',
 
   // MCP server (ADR 0013): one entry per agent-initiated tool call
   MCP_TOOL_CALL: 'mcp.tool_call',

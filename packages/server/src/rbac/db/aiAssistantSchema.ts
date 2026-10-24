@@ -46,6 +46,29 @@ const GRANT_TABLES: string[] = [
 export const AI_ACTION_GRANT_TABLE_NAMES = ["ai_action_grants"];
 export const AI_ACTION_GRANT_INDEX_NAMES = ["ai_action_grants_user_idx", "ai_actions_status_user_idx"];
 
+/**
+ * 1.72.0 — per-token MCP write policy: which toolkits a personal access token
+ * gets as MCP write tools, and how each tier is handled for it. A token with
+ * no row uses the defaults (Data & Query; T1 runs, T2 asks, T3 needs a second
+ * approver). The row goes with its token.
+ */
+const MCP_TOKEN_POLICY_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS mcp_token_policies (
+    pat_id      TEXT PRIMARY KEY NOT NULL REFERENCES rbac_api_keys(id) ON DELETE CASCADE,
+    toolkits    TEXT NOT NULL DEFAULT '["data"]',
+    t1          TEXT NOT NULL DEFAULT 'auto',
+    t2          TEXT NOT NULL DEFAULT 'confirm',
+    t3          TEXT NOT NULL DEFAULT 'approver',
+    updated_at  {BIGINT} NOT NULL
+  )`,
+];
+
+export const MCP_TOKEN_POLICY_TABLE_NAMES = ["mcp_token_policies"];
+
+export function mcpTokenPolicySchemaStatements(dialect: Dialect): string[] {
+  return render(MCP_TOKEN_POLICY_TABLES, dialect);
+}
+
 export function aiActionTierColumnType(type: string, dialect: Dialect): string {
   return render([type], dialect)[0];
 }

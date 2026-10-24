@@ -26,6 +26,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { logger } from "../../utils/logger";
 import type { Permission } from "../../rbac/schema/base";
 import * as agentStore from "../../services/agents/store";
+import type { TierRule, Toolkit } from "../../services/ai/actions/types";
 
 export type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
@@ -187,6 +188,7 @@ export const MCP_TOOL_CATEGORIES = [
   "dashboards",
   "ai",
   "ai_governance",
+  "access",
 ] as const;
 export type McpToolCategory = (typeof MCP_TOOL_CATEGORIES)[number];
 
@@ -210,6 +212,13 @@ export interface ChouseToolRegistration {
   permissions: Permission[];
   /** Spends LLM budget on every call: off by default even when read-only. */
   spendsLlm?: boolean;
+  /**
+   * A write tool generated from the action registry (ADR 0025): listed by the
+   * administrator's ceiling and the token's write policy instead of being off
+   * by default. `toolkit` is null for the helpers every write token gets
+   * (get_action_status, undo_action).
+   */
+  action?: { toolkit: Toolkit | null; tier: TierRule | null };
   description: string;
   inputSchema?: Record<string, z.ZodTypeAny>;
   handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>;

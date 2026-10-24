@@ -8,7 +8,7 @@ import { sql, type SQL } from 'drizzle-orm';
 
 import { logger } from '../../utils/logger';
 import { getDatabaseType, type PostgresDb, type RbacDb, type SqliteDb } from './index';
-import { AI_ACTION_TIER_COLUMNS, aiActionGrantSchemaStatements, aiActionTierColumnType } from './aiAssistantSchema';
+import { AI_ACTION_TIER_COLUMNS, aiActionGrantSchemaStatements, aiActionTierColumnType, mcpTokenPolicySchemaStatements } from './aiAssistantSchema';
 import type { Migration } from './migrations';
 
 type Row = Record<string, unknown>;
@@ -50,6 +50,18 @@ export const AI_ASSISTANT_MIGRATIONS: Migration[] = [
         await exec(db, sql.raw(statement));
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.71.0] Added write tiers and undo to AI actions (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.72.0',
+    name: 'mcp_token_policies',
+    description: 'ADR 0025 — per-token MCP write policy (mcp_token_policies): the toolkits a personal access token gets as MCP write tools and how each tier is handled. Tokens without a row use the defaults (Data & Query; T1 runs, T2 asks, T3 needs a second approver).',
+    up: async (db) => {
+      for (const statement of mcpTokenPolicySchemaStatements(dialect())) {
+        await exec(db, sql.raw(statement));
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.72.0] Created MCP token policies (${dialect()})`);
     },
     down: async () => { /* forward-only */ },
   },

@@ -79,6 +79,7 @@ export interface RbacPermission {
 
 import type { ProviderType } from '@/constants/aiProviders';
 import type { AiModelParams } from '@/constants/aiModelParams';
+import type { AiActionTier, AiToolkit } from './aiActions';
 
 export interface AiProvider {
   id: string;
@@ -589,7 +590,33 @@ export const rbacPatApi = {
       method: 'POST',
     });
   },
+
+  /** The token's MCP/CLI write policy (ADR 0025) and the administrator's ceiling over it. */
+  async getWritePolicy(id: string): Promise<PatWritePolicyView> {
+    return rbacFetch<PatWritePolicyView>(`/pats/${id}/write-policy`);
+  },
+
+  async setWritePolicy(id: string, policy: PatWritePolicy): Promise<PatWritePolicy> {
+    const response = await rbacFetch<{ policy: PatWritePolicy }>(`/pats/${id}/write-policy`, {
+      method: 'PUT',
+      body: JSON.stringify(policy),
+    });
+    return response.policy;
+  },
 };
+
+/** Which toolkits a token gets as write tools, and how each tier is handled (ADR 0025). */
+export interface PatWritePolicy {
+  toolkits: AiToolkit[];
+  t1: 'auto' | 'confirm' | 'off';
+  t2: 'auto' | 'confirm' | 'off';
+  t3: 'approver' | 'off';
+}
+
+export interface PatWritePolicyView {
+  policy: PatWritePolicy;
+  ceiling: { toolkits: AiToolkit[]; maxTier: AiActionTier };
+}
 
 // ============================================
 // Users API

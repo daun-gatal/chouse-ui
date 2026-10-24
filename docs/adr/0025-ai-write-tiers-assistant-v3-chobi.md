@@ -90,7 +90,7 @@ never changes its own controls.
 | | T1 | T2 | T3 |
 |---|---|---|---|
 | Chat | runs, "Done · Undo" | approval card (or plan) in the chat | filed for a second approver; the chat continues |
-| MCP | runs (unless the token policy says `confirm`) | elicitation if the client declared it; otherwise the call is held up to 5 minutes while the user approves on Chobi; then a pending `action_id` | filed for a second approver (off unless an admin enables T3) |
+| MCP | runs (unless the token policy says `confirm`) | the call is held (5 minutes by default, with progress notifications) while the user confirms in CHouse; then a pending `action_id` that `get_action_status` runs once confirmed | filed for a second approver (off unless an admin enables T3) |
 | CLI | runs | prompt on a terminal, or `--yes` | filed; `--yes` never covers it |
 
 Every write, whatever its tier, is a row in `ai_actions` with its origin
@@ -99,17 +99,24 @@ activity feed and audit show one history.
 
 ### 4. MCP
 
-- Generated action tools join the existing MCP tools (whose names are kept).
-- **Admin ceiling** (AI Governance › MCP): which toolkits MCP may expose and the
-  highest tier; T3 is off until an admin turns it on.
-- **Per-token policy** (set on the token): its toolkits (default: Data & Query)
-  and how each tier is handled (`auto`/`confirm`/`off`).
+- Generated action tools join the existing MCP tools; an existing tool of the
+  same name (e.g. `kill_query`, `create_saved_query`) keeps its arguments and
+  behaviour.
+- **Admin ceiling** (AI Governance › MCP): which toolkits MCP may expose, the
+  highest tier (T3 is off until an admin turns it on), and how long a held call
+  waits for confirmation.
+- **Per-token policy** (set on the token by its owner, from a browser session):
+  its toolkits (default: Data & Query) and how each tier is handled
+  (`auto`/`confirm`/`off`; T3 `approver`/`off`). Rotating a token keeps it.
+- `get_action_status` and `undo_action` are listed whenever a token has write
+  tools.
 - The endpoint is stateless, so a policy change applies on the client's next
-  `tools/list`; there is no session to push `tools/list_changed` to.
-- Elicitation needs the client's capabilities, which a stateless endpoint only
-  sees on `initialize`; the server remembers them per token for a short time
-  and falls back to approval on Chobi whenever elicitation is unavailable or
-  fails.
+  `tools/list`; there is no session to push `tools/list_changed` to. For the
+  same reason it cannot ask the client back (elicitation): a client's answer
+  would arrive as a separate request with nothing to match it to. The user
+  confirms in CHouse instead, where the decision is audited.
+- If a token's policy cannot be read, the token gets no write tools: the
+  endpoint fails closed rather than failing.
 
 ### 5. CHouse Assistant v3
 

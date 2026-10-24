@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Copy, KeyRound, Plug, RotateCcw, Search, Wrench } from "lucide-react";
 
 import type { McpOverview, McpSettingsUpdate, McpTool, McpToolCategory } from "@/api/agents";
+import { AI_TOOLKITS, AI_TOOLKIT_LABELS, type AiActionTier, type AiToolkit } from "@/api/aiActions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -171,6 +172,83 @@ function ServerPanel({ overview, endpoint, canManage, save, saving }: { overview
             onClick={() => "value" in publicUrl && void save({ allowedOrigins: parsed.origins, timeoutSeconds, publicUrl: publicUrl.value }, "MCP settings saved")}
           >
             Save settings
+          </Button>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+const MAX_TIER_OPTIONS: Array<{ value: AiActionTier; label: string }> = [
+  { value: "t1", label: "Only undoable changes" },
+  { value: "t2", label: "Up to changes that ask once" },
+  { value: "t3", label: "Also high-risk changes (a second person approves)" },
+];
+
+/** ADR 0025: the bound on every token's MCP write tools, and how long a held call waits. */
+function WriteToolsPanel({ overview, canManage, save, saving }: { overview: McpOverview; canManage: boolean; save: (update: McpSettingsUpdate, done: string) => Promise<boolean>; saving: boolean }): ReactElement {
+  const { settings } = overview;
+  const [toolkits, setToolkits] = useState<ReadonlySet<AiToolkit>>(new Set(settings.actionToolkits));
+  const [maxTier, setMaxTier] = useState<AiActionTier>(settings.actionMaxTier);
+  const [wait, setWait] = useState(String(settings.approvalWaitSeconds));
+  const [lastSettings, setLastSettings] = useState(settings);
+  if (settings !== lastSettings) {
+    setLastSettings(settings);
+    setToolkits(new Set(settings.actionToolkits));
+    setMaxTier(settings.actionMaxTier);
+    setWait(String(settings.approvalWaitSeconds));
+  }
+  const waitSeconds = Number(wait);
+  const waitValid = Number.isInteger(waitSeconds) && waitSeconds >= 0 && waitSeconds <= 900;
+  const chosen = AI_TOOLKITS.filter((t) => toolkits.has(t));
+  const dirty = chosen.join() !== AI_TOOLKITS.filter((t) => settings.actionToolkits.includes(t)).join() || maxTier !== settings.actionMaxTier || waitSeconds !== settings.approvalWaitSeconds;
+  const toggle = (toolkit: AiToolkit, on: boolean): void => setToolkits((current) => {
+    const next = new Set(current);
+    if (on) next.add(toolkit);
+    else next.delete(toolkit);
+    return next;
+  });
+
+  return (
+    <Panel title="Write tools" meta="The most any token may get">
+      <p className="mb-3 text-[12px] text-paper-muted">
+        Write tools come from the same list as the chat. Undoable changes run at once; changes that ask once wait for their user to confirm in CHouse; high-risk changes go to a second person who holds the permission. Each token's owner narrows this further on the token.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <fieldset>
+          <legend className="text-[11px] uppercase tracking-[0.12em] text-paper-dim">Toolkits</legend>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {AI_TOOLKITS.map((toolkit) => (
+              <label key={toolkit} className="flex items-center gap-2 text-[12px] text-paper">
+                <Switch className={SWITCH_CLASS} checked={toolkits.has(toolkit)} disabled={!canManage || saving} onCheckedChange={(on) => toggle(toolkit, on)} aria-label={AI_TOOLKIT_LABELS[toolkit]} />
+                {AI_TOOLKIT_LABELS[toolkit]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="mcp-max-tier">Highest change allowed</Label>
+            <Select value={maxTier} onValueChange={(value) => setMaxTier(value === "t1" || value === "t3" ? value : "t2")} disabled={!canManage}>
+              <SelectTrigger id="mcp-max-tier" className="mt-1 rounded-xs text-[12px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MAX_TIER_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[11px] text-paper-faint">On a production connection every change counts one step higher.</p>
+          </div>
+          <div>
+            <Label htmlFor="mcp-approval-wait">Wait for confirmation, seconds</Label>
+            <Input id="mcp-approval-wait" type="number" min={0} max={900} value={wait} disabled={!canManage} onChange={(e) => setWait(e.target.value)} className="mt-1 w-32 rounded-xs" />
+            <p className="mt-1 text-[11px] text-paper-faint">How long the agent's call waits while its user confirms in CHouse. After that it gets an action id to check later.</p>
+            {!waitValid && <p className="mt-1 text-[11px] text-amber-500">Between 0 and 900 seconds.</p>}
+          </div>
+        </div>
+      </div>
+      {canManage && (
+        <div className="mt-3 flex justify-end">
+          <Button className={DH_PRIMARY} disabled={!dirty || !waitValid || saving} onClick={() => void save({ actionToolkits: chosen, actionMaxTier: maxTier, approvalWaitSeconds: waitSeconds }, "Write tool settings saved")}>
+            Save write tools
           </Button>
         </div>
       )}
@@ -415,6 +493,7 @@ export function McpPanel(): ReactElement {
       )}
       <ServerPanel overview={overview.data} endpoint={endpoint} canManage={canManage} save={save} saving={update.isPending} />
       <ConnectPanel url={endpoint.url} />
+      <WriteToolsPanel overview={overview.data} canManage={canManage} save={save} saving={update.isPending} />
       <ToolsPanel tools={overview.data.tools} canManage={canManage} save={save} saving={update.isPending} />
     </div>
   );
