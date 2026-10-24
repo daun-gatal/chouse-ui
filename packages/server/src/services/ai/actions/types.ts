@@ -73,6 +73,10 @@ export const RESOURCE_KINDS = [
   "health_promise",
   "dashboard",
   "table_context",
+  "alert_rule",
+  "metric",
+  "notebook_cell",
+  "table_criticality",
 ] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 

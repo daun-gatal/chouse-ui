@@ -5,6 +5,7 @@
  */
 
 import type { ActionApi, ResourceKind } from "./types";
+import { idOf } from "./toolkits/shared";
 
 export interface ResourceAdapter {
   /** The object as it is now, or null when it is gone (or not visible to the caller). */
@@ -48,10 +49,6 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function idOf(value: unknown): string | null {
-  const id = record(value).id;
-  return typeof id === "string" ? id : null;
-}
 
 const seg = (value: string): string => encodeURIComponent(value);
 
@@ -192,10 +189,7 @@ const dashboard: ResourceAdapter = {
   remove: async (api, id) => {
     await api.delete(`/api/dashboards/${seg(id)}`);
   },
-  recreate: async (api, before) => {
-    const created = await api.post<Record<string, unknown>>("/api/dashboards", before.document);
-    return idOf(record(created.dashboard)) ?? idOf(created);
-  },
+  recreate: async (api, before) => idOf(await api.post("/api/dashboards", before.document)),
 };
 
 // ---------------------------------------------------------------------------
@@ -229,13 +223,113 @@ function contextBody(curated: Record<string, unknown>): Record<string, unknown> 
 }
 
 const tableContext: ResourceAdapter = {
-  read: async (api, id) => {
-    const found = await readOrNull(() => api.get<Record<string, unknown>>(contextPath(id)));
-    return found ? contextBody(record(found.curated)) : null;
-  },
+  // A table Observe has not catalogued yet answers 404 but takes context: that is empty context, not a missing object.
+  read: async (api, id) => contextBody(record((await readOrNull(() => api.get<Record<string, unknown>>(contextPath(id))))?.curated)),
   fingerprint: (state) => stableJson(pick(state, CONTEXT_FIELDS)),
   restore: async (api, id, before) => {
     await api.put(contextPath(id), contextBody(before));
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Alert rules (no single-rule GET: read from the list)
+// ---------------------------------------------------------------------------
+
+const ALERT_RULE_FIELDS = ["name", "severity", "enabled", "aiRcaEnabled", "aiRcaModelId", "config", "channelIds"] as const;
+
+const alertRule: ResourceAdapter = {
+  read: async (api, id) => {
+    const rules = await api.get<Array<Record<string, unknown>>>("/api/alerting/rules");
+    return (Array.isArray(rules) ? rules : []).find((rule) => rule.id === id) ?? null;
+  },
+  fingerprint: (state) => stableJson(pick(state, ALERT_RULE_FIELDS)),
+  restore: async (api, id, before) => {
+    await api.put(`/api/alerting/rules/${seg(id)}`, pick(before, ALERT_RULE_FIELDS));
+  },
+  remove: async (api, id) => {
+    await api.delete(`/api/alerting/rules/${seg(id)}`);
+  },
+  recreate: async (api, before) => idOf(await api.post("/api/alerting/rules", { ...pick(before, ALERT_RULE_FIELDS), sourceType: before.sourceType })),
+};
+
+// ---------------------------------------------------------------------------
+// Context metrics, keyed by table and name (an upsert keeps the name)
+// ---------------------------------------------------------------------------
+
+/** A metric id: its database, table and name. */
+export function metricKey(database: string, table: string, name: string): string {
+  return JSON.stringify([database, table, name]);
+}
+
+function parseKey(id: string, size: number): string[] {
+  const parsed: unknown = JSON.parse(id);
+  if (!Array.isArray(parsed) || parsed.length !== size || parsed.some((part) => typeof part !== "string")) throw new Error("Invalid resource id");
+  return parsed.filter((part): part is string => typeof part === "string");
+}
+
+const METRIC_FIELDS = ["name", "expression", "description", "owner"] as const;
+
+async function findMetric(api: ActionApi, id: string): Promise<Record<string, unknown> | null> {
+  const [database, table, name] = parseKey(id, 3);
+  const listed = await api.get<{ metrics?: Array<Record<string, unknown>> }>("/api/context/metrics");
+  return (listed.metrics ?? []).find((m) => m.database === database && m.table === table && m.name === name) ?? null;
+}
+
+const metric: ResourceAdapter = {
+  read: findMetric,
+  fingerprint: (state) => stableJson(pick(state, METRIC_FIELDS)),
+  restore: async (api, id, before) => {
+    const [database, table] = parseKey(id, 3);
+    await api.put(`/api/context/tables/${seg(database)}/${seg(table)}/metrics`, pick(before, METRIC_FIELDS));
+  },
+  remove: async (api, id) => {
+    const found = await findMetric(api, id);
+    if (found && typeof found.id === "string") await api.delete(`/api/context/metrics/${seg(found.id)}`);
+  },
+  recreate: async (api, before) => {
+    await api.put(`/api/context/tables/${seg(String(before.database))}/${seg(String(before.table))}/metrics`, pick(before, METRIC_FIELDS));
+    return null;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Notebook cells ("<notebook id>:<cell id>")
+// ---------------------------------------------------------------------------
+
+function cellIds(id: string): [string, string] {
+  const [notebookId, cellId] = id.split(":");
+  if (!notebookId || !cellId) throw new Error("Invalid notebook cell id");
+  return [notebookId, cellId];
+}
+
+const notebookCell: ResourceAdapter = {
+  read: async (api, id) => {
+    const [notebookId, cellId] = cellIds(id);
+    const found = await readOrNull(() => api.get<{ cells?: Array<Record<string, unknown>> }>(`/api/notebooks/${seg(notebookId)}`));
+    return found?.cells?.find((cell) => cell.id === cellId) ?? null;
+  },
+  fingerprint: (state) => stableJson({ kind: state.kind, content: state.content }),
+  remove: async (api, id) => {
+    const [notebookId, cellId] = cellIds(id);
+    await api.delete(`/api/notebooks/${seg(notebookId)}/cells/${seg(cellId)}`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Table criticality (Observe), keyed by table
+// ---------------------------------------------------------------------------
+
+const tableCriticality: ResourceAdapter = {
+  read: async (api, id) => {
+    const [database, table] = parseKey(id, 2);
+    const listed = await api.get<{ tables?: Array<Record<string, unknown>> }>("/api/context/tables", { q: table });
+    const found = (listed.tables ?? []).find((t) => t.database === database && t.table === table);
+    return found ? { criticality: found.criticality ?? null } : null;
+  },
+  fingerprint: (state) => stableJson({ criticality: state.criticality ?? null }),
+  restore: async (api, id, before) => {
+    const [database, table] = parseKey(id, 2);
+    await api.put(`/api/observe/datasets/${seg(database)}/${seg(table)}/criticality`, { criticality: before.criticality ?? null });
   },
 };
 
@@ -245,4 +339,8 @@ export const RESOURCES: Record<ResourceKind, ResourceAdapter> = {
   health_promise: healthPromise,
   dashboard,
   table_context: tableContext,
+  alert_rule: alertRule,
+  metric,
+  notebook_cell: notebookCell,
+  table_criticality: tableCriticality,
 };

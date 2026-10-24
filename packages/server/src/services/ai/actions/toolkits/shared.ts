@@ -15,11 +15,18 @@ export function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/** Routes wrap what they created in one of these keys (e.g. Data Health answers `{ promise }`). */
+export const CREATED_WRAPPERS = ["promise", "dashboard", "job", "rule", "query", "metric", "note", "cell", "incident"] as const;
+
+/** The id of what a create route returned, whether bare or wrapped. */
 export function idOf(value: unknown): string | null {
   const direct = record(value).id;
   if (typeof direct === "string") return direct;
-  const nested = record(record(value).dashboard).id;
-  return typeof nested === "string" ? nested : null;
+  for (const key of CREATED_WRAPPERS) {
+    const nested = record(record(value)[key]).id;
+    if (typeof nested === "string") return nested;
+  }
+  return null;
 }
 
 /** Only the keys the model actually sent, for partial updates. */

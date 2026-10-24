@@ -7,6 +7,7 @@
 
 import { logger } from "../../../utils/logger";
 import { RESOURCES } from "./resources";
+import { CREATED_WRAPPERS } from "./toolkits/shared";
 import { claimUndo, createAction, finishAction, getAction, releaseUndo, type AiAction, type ActionSource } from "./store";
 import type { ActionApi, ActionContext, ActionDefinition, ActionOrigin, Tier, UndoRecord } from "./types";
 
@@ -16,11 +17,16 @@ export function outcome(result: unknown): unknown {
   const record = result as Record<string, unknown>;
   const keep = ["id", "name", "title", "status", "message", "killed", "approvalClass", "approvalsNeeded", "deleted", "version"];
   const picked = Object.fromEntries(Object.entries(record).filter(([key]) => keep.includes(key)));
-  if (Object.keys(picked).length === 0 && record.dashboard && typeof record.dashboard === "object") {
-    const dashboard = record.dashboard as Record<string, unknown>;
-    return { id: dashboard.id, title: dashboard.title, version: dashboard.version };
+  if (Object.keys(picked).length > 0) return picked;
+  // What the route created, when it wraps it (e.g. `{ promise }`).
+  for (const key of CREATED_WRAPPERS) {
+    const nested = record[key];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const inner = Object.fromEntries(Object.entries(nested as Record<string, unknown>).filter(([k]) => keep.includes(k)));
+      if (Object.keys(inner).length > 0) return inner;
+    }
   }
-  return Object.keys(picked).length > 0 ? picked : { ok: true };
+  return { ok: true };
 }
 
 export interface Actor {
@@ -72,12 +78,15 @@ async function finishUndo(definition: ActionDefinition, args: Record<string, unk
       const after = await adapter.read(ctx.api, id);
       return after ? { mode: spec.mode, resource: spec.resource, id, afterHash: adapter.fingerprint(after) } : null;
     }
-    if (!prepared?.before || !prepared.id) return null;
+    if (!prepared?.id) return null;
     if (spec.mode === "recreate-deleted") {
-      return { mode: spec.mode, resource: spec.resource, id: prepared.id, before: prepared.before };
+      return prepared.before ? { mode: spec.mode, resource: spec.resource, id: prepared.id, before: prepared.before } : null;
     }
     const after = await adapter.read(ctx.api, prepared.id);
-    return after ? { mode: spec.mode, resource: spec.resource, id: prepared.id, before: prepared.before, afterHash: adapter.fingerprint(after) } : null;
+    if (!after) return null;
+    // An upsert that created the object is undone by deleting it.
+    if (!prepared.before) return adapter.remove ? { mode: "delete-created", resource: spec.resource, id: prepared.id, afterHash: adapter.fingerprint(after) } : null;
+    return { mode: spec.mode, resource: spec.resource, id: prepared.id, before: prepared.before, afterHash: adapter.fingerprint(after) };
   } catch (error) {
     logger.warn({ module: "AiActions", tool: definition.name, err: error instanceof Error ? error.message : String(error) }, "Could not snapshot after an action; it will not be undoable");
     return null;
