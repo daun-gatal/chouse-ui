@@ -7,8 +7,10 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import type { Context } from 'hono';
 import {
   createUser,
+  getRoleById,
   getUserById,
   updateUser,
   deleteUser,
@@ -36,6 +38,23 @@ const userRoutes = new Hono();
 // ============================================
 // Schemas
 // ============================================
+
+/**
+ * A user may only hand out roles whose permissions they already hold.
+ * `roles:assign` / `users:create` alone would otherwise let an admin give
+ * themselves (or a new account) `super_admin`, or any role above their own.
+ */
+async function assertCanGrantRoles(c: Context, roleIds: string[] | undefined): Promise<void> {
+  if (!roleIds?.length || isSuperAdmin(c)) return;
+  const held = new Set<string>((c.get('rbacPermissions') as string[] | undefined) ?? []);
+  for (const roleId of roleIds) {
+    const role = await getRoleById(roleId);
+    if (!role) throw AppError.badRequest('Role not found');
+    if (role.name === 'super_admin' || role.permissions.some((permission) => !held.has(permission))) {
+      throw AppError.forbidden(`Cannot assign role '${role.name}': it grants permissions you do not have`);
+    }
+  }
+}
 
 const CreateUserSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -162,6 +181,8 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
     }
   }
 
+  await assertCanGrantRoles(c, input.roleIds);
+
   try {
     const user = await createUser({
       email: input.email,
@@ -223,6 +244,8 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
   if (input.isActive === false && id === currentUser.sub) {
     throw AppError.badRequest('Cannot deactivate your own account');
   }
+
+  await assertCanGrantRoles(c, input.roleIds);
 
   try {
     const user = await updateUser(id, input);
@@ -374,6 +397,8 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot modify super administrator roles');
   }
+
+  await assertCanGrantRoles(c, roleIds);
 
   const user = await updateUser(id, { roleIds });
 

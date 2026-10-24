@@ -2,11 +2,13 @@ import "./utils/configLoader";
 import { Hono, Context } from "hono";
 import { serve } from "bun";
 import { serveStatic } from "hono/bun";
+import { bodyLimit } from "hono/body-limit";
 import api from "./routes";
 import { corsMiddleware } from "./middleware/cors";
 import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
 import { rateLimiter } from "hono-rate-limiter";
 import { DbRateLimitStore, cleanupExpiredRateLimits } from "./middleware/rateLimitStore";
+import { loginAccountKey, rateLimitClientKey } from "./middleware/rateLimitKeys";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
@@ -186,17 +188,12 @@ app.use("*", async (c, next) => {
 // Security Middleware (Rate Limiting & Size)
 // ============================================
 
-// 1. Request Size Limits (10MB)
-app.use('*', async (c, next) => {
-  const contentLength = c.req.header('Content-Length');
-  const maxSize = 10 * 1024 * 1024; // 10MB for JSON
-
-  if (contentLength && parseInt(contentLength) > maxSize) {
-    return c.json({ error: 'Payload too large' }, 413);
-  }
-
-  await next();
-});
+// 1. Request Size Limits (10MB). bodyLimit counts the bytes actually read, so a
+// chunked request with no Content-Length header is capped too.
+app.use('*', bodyLimit({
+  maxSize: 10 * 1024 * 1024,
+  onError: (c) => c.json({ error: 'Payload too large' }, 413),
+}));
 
 // 2. Rate Limiting Configuration
 
@@ -212,8 +209,19 @@ app.use('/api/rbac/auth/login', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10, // 10 attempts per 15 minutes
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('login:', LOGIN_WINDOW_MS),
+}));
+
+// Login: 20 attempts per 15 minutes per account, from any number of addresses.
+// The per-IP limit alone can't stop a guesser spread across many addresses
+// (or one that spoofs X-Forwarded-For with no proxy in front).
+app.use('/api/rbac/auth/login', rateLimiter({
+  windowMs: LOGIN_WINDOW_MS,
+  limit: 20,
+  standardHeaders: true,
+  keyGenerator: loginAccountKey,
+  store: new DbRateLimitStore('login-account:', LOGIN_WINDOW_MS),
 }));
 
 // SSO start + callback share the login budget: 10 attempts per 15 minutes per IP.
@@ -223,14 +231,14 @@ app.use('/api/rbac/auth/sso/*/start', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('sso-start:', LOGIN_WINDOW_MS),
 }));
 app.use('/api/rbac/auth/sso/callback', rateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
-  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  keyGenerator: rateLimitClientKey,
   store: new DbRateLimitStore('sso-cb:', LOGIN_WINDOW_MS),
 }));
 
@@ -253,7 +261,7 @@ app.use('/api/ai/*', rateLimiter({
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   limit: 1000, // 1000 requests per minute
-  keyGenerator: (c: Context) => c.get('rbacUserId') || c.req.header('X-Forwarded-For') || 'unknown',
+  keyGenerator: (c: Context) => c.get('rbacUserId') || rateLimitClientKey(c),
 }));
 
 // ============================================

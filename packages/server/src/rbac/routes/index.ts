@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { requestLogger } from '../../utils/logger';
 import authRoutes from './auth';
 import patRoutes from './personalAccessTokens';
 import userRoutes from './users';
@@ -46,13 +47,17 @@ rbacRoutes.route('/sso-admin', ssoAdminRoutes);
 rbacRoutes.get('/health', async (c) => {
   const { checkDatabaseHealth } = await import('../db');
   const health = await checkDatabaseHealth();
+  // Public endpoint: the raw driver error can name hosts or credentials, so it
+  // goes to the log, not the response.
+  if (!health.healthy) {
+    requestLogger(c.get('requestId')).error({ module: 'RBAC', err: health.error }, 'RBAC database health check failed');
+  }
 
   return c.json({
     success: health.healthy,
     data: {
       status: health.healthy ? 'healthy' : 'unhealthy',
       database: health.type,
-      error: health.error,
     },
   }, health.healthy ? 200 : 503);
 });
@@ -74,7 +79,6 @@ rbacRoutes.get('/status', async (c) => {
         database: {
           type: health.type,
           healthy: health.healthy,
-          error: health.error,
         },
         migrations: {
           currentVersion: migrations.currentVersion,
@@ -89,11 +93,13 @@ rbacRoutes.get('/status', async (c) => {
       },
     });
   } catch (error) {
+    requestLogger(c.get('requestId')).error(
+      { module: 'RBAC', err: error instanceof Error ? error.message : String(error) },
+      'RBAC status check failed'
+    );
     return c.json({
       success: false,
-      error: {
-        message: error instanceof Error ? error.message : 'Failed to get status',
-      },
+      error: { message: 'Failed to get status' },
     }, 500);
   }
 });

@@ -200,9 +200,14 @@ export function privilegeSupportsColumns(name: string): boolean {
 // SQL escaping helpers
 // ============================================
 
-/** Escape a ClickHouse identifier (database/table/user/role/column) for use inside backticks. */
+/**
+ * Escape a ClickHouse identifier (database/table/user/role/column) for use
+ * inside backticks. ClickHouse treats `\` as an escape character inside quoted
+ * names too, so it is escaped along with the backtick; otherwise a trailing
+ * backslash would swallow the closing quote.
+ */
 export function escapeIdentifier(value: string): string {
-  return value.replace(/`/g, '``');
+  return value.replace(/\\/g, '\\\\').replace(/`/g, '``');
 }
 
 /** Quote an identifier in backticks (escaping any embedded backticks). */
@@ -210,9 +215,9 @@ export function quoteIdent(value: string): string {
   return `\`${escapeIdentifier(value)}\``;
 }
 
-/** Escape a string literal for use inside single quotes. */
+/** Escape a string literal for use inside single quotes (backslashes included, as above). */
 export function escapeLiteral(value: string): string {
-  return value.replace(/'/g, "''");
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "''");
 }
 
 /**

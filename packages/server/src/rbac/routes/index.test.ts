@@ -58,6 +58,8 @@ describe("RBAC Index Routes", () => {
             const body = await res.json();
             expect(body.success).toBe(false);
             expect(body.data.status).toBe('unhealthy');
+            // Public endpoint: the driver error stays in the server log.
+            expect(JSON.stringify(body)).not.toContain('down');
         });
     });
 

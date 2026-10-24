@@ -9,6 +9,22 @@ import { errorHandler } from "../middleware/error";
 // is what the tests stub.
 const mockInsertStream = mock(() => Promise.resolve({ queryId: "test-id" }));
 let authorized = true;
+let permissions: string[] = ["table:insert"];
+const mockCheckTableAccess = mock(async () => true);
+
+mock.module("../rbac/middleware/rbacAuth", () => ({
+    rbacAuthMiddleware: async (c: any, next: any) => {
+        if (!authorized) {
+            const { AppError } = await import("../types");
+            throw AppError.unauthorized("No authentication token provided");
+        }
+        await next();
+    },
+}));
+
+mock.module("../middleware/dataAccess", () => ({
+    checkTableAccess: mockCheckTableAccess,
+}));
 
 mock.module("../middleware/connectionContext", () => ({
     CONNECTION_ID_HEADER: "X-Connection-Id",
@@ -19,6 +35,9 @@ mock.module("../middleware/connectionContext", () => ({
             throw AppError.unauthorized("RBAC authentication is required.");
         }
         c.set("service", { insertStream: mockInsertStream });
+        c.set("rbacUserId", "user-1");
+        c.set("rbacPermissions", permissions);
+        c.set("isRbacAdmin", false);
         await next();
     },
 }));
@@ -34,7 +53,10 @@ describe("Upload Routes", () => {
 
     beforeEach(() => {
         mockInsertStream.mockClear();
+        mockCheckTableAccess.mockReset();
+        mockCheckTableAccess.mockResolvedValue(true);
         authorized = true;
+        permissions = ["table:insert"];
     });
 
     describe("POST /preview", () => {
@@ -55,6 +77,16 @@ describe("Upload Routes", () => {
             expect(json.data.columns[0].name).toBe("id");
             expect(json.data.columns[0].type).toBe("Int64");
             expect(json.data.preview).toHaveLength(1);
+        });
+
+        it("requires a signed-in user", async () => {
+            authorized = false;
+            const formData = new FormData();
+            formData.append("file", new File(["id\n1"], "t.csv", { type: "text/csv" }));
+
+            const res = await app.request("/upload/preview", { method: "POST", body: formData });
+
+            expect(res.status).toBe(401);
         });
 
         it("should return 400 if no file provided", async () => {
@@ -112,6 +144,33 @@ describe("Upload Routes", () => {
             });
 
             expect(res.status).toBe(401);
+        });
+
+        const post = (query: string) => app.request(`/upload/create?${query}`, {
+            method: "POST",
+            headers: { "X-Connection-Id": "conn-1" },
+            body: "csv,data\n1,2",
+        });
+
+        it("requires the table:insert permission", async () => {
+            permissions = ["table:select"];
+            const res = await post("database=default&table=test");
+            expect(res.status).toBe(403);
+            expect(mockInsertStream).not.toHaveBeenCalled();
+        });
+
+        it("applies data access rules to the target table", async () => {
+            mockCheckTableAccess.mockResolvedValue(false);
+            const res = await post("database=secret&table=t");
+            expect(res.status).toBe(403);
+            expect(mockCheckTableAccess).toHaveBeenCalledWith("user-1", false, "secret", "t", undefined, "write");
+            expect(mockInsertStream).not.toHaveBeenCalled();
+        });
+
+        it("rejects formats the import wizard doesn't send", async () => {
+            const res = await post("database=default&table=test&format=Native");
+            expect(res.status).toBe(400);
+            expect(mockInsertStream).not.toHaveBeenCalled();
         });
     });
 });

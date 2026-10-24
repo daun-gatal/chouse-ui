@@ -148,7 +148,115 @@ export function validateColumnType(type: string): boolean {
   }
 
   const baseType = baseTypeMatch[1];
-  return ALLOWED_COLUMN_TYPES.has(baseType);
+  // The whole string is interpolated into DDL, so it must be nothing more than
+  // the type: a bare name or a name with one balanced argument list.
+  return ALLOWED_COLUMN_TYPES.has(baseType) && isNameWithOptionalArgs(type.trim());
+}
+
+const QUERY_KEYWORDS = new Set(['SELECT', 'FROM', 'WITH', 'JOIN', 'UNION', 'SETTINGS', 'FORMAT', 'INTO']);
+
+/**
+ * True when `text` is `Name` or `Name(args)` with nothing after it, where the
+ * arguments are only identifiers, numbers, plain string literals (no quotes or
+ * backslashes inside), commas, `=`, `-`, `.` and nested balanced parentheses.
+ * That covers type and engine signatures such as `Map(String, Array(UInt64))`,
+ * `Enum8('a' = 1)` or `ReplicatedMergeTree('/ch/{shard}/t', '{replica}')`, and
+ * leaves no way to close the clause and append more SQL.
+ */
+export function isNameWithOptionalArgs(text: string): boolean {
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(\(.*\))?$/s.exec(text);
+  if (!match) return false;
+  const args = match[2];
+  if (!args) return true;
+
+  const tokens = /\s+|[A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?|'[^'\\]*'|[(),=.-]/y;
+  let depth = 0;
+  let index = 0;
+  while (index < args.length) {
+    tokens.lastIndex = index;
+    const token = tokens.exec(args);
+    if (!token) return false;
+    // Arguments are literals and names, never a query.
+    if (QUERY_KEYWORDS.has(token[0].toUpperCase())) return false;
+    if (token[0] === '(') depth++;
+    if (token[0] === ')') {
+      depth--;
+      // Closing the outer list before the end would let text follow it.
+      if (depth < 0 || (depth === 0 && tokens.lastIndex !== args.length)) return false;
+    }
+    index = tokens.lastIndex;
+  }
+  return depth === 0;
+}
+
+const KEY_CLAUSE_KEYWORDS = new Set(['AS', 'ORDER', 'PARTITION', 'PRIMARY', 'SAMPLE', 'TTL', 'ENGINE', 'COMMENT']);
+
+/**
+ * True when `text` is a plain key expression for ORDER BY / PARTITION BY /
+ * PRIMARY KEY: column names, function calls, numbers, arithmetic and commas,
+ * with balanced parentheses. No literals, keywords or clauses can follow.
+ */
+export function isSafeKeyExpression(text: string): boolean {
+  if (!text || typeof text !== 'string' || !text.trim()) return false;
+  const tokens = /\s+|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[(),+\-*\/%.]/y;
+  let depth = 0;
+  let index = 0;
+  while (index < text.length) {
+    tokens.lastIndex = index;
+    const token = tokens.exec(text);
+    if (!token) return false;
+    const upper = token[0].toUpperCase();
+    if (QUERY_KEYWORDS.has(upper) || KEY_CLAUSE_KEYWORDS.has(upper)) return false;
+    if (token[0] === '(') depth++;
+    if (token[0] === ')' && --depth < 0) return false;
+    index = tokens.lastIndex;
+  }
+  return depth === 0;
+}
+
+/**
+ * Table engines that only store data locally. Engines that read from other
+ * tables, servers, files or URLs (Merge, Distributed, URL, File, S3, MySQL, …)
+ * would expose data outside the creator's data access rules, so non-admins are
+ * limited to these.
+ */
+const LOCAL_TABLE_ENGINES = new Set([
+  'MergeTree', 'ReplacingMergeTree', 'SummingMergeTree', 'AggregatingMergeTree',
+  'CollapsingMergeTree', 'VersionedCollapsingMergeTree',
+  'ReplicatedMergeTree', 'ReplicatedReplacingMergeTree', 'ReplicatedSummingMergeTree',
+  'ReplicatedAggregatingMergeTree', 'ReplicatedCollapsingMergeTree',
+  'ReplicatedVersionedCollapsingMergeTree',
+  'Memory', 'Log', 'TinyLog', 'StripeLog', 'Null', 'Set',
+]);
+
+/** Database engines that keep tables locally (no MySQL/PostgreSQL/SQLite/… proxies). */
+const LOCAL_DATABASE_ENGINES = new Set(['Atomic', 'Ordinary', 'Lazy', 'Replicated', 'Memory']);
+
+function validateEngine(engine: string, allowed: ReadonlySet<string>, allowAnyEngine: boolean): boolean {
+  if (!engine || typeof engine !== 'string') return false;
+  const trimmed = engine.trim();
+  if (!isNameWithOptionalArgs(trimmed)) return false;
+  const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(trimmed)?.[0] ?? '';
+  return allowAnyEngine || allowed.has(name);
+}
+
+/** Validate a CREATE TABLE engine clause. Admins may use any engine name. */
+export function validateTableEngine(engine: string, allowAnyEngine: boolean): boolean {
+  return validateEngine(engine, LOCAL_TABLE_ENGINES, allowAnyEngine);
+}
+
+/** Validate a CREATE DATABASE engine clause. Admins may use any engine name. */
+export function validateDatabaseEngine(engine: string, allowAnyEngine: boolean): boolean {
+  return validateEngine(engine, LOCAL_DATABASE_ENGINES, allowAnyEngine);
+}
+
+/**
+ * Quote a value as a ClickHouse string literal. ClickHouse treats `\` as an
+ * escape character, so it must be escaped along with the quote — escaping the
+ * quote alone lets a trailing backslash swallow the closing quote.
+ */
+export function quoteStringLiteral(value: string): string {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 /**

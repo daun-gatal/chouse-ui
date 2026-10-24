@@ -1,6 +1,16 @@
 
 import { describe, it, expect } from "bun:test";
-import { validateIdentifier, escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "./sqlIdentifier";
+import {
+    validateIdentifier,
+    escapeIdentifier,
+    escapeQualifiedIdentifier,
+    validateColumnType,
+    validateFormat,
+    validateTableEngine,
+    validateDatabaseEngine,
+    isSafeKeyExpression,
+    quoteStringLiteral,
+} from "./sqlIdentifier";
 
 describe("SQL Identifier Utils", () => {
     describe("validateIdentifier", () => {
@@ -72,6 +82,67 @@ describe("SQL Identifier Utils", () => {
 
         it("should reject invalid formats", () => {
             expect(validateFormat("Exe")).toBe(false);
+        });
+    });
+
+    describe("validateColumnType (whole string)", () => {
+        it.each([
+            "UInt64", "Nullable(String)", "Map(String, Array(UInt64))", "DateTime64(3, 'UTC')",
+            "Decimal(10, 2)", "Enum8('a' = 1, 'b' = -2)", "AggregateFunction(sum, UInt64)",
+            "Tuple(a String, b Nullable(Int32))",
+        ])("accepts %s", (type) => {
+            expect(validateColumnType(type)).toBe(true);
+        });
+
+        it.each([
+            "String) ENGINE = Memory",
+            "String DEFAULT 1",
+            "Nullable(String))",
+            "Enum8('a\\' = 1)",
+            "Nullable((SELECT 1))",
+        ])("rejects %s", (type) => {
+            expect(validateColumnType(type)).toBe(false);
+        });
+    });
+
+    describe("validateTableEngine / validateDatabaseEngine", () => {
+        it("accepts local engines for everyone", () => {
+            expect(validateTableEngine("MergeTree()", false)).toBe(true);
+            expect(validateTableEngine("ReplicatedMergeTree('/ch/{shard}/t', '{replica}')", false)).toBe(true);
+            expect(validateDatabaseEngine("Atomic", false)).toBe(true);
+        });
+
+        it("keeps data-reaching engines to admins", () => {
+            expect(validateTableEngine("Merge('db', '.*')", false)).toBe(false);
+            expect(validateTableEngine("Merge('db', '.*')", true)).toBe(true);
+            expect(validateDatabaseEngine("MySQL('host:3306', 'db', 'u', 'p')", false)).toBe(false);
+        });
+
+        it("rejects trailing clauses even for admins", () => {
+            expect(validateTableEngine("Memory AS SELECT 1", true)).toBe(false);
+            expect(validateTableEngine("Memory() SETTINGS x = 1", true)).toBe(false);
+            expect(validateDatabaseEngine("Atomic; DROP DATABASE x", true)).toBe(false);
+        });
+    });
+
+    describe("isSafeKeyExpression", () => {
+        it("accepts column lists and function calls", () => {
+            expect(isSafeKeyExpression("id, toDate(ts)")).toBe(true);
+            expect(isSafeKeyExpression("intHash32(user_id) % 16")).toBe(true);
+        });
+
+        it("rejects literals, keywords and unbalanced parentheses", () => {
+            expect(isSafeKeyExpression("id AS SELECT 1")).toBe(false);
+            expect(isSafeKeyExpression("toDate('x')")).toBe(false);
+            expect(isSafeKeyExpression("id) TTL ts")).toBe(false);
+            expect(isSafeKeyExpression("")).toBe(false);
+        });
+    });
+
+    describe("quoteStringLiteral", () => {
+        it("escapes quotes and backslashes", () => {
+            expect(quoteStringLiteral("it's")).toBe("'it\\'s'");
+            expect(quoteStringLiteral("a\\")).toBe("'a\\\\'");
         });
     });
 });

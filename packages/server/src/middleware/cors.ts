@@ -59,10 +59,17 @@ function isOriginAllowed(origin: string, allowedOrigins: CorsOptions["origin"]):
         return false;
       }
 
-      // Support wildcard subdomains (e.g., *.example.com)
+      // Support wildcard subdomains (e.g., *.example.com). Compare hostnames:
+      // a plain suffix check would also accept https://evilexample.com.
       if (allowed.startsWith("*.")) {
-        const domain = allowed.slice(2);
-        return origin.endsWith(domain) || origin.endsWith("." + domain);
+        const domain = allowed.slice(2).toLowerCase();
+        let hostname: string;
+        try {
+          hostname = new URL(origin).hostname.toLowerCase();
+        } catch {
+          return false;
+        }
+        return hostname === domain || hostname.endsWith("." + domain);
       }
       return origin === allowed;
     });
@@ -87,12 +94,12 @@ export function corsMiddleware(options: CorsOptions = {}) {
   // minimal validation of configuration in production
   if (opts.strictMode && (!opts.origin || opts.origin === "*" || (Array.isArray(opts.origin) && opts.origin.length === 0))) {
     logger.error({ module: "CORS" }, "CORS_ORIGINS must be set to specific domains in production");
-    // We don't throw here to avoid crashing if env var is missing, but strict mode will block everything if origin is "*"
-    // because isOriginAllowed returns true for "*", but strictMode logic below might need review.
-    // Actually, let's look at logic: if origin is "*", isOriginAllowed returns true.
-    // Then strictMode && hasOrigin && !isAllowed -> false. So it allows it.
-    // We should probably force it to NOT allow * in strict mode.
   }
+
+  // A wildcard config answers any site, so it must never also allow
+  // credentials: echoing an arbitrary Origin with Allow-Credentials lets every
+  // website make cookie-bearing requests and read the responses.
+  const isWildcard = opts.origin === "*";
 
   return async (c: Context, next: Next) => {
     const origin = c.req.header("Origin") || "";
@@ -127,16 +134,15 @@ export function corsMiddleware(options: CorsOptions = {}) {
     }
 
     // Set CORS headers for allowed origins
-    if (hasOrigin && isAllowed) {
-      // For credentialed requests, must echo the specific origin (not *)
-      const allowedOrigin = opts.origin === "*" ? origin : origin;
-      c.header("Access-Control-Allow-Origin", allowedOrigin);
-    } else if (!hasOrigin && opts.origin === "*") {
-      // For non-CORS requests with wildcard config, set * 
+    if (isWildcard) {
       c.header("Access-Control-Allow-Origin", "*");
+    } else if (hasOrigin && isAllowed) {
+      // Credentialed responses must echo the specific origin, not *
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Vary", "Origin");
     }
 
-    if (opts.credentials && isAllowed) {
+    if (opts.credentials && isAllowed && !isWildcard) {
       c.header("Access-Control-Allow-Credentials", "true");
     }
 

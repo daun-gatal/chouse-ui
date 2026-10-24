@@ -17,6 +17,8 @@ import { log } from "@/lib/log";
 /** Defensive mirror of the server-side guard: only same-app paths. */
 function safeClientRedirect(target: string): string {
   if (!target.startsWith("/") || target[1] === "/" || target[1] === "\\") return "/";
+  // URL parsing drops tabs and newlines, so "/\t/evil.com" becomes //evil.com.
+  if (/[\u0000-\u001f\u007f]/.test(target)) return "/";
   return target;
 }
 

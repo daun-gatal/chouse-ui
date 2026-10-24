@@ -16,7 +16,16 @@ import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
 } from "../middleware/connectionContext";
-import { escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "../utils/sqlIdentifier";
+import {
+  escapeIdentifier,
+  escapeQualifiedIdentifier,
+  isSafeKeyExpression,
+  quoteStringLiteral,
+  validateColumnType,
+  validateDatabaseEngine,
+  validateFormat,
+  validateTableEngine,
+} from "../utils/sqlIdentifier";
 import { logger, requestLogger } from "../utils/logger";
 
 type Variables = ConnectionContextVariables;
@@ -231,6 +240,31 @@ explorer.get("/table/:database/:table/sample", async (c) => {
 });
 
 /**
+ * Data access rules apply to the explorer's DDL buttons exactly as they apply
+ * to the same statements typed into the SQL editor; without this a user limited
+ * to one database could create or drop objects in any other.
+ */
+async function denyWithoutDataAccess(
+  c: Context,
+  database: string,
+  table: string | null,
+  accessType: "write" | "admin"
+): Promise<Response | null> {
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const connectionId = c.get("session")?.rbacConnectionId ?? c.get("rbacConnectionId");
+  const allowed = table === null
+    ? await checkDatabaseAccess(rbacUserId, isRbacAdmin, database, connectionId, accessType)
+    : await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId, accessType);
+  if (allowed) return null;
+  const target = table === null ? database : `${database}.${table}`;
+  return c.json({
+    success: false,
+    error: { code: "FORBIDDEN", message: `Access denied to ${target}` },
+  }, 403);
+}
+
+/**
  * POST /explorer/database
  * Create a new database
  */
@@ -273,6 +307,9 @@ explorer.post(
       }, 400);
     }
 
+    const denied = await denyWithoutDataAccess(c, name, null, "admin");
+    if (denied) return denied;
+
     let query = `CREATE DATABASE IF NOT EXISTS ${escapedName}`;
 
     if (escapedCluster) {
@@ -280,10 +317,15 @@ explorer.post(
     }
 
     if (engine) {
-      // Engine names should also be validated, but for now we'll escape it
-      // Note: Engine names in ClickHouse can contain special characters, so this is a basic check
-      const escapedEngine = engine.replace(/[`;]/g, '');
-      query += ` ENGINE = ${escapedEngine}`;
+      // Proxy engines (MySQL, PostgreSQL, …) would expose remote data, and a
+      // free-form value could append more SQL.
+      if (!validateDatabaseEngine(engine, Boolean(isRbacAdmin))) {
+        return c.json({
+          success: false,
+          error: { code: "INVALID_INPUT", message: `Invalid or disallowed database engine: ${engine}` },
+        }, 400);
+      }
+      query += ` ENGINE = ${engine.trim()}`;
     }
 
     await service.executeQuery(query);
@@ -341,6 +383,9 @@ explorer.delete(
         error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
       }, 400);
     }
+
+    const denied = await denyWithoutDataAccess(c, name, null, "admin");
+    if (denied) return denied;
 
     const dropDatabaseSql = `DROP DATABASE IF EXISTS ${escapedName}`;
     const blocked = await enforceSchemaPreflight(c, c.get("rbacConnectionId") ?? c.get("session")?.rbacConnectionId, dropDatabaseSql, c.get("session")?.connectionConfig?.database);
@@ -424,6 +469,9 @@ explorer.post(
       }, 400);
     }
 
+    const denied = await denyWithoutDataAccess(c, database, name, "admin");
+    if (denied) return denied;
+
     // Validate and escape column definitions
     const columnDefs = columns
       .map((col) => {
@@ -432,27 +480,23 @@ explorer.post(
         try {
           escapedColName = escapeIdentifier(col.name);
         } catch (error) {
-          throw new Error(`Invalid column name "${col.name}": ${(error as Error).message}`);
+          throw AppError.badRequest(`Invalid column name "${col.name}": ${(error as Error).message}`);
         }
 
         // Validate column type
         if (!validateColumnType(col.type)) {
-          throw new Error(`Invalid column type "${col.type}" for column "${col.name}"`);
+          throw AppError.badRequest(`Invalid column type "${col.type}" for column "${col.name}"`);
         }
 
         let def = `${escapedColName} ${col.type}`;
 
         // Escape default value (if it's a string literal)
         if (col.default) {
-          // For string defaults, escape single quotes
-          const escapedDefault = col.default.replace(/'/g, "''");
-          def += ` DEFAULT '${escapedDefault}'`;
+          def += ` DEFAULT ${quoteStringLiteral(col.default)}`;
         }
 
-        // Escape comment
         if (col.comment) {
-          const escapedComment = col.comment.replace(/'/g, "''");
-          def += ` COMMENT '${escapedComment}'`;
+          def += ` COMMENT ${quoteStringLiteral(col.comment)}`;
         }
 
         return def;
@@ -465,47 +509,28 @@ explorer.post(
       query += ` ON CLUSTER ${escapedCluster}`;
     }
 
-    query += ` (\n  ${columnDefs}\n) ENGINE = ${engine}`;
-
-    // Validate and escape ORDER BY, PARTITION BY, PRIMARY KEY
-    if (orderBy) {
-      // ORDER BY can contain multiple columns, so we need to parse and escape each
-      const orderByParts = orderBy.split(',').map(s => s.trim());
-      const escapedOrderBy = orderByParts.map(part => {
-        try {
-          return escapeIdentifier(part);
-        } catch {
-          // If it's not a simple identifier, it might be an expression - validate it doesn't contain SQL injection
-          if (/[;`'"]/.test(part)) {
-            throw new Error(`Invalid ORDER BY expression: contains dangerous characters`);
-          }
-          return part;
-        }
-      }).join(', ');
-      query += `\nORDER BY ${escapedOrderBy}`;
+    // Every clause below is interpolated into DDL: anything beyond a plain
+    // engine signature or key expression could append `AS SELECT …` or point
+    // the table at data outside the user's access rules.
+    if (!validateTableEngine(engine, Boolean(isRbacAdmin))) {
+      return c.json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: `Invalid or disallowed table engine: ${engine}` },
+      }, 400);
     }
-
-    if (partitionBy) {
-      // Similar validation for PARTITION BY
-      if (/[;`'"]/.test(partitionBy)) {
+    for (const [clause, expression] of [["ORDER BY", orderBy], ["PARTITION BY", partitionBy], ["PRIMARY KEY", primaryKey]] as const) {
+      if (expression && !isSafeKeyExpression(expression)) {
         return c.json({
           success: false,
-          error: { code: "INVALID_INPUT", message: "Invalid PARTITION BY expression: contains dangerous characters" },
+          error: { code: "INVALID_INPUT", message: `Invalid ${clause} expression` },
         }, 400);
       }
-      query += `\nPARTITION BY ${partitionBy}`;
     }
 
-    if (primaryKey) {
-      // Similar validation for PRIMARY KEY
-      if (/[;`'"]/.test(primaryKey)) {
-        return c.json({
-          success: false,
-          error: { code: "INVALID_INPUT", message: "Invalid PRIMARY KEY expression: contains dangerous characters" },
-        }, 400);
-      }
-      query += `\nPRIMARY KEY ${primaryKey}`;
-    }
+    query += ` (\n  ${columnDefs}\n) ENGINE = ${engine.trim()}`;
+    if (orderBy) query += `\nORDER BY ${orderBy}`;
+    if (partitionBy) query += `\nPARTITION BY ${partitionBy}`;
+    if (primaryKey) query += `\nPRIMARY KEY ${primaryKey}`;
 
     await service.executeQuery(query);
 
@@ -564,6 +589,9 @@ explorer.delete(
         error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
       }, 400);
     }
+
+    const denied = await denyWithoutDataAccess(c, database, table, "admin");
+    if (denied) return denied;
 
     const dropTableSql = `DROP TABLE IF EXISTS ${escapedDatabase}.${escapedTable}`;
     const blocked = await enforceSchemaPreflight(c, c.get("rbacConnectionId") ?? c.get("session")?.rbacConnectionId, dropTableSql, c.get("session")?.connectionConfig?.database);

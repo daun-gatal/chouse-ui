@@ -63,7 +63,7 @@ mock.module("../middleware/dataAccess", () => ({
             c.set("rbacUserId", "user1");
             c.set("rbacRoles", ["admin"]);
             c.set("rbacPermissions", ["database:view", "table:view"]);
-            c.set("isRbacAdmin", true);
+            c.set("isRbacAdmin", !c.req.header("X-Test-Non-Admin"));
         }
         await next();
     }),
@@ -104,8 +104,11 @@ describe("Explorer Routes", () => {
         mockUserHasPermission.mockClear();
         mockFilterDatabases.mockClear();
         mockFilterTables.mockClear();
-        mockCheckDatabaseAccess.mockClear();
-        mockCheckTableAccess.mockClear();
+        mockCheckDatabaseAccess.mockReset();
+        mockCheckDatabaseAccess.mockResolvedValue(true);
+        mockCheckTableAccess.mockReset();
+        mockCheckTableAccess.mockResolvedValue(true);
+        mockUserHasPermission.mockResolvedValue(true);
         mockEnforceSchemaPreflight.mockReset();
         mockEnforceSchemaPreflight.mockResolvedValue(null);
 
@@ -200,6 +203,89 @@ describe("Explorer Routes", () => {
             expect(res.status).toBe(409);
             expect(mockEnforceSchemaPreflight.mock.calls[0][2]).toBe("DROP DATABASE IF EXISTS `dropped_db`");
             expect(mockExecuteQuery).not.toHaveBeenCalledWith("DROP DATABASE IF EXISTS `dropped_db`");
+        });
+    });
+    describe("data access rules on DDL", () => {
+        const auth = { "Content-Type": "application/json", "Authorization": "Bearer token" };
+
+        it("refuses to create a database the user's rules do not cover", async () => {
+            mockCheckDatabaseAccess.mockResolvedValue(false);
+            const res = await app.request("/explorer/database", {
+                method: "POST", headers: auth, body: JSON.stringify({ name: "other_db" }),
+            });
+            expect(res.status).toBe(403);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+
+        it("refuses to drop a database the user's rules do not cover", async () => {
+            mockCheckDatabaseAccess.mockResolvedValue(false);
+            const res = await app.request("/explorer/database/other_db", { method: "DELETE", headers: auth });
+            expect(res.status).toBe(403);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+
+        it("refuses to create a table the user's rules do not cover", async () => {
+            mockCheckTableAccess.mockResolvedValue(false);
+            const res = await app.request("/explorer/table", {
+                method: "POST", headers: auth,
+                body: JSON.stringify({ database: "other_db", name: "t", columns: [{ name: "id", type: "UInt64" }] }),
+            });
+            expect(res.status).toBe(403);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+
+        it("refuses to drop a table the user's rules do not cover", async () => {
+            mockCheckTableAccess.mockResolvedValue(false);
+            const res = await app.request("/explorer/table/other_db/t", { method: "DELETE", headers: auth });
+            expect(res.status).toBe(403);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("POST /explorer/table input validation", () => {
+        const auth = { "Content-Type": "application/json", "Authorization": "Bearer token" };
+        const create = (overrides: Record<string, unknown>, extraHeaders: Record<string, string> = {}) =>
+            app.request("/explorer/table", {
+                method: "POST",
+                headers: { ...auth, ...extraHeaders },
+                body: JSON.stringify({ database: "db1", name: "t", columns: [{ name: "id", type: "UInt64" }], ...overrides }),
+            });
+
+        it("builds the expected statement for a normal table", async () => {
+            const res = await create({ engine: "ReplicatedMergeTree('/ch/{shard}/t', '{replica}')", orderBy: "id, toDate(ts)" });
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery).toHaveBeenCalledWith(
+                expect.stringContaining("ENGINE = ReplicatedMergeTree('/ch/{shard}/t', '{replica}')\nORDER BY id, toDate(ts)")
+            );
+        });
+
+        it.each([
+            ["an engine with a trailing clause", { engine: "Memory AS SELECT 1" }],
+            ["an engine with a query argument", { engine: "Memory((SELECT 1))" }],
+            ["a column type with a trailing clause", { columns: [{ name: "v", type: "String) ENGINE = Memory" }] }],
+            ["an ORDER BY with a trailing clause", { orderBy: "id AS SELECT 1" }],
+            ["a PARTITION BY with a literal", { partitionBy: "toYYYYMM(ts), 'x'" }],
+        ])("rejects %s", async (_label, overrides) => {
+            const res = await create(overrides);
+            expect(res.status).not.toBe(200);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+
+        it("escapes backslashes in DEFAULT and COMMENT literals", async () => {
+            const res = await create({ columns: [{ name: "v", type: "String", default: "a\\", comment: "it's" }] });
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery).toHaveBeenCalledWith(expect.stringContaining("DEFAULT 'a\\\\' COMMENT 'it\\'s'"));
+        });
+
+        it("limits non-admins to local-storage engines", async () => {
+            const res = await create({ engine: "Merge('db2', '.*')" }, { "X-Test-Non-Admin": "1" });
+            expect(res.status).toBe(400);
+            expect(mockExecuteQuery).not.toHaveBeenCalled();
+        });
+
+        it("lets admins use other engines", async () => {
+            const res = await create({ engine: "Distributed(cluster1, db1, t_local, rand())" });
+            expect(res.status).toBe(200);
         });
     });
 });

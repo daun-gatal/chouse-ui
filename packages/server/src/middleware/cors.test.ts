@@ -85,4 +85,33 @@ describe("CORS Middleware", () => {
         expect(mockContext.body).toHaveBeenCalledWith(null, 204);
         expect(mockNext).not.toHaveBeenCalled(); // Should return early
     });
+
+    it("never allows credentials with a wildcard origin", async () => {
+        const middleware = corsMiddleware({ origin: "*", credentials: true });
+        mockContext.req.header.mockImplementation((name: string) => name === "Origin" ? "https://attacker.example" : null);
+
+        await middleware(mockContext, mockNext);
+
+        expect(mockContext.header).toHaveBeenCalledWith("Access-Control-Allow-Origin", "*");
+        expect(mockContext.header).not.toHaveBeenCalledWith("Access-Control-Allow-Origin", "https://attacker.example");
+        expect(mockContext.header).not.toHaveBeenCalledWith("Access-Control-Allow-Credentials", "true");
+    });
+
+    it("still allows credentials for an explicitly listed origin", async () => {
+        const middleware = corsMiddleware({ origin: ["http://example.com"], credentials: true });
+
+        await middleware(mockContext, mockNext);
+
+        expect(mockContext.header).toHaveBeenCalledWith("Access-Control-Allow-Credentials", "true");
+    });
+
+    it("does not let a wildcard subdomain match a lookalike domain", async () => {
+        const middleware = corsMiddleware({ origin: ["*.example.com"], strictMode: true });
+        mockContext.req.header.mockImplementation((name: string) => name === "Origin" ? "https://evilexample.com" : null);
+
+        await middleware(mockContext, mockNext);
+
+        expect(mockNext).not.toHaveBeenCalled();
+        expect(mockContext.json.mock.calls[0][1]).toBe(403);
+    });
 });

@@ -6,6 +6,7 @@ import { Hono } from "hono";
 // Mock Services
 const mockCreateUser = mock();
 const mockGetUserById = mock();
+const mockGetRoleById = mock();
 const mockUpdateUser = mock();
 const mockDeleteUser = mock();
 const mockListUsers = mock();
@@ -17,6 +18,7 @@ const mockValidatePasswordStrength = mock(() => ({ valid: true, errors: [] }));
 mock.module("../services/rbac", () => ({
     createUser: mockCreateUser,
     getUserById: mockGetUserById,
+    getRoleById: mockGetRoleById,
     updateUser: mockUpdateUser,
     deleteUser: mockDeleteUser,
     listUsers: mockListUsers,
@@ -57,6 +59,7 @@ describe("RBAC Users Routes", () => {
         // Reset mocks & state
         mockCreateUser.mockClear();
         mockGetUserById.mockClear();
+        mockGetRoleById.mockReset();
         mockUpdateUser.mockClear();
         mockDeleteUser.mockClear();
         mockListUsers.mockClear();
@@ -131,6 +134,7 @@ describe("RBAC Users Routes", () => {
     describe("POST /users", () => {
         it("should create user", async () => {
             mockCreateUser.mockResolvedValue({ id: "new-u", email: "test@example.com", roles: [] });
+            mockGetRoleById.mockResolvedValue({ id: "r1", name: "viewer", permissions: ["users:view"] });
 
             const res = await app.request("/users", {
                 method: "POST",
@@ -140,6 +144,58 @@ describe("RBAC Users Routes", () => {
 
             expect(res.status).toBe(201);
             expect(mockCreateUser).toHaveBeenCalled();
+        });
+    });
+
+    describe("role assignment cannot exceed the caller's own permissions", () => {
+        const roles: Record<string, { id: string; name: string; permissions: string[] }> = {
+            "role-super": { id: "role-super", name: "super_admin", permissions: ["users:view", "settings:update"] },
+            "role-wide": { id: "role-wide", name: "ops", permissions: ["users:view", "settings:update"] },
+            "role-narrow": { id: "role-narrow", name: "viewer", permissions: ["users:view"] },
+        };
+        const json = { "Content-Type": "application/json", "Authorization": "Bearer token" };
+
+        beforeEach(() => {
+            mockTokenPayload.permissions = ["users:view", "users:create", "users:update", "roles:assign"];
+            mockGetRoleById.mockImplementation(async (id: string) => roles[id] ?? null);
+            mockGetUserById.mockResolvedValue({ id: "admin-id", username: "me", roles: ["admin"] });
+            mockCreateUser.mockResolvedValue({ id: "new" });
+            mockUpdateUser.mockResolvedValue({ id: "admin-id" });
+        });
+
+        it.each([
+            ["assign-roles", "POST", "/users/admin-id/assign-roles", { roleIds: ["role-super"] }],
+            ["create user", "POST", "/users", { email: "n@x.io", username: "newuser", password: "Password-123!", roleIds: ["role-super"] }],
+            ["update user", "PATCH", "/users/admin-id", { roleIds: ["role-super"] }],
+        ])("denies granting super_admin via %s", async (_label, method, path, body) => {
+            const res = await app.request(path, { method, headers: json, body: JSON.stringify(body) });
+            expect(res.status).toBe(403);
+            expect(mockCreateUser).not.toHaveBeenCalled();
+            expect(mockUpdateUser).not.toHaveBeenCalled();
+        });
+
+        it("denies a role holding permissions the caller lacks", async () => {
+            const res = await app.request("/users/admin-id/assign-roles", {
+                method: "POST", headers: json, body: JSON.stringify({ roleIds: ["role-wide"] }),
+            });
+            expect(res.status).toBe(403);
+            expect(mockUpdateUser).not.toHaveBeenCalled();
+        });
+
+        it("allows a role within the caller's permissions", async () => {
+            const res = await app.request("/users/admin-id/assign-roles", {
+                method: "POST", headers: json, body: JSON.stringify({ roleIds: ["role-narrow"] }),
+            });
+            expect(res.status).toBe(200);
+            expect(mockUpdateUser).toHaveBeenCalledWith("admin-id", { roleIds: ["role-narrow"] });
+        });
+
+        it("lets a super admin assign any role", async () => {
+            mockTokenPayload.roles = ["super_admin"];
+            const res = await app.request("/users/admin-id/assign-roles", {
+                method: "POST", headers: json, body: JSON.stringify({ roleIds: ["role-super"] }),
+            });
+            expect(res.status).toBe(200);
         });
     });
 

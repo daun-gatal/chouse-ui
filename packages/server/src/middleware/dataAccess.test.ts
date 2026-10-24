@@ -298,6 +298,71 @@ describe("Data Access Middleware", () => {
         });
     });
 
+    describe("validateQueryAccess — tables hidden from the top-level FROM", () => {
+        // Only `public` is readable; every query below reads `secret.t` somewhere.
+        const allowPublicOnly = (_user: string, db: string) =>
+            Promise.resolve({ allowed: db === "public" });
+        const permissions = ["table:select", "table:insert", "table:delete", "table:create", "query:execute:ddl"];
+
+        beforeEach(() => {
+            mockRbacService.checkUserAccess.mockImplementation(allowPublicOnly);
+        });
+
+        it.each([
+            ["scalar subquery", "SELECT (SELECT any(v) FROM secret.t) AS leaked"],
+            ["IN subquery", "SELECT v FROM public.t WHERE id IN (SELECT id FROM secret.t)"],
+            ["EXISTS subquery", "SELECT v FROM public.t WHERE EXISTS (SELECT 1 FROM secret.t)"],
+            ["UNION arm", "SELECT v FROM public.t UNION ALL SELECT v FROM secret.t"],
+            ["same table name in another database", "SELECT b.v FROM public.t AS a, secret.t AS b"],
+            ["qualified name shadowed by a CTE", "WITH t AS (SELECT 1) SELECT * FROM secret.t"],
+            ["qualified name shadowed by a CTE (fallback parser)", "WITH t AS (SELECT 1) SELECT * FROM secret.t FINAL"],
+            ["INSERT … SELECT source", "INSERT INTO public.t SELECT id, v FROM secret.t"],
+            ["CREATE … AS SELECT source", "CREATE TABLE public.c ENGINE = Memory AS SELECT * FROM secret.t"],
+            ["DELETE subquery", "DELETE FROM public.t WHERE id IN (SELECT id FROM secret.t)"],
+            ["dictionary lookup", "SELECT dictGet('secret.d', 'v', toUInt64(1))"],
+            ["Join-engine lookup", "SELECT joinGet('secret.j', 'v', 1)"],
+        ])("denies a %s", async (_label, sql) => {
+            const result = await validateQueryAccess(userId, false, permissions, sql);
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("secret.");
+        });
+
+        it.each([
+            "SELECT * FROM remote('localhost', 'secret', 't')",
+            "SELECT * FROM cluster('default', secret.t)",
+            "SELECT * FROM merge('secret', '.*')",
+            "SELECT * FROM url('http://169.254.169.254/latest/meta-data', 'TSV')",
+            "SELECT * FROM file('/etc/passwd', 'LineAsString')",
+            "SELECT * FROM public.t JOIN s3('https://bucket/x.csv') AS s ON 1",
+        ])("denies a data-reaching table function: %s", async (sql) => {
+            const result = await validateQueryAccess(userId, false, permissions, sql);
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("Table function");
+        });
+
+        it("allows inline-data table functions without a rule for them", async () => {
+            const result = await validateQueryAccess(userId, false, permissions, "SELECT number FROM numbers(10)");
+            expect(result.allowed).toBe(true);
+        });
+
+        it("checks a subquery source for read access only", async () => {
+            const result = await validateQueryAccess(
+                userId, false, permissions, "INSERT INTO public.t SELECT id, v FROM public.src"
+            );
+            expect(result.allowed).toBe(true);
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "public", "src", "read", undefined);
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "public", "t", "write", undefined);
+        });
+
+        it("still allows a query that only touches permitted tables", async () => {
+            const result = await validateQueryAccess(
+                userId, false, permissions,
+                "WITH x AS (SELECT v FROM public.t) SELECT * FROM x WHERE v IN (SELECT v FROM public.u)"
+            );
+            expect(result.allowed).toBe(true);
+        });
+    });
+
     describe("extractTablesFromQuery", () => {
         it("should extract tables", () => {
             const sql = "SELECT * FROM db.t1 JOIN db.t2";
