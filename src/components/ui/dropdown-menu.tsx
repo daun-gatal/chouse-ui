@@ -3,6 +3,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useLayerProps } from "@/lib/layers"
 import { useOnboardingSurfaceRef } from "@/lib/onboardingSurfaces"
 
 const DropdownMenu = DropdownMenuPrimitive.Root
@@ -43,6 +44,7 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, children, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -53,6 +55,7 @@ const DropdownMenuSubContent = React.forwardRef<
         className
       )}
       {...props}
+      {...layer}
       data-onboarding-surface="dropdown-submenu"
     >
       {children}
@@ -66,6 +69,7 @@ const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, children, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -78,6 +82,7 @@ const DropdownMenuContent = React.forwardRef<
           className
         )}
         {...props}
+        {...layer}
         data-onboarding-surface="dropdown-menu"
       >
         {children}

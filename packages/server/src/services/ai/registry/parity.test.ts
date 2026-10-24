@@ -12,8 +12,14 @@
  * - skills now load (the old engine mounted them at "/skills" without the
  *   trailing slash, so DeepAgents loaded none) — see skillsBackend.test.ts;
  * - the harness suffix follows the agent prompt instead of DeepAgents' base
- *   prompt (profiles are process-global and cannot be per agent).
+ *   prompt (profiles are process-global and cannot be per agent);
+ * - chat (ADR 0025 §5) runs CHouse Assistant v3 — one agent with read-only
+ *   investigators, toolkits and every write tool — instead of the
+ *   pre-registry ClickHouse chat; assistant/seeds.test.ts covers it.
  */
+
+/** Features that changed on purpose since the cut-over, each covered by its own tests. */
+const CHANGED_SINCE_CUTOVER = new Set(["chat"]);
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -108,6 +114,7 @@ describe("registry parity with the pre-registry capabilities", () => {
   });
 
   for (const [id, captured] of Object.entries(fixture.capabilities)) {
+    if (CHANGED_SINCE_CUTOVER.has(id)) continue;
     describe(id, () => {
       it("keeps permission, delivery and tuning", () => {
         const cap = (CAPABILITIES as Record<string, AnyCapability>)[id];

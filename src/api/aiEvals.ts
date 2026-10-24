@@ -26,7 +26,7 @@ export interface EvalCase extends Required<Omit<EvalCaseInput, "featureId" | "ru
   agentId: string;
   featureId: string | null;
   rubric: string | null;
-  source: "manual" | "console" | "request";
+  source: "manual" | "console" | "request" | "builtin";
   createdBy: string | null;
   createdAt: number;
   updatedAt: number;

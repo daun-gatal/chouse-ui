@@ -30,11 +30,11 @@ import {
 } from "./prompts";
 import {
   ACCESS_AUDITOR_PROMPT,
-  CHOUSE_ADMIN_PROMPT,
+  ASSISTANT_PROMPT,
   OPERATIONS_ANALYST_PROMPT,
   PLATFORM_AUDITOR_PROMPT,
-  ROUTER_PROMPT,
 } from "./chatPrompts";
+import { ACTION_DEFINITIONS } from "../actions/definitions";
 
 const SKILLS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "skills");
 
@@ -118,6 +118,16 @@ export const SEED_HARNESSES: SeedHarness[] = [
     toolDescriptionOverrides: {},
   },
   {
+    id: "builtin-harness-assistant",
+    slug: "assistant",
+    name: "Assistant",
+    description: "For CHouse Assistant (ADR 0025): delegates to read-only investigators, plans changes with a todo list, reads skills; no file-writing or async tools.",
+    excludedTools: ["ls", "write_file", "edit_file", "delete", "glob", "grep", "execute", ...ASYNC_TASK_TOOLS],
+    generalPurpose: { enabled: false },
+    promptSuffix: "Investigators answer with the task tool and change nothing; you make every change. For two or more changes, write the plan with write_todos first, then request the changes together.",
+    toolDescriptionOverrides: {},
+  },
+  {
     id: "builtin-harness-router",
     slug: "router",
     name: "Router",
@@ -174,13 +184,13 @@ const PINNED_PLAYBOOK: SeedSkillLink = { skill: "clickhouse-playbook", mode: "pi
 // ============================================
 
 /**
- * Write tools the chat can ask to run (ADR 0024): each low-risk call waits for
- * the user's approval, and a fix only becomes a proposal in Fixes.
+ * Every write tool (ADR 0025): CHouse Assistant holds them all and sees, at a
+ * time, those of the toolkits it loaded; each call is checked by its tier.
  */
-const CHAT_ACTION_TOOLS = [
-  "kill_query", "create_saved_query", "create_scheduled_query", "create_health_promise",
-  "create_dashboard", "update_table_context", "propose_remediation",
-];
+const ASSISTANT_WRITE_TOOLS = ACTION_DEFINITIONS.map((definition) => definition.name);
+
+/** CHouse Assistant's own tools besides the session reads: who the user is, toolkits, and the user's screen. */
+const ASSISTANT_TOOLS = ["whoami", "load_toolkit", "navigate", "open_entity", "fill_form"];
 
 const CORE_SESSION_TOOLS = [
   "list_databases", "list_tables", "get_table_schema", "get_table_ddl", "get_table_size", "get_table_sample",
@@ -314,15 +324,9 @@ export const SEED_AGENTS: SeedAgent[] = [
   // --- Chat -------------------------------------------------------------------------------
   {
     id: "builtin-agent-clickhouse-data", slug: "clickhouse-data", name: "ClickHouse Data",
-    description: "Answers questions about ClickHouse data: databases, tables, columns, SQL, query performance, server state and charts.",
-    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12, memory: true },
-    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query", ...CHAT_ACTION_TOOLS], skills: ALL_SKILLS, subagents: [],
-  },
-  {
-    id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin",
-    description: "Answers read-only questions about CHouse itself: users, roles, permissions, data access, connections, scheduled jobs, data health, alerts, incidents, fixes, Doctor reports, performance, capacity, upgrades, collectors, AI models, AI agents and usage, external agents and the audit log.",
-    kind: "agent", systemPrompt: CHOUSE_ADMIN_PROMPT, taskTemplate: null, harness: "delegating", tuning: { stepBudget: 10 },
-    requiredPermissions: [], tools: ["whoami"], skills: [], subagents: ["access-auditor", "operations-analyst", "platform-auditor"],
+    description: "Read-only investigator for CHouse Assistant: databases, tables, columns, SQL, query performance, server state and charts.",
+    kind: "agent", systemPrompt: CHAT_PROMPT, taskTemplate: null, harness: "focused", tuning: { stepBudget: 12 },
+    requiredPermissions: [], tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query"], skills: ALL_SKILLS, subagents: [],
   },
   {
     id: "builtin-agent-access-auditor", slug: "access-auditor", name: "Access Auditor",
@@ -352,9 +356,12 @@ export const SEED_AGENTS: SeedAgent[] = [
   },
   {
     id: "builtin-agent-chouse-assistant", slug: "chouse-assistant", name: "CHouse Assistant",
-    description: "Routes each chat request to ClickHouse Data or CHouse Admin, and combines their answers for questions that span both.",
-    kind: "router", systemPrompt: ROUTER_PROMPT, taskTemplate: null, harness: "router", tuning: { stepBudget: 10, timeoutMs: 180_000, memory: true },
-    requiredPermissions: [], tools: [], skills: [], subagents: ["clickhouse-data", "chouse-admin"],
+    description: "Chobi's assistant: answers, investigates with read-only investigators, and makes changes in CHouse and ClickHouse — each checked by its tier.",
+    kind: "agent", systemPrompt: ASSISTANT_PROMPT, taskTemplate: null, harness: "assistant", tuning: { stepBudget: 16, timeoutMs: 240_000, memory: true },
+    requiredPermissions: [],
+    tools: [...CORE_SESSION_TOOLS, "render_chart", "generate_query", "optimize_query", ...ASSISTANT_TOOLS, ...ASSISTANT_WRITE_TOOLS],
+    skills: ALL_SKILLS,
+    subagents: ["clickhouse-data", "operations-analyst", "access-auditor", "platform-auditor"],
   },
 ];
 
@@ -371,7 +378,7 @@ export const SEED_BINDINGS: Record<string, string> = {
   "diagnose-parts": "parts-diagnostician",
   "diagnose-schema": "schema-diagnostician",
   "fleet-scan": "fleet-doctor",
-  "chat": "clickhouse-data",
+  "chat": "chouse-assistant",
   "draft-scheduled-query": "scheduled-query-drafter",
   "assess-scheduled-query": "scheduled-query-reviewer",
   "summarize-scheduled-query": "scheduled-query-briefer",
@@ -393,3 +400,27 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-guardrail": "guardrail-drafter",
   "triage-incident": "incident-triager",
 };
+
+// ============================================
+// Changes to earlier built-ins (ADR 0025 §5)
+// ============================================
+
+/**
+ * Feature bindings whose built-in default moved: a binding still on the old
+ * default, set by the seed sync, follows; one an administrator chose stays.
+ */
+export const MOVED_BINDINGS: Array<{ featureId: string; fromSlug: string }> = [
+  { featureId: "chat", fromSlug: "clickhouse-data" },
+];
+
+/**
+ * Built-in agents that no longer ship. One nobody customized is removed after
+ * its references move to its replacements; a customized one stays.
+ */
+export const RETIRED_AGENTS: Array<{ id: string; replacedBy: string[]; bindingsTo: string }> = [
+  {
+    id: "builtin-agent-chouse-admin",
+    replacedBy: ["builtin-agent-operations-analyst", "builtin-agent-access-auditor", "builtin-agent-platform-auditor"],
+    bindingsTo: "builtin-agent-chouse-assistant",
+  },
+];

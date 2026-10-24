@@ -109,8 +109,8 @@ describe('resumeChatRun', () => {
             ]);
         }));
         const events: ChatRunEvent[] = [];
-        await resumeChatRun('r1', [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], (e) => events.push(e), { modelId: 'm' });
-        expect(posted).toEqual({ decisions: [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], modelId: 'm' });
+        await resumeChatRun('r1', [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], (e) => events.push(e), { modelId: 'm', page: '/data/incidents' });
+        expect(posted).toEqual({ decisions: [{ actionId: 'x1', type: 'edit', args: { queryId: 'q2' } }, { actionId: 'x2', type: 'reject', message: 'no' }], modelId: 'm', page: '/data/incidents' });
         expect(events.map((e) => e.type)).toEqual(['status', 'final']);
     });
 

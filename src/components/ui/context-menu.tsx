@@ -3,6 +3,7 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useLayerProps } from "@/lib/layers"
 import { useOnboardingSurfaceRef } from "@/lib/onboardingSurfaces"
 
 const ContextMenu = ContextMenuPrimitive.Root
@@ -42,6 +43,7 @@ const ContextMenuSubContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
 >(({ className, children, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -52,6 +54,7 @@ const ContextMenuSubContent = React.forwardRef<
         className
       )}
       {...props}
+      {...layer}
       data-onboarding-surface="context-submenu"
     >
       {children}
@@ -64,6 +67,7 @@ const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -75,6 +79,7 @@ const ContextMenuContent = React.forwardRef<
           className
         )}
         {...props}
+        {...layer}
         data-onboarding-surface="context-menu"
       >
         {children}

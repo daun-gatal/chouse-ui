@@ -21,7 +21,7 @@ export function registerInProcessApi(root: Hono): void {
   app = root;
 }
 
-class InProcessApiError extends Error {
+export class InProcessApiError extends Error {
   readonly status: number;
 
   constructor(message: string, status: number) {
@@ -74,7 +74,16 @@ export class InProcessApiClient {
     return this.request<T>("PUT", path, { body });
   }
 
-  private async request<T>(method: "GET" | "POST" | "PUT", path: string, options: { query?: Record<string, string | undefined>; body?: unknown }): Promise<T> {
+  async patch<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("PATCH", path, { body });
+  }
+
+  /** DELETE a route; a few delete routes take a body (e.g. bulk deletes). */
+  async delete<T = unknown>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>("DELETE", path, { body });
+  }
+
+  private async request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, options: { query?: Record<string, string | undefined>; body?: unknown }): Promise<T> {
     if (!app) throw new InProcessApiError("The in-process API is not available", 503);
     const url = new URL(path, "http://chouse.internal");
     for (const [key, value] of Object.entries(options.query ?? {})) {

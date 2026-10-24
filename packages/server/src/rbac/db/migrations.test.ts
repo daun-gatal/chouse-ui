@@ -25,6 +25,7 @@ import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
 import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_EVAL_INDEX_NAMES, AI_EVAL_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
+import { AI_ACTION_GRANT_INDEX_NAMES, AI_ACTION_GRANT_TABLE_NAMES, AI_ACTION_TIER_COLUMNS, MCP_TOKEN_POLICY_TABLE_NAMES } from "./aiAssistantSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -501,6 +502,28 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const i of AI_EVAL_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
     for (const c of ["agent_id", "kind", "feature_id", "input", "expected_tools", "rubric", "source"]) expect(await h.columnExists("ai_eval_cases", c)).toBe(true);
     for (const c of ["draft_hash", "status", "score", "results", "regressions", "tokens"]) expect(await h.columnExists("ai_eval_runs", c)).toBe(true);
+  },
+  "1.71.0": async () => {
+    // ADR 0025: every AI write records its tier, origin and undo; T2 grants live in their own table.
+    for (const c of AI_ACTION_TIER_COLUMNS) expect(await h.columnExists("ai_actions", c.name)).toBe(true);
+    expect(AI_ACTION_GRANT_TABLE_NAMES).toEqual(["ai_action_grants"]);
+    for (const t of AI_ACTION_GRANT_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_ACTION_GRANT_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["user_id", "tool", "scope", "thread_id", "expires_at"]) expect(await h.columnExists("ai_action_grants", c)).toBe(true);
+  },
+  "1.72.0": async () => {
+    // ADR 0025: per-token MCP write policy; no token has one until its owner sets it.
+    expect(MCP_TOKEN_POLICY_TABLE_NAMES).toEqual(["mcp_token_policies"]);
+    for (const t of MCP_TOKEN_POLICY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const c of ["pat_id", "toolkits", "t1", "t2", "t3", "updated_at"]) expect(await h.columnExists("mcp_token_policies", c)).toBe(true);
+    expect(await h.rowCount("mcp_token_policies")).toBe(0);
+  },
+  "1.73.0": async () => {
+    // ADR 0025: watches are promises with an expiry; every existing promise stays permanent.
+    expect(await h.columnExists("data_health_promises", "expires_at")).toBe(true);
+    expect(await h.indexExists("dh_promises_expires_idx")).toBe(true);
+    const expiring = await h.rawAll(sql`SELECT COUNT(*) AS n FROM data_health_promises WHERE expires_at IS NOT NULL`);
+    expect(Number(expiring[0]?.n ?? 0)).toBe(0);
   },
 };
 

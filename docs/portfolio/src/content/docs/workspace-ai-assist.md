@@ -17,7 +17,7 @@ AI Assist is the schema-aware assistant living in the workspace: an optimizer to
 
 Every AI surface shows a **context preview** — exactly which schema pieces and query text were sent — so nothing is invisible. A **model selector** picks the provider/model per call.
 
-The chat also has an **agent picker**: *ClickHouse Data* (the default) answers about your data, *CHouse Admin* answers read-only questions about CHouse itself — users, roles, jobs, incidents, the audit log — and *Auto* routes each question to the right one. Every prompt, tool and skill behind these assistants is managed in [AI agents](/docs/ai-agents/); the picker itself is described in [Chat agents](/docs/ai-chat-agents/).
+The chat lives in [Chobi](/docs/chobi/) and talks to *CHouse Assistant*: it answers about your data and CHouse itself, delegates deep questions to read-only investigators, and makes changes checked by [tier](/docs/ai-approvals/#tiers). In the SQL editor, **Ctrl/⌘ J** asks Chobi about the selection or the query. Every prompt, tool and skill behind it is managed in [AI agents](/docs/ai-agents/); the agent picker is described in [Chat agents](/docs/ai-chat-agents/).
 
 ## Provider pluggability
 

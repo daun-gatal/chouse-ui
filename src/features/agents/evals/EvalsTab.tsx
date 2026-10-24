@@ -233,7 +233,7 @@ export function EvalsTab({ agentId, draft, registry, readOnly, onThreshold }: {
               <tr key={c.id}>
                 <td className="max-w-[180px]">
                   <span className="block text-[12px] text-paper">{c.name}</span>
-                  <span className="block text-[10px] text-paper-faint">{c.kind === "chat" ? "Chat" : registry.features.find((f) => f.id === c.featureId)?.title ?? c.featureId}{c.source !== "manual" ? ` · from ${c.source === "console" ? "the test console" : "AI activity"}` : ""}</span>
+                  <span className="block text-[10px] text-paper-faint">{c.kind === "chat" ? "Chat" : registry.features.find((f) => f.id === c.featureId)?.title ?? c.featureId}{c.source === "builtin" ? " · shipped with CHouse" : c.source !== "manual" ? ` · from ${c.source === "console" ? "the test console" : "AI activity"}` : ""}</span>
                 </td>
                 <td className="max-w-[260px]"><span className="line-clamp-2 text-[11px] text-paper-muted">{caseSummary(c)}</span></td>
                 <td className="max-w-[180px] font-mono text-[10px] text-paper-muted">{c.expectedTools.join(" → ") || "—"}</td>

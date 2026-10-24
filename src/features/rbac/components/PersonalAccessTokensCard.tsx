@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Wrench,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { useConfig } from "@/hooks";
 import { useRbacStore } from "@/stores";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
+import { TokenWritePolicyDialog } from "./TokenWritePolicyDialog";
 
 const PAT_QUERY_KEY = ["pat-tokens"];
 
@@ -369,6 +371,8 @@ export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ cla
   const [secret, setSecret] = useState<{ rawToken: string; name: string } | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<PatToken | null>(null);
   const [rotateTarget, setRotateTarget] = useState<PatToken | null>(null);
+  const [policyTarget, setPolicyTarget] = useState<PatToken | null>(null);
+  const closePolicy = useCallback(() => setPolicyTarget(null), []);
 
   const availablePermissions = useMemo(() => user?.permissions ?? [], [user?.permissions]);
 
@@ -464,6 +468,15 @@ export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ cla
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
+                    onClick={() => setPolicyTarget(token)}
+                    className="rounded-xs p-1.5 text-paper-dim transition-colors hover:bg-ink-100 hover:text-paper"
+                    title={`What agents using ${token.name} may change`}
+                    aria-label={`Write tools for ${token.name}`}
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setRotateTarget(token)}
                     className="rounded-xs p-1.5 text-paper-dim transition-colors hover:bg-ink-100 hover:text-paper"
                     title={`Rotate ${token.name} (new secret, same settings)`}
@@ -538,6 +551,8 @@ export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ cla
         cancelText="Cancel"
         variant="danger"
       />
+
+      {policyTarget && <TokenWritePolicyDialog token={policyTarget} onClose={closePolicy} />}
     </SettingCard>
   );
 };

@@ -6,7 +6,10 @@
  * - upgrades built-in rows an administrator has not customized when the
  *   shipped definition changed (seed hash differs);
  * - never touches customized rows (the UI offers "Reset to built-in");
- * - binds every built-in feature that has no valid agent to its seeded agent.
+ * - binds every built-in feature that has no valid agent to its seeded agent;
+ * - moves a binding the seed set to a default that changed (an admin's choice stays);
+ * - retires built-ins that no longer ship: their references and bindings move
+ *   to the replacements, and the row goes unless an administrator customized it.
  *
  * Two replicas booting at once may race; a lost race surfaces as a conflict or
  * duplicate-key error on one row, which is skipped because the winner wrote the
@@ -15,6 +18,8 @@
 
 import { logger } from "../../../utils/logger";
 import {
+  MOVED_BINDINGS,
+  RETIRED_AGENTS,
   SEED_AGENTS,
   SEED_BINDINGS,
   SEED_HARNESSES,
@@ -25,9 +30,10 @@ import {
   type SeedSkill,
 } from "../seeds";
 import { resetRegistryCache } from "./cache";
-import { loadSnapshot, saveAgent, saveGuardrail, saveHarness, saveSkill, setBinding } from "./store";
+import { deleteAgent, loadSnapshot, saveAgent, saveGuardrail, saveHarness, saveSkill, setBinding } from "./store";
 import { SEED_GUARDRAILS } from "../seeds/guardrails";
 import { guardrailRow, guardrailSeedHash } from "../guardrails/service";
+import { syncBuiltinEvalCases } from "../evals/builtin";
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 
 export interface SeedSyncResult {
@@ -36,6 +42,10 @@ export interface SeedSyncResult {
   /** Customized built-ins whose shipped definition changed. */
   updateAvailable: number;
   bindingsRestored: number;
+  /** Bindings moved from an old built-in default to the new one. */
+  bindingsMoved: number;
+  /** Built-ins that no longer ship and were removed (customized ones are kept). */
+  retired: number;
 }
 
 type Outcome = "inserted" | "upgraded" | "update-available" | "current";
@@ -125,7 +135,7 @@ async function guarded(label: string, run: () => Promise<Outcome>): Promise<Outc
 
 export async function syncRegistrySeeds(): Promise<SeedSyncResult> {
   const snapshot: RegistrySnapshot = await loadSnapshot();
-  const result: SeedSyncResult = { inserted: 0, upgraded: 0, updateAvailable: 0, bindingsRestored: 0 };
+  const result: SeedSyncResult = { inserted: 0, upgraded: 0, updateAvailable: 0, bindingsRestored: 0, bindingsMoved: 0, retired: 0 };
   const count = (outcome: Outcome): void => {
     if (outcome === "inserted") result.inserted++;
     else if (outcome === "upgraded") result.upgraded++;
@@ -154,6 +164,14 @@ export async function syncRegistrySeeds(): Promise<SeedSyncResult> {
       (meta) => saveGuardrail(guardrailRow(seed, existing ? { enabled: existing.enabled, mode: existing.mode, position: existing.position } : seed.defaults), { actor: SEED_ACTOR, ...meta }))));
   }
 
+  result.retired = await retireAgents();
+  result.bindingsMoved = await moveBindings();
+  try {
+    await syncBuiltinEvalCases();
+  } catch (error) {
+    logger.warn({ module: "AIRegistry", err: error instanceof Error ? error.message : String(error) }, "Built-in eval cases could not be added");
+  }
+
   const after = await loadSnapshot();
   for (const [featureId, slug] of Object.entries(SEED_BINDINGS)) {
     const binding = after.bindings.get(featureId);
@@ -171,4 +189,70 @@ export async function syncRegistrySeeds(): Promise<SeedSyncResult> {
   resetRegistryCache();
   logger.info({ module: "AIRegistry", ...result }, "AI agent registry seeds synced");
   return result;
+}
+
+function editable(agent: AgentDef): Omit<AgentDef, "version" | "createdAt" | "updatedAt" | "createdBy"> {
+  return {
+    id: agent.id, slug: agent.slug, name: agent.name, description: agent.description, kind: agent.kind,
+    systemPrompt: agent.systemPrompt, taskTemplate: agent.taskTemplate, modelConfigId: agent.modelConfigId, harnessId: agent.harnessId,
+    tuning: agent.tuning, requiredPermissions: agent.requiredPermissions, tools: agent.tools, skills: agent.skills, subagents: agent.subagents,
+    enabled: agent.enabled, isSystem: agent.isSystem, seedHash: agent.seedHash, customized: agent.customized,
+  };
+}
+
+/** Retire built-ins that no longer ship (ADR 0025 §5). Returns how many rows were removed. */
+async function retireAgents(): Promise<number> {
+  let removed = 0;
+  for (const retired of RETIRED_AGENTS) {
+    const snapshot = await loadSnapshot();
+    const row = snapshot.agents.get(retired.id);
+    if (!row) continue;
+    if (row.customized) {
+      logger.info({ module: "AIRegistry", agent: row.slug }, "A retired built-in agent was customized; it stays as it is");
+      continue;
+    }
+    // Agents that delegated to it delegate to its replacements instead.
+    for (const agent of snapshot.agents.values()) {
+      if (agent.id === retired.id || !agent.subagents.includes(retired.id)) continue;
+      const subagents = [...new Set(agent.subagents.flatMap((id) => (id === retired.id ? retired.replacedBy : [id])))]
+        .filter((id) => id !== agent.id && snapshot.agents.has(id));
+      await guarded(`agent:${agent.id}`, async () => {
+        await saveAgent({ ...editable(agent), subagents }, { actor: SEED_ACTOR, action: "seed-retire", expectedVersion: agent.version });
+        return "upgraded";
+      });
+    }
+    for (const [featureId, binding] of snapshot.bindings) {
+      if (binding.agentId !== retired.id || !snapshot.agents.has(retired.bindingsTo)) continue;
+      await guarded(`binding:${featureId}`, async () => {
+        await setBinding(featureId, retired.bindingsTo, { actor: SEED_ACTOR, action: "seed-retire" });
+        return "upgraded";
+      });
+    }
+    const outcome = await guarded(`agent:${retired.id}`, async () => {
+      await deleteAgent(retired.id, { actor: SEED_ACTOR, expectedVersion: row.version });
+      return "upgraded";
+    });
+    if (outcome === "upgraded") removed += 1;
+  }
+  return removed;
+}
+
+/** Move bindings the seed set to a default that changed; an administrator's choice stays. Returns how many moved. */
+async function moveBindings(): Promise<number> {
+  const snapshot = await loadSnapshot();
+  let moved = 0;
+  for (const change of MOVED_BINDINGS) {
+    const binding = snapshot.bindings.get(change.featureId);
+    const from = SEED_AGENTS.find((a) => a.slug === change.fromSlug);
+    const toSlug = SEED_BINDINGS[change.featureId];
+    const to = SEED_AGENTS.find((a) => a.slug === toSlug);
+    if (!binding || !from || !to || binding.agentId !== from.id || binding.updatedBy !== SEED_ACTOR) continue;
+    if (!snapshot.agents.get(to.id)?.enabled) continue;
+    const outcome = await guarded(`binding:${change.featureId}`, async () => {
+      await setBinding(change.featureId, to.id, { actor: SEED_ACTOR, action: "seed-upgrade" });
+      return "upgraded";
+    });
+    if (outcome === "upgraded") moved += 1;
+  }
+  return moved;
 }

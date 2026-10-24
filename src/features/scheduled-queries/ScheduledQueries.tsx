@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { LayoutDashboard, ListChecks } from "lucide-react";
 
@@ -30,7 +31,13 @@ interface ScheduledQueriesProps {
 }
 
 export function ScheduledQueries({ sub, onSubChange }: ScheduledQueriesProps) {
-  const [selectedJobId, setSelectedJobId] = useState<string | undefined>();
+  // `?job=<id>` opens one job (a link from Chobi or elsewhere).
+  const [params] = useSearchParams();
+  const linkedJobId = params.get("job") ?? undefined;
+  const [selectedJobId, setSelectedJobId] = useState<string | undefined>(linkedJobId);
+  useEffect(() => {
+    if (linkedJobId) setSelectedJobId(linkedJobId);
+  }, [linkedJobId]);
   const queryClient = useQueryClient();
 
   const [autoRefresh, setAutoRefresh] = useState(false);

@@ -1,12 +1,12 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 160 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 164 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
 | Sign-in | `auth.login`, `auth.logout`, `auth.login_failed`, `auth.password_change`, `auth.sso_login`, `auth.sso_login_failed` |
-| Personal access tokens | `pat.create`, `pat.revoke`, `pat.rotate` |
+| Personal access tokens | `pat.create`, `pat.revoke`, `pat.rotate`, `pat.write_policy_update` |
 | MCP | `mcp.tool_call` |
 | Users | `user.create`, `user.update`, `user.delete`, `user.role_assign`, `user.role_revoke`, `user.sso_identity_unlink` |
 | Single sign-on | `sso.settings_update`, `sso.provider_create`, `sso.provider_update`, `sso.provider_delete`, `sso.provider_test`, `sso.user_provision`, `sso.identity_link` |
@@ -23,7 +23,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 160 in al
 | Saved queries | `saved_query.create`, `saved_query.update`, `saved_query.delete` |
 | Fleet | `fleet.alert_config_update` |
 | Doctor | `doctor.scan_run`, `doctor.schedule_update`, `doctor.report_delete` |
-| Alerting | `alerting.channel_create`, `alerting.channel_update`, `alerting.channel_delete`, `alerting.channel_test`, `alerting.events_clear` |
+| Alerting | `alerting.channel_create`, `alerting.channel_update`, `alerting.channel_delete`, `alerting.channel_test`, `alerting.channel_message`, `alerting.events_clear` |
 | Scheduled queries | `scheduled_query.create`, `scheduled_query.update`, `scheduled_query.delete`, `scheduled_query.run` |
 | Data health | `data_health.promise_create`, `data_health.promise_update`, `data_health.promise_delete`, `data_health.promise_run`, `data_health.incident_acknowledge`, `data_health.incident_snooze`, `data_health.incident_note` |
 | Data observability | `observe.suggestion_accept`, `observe.suggestion_dismiss`, `observe.criticality_pin`, `observe.incident_acknowledge`, `observe.cost_rates_update`, `observe.codec_trial`, `observe.collectors_update` |
@@ -33,6 +33,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 160 in al
 | Notebooks | `notebook.cell_add` |
 | Upgrades | `upgrade.assess`, `upgrade.replay` |
 | Agents | `agent.policy_update`, `agent.access_pause`, `agent.mcp_update` |
+| Chobi | `chobi.settings_update` |
 | AI agents | `ai_agent.create`, `ai_agent.update`, `ai_agent.delete` |
 | AI harnesses | `ai_harness.create`, `ai_harness.update`, `ai_harness.delete` |
 | AI skills | `ai_skill.create`, `ai_skill.update`, `ai_skill.delete` |
@@ -40,7 +41,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 160 in al
 | AI agent registry | `ai_registry.reset`, `ai_registry.rollback` |
 | AI guardrails | `ai_guardrail.create`, `ai_guardrail.update`, `ai_guardrail.delete` |
 | AI budgets | `ai_budget.create`, `ai_budget.update`, `ai_budget.delete` |
-| AI approved actions | `ai_action.approve`, `ai_action.reject` |
+| AI actions | `ai_action.approve`, `ai_action.reject`, `ai_action.undo` |
 | AI memory | `ai_memory.create`, `ai_memory.update`, `ai_memory.delete`, `ai_memory.approve`, `ai_memory.reject` |
 | AI auto-triage | `ai_triage.update` |
 | AI agent evals | `ai_eval.case_create`, `ai_eval.case_update`, `ai_eval.case_delete`, `ai_eval.run` |

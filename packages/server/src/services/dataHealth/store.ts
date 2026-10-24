@@ -95,6 +95,7 @@ function promiseRow(row: Record<string, unknown>): DataHealthPromiseRow {
     createdBy: nullableString(row.created_by),
     createdAt: Number(row.created_at ?? 0),
     updatedAt: Number(row.updated_at ?? 0),
+    expiresAt: nullableNumber(row.expires_at),
   };
 }
 
@@ -125,6 +126,8 @@ export interface CreatePromiseMetadataInput {
   retentionDays: number;
   schemaSnapshot: Array<{ name: string; type: string }> | null;
   createdBy: string | null;
+  /** Set only on create: a watch's expiry (ms). Edits keep it. */
+  expiresAt?: number | null;
 }
 
 export async function listPromises(ownerId?: string | null): Promise<DataHealthPromiseRow[]> {
@@ -190,17 +193,36 @@ export async function createPromiseMetadata(input: CreatePromiseMetadataInput): 
       event_time_encoding, event_time_timezone, event_time_format, row_filter,
       owner_id, criticality, timezone, runbook_url, enabled, status,
       grace_secs, breach_after, recover_after, retention_days, schema_snapshot,
-      created_by, created_at, updated_at
+      created_by, created_at, updated_at, expires_at
     ) VALUES (
       ${id}, ${input.scheduledQueryId}, ${input.upstreamJobId}, ${input.name}, ${input.description}, ${input.connectionId}, ${input.sourceType},
       ${input.databaseName}, ${input.tableName}, ${input.sourceQuery}, ${input.eventTimeColumn}, ${input.eventTimeType},
       ${input.eventTimeEncoding}, ${input.eventTimeTimezone}, ${input.eventTimeFormat}, ${input.rowFilter},
       ${input.ownerId}, ${input.criticality}, ${input.timezone}, ${input.runbookUrl}, ${input.enabled ? 1 : 0}, 'unknown',
       ${input.graceSecs}, ${input.breachAfter}, ${input.recoverAfter}, ${input.retentionDays}, ${schemaSnapshot},
-      ${input.createdBy}, ${now}, ${now}
+      ${input.createdBy}, ${now}, ${now}, ${input.expiresAt ?? null}
     )
   `);
   return id;
+}
+
+/** Watches the owner still has on a connection: what the five-per-connection limit counts. */
+export async function countActiveWatches(ownerId: string, connectionId: string, now: number = Date.now()): Promise<number> {
+  const [row] = await all(sql`
+    SELECT COUNT(*) AS n FROM data_health_promises
+    WHERE owner_id = ${ownerId} AND connection_id = ${connectionId} AND expires_at IS NOT NULL AND expires_at > ${now}
+  `);
+  return Number(row?.n ?? 0);
+}
+
+/** Watches past their expiry, oldest first: the scheduler removes them. */
+export async function listExpiredWatches(now: number = Date.now(), limit = 100): Promise<Array<{ id: string; scheduledQueryId: string; ownerId: string | null }>> {
+  const rows = await all(sql`
+    SELECT id, scheduled_query_id, owner_id FROM data_health_promises
+    WHERE expires_at IS NOT NULL AND expires_at <= ${now}
+    ORDER BY expires_at LIMIT ${limit}
+  `);
+  return rows.map((row) => ({ id: String(row.id), scheduledQueryId: String(row.scheduled_query_id), ownerId: nullableString(row.owner_id) }));
 }
 
 export async function updatePromiseMetadata(id: string, input: CreatePromiseMetadataInput): Promise<boolean> {

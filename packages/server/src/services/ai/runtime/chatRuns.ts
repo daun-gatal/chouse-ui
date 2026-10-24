@@ -27,6 +27,9 @@ import { chatAnswer, stripScratchpad, type ChatAnswerToolCall } from "./chatOutp
 import { checkpointSaver } from "./checkpointer";
 import { actionDefinition } from "../actions/definitions";
 import { CHAT_APPROVAL_TTL_MS, createAction, expireActions, rejectRunActions } from "../actions/store";
+import { resolveTier } from "../actions/tiers";
+import { runActionContext } from "../actions/tools";
+import type { Tier } from "../actions/types";
 
 export const CHAT_RUN_STATUSES = ["running", "awaiting_approval", "completed", "failed", "cancelled"] as const;
 export type ChatRunStatus = (typeof CHAT_RUN_STATUSES)[number];
@@ -62,6 +65,10 @@ export interface PendingApproval extends ChatInterrupt {
   /** The tool's title, for the approval card. */
   title: string;
   expiresAt: number;
+  /** How the call is checked (ADR 0025); a plan of several calls shows the highest. */
+  tier: Tier;
+  /** The connection is marked production, which raised the tier. */
+  production: boolean;
 }
 
 export interface ChatRun {
@@ -303,10 +310,15 @@ async function execute(entry: ChatRun, { input, resume }: Execution): Promise<Ch
       entry.status = "awaiting_approval";
       entry.pending = [];
       for (const interrupt of result.interrupts) {
+        const definition = actionDefinition(interrupt.name);
+        const resolved = definition
+          ? await resolveTier(definition, interrupt.args, runActionContext(ctx)).catch(() => ({ tier: "t2" as Tier, production: false }))
+          : { tier: "t2" as Tier, production: false };
         const action = await createAction({
           source: "chat",
           runId: entry.id,
           interruptId: interrupt.id,
+          toolCallId: interrupt.toolCallId || null,
           threadId: entry.threadId,
           userId: entry.userId,
           connectionId: entry.connectionId,
@@ -314,8 +326,17 @@ async function execute(entry: ChatRun, { input, resume }: Execution): Promise<Ch
           args: interrupt.args,
           description: interrupt.description || interrupt.name,
           expiresAt: Date.now() + APPROVAL_TTL_MS,
+          tier: resolved.tier,
+          origin: "chat",
         });
-        entry.pending.push({ ...interrupt, actionId: action.id, title: actionDefinition(interrupt.name)?.title ?? interrupt.name, expiresAt: action.expiresAt });
+        entry.pending.push({
+          ...interrupt,
+          actionId: action.id,
+          title: definition?.title ?? interrupt.name,
+          expiresAt: action.expiresAt,
+          tier: resolved.tier,
+          production: resolved.production,
+        });
       }
       await saveRun(entry);
       emit(entry.id, { type: "status", status: entry.status, pending: entry.pending });

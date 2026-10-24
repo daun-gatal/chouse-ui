@@ -12,12 +12,15 @@ import { z } from "zod";
 import { one, run, sql, str } from "../services/observe/db";
 import { logger } from "../utils/logger";
 import type { ChouseToolRegistration } from "./tools/helpers";
+import { TIERS, TOOLKITS } from "../services/ai/actions/types";
 
 const MCP_SETTINGS_KEY = "mcp_settings";
 const MCP_DEFAULT_TIMEOUT_SECONDS = 60;
 const MCP_TIMEOUT_MIN_SECONDS = 1;
 const MCP_TIMEOUT_MAX_SECONDS = 600;
 const CACHE_TTL_MS = 5_000;
+const MCP_DEFAULT_APPROVAL_WAIT_SECONDS = 300;
+const MCP_APPROVAL_WAIT_MAX_SECONDS = 900;
 
 const mcpSettingsSchema = z.object({
   /** Off by default: the endpoint answers 404 until an administrator turns it on. */
@@ -47,6 +50,12 @@ const mcpSettingsSchema = z.object({
       return (url.protocol === "http:" || url.protocol === "https:") && !url.search && !url.hash;
     }, "Must be an http(s) address without a query or fragment"),
   ).nullable(),
+  /** ADR 0025 ceiling: the toolkits whose write tools any token may get. */
+  actionToolkits: z.array(z.enum(TOOLKITS)).max(TOOLKITS.length),
+  /** ADR 0025 ceiling: the highest tier a write tool may have over MCP; T3 is off until an administrator allows it. */
+  actionMaxTier: z.enum(TIERS),
+  /** How long a write held for its user's confirmation waits in the MCP call before returning a pending action id. */
+  approvalWaitSeconds: z.number().int().min(0).max(MCP_APPROVAL_WAIT_MAX_SECONDS),
 });
 
 export type McpSettings = z.infer<typeof mcpSettingsSchema>;
@@ -60,6 +69,9 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
   toolOverrides: {},
   publicUrl: null,
+  actionToolkits: [...TOOLKITS],
+  actionMaxTier: "t2",
+  approvalWaitSeconds: MCP_DEFAULT_APPROVAL_WAIT_SECONDS,
 };
 
 export interface StoredMcpSettings extends McpSettings {
@@ -103,6 +115,9 @@ export async function saveMcpSettings(update: McpSettingsUpdate, actorId: string
     timeoutSeconds: update.timeoutSeconds ?? current.timeoutSeconds,
     toolOverrides: update.toolOverrides ? { ...current.toolOverrides, ...update.toolOverrides } : current.toolOverrides,
     publicUrl: update.publicUrl === undefined ? current.publicUrl : update.publicUrl,
+    actionToolkits: update.actionToolkits ?? current.actionToolkits,
+    actionMaxTier: update.actionMaxTier ?? current.actionMaxTier,
+    approvalWaitSeconds: update.approvalWaitSeconds ?? current.approvalWaitSeconds,
   });
   const now = Date.now();
   const value = JSON.stringify(next);
@@ -114,12 +129,16 @@ export async function saveMcpSettings(update: McpSettingsUpdate, actorId: string
   return getMcpSettings();
 }
 
-/** A tool's state when nobody chose one: reads on, everything else off. */
-export function toolEnabledByDefault(tool: Pick<ChouseToolRegistration, "access" | "spendsLlm">): boolean {
-  return tool.access === "read" && !tool.spendsLlm;
+/**
+ * A tool's state when nobody chose one: reads on, everything else off — except
+ * write tools generated from the action registry (ADR 0025), which the write
+ * ceiling and each token's policy already gate.
+ */
+export function toolEnabledByDefault(tool: Pick<ChouseToolRegistration, "access" | "spendsLlm" | "action">): boolean {
+  return tool.action !== undefined || (tool.access === "read" && !tool.spendsLlm);
 }
 
-export function isToolEnabled(settings: Pick<McpSettings, "toolOverrides">, tool: Pick<ChouseToolRegistration, "name" | "access" | "spendsLlm">): boolean {
+export function isToolEnabled(settings: Pick<McpSettings, "toolOverrides">, tool: Pick<ChouseToolRegistration, "name" | "access" | "spendsLlm" | "action">): boolean {
   return settings.toolOverrides[tool.name] ?? toolEnabledByDefault(tool);
 }
 

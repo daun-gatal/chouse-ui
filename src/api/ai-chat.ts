@@ -7,6 +7,7 @@
 
 import { api } from './client';
 import { readSse } from '@/lib/sse';
+import type { AiActionTier } from './aiActions';
 
 // ============================================
 // Types
@@ -213,12 +214,19 @@ export interface PendingApproval {
     /** What will happen, in one line. */
     description: string;
     expiresAt: number;
+    /** How the call is checked (ADR 0025); several calls paused together form a plan. */
+    tier: AiActionTier;
+    /** The connection is marked production, which raised the tier. */
+    production: boolean;
 }
+
+/** Skip this tool's confirmation for the rest of the thread, or for an hour (T2 only). */
+export type ApprovalRemember = 'thread' | 'hour';
 
 /** The user's answer to one pending approval. */
 export type ApprovalDecision =
-    | { actionId: string; type: 'approve' }
-    | { actionId: string; type: 'edit'; args: Record<string, unknown> }
+    | { actionId: string; type: 'approve'; remember?: ApprovalRemember }
+    | { actionId: string; type: 'edit'; args: Record<string, unknown>; remember?: ApprovalRemember }
     | { actionId: string; type: 'reject'; message?: string };
 
 export interface ChatRunAnswer {
@@ -262,6 +270,8 @@ export interface ChatRunRequest {
     agentId?: string | null;
     skills?: string[];
     attachments?: ChatAttachmentInput[];
+    /** The in-app path the user chats from (ADR 0025 §5): context and the page's toolkit. */
+    page?: string;
 }
 
 const RUN_EVENT_TYPES = new Set(['run', 'step', 'status', 'final', 'error']);
@@ -300,8 +310,8 @@ export async function followChatRun(runId: string, onEvent: (event: ChatRunEvent
 }
 
 /** Answer a paused run's approvals and stream the rest of it. */
-export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; signal?: AbortSignal } = {}): Promise<void> {
-    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}) };
+export async function resumeChatRun(runId: string, decisions: ApprovalDecision[], onEvent: (event: ChatRunEvent) => void, options: { modelId?: string; page?: string; signal?: AbortSignal } = {}): Promise<void> {
+    const body = { decisions, ...(options.modelId ? { modelId: options.modelId } : {}), ...(options.page ? { page: options.page } : {}) };
     const response = await api.stream('POST', `/ai-chat/runs/${runId}/resume`, body, options.signal);
     await consume(response, onEvent, options.signal);
 }

@@ -16,10 +16,10 @@ function wrapper({ children }: { children: ReactNode }): ReactElement {
 
 function action(extra: Partial<AiAction>): AiAction {
   return {
-    id: "a1", source: "background", runId: null, threadId: null, userId: "u1", connectionId: "c1", agentPath: null,
-    tool: "kill_query", title: "Kill a query", risk: "low", args: { queryId: "q1" }, description: 'KILL QUERY WHERE query_id = "q1"',
+    id: "a1", source: "background", origin: "background", runId: null, threadId: null, userId: "u1", connectionId: "c1", agentPath: null,
+    tool: "kill_query", title: "Kill a query", toolkit: "data", tier: "t2", args: { queryId: "q1" }, description: 'KILL QUERY WHERE query_id = "q1"',
     status: "pending", result: null, error: null, decidedBy: null, decidedAt: null, expiresAt: Date.now() + 3 * 3_600_000 + 60_000, createdAt: Date.now() - 60_000,
-    canDecide: true, userName: "Alice", decidedByName: null, ...extra,
+    undoneAt: null, canDecide: true, undoAvailable: false, userName: "Alice", decidedByName: null, ...extra,
   };
 }
 

@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/mocks/server";
-import { approveAiAction, getPendingAiActionCount, listAiActions, rejectAiAction } from "./aiActions";
+import { approveAiAction, getAiActionInbox, getAiActivity, getPendingAiActionCount, listAiActions, rejectAiAction, undoAiAction } from "./aiActions";
 
 const ACTION = {
-  id: "a1", source: "background", runId: null, threadId: null, userId: "u1", connectionId: "c1", agentPath: null,
-  tool: "kill_query", title: "Kill a query", risk: "low", args: { queryId: "q1" }, description: "KILL q1",
-  status: "pending", result: null, error: null, decidedBy: null, decidedAt: null, expiresAt: 2, createdAt: 1,
-  canDecide: true, userName: "Alice", decidedByName: null,
+  id: "a1", source: "background", origin: "background", runId: null, threadId: null, userId: "u1", connectionId: "c1", agentPath: null,
+  tool: "kill_query", title: "Kill a query", toolkit: "data", tier: "t2", args: { queryId: "q1" }, description: "KILL q1",
+  status: "pending", result: null, error: null, decidedBy: null, decidedAt: null, expiresAt: 2, createdAt: 1, undoneAt: null,
+  canDecide: true, undoAvailable: false, userName: "Alice", decidedByName: null,
 };
 
 describe("aiActions API", () => {
@@ -53,5 +53,30 @@ describe("aiActions API", () => {
       { status: 410 },
     )));
     await expect(approveAiAction("a1")).rejects.toMatchObject({ statusCode: 410, code: "APPROVAL_EXPIRED" });
+  });
+
+  it("reads the inbox and the activity feed, narrowed to a run when asked (ADR 0025)", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.get("/api/ai-actions/inbox", () => HttpResponse.json({ success: true, data: { actions: [ACTION] } })),
+      http.get("/api/ai-actions/activity", ({ request }) => {
+        seen.push(new URL(request.url).search);
+        return HttpResponse.json({ success: true, data: { actions: [{ ...ACTION, status: "executed", tier: "t1", undoAvailable: true }] } });
+      }),
+    );
+    expect(await getAiActionInbox()).toEqual([ACTION]);
+    expect((await getAiActivity())[0].undoAvailable).toBe(true);
+    await getAiActivity({ runId: "r1", limit: 5 });
+    expect(seen).toEqual(["", "?runId=r1&limit=5"]);
+  });
+
+  it("undoes an action, and surfaces a refused undo as an error", async () => {
+    server.use(http.post("/api/ai-actions/a1/undo", () => HttpResponse.json({ success: true, data: { ...ACTION, status: "executed", undoneAt: 5 } })));
+    expect((await undoAiAction("a1")).undoneAt).toBe(5);
+    server.use(http.post("/api/ai-actions/a1/undo", () => HttpResponse.json(
+      { success: false, error: { code: "UNDO_CHANGED_SINCE", message: "It changed after the assistant's action.", category: "validation" } },
+      { status: 409 },
+    )));
+    await expect(undoAiAction("a1")).rejects.toMatchObject({ statusCode: 409, code: "UNDO_CHANGED_SINCE" });
   });
 });

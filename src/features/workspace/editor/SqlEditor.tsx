@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState, useMemo } from "react"
 import * as monaco from "monaco-editor";
 import { useTheme } from "@/components/common/theme-provider";
 import { useWorkspaceStore, useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { askContext, useChobiStore } from "@/stores/chobi";
 import {
   initializeMonacoGlobally,
   createMonacoEditor,
@@ -464,6 +465,28 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
             }
           }
         );
+
+        // Cmd/Ctrl+J – ask Chobi about the selection (or the whole query); also in the context menu.
+        editor.addAction({
+          id: "chobi.ask-about-sql",
+          label: "Ask Chobi about this SQL",
+          keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ],
+          contextMenuGroupId: "navigation",
+          contextMenuOrder: 1.5,
+          run: () => {
+            const chobi = useChobiStore.getState();
+            if (!chobi.available) {
+              toast.error("Chobi is not available: AI chat is off or you do not have access");
+              return;
+            }
+            const content = getCurrentQueryRef.current();
+            if (!content.trim()) {
+              toast.error("Write or select some SQL first");
+              return;
+            }
+            chobi.askChobi("", { context: askContext("query.sql", content) });
+          },
+        });
 
         // Cmd/Ctrl+Shift+I – AI optimize (I for Improve / Intelligence)
         editor.addCommand(

@@ -2175,6 +2175,7 @@
               "name": "create_health_promise",
               "description": "Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "name": {
@@ -2197,9 +2198,26 @@
                     "maxLength": 64
                   },
                   "eventTimeColumn": {
+                    "description": "Column holding each row's event time, for freshness and slot checks",
                     "type": "string",
-                    "maxLength": 64,
-                    "description": "Column holding each row's event time, for freshness and slot checks"
+                    "maxLength": 64
+                  },
+                  "eventTimeEncoding": {
+                    "description": "How the event time is stored: native (a Date or DateTime column, the default), unix_* numbers, or string",
+                    "type": "string",
+                    "enum": [
+                      "native",
+                      "unix_seconds",
+                      "unix_milliseconds",
+                      "unix_microseconds",
+                      "unix_nanoseconds",
+                      "string"
+                    ]
+                  },
+                  "eventTimeTimezone": {
+                    "description": "IANA timezone of string event-time values (string only)",
+                    "type": "string",
+                    "maxLength": 100
                   },
                   "criticality": {
                     "type": "string",
@@ -2212,48 +2230,50 @@
                   "frequency": {
                     "type": "string",
                     "enum": [
-                      "hourly",
                       "daily",
                       "weekly",
                       "monthly",
                       "cron"
                     ],
-                    "description": "How often it runs"
+                    "description": "How often it runs; for hourly or finer use cron with cronExpr (e.g. \"0 * * * *\")"
                   },
                   "hour": {
+                    "description": "Hour of day (daily, weekly, monthly)",
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 23,
-                    "description": "Hour of day (daily, weekly, monthly)"
+                    "maximum": 23
                   },
                   "dayOfWeek": {
+                    "description": "0 = Sunday (weekly)",
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 6,
-                    "description": "0 = Sunday (weekly)"
+                    "maximum": 6
                   },
                   "dayOfMonth": {
+                    "description": "Day of month (monthly)",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 28,
-                    "description": "Day of month (monthly)"
+                    "maximum": 28
                   },
                   "cronExpr": {
-                    "type": "string",
-                    "description": "Cron expression (frequency cron)"
+                    "description": "Cron expression (frequency cron)",
+                    "type": "string"
                   },
                   "timezone": {
-                    "type": "string",
-                    "description": "IANA timezone, default UTC"
+                    "description": "IANA timezone, default UTC",
+                    "type": "string"
                   },
                   "checks": {
+                    "minItems": 1,
+                    "maxItems": 20,
                     "type": "array",
                     "items": {
                       "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
                       "additionalProperties": {}
                     },
-                    "minItems": 1,
-                    "maxItems": 20,
                     "description": "Check definitions, each with a type and its settings"
                   }
                 },
@@ -2264,8 +2284,7 @@
                   "frequency",
                   "checks"
                 ],
-                "additionalProperties": false,
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                "additionalProperties": false
               }
             },
             {
@@ -2300,6 +2319,7 @@
               "name": "create_scheduled_query",
               "description": "Create a scheduled report query (read-only SELECT, no materialization) on the active connection. Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.",
               "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                   "name": {
@@ -2319,39 +2339,38 @@
                   "frequency": {
                     "type": "string",
                     "enum": [
-                      "hourly",
                       "daily",
                       "weekly",
                       "monthly",
                       "cron"
                     ],
-                    "description": "How often it runs"
+                    "description": "How often it runs; for hourly or finer use cron with cronExpr (e.g. \"0 * * * *\")"
                   },
                   "hour": {
+                    "description": "Hour of day (daily, weekly, monthly)",
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 23,
-                    "description": "Hour of day (daily, weekly, monthly)"
+                    "maximum": 23
                   },
                   "dayOfWeek": {
+                    "description": "0 = Sunday (weekly)",
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 6,
-                    "description": "0 = Sunday (weekly)"
+                    "maximum": 6
                   },
                   "dayOfMonth": {
+                    "description": "Day of month (monthly)",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 28,
-                    "description": "Day of month (monthly)"
+                    "maximum": 28
                   },
                   "cronExpr": {
-                    "type": "string",
-                    "description": "Cron expression (frequency cron)"
+                    "description": "Cron expression (frequency cron)",
+                    "type": "string"
                   },
                   "timezone": {
-                    "type": "string",
-                    "description": "IANA timezone, default UTC"
+                    "description": "IANA timezone, default UTC",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2359,8 +2378,7 @@
                   "query",
                   "frequency"
                 ],
-                "additionalProperties": false,
-                "$schema": "http://json-schema.org/draft-07/schema#"
+                "additionalProperties": false
               }
             },
             {

@@ -2,6 +2,7 @@ import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
+import { useLayerProps, useLayerStyle } from "@/lib/layers"
 import { buttonVariants } from "@/components/ui/button"
 import { useOnboardingSurfaceRef } from "@/lib/onboardingSurfaces"
 
@@ -21,6 +22,7 @@ const AlertDialogOverlay = React.forwardRef<
       className
     )}
     {...props}
+    style={useLayerStyle(props.style)}
     ref={ref}
     data-onboarding-surface-overlay="alert-dialog"
   />
@@ -31,6 +33,7 @@ const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> & { overlayClassName?: string }
 >(({ className, children, overlayClassName, ...props }, ref) => {
+  const layer = useLayerProps(props)
   const onboardingRef = useOnboardingSurfaceRef(ref)
 
   return (
@@ -43,6 +46,7 @@ const AlertDialogContent = React.forwardRef<
           className
         )}
         {...props}
+        {...layer}
         data-onboarding-surface="alert-dialog"
       >
         {children}

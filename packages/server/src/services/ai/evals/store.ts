@@ -30,8 +30,8 @@ export interface EvalCase {
   input: Record<string, unknown>;
   expectedTools: string[];
   rubric: string | null;
-  /** Where it came from: written by hand, the test console, or an AI request. */
-  source: "manual" | "console" | "request";
+  /** Where it came from: written by hand, the test console, an AI request, or shipped with CHouse. */
+  source: "manual" | "console" | "request" | "builtin";
   createdBy: string | null;
   createdAt: number;
   updatedAt: number;
@@ -81,7 +81,7 @@ function rowToCase(r: Row): EvalCase {
     input: json<Record<string, unknown>>(r.input, {}),
     expectedTools: json<string[]>(r.expected_tools, []),
     rubric: strOrNull(r.rubric),
-    source: source === "console" || source === "request" ? source : "manual",
+    source: source === "console" || source === "request" || source === "builtin" ? source : "manual",
     createdBy: strOrNull(r.created_by),
     createdAt: num(r.created_at),
     updatedAt: num(r.updated_at),

@@ -21,6 +21,7 @@ export const dataPaths = {
   pipelines: (status?: string): string => (status ? `/data/pipelines?status=${encodeURIComponent(status)}` : "/data/pipelines"),
   context: (database: string, table: string): string => `/data/context?table=${encodeURIComponent(`${database}.${table}`)}`,
   scheduled: (sub: "overview" | "jobs"): string => `/data/scheduled-queries/${sub}`,
+  job: (id: string): string => `/data/scheduled-queries/jobs?job=${encodeURIComponent(id)}`,
 };
 
 /** Where an old `/dataops/:feature/:sub` URL lives now. */

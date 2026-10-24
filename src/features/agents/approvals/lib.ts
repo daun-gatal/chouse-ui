@@ -2,12 +2,13 @@
  * Presentation rules for AI Governance › Approvals.
  */
 
-import type { AiAction, AiActionStatus } from "@/api/aiActions";
+import { AI_ORIGIN_LABELS, AI_TIER_LABELS, type AiAction, type AiActionStatus, type AiActionTier } from "@/api/aiActions";
 import type { Tone } from "@/features/observe/lib";
 
 export const STATUS_LABEL: Record<AiActionStatus, string> = {
   pending: "Waiting",
-  approved: "Running",
+  approved: "Approved",
+  running: "Running",
   executed: "Done",
   failed: "Failed",
   rejected: "Rejected",
@@ -17,6 +18,7 @@ export const STATUS_LABEL: Record<AiActionStatus, string> = {
 export const STATUS_TONE: Record<AiActionStatus, Tone> = {
   pending: "warn",
   approved: "info",
+  running: "info",
   executed: "ok",
   failed: "bad",
   rejected: "muted",
@@ -33,15 +35,28 @@ export const STATUS_FILTERS: Array<{ value: AiActionStatus | "all"; label: strin
   { value: "expired", label: "Expired" },
 ];
 
+export const TIER_TONE: Record<AiActionTier, Tone> = {
+  t1: "ok",
+  t2: "warn",
+  t3: "bad",
+};
+
+/** A tier in words, or "—" for actions recorded before tiers. */
+export function tierLabel(tier: AiActionTier | null): string {
+  return tier ? AI_TIER_LABELS[tier] : "—";
+}
+
 /** A pending action past its deadline reads as expired before the sweeper marks it. */
 export function effectiveStatus(action: Pick<AiAction, "status" | "expiresAt">, now: number): AiActionStatus {
   return action.status === "pending" && action.expiresAt <= now ? "expired" : action.status;
 }
 
 /** Where the request came from, in words. */
-export function sourceLabel(action: Pick<AiAction, "source" | "userName" | "userId">): string {
+export function sourceLabel(action: Pick<AiAction, "source" | "origin" | "userName" | "userId">): string {
   const who = action.userName ?? "a deleted user";
-  return action.source === "chat" ? `${who}, in chat` : `Background run as ${who}`;
+  if (action.source === "chat") return `${who}, in chat`;
+  if (action.source === "held") return `${who}, over ${AI_ORIGIN_LABELS[action.origin]}`;
+  return action.origin === "background" ? `Background run as ${who}` : `${who}, from ${AI_ORIGIN_LABELS[action.origin]}`;
 }
 
 /** What to say about a chat action that waits: it is answered in its chat, not here. */

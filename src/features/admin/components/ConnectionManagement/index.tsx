@@ -79,10 +79,20 @@ import { SkeletonRows } from '@/components/common/Skeletons';
 import { ConnectionObservability } from '@/features/observe/ConnectionObservability';
 import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // ============================================
 // Validation Schema
 // ============================================
+
+const ENVIRONMENT_OPTIONS = [
+  { value: 'unset', label: 'Not set' },
+  { value: 'production', label: 'Production' },
+  { value: 'staging', label: 'Staging' },
+  { value: 'development', label: 'Development' },
+] as const;
+
+type EnvironmentChoice = (typeof ENVIRONMENT_OPTIONS)[number]['value'];
 
 const connectionSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
@@ -92,9 +102,24 @@ const connectionSchema = z.object({
   password: z.string().optional(),
   database: z.string().max(255).optional(),
   sslEnabled: z.boolean(),
+  environment: z.enum(['unset', 'production', 'staging', 'development']),
 });
 
 type ConnectionFormData = z.output<typeof connectionSchema>;
+
+/** The environment stored in a connection's metadata (ADR 0025: production raises AI write tiers). */
+export function connectionEnvironment(connection?: Pick<ClickHouseConnection, 'metadata'>): EnvironmentChoice {
+  const value = connection?.metadata?.environment;
+  return value === 'production' || value === 'staging' || value === 'development' ? value : 'unset';
+}
+
+/** The connection's metadata with the chosen environment, keeping every other key. */
+function metadataWithEnvironment(metadata: Record<string, unknown> | null | undefined, environment: EnvironmentChoice): Record<string, unknown> {
+  const next = { ...(metadata ?? {}) };
+  if (environment === 'unset') delete next.environment;
+  else next.environment = environment;
+  return next;
+}
 
 // ============================================
 // Connection Form Dialog
@@ -130,6 +155,7 @@ function ConnectionFormDialog({
       password: '',
       database: connection?.database || '',
       sslEnabled: connection?.sslEnabled || false,
+      environment: connectionEnvironment(connection),
     },
   });
 
@@ -144,6 +170,7 @@ function ConnectionFormDialog({
         password: '',
         database: connection?.database || '',
         sslEnabled: connection?.sslEnabled || false,
+        environment: connectionEnvironment(connection),
       });
       setTestResult(null);
     }
@@ -196,6 +223,7 @@ function ConnectionFormDialog({
           username: values.username,
           database: values.database || undefined,
           sslEnabled: values.sslEnabled,
+          metadata: metadataWithEnvironment(connection.metadata, values.environment),
         };
         if (values.password) {
           updateData.password = values.password;
@@ -203,7 +231,8 @@ function ConnectionFormDialog({
         await rbacConnectionsApi.update(connection.id, updateData);
         toast.success('Connection updated successfully');
       } else {
-        await rbacConnectionsApi.create(values);
+        const { environment, ...rest } = values;
+        await rbacConnectionsApi.create({ ...rest, metadata: metadataWithEnvironment(null, environment) });
         toast.success('Connection created successfully');
       }
       onSuccess();
@@ -400,6 +429,31 @@ function ConnectionFormDialog({
                   <FormControl>
                     <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="environment"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className={LABEL_CLASS}>Environment</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className={INPUT_CLASS} aria-label="Environment">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {ENVIRONMENT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className={HELP_CLASS}>
+                    On a production connection, AI changes are checked one step harder: undoable changes ask first, and changes that ask once need a second approver.
+                  </FormDescription>
                 </FormItem>
               )}
             />
@@ -679,6 +733,11 @@ export default function ConnectionManagement() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-paper">{conn.name}</span>
+                        {connectionEnvironment(conn) === 'production' && (
+                          <span title="AI changes on this connection are checked one step harder" className="inline-flex items-center rounded-xs border border-red-400/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-400">
+                            Production
+                          </span>
+                        )}
                         {conn.isDefault && (
                           <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                             <Star className="h-3 w-3 fill-brand" />

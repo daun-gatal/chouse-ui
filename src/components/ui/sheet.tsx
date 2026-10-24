@@ -4,6 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useLayerProps, useLayerStyle } from "@/lib/layers";
 import { useOnboardingSurfaceDismiss } from "@/lib/onboardingSurfaces";
 
 const Sheet = SheetPrimitive.Root;
@@ -24,6 +25,7 @@ const SheetOverlay = React.forwardRef<
       className
     )}
     {...props}
+    style={useLayerStyle(props.style)}
     ref={ref}
     data-onboarding-surface-overlay="sheet"
   />
@@ -59,6 +61,7 @@ const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "right", className, children, overlayClassName, ...props }, ref) => {
+  const layer = useLayerProps(props);
   const closeRef = React.useRef<HTMLButtonElement>(null);
   useOnboardingSurfaceDismiss(closeRef);
 
@@ -69,6 +72,7 @@ const SheetContent = React.forwardRef<
         ref={ref}
         className={cn(sheetVariants({ side }), className)}
         {...props}
+        {...layer}
         data-onboarding-surface="sheet"
       >
         {children}

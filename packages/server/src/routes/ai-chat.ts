@@ -25,6 +25,7 @@ import type { AgentContentPart, AgentMessage, AgentRunContext } from "../service
 import { actionDefinition, parseEditedArgs } from "../services/ai/actions/definitions";
 import { decideAction } from "../services/ai/actions/store";
 import { mayAct } from "../services/ai/actions/tools";
+import { createGrant, GRANT_SCOPES } from "../services/ai/actions/grants";
 import {
     activeRunForThread,
     cancelChatRun,
@@ -55,6 +56,7 @@ import {
 
 export { parseToolResult } from "../services/ai/runtime/chatOutput";
 import { logger, requestLogger } from "../utils/logger";
+import { pagePath } from "../services/ai/assistant/tools";
 
 // ============================================
 // Types
@@ -211,6 +213,8 @@ export const InvokeRequestSchema = z.object({
     /** Skills named with /skill: (ADR 0024): their instructions reach the model before it answers. */
     skills: z.array(z.string().min(1).max(64)).max(5).optional(),
     attachments: z.array(AttachmentSchema).max(MAX_ATTACHMENTS, `At most ${MAX_ATTACHMENTS} attachments`).optional(),
+    /** The in-app path the user chats from (ADR 0025 §5); anything else is dropped. */
+    page: z.string().max(300).optional(),
 });
 
 type InvokeRequest = z.infer<typeof InvokeRequestSchema>;
@@ -264,8 +268,10 @@ async function acceptedModalities(modelId: string | undefined, agentModelId: str
 }
 
 /** The run context of a request: who, which connection, and the token management tools act with. */
-function runContextOf(c: Context<{ Variables: Variables }>, modelId?: string): AgentRunContext {
+function runContextOf(c: Context<{ Variables: Variables }>, modelId?: string, page?: string): AgentRunContext {
+    const where = pagePath(page);
     return {
+        ...(where ? { page: where } : {}),
         userId: c.get("rbacUserId")!,
         isAdmin: c.get("isRbacAdmin") || false,
         permissions: c.get("rbacPermissions") || [],
@@ -324,7 +330,7 @@ async function prepareTurn(c: Context<{ Variables: Variables }>, body: InvokeReq
     if (last && last.role === "user" && last.content === body.message) history = [...history.slice(0, -1), { role: "user", content }];
     else history = [...history, { role: "user", content }];
 
-    const ctx = runContextOf(c, body.modelId);
+    const ctx = runContextOf(c, body.modelId, body.page);
     return {
         input: {
             userId: rbacUserId,
@@ -476,9 +482,13 @@ export const DecisionSchema = z.object({
     args: z.record(z.string(), z.unknown()).optional(),
     /** Why it was rejected, for the agent (reject only). */
     message: z.string().trim().max(1000).optional(),
+    /** Skip this confirmation for the tool for the rest of the thread or for an hour (T2 approvals only, ADR 0025). */
+    remember: z.enum(GRANT_SCOPES).optional(),
 });
 
 export const ResumeRequestSchema = z.object({
+    /** Where the user is now (ADR 0025 §5), so the resumed run keeps its page toolkit. */
+    page: z.string().max(300).optional(),
     decisions: z.array(DecisionSchema).min(1).max(20),
     modelId: z.string().optional(),
 });
@@ -491,7 +501,7 @@ export const ResumeRequestSchema = z.object({
 aiChat.post("/runs/:id/resume", zValidator("json", ResumeRequestSchema), async (c) => {
     const body = c.req.valid("json");
     const userId = c.get("rbacUserId")!;
-    const ctx = runContextOf(c, body.modelId);
+    const ctx = runContextOf(c, body.modelId, body.page);
     const paused = await getChatRun(c.req.param("id"));
     if (!paused || paused.userId !== userId) throw AppError.notFound("Chat run not found");
     if (paused.status !== "awaiting_approval") throw AppError.conflict("This reply is not waiting for an approval.");
@@ -529,6 +539,10 @@ aiChat.post("/runs/:id/resume", zValidator("json", ResumeRequestSchema), async (
             resourceId: decided.id,
             details: { origin: "ai", tool: decided.tool, description: definition && args ? definition.describe(args) : decided.description, edited: decision.type === "edit", runId: paused.id },
         });
+        // A grant only ever skips a T2 confirmation, and only one given while approving.
+        if (decision.remember && decision.type !== "reject" && pending.tier === "t2") {
+            await createGrant({ userId, tool: pending.name, scope: decision.remember, threadId: paused.threadId });
+        }
         resume[pending.id] = decision.type === "approve"
             ? { type: "approve" }
             : decision.type === "edit"
