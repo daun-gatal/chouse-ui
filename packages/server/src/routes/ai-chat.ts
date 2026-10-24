@@ -473,7 +473,7 @@ export const DecisionSchema = z.object({
     actionId: z.string().min(1),
     type: z.enum(["approve", "edit", "reject"]),
     /** The edited arguments (edit only); validated like the tool's own input. */
-    args: z.record(z.unknown()).optional(),
+    args: z.record(z.string(), z.unknown()).optional(),
     /** Why it was rejected, for the agent (reject only). */
     message: z.string().trim().max(1000).optional(),
 });

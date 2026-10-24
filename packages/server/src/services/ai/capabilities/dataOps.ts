@@ -231,7 +231,7 @@ export const summarizeScheduledQueryCapability: StructuredCapability<{ jobId: st
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ jobId: z.string().uuid() }),
+  inputSchema: z.object({ jobId: z.guid() }),
   outputSchema: OperationalBriefParsedSchema,
   prepare: (input, ctx) => scheduledEvidence(ctx, input.jobId),
   cachedResult: (prepared, _ctx, scope) => cached("summarize-scheduled-query", prepared.fingerprint, scope),
@@ -249,7 +249,7 @@ export const summarizeDataHealthCapability: StructuredCapability<{ promiseId: st
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ promiseId: z.string().uuid() }),
+  inputSchema: z.object({ promiseId: z.guid() }),
   outputSchema: OperationalBriefParsedSchema,
   prepare: (input, ctx) => healthEvidence(ctx, input.promiseId),
   cachedResult: (prepared, _ctx, scope) => cached("summarize-data-health", prepared.fingerprint, scope),
@@ -312,7 +312,7 @@ export const diagnoseScheduledRunCapability: StructuredCapability<{ jobId: strin
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ jobId: z.string().uuid(), runId: z.string().uuid() }),
+  inputSchema: z.object({ jobId: z.guid(), runId: z.guid() }),
   outputSchema: InvestigationParsedSchema,
   async prepare(input, ctx) {
     const evidence = await scheduledEvidence(ctx, input.jobId);
@@ -345,7 +345,7 @@ export const diagnoseHealthIncidentCapability: StructuredCapability<{ promiseId:
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ promiseId: z.string().uuid(), incidentId: z.string().uuid().optional() }),
+  inputSchema: z.object({ promiseId: z.guid(), incidentId: z.guid().optional() }),
   outputSchema: InvestigationParsedSchema,
   async prepare(input, ctx) {
     const evidence = await healthEvidence(ctx, input.promiseId);
@@ -463,7 +463,7 @@ export const tuneHealthPromiseCapability: StructuredCapability<{ promiseId: stri
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ promiseId: z.string().uuid() }),
+  inputSchema: z.object({ promiseId: z.guid() }),
   outputSchema: TuningSchema,
   prepare: (input, ctx) => healthEvidence(ctx, input.promiseId),
   cachedResult: (prepared, _ctx, scope) => cached("tune-health-promise", prepared.fingerprint, scope),
@@ -483,7 +483,7 @@ export const planScheduledRecoveryCapability: StructuredCapability<{ jobId: stri
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ jobId: z.string().uuid(), from: z.number().int(), to: z.number().int() }).refine((value) => value.from <= value.to, "Start must precede end"),
+  inputSchema: z.object({ jobId: z.guid(), from: z.number().int(), to: z.number().int() }).refine((value) => value.from <= value.to, "Start must precede end"),
   outputSchema: AssessmentSchema,
   async prepare(input, ctx) {
     requirePermission(ctx, PERMISSIONS.SCHEDULED_QUERIES_RUN);
@@ -511,7 +511,7 @@ export const correlateHealthIncidentsCapability: StructuredCapability<{ promiseI
   variables: { evidence: { type: "json", description: "The evidence object the feature assembled (JSON)." } },
   delivery: "structured",
   permission: PERMISSIONS.AI_OPTIMIZE,
-  inputSchema: z.object({ promiseId: z.string().uuid() }),
+  inputSchema: z.object({ promiseId: z.guid() }),
   outputSchema: CorrelationSchema,
   async prepare(input, ctx) {
     const focus = await healthEvidence(ctx, input.promiseId);

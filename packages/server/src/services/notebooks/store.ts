@@ -23,7 +23,7 @@ export const cellContentSchema = z.discriminatedUnion("kind", [
     snapshot: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.unknown())).max(200), ranAt: z.number() }).nullish(),
   }),
   z.object({ kind: z.literal("chart"), title: z.string().trim().max(200), series: z.array(z.object({ x: z.number(), y: z.number() })).max(2000), unit: z.string().max(40).nullish() }),
-  z.object({ kind: z.literal("ai_finding"), summary: z.string().max(20_000), status: z.string().max(40).nullish(), detail: z.record(z.unknown()).nullish() }),
+  z.object({ kind: z.literal("ai_finding"), summary: z.string().max(20_000), status: z.string().max(40).nullish(), detail: z.record(z.string(), z.unknown()).nullish() }),
   z.object({ kind: z.literal("action"), actionId: z.string().min(1).max(64) }),
 ]);
 export type CellContent = z.infer<typeof cellContentSchema>;

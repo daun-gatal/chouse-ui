@@ -73,7 +73,7 @@ export const linkSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("dashboard"),
     label: linkLabel,
-    dashboardId: z.string().uuid(),
+    dashboardId: z.guid(),
     values: z.record(variableName, linkValueSchema)
       .refine((values) => Object.keys(values).length <= MAX_LINK_VALUES, `a link sets at most ${MAX_LINK_VALUES} variables`),
   }).strict(),
@@ -235,7 +235,7 @@ export const variableValueSchema = z.union([
   z.array(z.string().max(MAX_VALUE_LENGTH)).max(MAX_MULTI_VALUES),
 ]);
 export type VariableValue = z.infer<typeof variableValueSchema>;
-export const variableValuesSchema = z.record(variableValueSchema);
+export const variableValuesSchema = z.record(z.string(), variableValueSchema);
 export type VariableValues = z.infer<typeof variableValuesSchema>;
 
 /** Relative ranges a dashboard can default to, with their length in seconds. */
@@ -324,7 +324,7 @@ export function overlaps(a: Layout, b: Layout): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
-const panelId = z.string().uuid().nullable();
+const panelId = z.guid().nullable();
 
 export const chartPanelSchema = z.object({
   id: panelId,

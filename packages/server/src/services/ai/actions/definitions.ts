@@ -152,7 +152,7 @@ export const ACTION_DEFINITIONS: readonly ActionDefinition[] = [
       eventTimeColumn: z.string().max(64).optional().describe("Column holding each row's event time, for freshness and slot checks"),
       criticality: z.enum(["standard", "important", "critical"]).optional(),
       ...scheduleFields,
-      checks: z.array(z.record(z.unknown())).min(1).max(20).describe("Check definitions, each with a type and its settings"),
+      checks: z.array(z.record(z.string(), z.unknown())).min(1).max(20).describe("Check definitions, each with a type and its settings"),
     }),
     describe: (args) => `Promise ${quote(str(args.name))} on ${str(args.database)}.${str(args.table)} with ${Array.isArray(args.checks) ? args.checks.length : 0} check(s), ${scheduleText(args)}`,
     execute: async (args, ctx) => ctx.client.post("/api/data-health", {
@@ -231,7 +231,7 @@ export const ACTION_DEFINITIONS: readonly ActionDefinition[] = [
     schema: z.object({
       title: z.string().min(1).max(200),
       rationale: z.string().min(1).max(4000).describe("Why this fixes the problem, with the evidence"),
-      params: z.record(z.unknown()).describe("The remediation action: { type, …its parameters }"),
+      params: z.record(z.string(), z.unknown()).describe("The remediation action: { type, …its parameters }"),
     }),
     describe: (args) => `Propose ${quote(str(args.title))} (${str((args.params as { type?: unknown } | undefined)?.type, "fix")}) for approval in Fixes`,
     execute: async (args, ctx) => ctx.client.post("/api/remediation/actions", {

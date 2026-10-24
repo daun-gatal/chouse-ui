@@ -71,7 +71,7 @@ const guardrailSchema = z.object({
   name: z.string().trim().min(1).max(100),
   description: z.string().max(1_000),
   kind: z.enum(GUARDRAIL_KINDS),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   stages: z.array(z.enum(GUARDRAIL_STAGES)).max(GUARDRAIL_STAGES.length),
   action: z.enum(GUARDRAIL_ACTIONS),
   mode: z.enum(GUARDRAIL_MODES),
@@ -196,7 +196,7 @@ const testSchema = z.object({
   /** Sample text; a tool result may be JSON. For the tool call stage, the tool and its arguments. */
   text: z.string().max(1024 * 1024),
   tool: z.string().max(100).optional(),
-  args: z.record(z.unknown()).optional(),
+  args: z.record(z.string(), z.unknown()).optional(),
 });
 
 aiGuardrails.post("/test", MANAGE, zValidator("json", testSchema), async (c) => {

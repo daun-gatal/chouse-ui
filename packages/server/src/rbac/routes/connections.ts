@@ -47,20 +47,20 @@ const createConnectionSchema = z.object({
   password: z.string().optional(),
   database: z.string().max(255).optional(),
   sslEnabled: z.boolean().default(false),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const updateConnectionSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   host: z.string().min(1).max(255).optional(),
-  port: z.coerce.number().int().default(8123).optional(),
+  port: z.coerce.number().int().optional(),
   username: z.string().min(1).max(255).optional(),
   password: z.string().optional(),
   database: z.string().max(255).optional().nullable(),
   sslEnabled: z.boolean().optional(),
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const testConnectionSchema = z.object({

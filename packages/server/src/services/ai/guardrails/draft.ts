@@ -22,7 +22,7 @@ export const GuardrailDraftSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500),
   kind: z.enum(GUARDRAIL_KINDS),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   stages: z.array(z.enum(GUARDRAIL_STAGES)).min(1),
   action: z.enum(GUARDRAIL_ACTIONS),
   rationale: z.string().max(1_000),
