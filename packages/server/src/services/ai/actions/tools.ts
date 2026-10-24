@@ -39,21 +39,25 @@ export async function runAction(definition: ActionDefinition, args: Record<strin
 function buildActionTool(definition: ActionDefinition, runtime: ToolRuntime): AgentTool | null {
   const { ctx } = runtime;
   const approve = ctx.actionMode === "approve";
+  const simulate = ctx.actionMode === "simulate";
   // Executing needs the user's own token; proposing only needs to know who it is for.
   if (approve && !ctx.bearerToken) return null;
   const proposer = ctx.userId ?? ctx.proposeAs;
-  if (!approve && !proposer) return null;
+  if (!approve && !simulate && !proposer) return null;
   const how = definition.risk === "high"
     ? "It changes nothing by itself; approvers decide in Fixes."
     : approve
       ? "The user approves, edits or rejects each call before it runs; say what you are about to do and why."
-      : "Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.";
+      : simulate
+        ? "This is a test run: the call is not carried out, you are told what would happen."
+        : "Nobody is here to approve it now: the call is saved as a pending action for someone to approve later.";
 
   return createAgentTool(definition.name, {
     description: `${definition.description} ${how}`,
     inputSchema: definition.schema,
     execute: async (raw: Record<string, unknown>) => {
       const args = definition.schema.parse(raw) as Record<string, unknown>;
+      if (simulate) return { simulated: true, wouldDo: definition.describe(args) };
       if (!approve) {
         const action = await createAction({
           source: "background",

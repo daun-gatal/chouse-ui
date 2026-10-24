@@ -45,6 +45,8 @@ export interface AgentTuning {
   forkedSubagents?: string[];
   /** ADR 0024: read the user's and the connection's memories, and keep new ones in chat. */
   memory?: boolean;
+  /** ADR 0024: share of eval cases (0–1) a draft must pass to be saved; null = no gate. */
+  evalThreshold?: number | null;
 }
 
 export interface AgentSkillLink {

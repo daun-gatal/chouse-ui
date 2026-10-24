@@ -10,7 +10,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES, type Permission } from '../schema/base';
 import { getDatabaseType, type PostgresDb, type RbacDb, type SqliteDb } from './index';
-import { aiActionsSchemaStatements, aiMemorySchemaStatements, aiRuntimeSchemaStatements, aiTriageSchemaStatements } from './aiPlatformSchema';
+import { aiActionsSchemaStatements, aiEvalSchemaStatements, aiMemorySchemaStatements, aiRuntimeSchemaStatements, aiTriageSchemaStatements } from './aiPlatformSchema';
 import type { Migration } from './migrations';
 
 type Row = Record<string, unknown>;
@@ -123,6 +123,18 @@ export const AI_PLATFORM_MIGRATIONS: Migration[] = [
         await exec(db, sql.raw('ALTER TABLE ai_harnesses ADD COLUMN analysis INTEGER NOT NULL DEFAULT 0'));
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.69.0] Added the analysis switch to AI harnesses (${dialect()})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.70.0',
+    name: 'ai_evals',
+    description: 'ADR 0024 phase 6 — agent evals: test cases (ai_eval_cases) and scored runs (ai_eval_runs), deleted with their agent.',
+    up: async (db) => {
+      for (const statement of aiEvalSchemaStatements(dialect())) {
+        await exec(db, sql.raw(statement));
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.70.0] Created AI eval tables (${dialect()})`);
     },
     down: async () => { /* forward-only */ },
   },

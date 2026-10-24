@@ -502,10 +502,13 @@ export async function invokeChat(
     snapshot?: RegistrySnapshot;
     /** A durable, checkpointed run (ADR 0024). */
     run?: ChatRunOptions;
+    /** Receives the run's LLM tokens and cost when it ends, failed or not (evals, ADR 0024). */
+    onUsage?: RunOptions["onUsage"];
   } = {},
 ): Promise<ChatRunResult> {
   const cap = getCapability("chat");
   if (!cap) throw AppError.internal("The chat feature is not registered");
+  const chatContexts = cap.contexts;
   const snapshot = options.snapshot ?? await getRegistrySnapshot();
   let agent: AgentDef;
   if (options.snapshot && options.agentId) {
@@ -522,7 +525,17 @@ export async function invokeChat(
     if (!userMayUseAgent(agent, ctx)) throw AppError.forbidden(`You do not have access to the chat agent '${agent.name}'.`);
   }
 
-  return withUsageRun({ ...usageMeta("chat", ctx, "chat"), threadId: options.threadId ?? null }, persistUsageRun, async (run) => {
+  const usage: { run?: UsageRun } = {};
+  try {
+    return await withUsageRun({ ...usageMeta("chat", ctx, "chat"), threadId: options.threadId ?? null }, persistUsageRun, (run) => {
+      usage.run = run;
+      return chatRun(run);
+    });
+  } finally {
+    if (usage.run) options.onUsage?.(runUsage(usage.run));
+  }
+
+  async function chatRun(run: UsageRun): Promise<ChatRunResult> {
     run.setAgent({ id: agent.id, slug: agent.slug, name: agent.name });
     const resolved = await resolveDeepAgentModel(await budgetedModel("chat", ctx, agent));
     const calls: InvokedToolCall[] = [];
@@ -535,7 +548,7 @@ export async function invokeChat(
       step.end({ result: { files: durable.attachments.length } });
     }
     const build = await buildContext(snapshot, resolved, {
-      runtime: featureRuntime(ctx, cap.contexts),
+      runtime: featureRuntime(ctx, chatContexts),
       variables: {},
       calls,
       includeChild: (child) => userMayUseAgent(child, ctx),
@@ -568,7 +581,7 @@ export async function invokeChat(
       agent: { id: agent.id, slug: agent.slug, name: agent.name },
       interrupts,
     };
-  });
+  }
 }
 
 /** Type guard: is this feature structured (vs invoked)? */

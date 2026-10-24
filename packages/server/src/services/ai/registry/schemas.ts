@@ -24,6 +24,7 @@ export const tuningSchema = z.object({
   clearOldToolResults: z.boolean().optional(),
   forkedSubagents: z.array(z.string().min(1)).max(20).optional(),
   memory: z.boolean().optional(),
+  evalThreshold: z.number().gt(0).max(1).nullable().optional(),
 });
 
 export const agentSchema = z.object({

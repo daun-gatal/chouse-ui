@@ -22,6 +22,8 @@ import { extractTokenFromHeader } from "../rbac/services/jwt";
 import { isAIEnabled } from "../services/aiConfig";
 import { CAPABILITIES, getCapability } from "../services/ai/capabilities";
 import { invokeChat, isStructured, runStructuredCapability, type RunTrace } from "../services/ai/engine";
+import { evalGate } from "../services/ai/evals/runner";
+import { agentDraftHash } from "../services/ai/evals/scoring";
 import { renderAgentPrompts, renderTaskMessage } from "../services/ai/registry/builder";
 import { describeCatalog } from "../services/ai/registry/catalog";
 import { BUILTIN_TOOLS } from "../services/ai/registry/harness";
@@ -181,7 +183,17 @@ aiAgents.post("/agents", MANAGE, zValidator("json", agentSchema), async (c) => {
 
 aiAgents.put("/agents/:id", MANAGE, zValidator("json", agentSchema.merge(versionSchema)), async (c) => {
   const { version, ...body } = c.req.valid("json");
-  const agent = await service.updateAgent(requireParam(c, "id"), normalizedAgent(body), version, actor(c));
+  const id = requireParam(c, "id");
+  const input = normalizedAgent(body);
+  // ADR 0024: with an eval threshold, only a draft that passed its evals is saved.
+  const gate = await evalGate(id, agentDraftHash(input as unknown as Record<string, unknown>), input.tuning.evalThreshold ?? null);
+  if (!gate.passing) {
+    const message = !gate.run
+      ? `Run the evals for this draft first: saving needs ${Math.round((gate.threshold ?? 0) * 100)}% of its ${gate.cases} test case(s) to pass.`
+      : `This draft passed ${Math.round((gate.run.score ?? 0) * 100)}% of its evals (${gate.run.passed} of ${gate.run.total}); saving needs ${Math.round((gate.threshold ?? 0) * 100)}%.`;
+    throw new AppError(message, "EVALS_REQUIRED", "validation", 409);
+  }
+  const agent = await service.updateAgent(id, input, version, actor(c));
   await audit(c, AUDIT_ACTIONS.AI_AGENT_UPDATE, "ai_agent", agent.id, { slug: agent.slug, version: agent.version });
   return ok(c, agent);
 });
@@ -329,6 +341,8 @@ aiAgents.post("/test", MANAGE, connectionContextMiddleware, zValidator("json", t
     defaultDatabase: session?.connectionConfig?.database,
     modelId: body.modelId,
     bearerToken: extractTokenFromHeader(c.req.header("Authorization")) ?? undefined,
+    // A test run never carries out or records actions (ADR 0024).
+    actionMode: "simulate" as const,
   };
   const startedAt = Date.now();
 

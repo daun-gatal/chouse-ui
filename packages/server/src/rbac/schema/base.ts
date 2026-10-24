@@ -677,6 +677,12 @@ export const AUDIT_ACTIONS = {
   // Auto-triage (ADR 0024): turning a trigger on or off, or changing its limits.
   AI_TRIAGE_UPDATE: 'ai_triage.update',
 
+  // Agent evals (ADR 0024): the test cases that gate saving an agent, and runs of them.
+  AI_EVAL_CASE_CREATE: 'ai_eval.case_create',
+  AI_EVAL_CASE_UPDATE: 'ai_eval.case_update',
+  AI_EVAL_CASE_DELETE: 'ai_eval.case_delete',
+  AI_EVAL_RUN: 'ai_eval.run',
+
   // Custom dashboards (ADR 0021)
   DASHBOARD_CREATE: 'dashboard.create',
   DASHBOARD_UPDATE: 'dashboard.update',

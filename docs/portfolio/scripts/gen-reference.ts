@@ -198,6 +198,7 @@ const AUDIT_AREAS: Record<string, string> = {
   ai_action: "AI approved actions",
   ai_memory: "AI memory",
   ai_triage: "AI auto-triage",
+  ai_eval: "AI agent evals",
 };
 
 function auditEventsPage(): string {

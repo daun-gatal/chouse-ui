@@ -7,14 +7,16 @@
 
 import type { ReactElement } from "react";
 import { Link } from "react-router";
-import { ArrowDownRight, CornerLeftUp, ExternalLink, Flag, Lock, MessageSquare, Play, Sparkles, Square, Wrench } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowDownRight, CornerLeftUp, ExternalLink, Flag, FlaskConical, Lock, MessageSquare, Play, Sparkles, Square, Wrench } from "lucide-react";
 
 import type { AiStepQuery, AiUsageEgress, AiUsageRequestDetail } from "@/api/aiUsage";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { formatBytes, formatCount } from "@/features/observe/lib";
 import { EmptyState, ErrorState, LoadingGrid, Mono, StatusPill } from "@/features/observe/ui";
-import { useAuthStore, useRbacStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
+import { useEvalMutations } from "@/features/agents/evals/hooks";
 import { cn } from "@/lib/utils";
 import { useAiUsageRequest } from "./hooks";
 import {
@@ -169,6 +171,18 @@ function Detail({ data, onClose }: { data: AiUsageRequestDetail; onClose: () => 
   const timeline = buildTimeline(data.steps, r.startedAt);
   // Threads are private: only the person who asked can open theirs.
   const ownThread = r.threadId && r.userId && r.userId === viewerId ? r.threadId : null;
+  // A chat request keeps its question in the thread, so it can become a test case of the agent that answered.
+  const canManageAgents = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_AGENTS_MANAGE));
+  const savable = canManageAgents && r.featureId === "chat" && Boolean(r.threadId) && Boolean(r.agentId);
+  const { fromRequest } = useEvalMutations();
+  const saveAsCase = async (): Promise<void> => {
+    try {
+      await fromRequest.mutateAsync(r.id);
+      toast.success(`Saved as a test case of ${r.agentName ?? "the agent"}: open it in AI Governance › Assistant › Evals`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the test case");
+    }
+  };
   const ended = r.status === "ok" ? "Finished" : r.status === "timeout" ? "Timed out" : "Failed";
   return (
     <div className="mt-4 space-y-3">
@@ -193,11 +207,18 @@ function Detail({ data, onClose }: { data: AiUsageRequestDetail; onClose: () => 
         <p className="flex items-center gap-1.5 text-[11px] text-paper-faint">
           <Lock className="h-3 w-3" aria-hidden /> Prompt and response text aren't stored.{r.source === "chat" ? " The question and answer are in the chat thread." : ""}
         </p>
-        {ownThread && (
-          <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-xs text-[11px]" onClick={() => { onClose(); openChatThread(ownThread); }}>
-            <MessageSquare className="h-3.5 w-3.5" aria-hidden /> Open in chat
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {savable && (
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-xs text-[11px]" disabled={fromRequest.isPending} onClick={() => void saveAsCase()}>
+              <FlaskConical className="h-3.5 w-3.5" aria-hidden /> Save as test case
+            </Button>
+          )}
+          {ownThread && (
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-xs text-[11px]" onClick={() => { onClose(); openChatThread(ownThread); }}>
+              <MessageSquare className="h-3.5 w-3.5" aria-hidden /> Open in chat
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

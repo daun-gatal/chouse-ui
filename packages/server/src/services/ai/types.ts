@@ -49,8 +49,10 @@ export interface AgentRunContext {
    * How write tools behave (ADR 0024 §Phase 2). `approve`: a chat run pauses
    * for the user's approval, then the tool runs. `propose` (the default, for
    * runs with no person in the loop): the tool only records a pending action.
+   * `simulate` (test console, evals): the tool says what it would do and
+   * records nothing.
    */
-  actionMode?: "approve" | "propose";
+  actionMode?: "approve" | "propose" | "simulate";
   /** The durable chat run this context belongs to (ADR 0024). */
   runId?: string;
   /** The chat thread, so an action links back to it. */

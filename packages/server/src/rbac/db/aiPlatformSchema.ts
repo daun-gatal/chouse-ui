@@ -172,6 +172,48 @@ const TRIAGE_TABLES: string[] = [
   `CREATE INDEX IF NOT EXISTS ai_triage_runs_cooldown_idx ON ai_triage_runs (trigger, connection_id, started_at)`,
 ];
 
+/**
+ * 1.70.0 — agent evals. Cases belong to an agent and go with it; a run records
+ * which draft it scored (`draft_hash`), so saving that exact draft can be
+ * gated on it.
+ */
+const EVAL_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS ai_eval_cases (
+    id                TEXT PRIMARY KEY NOT NULL,
+    agent_id          TEXT NOT NULL REFERENCES ai_agents(id) ON DELETE CASCADE,
+    name              TEXT NOT NULL,
+    kind              TEXT NOT NULL,
+    feature_id        TEXT,
+    input             TEXT NOT NULL DEFAULT '{}',
+    expected_tools    TEXT NOT NULL DEFAULT '[]',
+    rubric            TEXT,
+    source            TEXT NOT NULL DEFAULT 'manual',
+    created_by        TEXT,
+    created_at        {BIGINT} NOT NULL,
+    updated_at        {BIGINT} NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_eval_cases_agent_idx ON ai_eval_cases (agent_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS ai_eval_runs (
+    id              TEXT PRIMARY KEY NOT NULL,
+    agent_id        TEXT NOT NULL REFERENCES ai_agents(id) ON DELETE CASCADE,
+    draft_hash      TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    score           {REAL},
+    passed          INTEGER NOT NULL DEFAULT 0,
+    total           INTEGER NOT NULL DEFAULT 0,
+    results         TEXT NOT NULL DEFAULT '[]',
+    regressions     TEXT NOT NULL DEFAULT '[]',
+    tokens          {BIGINT} NOT NULL DEFAULT 0,
+    cost_usd        {REAL},
+    error           TEXT,
+    created_by      TEXT,
+    started_at      {BIGINT} NOT NULL,
+    finished_at     {BIGINT}
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_eval_runs_agent_idx ON ai_eval_runs (agent_id, started_at)`,
+  `CREATE INDEX IF NOT EXISTS ai_eval_runs_hash_idx ON ai_eval_runs (agent_id, draft_hash, status)`,
+];
+
 function render(statements: string[], dialect: Dialect): string[] {
   const bigint = dialect === "sqlite" ? "INTEGER" : "BIGINT";
   const real = dialect === "sqlite" ? "REAL" : "DOUBLE PRECISION";
@@ -217,3 +259,10 @@ export function aiTriageSchemaStatements(dialect: Dialect): string[] {
 
 export const AI_TRIAGE_TABLE_NAMES: string[] = tableNames(TRIAGE_TABLES);
 export const AI_TRIAGE_INDEX_NAMES: string[] = indexNames(TRIAGE_TABLES);
+
+export function aiEvalSchemaStatements(dialect: Dialect): string[] {
+  return render(EVAL_TABLES, dialect);
+}
+
+export const AI_EVAL_TABLE_NAMES: string[] = tableNames(EVAL_TABLES);
+export const AI_EVAL_INDEX_NAMES: string[] = indexNames(EVAL_TABLES);

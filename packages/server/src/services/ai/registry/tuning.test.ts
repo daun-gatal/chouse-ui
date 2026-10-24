@@ -18,6 +18,7 @@ describe("normalizeTuning", () => {
       clearOldToolResults: false,
       forkedSubagents: [],
       memory: false,
+      evalThreshold: null,
     });
   });
 
@@ -46,5 +47,11 @@ describe("normalizeTuning", () => {
     expect(normalizeTuning({ stepBudget: 5, memory: true }).memory).toBe(true);
     expect(normalizeTuning({ stepBudget: 5, memory: "yes" }).memory).toBe(false);
     expect(normalizeTuning({ stepBudget: 5 }).memory).toBe(false);
+  });
+
+  it("keeps an eval threshold between 0 and 1 only", () => {
+    expect(normalizeTuning({ stepBudget: 5, evalThreshold: 0.8 }).evalThreshold).toBe(0.8);
+    expect(normalizeTuning({ stepBudget: 5, evalThreshold: 1 }).evalThreshold).toBe(1);
+    for (const bad of [0, -1, 1.5, "0.8", null]) expect(normalizeTuning({ stepBudget: 5, evalThreshold: bad }).evalThreshold).toBeNull();
   });
 });

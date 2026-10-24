@@ -23,7 +23,7 @@ import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
 import { DASHBOARD_INDEX_NAMES, DASHBOARD_TABLE_NAMES } from "./dashboardsSchema";
 import { AI_GUARDRAIL_TABLE_NAMES } from "./aiGuardrailsSchema";
 import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboardsV2Schema";
-import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
+import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_EVAL_INDEX_NAMES, AI_EVAL_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -493,6 +493,14 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("ai_harnesses", "analysis")).toBe(true);
     const on = await h.rawAll(sql`SELECT COUNT(*) AS n FROM ai_harnesses WHERE analysis <> 0`);
     expect(Number(on[0]?.n ?? 0)).toBe(0);
+  },
+  "1.70.0": async () => {
+    // ADR 0024 phase 6: eval cases and scored runs, keyed by the draft they scored.
+    expect(AI_EVAL_TABLE_NAMES).toEqual(["ai_eval_cases", "ai_eval_runs"]);
+    for (const t of AI_EVAL_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of AI_EVAL_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["agent_id", "kind", "feature_id", "input", "expected_tools", "rubric", "source"]) expect(await h.columnExists("ai_eval_cases", c)).toBe(true);
+    for (const c of ["draft_hash", "status", "score", "results", "regressions", "tokens"]) expect(await h.columnExists("ai_eval_runs", c)).toBe(true);
   },
 };
 

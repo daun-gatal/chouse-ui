@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ApiError } from "@/api/client";
+import { EvalsTab } from "@/features/agents/evals/EvalsTab";
 import { Textarea } from "@/components/ui/textarea";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { Mono, StatusPill } from "@/features/observe/ui";
@@ -103,6 +105,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
 }): ReactElement {
   const stored = target.agent;
   const [draft, setDraft] = useState<AgentInput>(target.initial);
+  const [tab, setTab] = useState("prompt");
   const [toolFilter, setToolFilter] = useState("");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
   const models = useModelOptions();
@@ -182,6 +185,8 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
       onClose();
     } catch (error) {
       toast.error(errorMessage(error, "Could not save the agent"));
+      // A draft that hasn't passed its evals: show where to run them.
+      if (error instanceof ApiError && error.code === "EVALS_REQUIRED") setTab("evals");
     }
   };
 
@@ -239,9 +244,9 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
             </Field>
           </div>
 
-          <Tabs defaultValue="prompt">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="h-9 rounded-xs bg-ink-200/40">
-              {["prompt", "tools", "skills", "subagents", "settings", "test", "history"].map((t) => (
+              {["prompt", "tools", "skills", "subagents", "settings", "test", "evals", "history"].map((t) => (
                 <TabsTrigger key={t} value={t} className={TAB_CLASS} disabled={(t === "history" && !stored)}>
                   {t}{DRAFT_TABS.has(t) && <SectionMark status={session.result?.sections[t]} />}
                 </TabsTrigger>
@@ -486,6 +491,10 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
               <Field label="Required permissions" hint="Chat users need at least one of these to see the agent (comma-separated). Empty: anyone with ai:chat.">
                 <Input className={`${INPUT_CLASS} font-mono`} value={draft.requiredPermissions.join(", ")} onChange={(e) => set("requiredPermissions", e.target.value.split(",").map((p) => p.trim()).filter(Boolean))} disabled={readOnly} aria-label="Required permissions" />
               </Field>
+            </TabsContent>
+
+            <TabsContent value="evals" className="mt-4">
+              <EvalsTab agentId={stored?.id ?? null} draft={draft} registry={registry} readOnly={readOnly} onThreshold={(evalThreshold) => setTuning({ evalThreshold })} />
             </TabsContent>
 
             <TabsContent value="test" className="mt-4">

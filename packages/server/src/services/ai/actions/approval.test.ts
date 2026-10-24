@@ -175,6 +175,16 @@ describe("write tools without a person in the loop", () => {
     expect(pending.map((a) => [a.tool, a.connectionId])).toEqual([["kill_query", "conn-1"]]);
   });
 
+  it("only says what it would do in a test run, recording nothing", async () => {
+    kills.length = 0;
+    const before = (await store.listActions({ userId: null, status: "pending" })).length;
+    const tree = await buildAgentTree(AGENT, "SRE", build({ userId: "alice", isAdmin: true, connectionId: "conn-1", actionMode: "simulate" }, false));
+    const state = await tree.invoke({ messages: [{ role: "user", content: "kill it" }] });
+    expect(kills).toEqual([]);
+    expect(textOf((state as { messages: BaseMessage[] }).messages.at(-1)?.content)).toContain(`KILL QUERY WHERE query_id = \\"q-7\\"`);
+    expect((await store.listActions({ userId: null, status: "pending" })).length).toBe(before);
+  });
+
   it("offers no write tool to a run with neither a user nor an owner", async () => {
     const tree = await buildAgentTree(AGENT, "SRE", build({ isAdmin: true, connectionId: "conn-1" }, false));
     const state = await tree.invoke({ messages: [{ role: "user", content: "kill it" }] });

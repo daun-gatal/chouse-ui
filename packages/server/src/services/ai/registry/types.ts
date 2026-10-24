@@ -70,6 +70,8 @@ export interface AgentTuning {
   forkedSubagents?: string[];
   /** ADR 0024 phase 3: show the user's and the connection's memories, and offer `remember` in chat. */
   memory?: boolean;
+  /** ADR 0024 phase 6: share of eval cases (0–1) a draft must pass before it can be saved; null = no gate. */
+  evalThreshold?: number | null;
 }
 
 export interface AgentSkillLink {
