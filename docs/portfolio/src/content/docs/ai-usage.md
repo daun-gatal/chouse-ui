@@ -86,7 +86,7 @@ The same data is available outside the tab, with the same permissions:
 
 - **MCP:** `get_ai_usage`, `get_ai_data_egress`, `list_ai_requests` and `get_ai_request` (see [MCP tools](/docs/mcp-tools/#ai-governance)).
 - **CLI:** `chouse ai usage [--by origin|model]`, `chouse ai egress`, `chouse ai requests [--origin …]` and `chouse ai request <id>` (see [CLI reference](/docs/cli-reference/)).
-- **Chat:** ask *CHouse Admin*, for example "what did MCP agents spend on AI this week?".
+- **Chat:** ask [Chobi](/docs/chobi/), for example "what did MCP agents spend on AI this week?".
 
 ## Prices
 

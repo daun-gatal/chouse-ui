@@ -95,6 +95,11 @@ export function testChannel(id: string): Promise<void> {
   return api.post<void>(`/alerting/channels/${id}/test`);
 }
 
+/** Post a message to a channel (a handoff from Chobi). It reaches real people. */
+export function postChannelMessage(id: string, message: { title: string; text: string }): Promise<{ sent: boolean; channel: string }> {
+  return api.post<{ sent: boolean; channel: string }>(`/alerting/channels/${encodeURIComponent(id)}/message`, message);
+}
+
 // --- rules + events ---------------------------------------------------------
 
 export function listRules(): Promise<AlertRule[]> {

@@ -1,12 +1,13 @@
 /**
- * AI Governance › Approvals (ADR 0024 §Phase 2): every write action an AI
- * agent asked for. Chat requests are answered in their chat; requests from
- * runs with nobody there (background) wait here for someone with ai:act,
- * and run as that person once approved.
+ * AI Governance › Approvals (ADR 0024 §Phase 2, ADR 0025): every write action
+ * an AI agent asked for or made. Chat requests are answered in their chat;
+ * queued requests (runs with nobody there, and high-risk T3 calls) wait here
+ * for someone with ai:act — for T3, a second person who holds the tool's
+ * permission — and run as that person once approved. MCP calls held for
+ * their own user's confirmation are confirmed here or in Chobi.
  */
 
 import { useMemo, useState, type ReactElement } from "react";
-import { toast } from "sonner";
 import { Check, ClipboardCheck, MessageSquare, X } from "lucide-react";
 
 import type { AiAction, AiActionStatus } from "@/api/aiActions";
@@ -18,52 +19,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { formatAgo } from "@/features/observe/lib";
 import { DataTable, EmptyState, ErrorState, LoadingGrid, Panel, StatusPill } from "@/features/observe/ui";
-import { errorMessage, Field, INPUT_CLASS, TEXTAREA_CLASS } from "@/features/agents/assistant/shared";
+import { Field, INPUT_CLASS, TEXTAREA_CLASS } from "@/features/agents/assistant/shared";
 import { openChatThread } from "@/features/agents/usage/lib";
 import { argsToText, expiresIn, parseArgsText } from "@/lib/aiApprovals";
-import { useAiActions, useApprovalMutations } from "./hooks";
-import { chatHint, effectiveStatus, sourceLabel, STATUS_FILTERS, STATUS_LABEL, STATUS_TONE } from "./lib";
+import { useAiActions, useDecide, type Decide } from "./hooks";
+import { chatHint, effectiveStatus, sourceLabel, STATUS_FILTERS, STATUS_LABEL, STATUS_TONE, tierLabel, TIER_TONE } from "./lib";
 
 type Filter = AiActionStatus | "all";
 
-/** Runs an approval and says what happened: a finished action can still have failed downstream. */
-function useDecide(): { approve: (action: AiAction, args?: Record<string, unknown>) => Promise<boolean>; reject: (action: AiAction, message?: string) => Promise<boolean>; busyId: string | null } {
-  const { approve, reject } = useApprovalMutations();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  return {
-    busyId,
-    approve: async (action, args) => {
-      setBusyId(action.id);
-      try {
-        const done = await approve.mutateAsync({ id: action.id, args });
-        if (done.status === "failed") toast.error(`${done.title} failed: ${done.error ?? "unknown error"}`);
-        else toast.success(`${done.title}: done`);
-        return true;
-      } catch (error) {
-        toast.error(errorMessage(error, "Could not approve the action"));
-        return false;
-      } finally {
-        setBusyId(null);
-      }
-    },
-    reject: async (action, message) => {
-      setBusyId(action.id);
-      try {
-        await reject.mutateAsync({ id: action.id, message });
-        toast.success(`${action.title}: rejected`);
-        return true;
-      } catch (error) {
-        toast.error(errorMessage(error, "Could not reject the action"));
-        return false;
-      } finally {
-        setBusyId(null);
-      }
-    },
-  };
-}
-
 /** Keyed by the action, so a list refetch never wipes an edit in progress. */
-function ReviewSheet({ action, onClose, decide }: { action: AiAction; onClose: () => void; decide: ReturnType<typeof useDecide> }): ReactElement {
+function ReviewSheet({ action, onClose, decide }: { action: AiAction; onClose: () => void; decide: Decide }): ReactElement {
   const [draft, setDraft] = useState(() => argsToText(action.args));
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -95,7 +60,7 @@ function ReviewSheet({ action, onClose, decide }: { action: AiAction; onClose: (
         <div className="mt-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusPill>
-            <StatusPill tone={action.risk === "high" ? "bad" : "muted"} dot={false}>{action.risk} risk</StatusPill>
+            {action.tier && <StatusPill tone={TIER_TONE[action.tier]} dot={false}>{tierLabel(action.tier)}</StatusPill>}
             {action.decidedByName && <span className="text-[11px] text-paper-muted">by {action.decidedByName}</span>}
           </div>
           <p className="break-words rounded-xs border border-ink-500 bg-ink-200/40 p-2 font-mono text-[12px] text-paper">{action.description}</p>
@@ -173,7 +138,7 @@ export function ApprovalsPanel(): ReactElement {
           body="When an AI agent wants to change something — kill a query, save a dashboard, update table context — the request shows up here and in its chat."
         />
       ) : (
-        <DataTable label="AI actions" head={["Action", "Asked by", "Risk", "Status", "When", ""]}>
+        <DataTable label="AI actions" head={["Action", "Asked by", "Check", "Status", "When", ""]}>
           {rows.map((a) => {
             const status = effectiveStatus(a, now);
             const hint = chatHint(a);
@@ -185,7 +150,7 @@ export function ApprovalsPanel(): ReactElement {
                   <span className="block truncate font-mono text-[10px] text-paper-faint" title={a.description}>{a.description}</span>
                 </td>
                 <td className="text-[12px] text-paper-muted">{sourceLabel(a)}</td>
-                <td><StatusPill tone={a.risk === "high" ? "bad" : "muted"} dot={false}>{a.risk}</StatusPill></td>
+                <td>{a.tier ? <StatusPill tone={TIER_TONE[a.tier]} dot={false}>{tierLabel(a.tier)}</StatusPill> : <span className="text-[11px] text-paper-faint">—</span>}</td>
                 <td>
                   <StatusPill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusPill>
                   {a.error && <span className="mt-0.5 block max-w-[220px] truncate text-[10px] text-red-400" title={a.error}>{a.error}</span>}

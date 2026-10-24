@@ -200,6 +200,9 @@ function mcpView(settings: StoredMcpSettings): Record<string, unknown> {
       allowedOrigins: settings.allowedOrigins,
       timeoutSeconds: settings.timeoutSeconds,
       publicUrl: settings.publicUrl,
+      actionToolkits: settings.actionToolkits,
+      actionMaxTier: settings.actionMaxTier,
+      approvalWaitSeconds: settings.approvalWaitSeconds,
       updatedBy: settings.updatedBy,
       updatedAt: settings.updatedAt,
     },
@@ -225,6 +228,9 @@ agentsRoute.put("/mcp", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator
       ...(update.timeoutSeconds !== undefined ? { timeoutSeconds: update.timeoutSeconds } : {}),
       ...(update.publicUrl !== undefined ? { publicUrl: update.publicUrl } : {}),
       ...(update.toolOverrides ? { tools: update.toolOverrides } : {}),
+      ...(update.actionToolkits ? { actionToolkits: update.actionToolkits } : {}),
+      ...(update.actionMaxTier ? { actionMaxTier: update.actionMaxTier } : {}),
+      ...(update.approvalWaitSeconds !== undefined ? { approvalWaitSeconds: update.approvalWaitSeconds } : {}),
     },
   });
   return ok(c, mcpView(settings));

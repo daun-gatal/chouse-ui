@@ -28,6 +28,7 @@ import {
   type InvokedToolCall,
   type ToolEvent,
 } from "./registry/builder";
+import { pagePromptSection } from "./assistant/tools";
 import { checkpointSaver } from "./runtime/checkpointer";
 import { Command } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
@@ -47,6 +48,7 @@ import type {
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
 import type { DeepAgent } from "deepagents";
 import { lazyRunMemory } from "./memory/runtime";
+import { EMPTY_ANSWER_NUDGE } from "./runtime/internalMessages";
 
 export type { InvokedToolCall } from "./registry/builder";
 
@@ -138,7 +140,7 @@ export function finalTextFromState(state: unknown): string {
 }
 
 /** Sent once when a chat turn ends without answer text, so the model writes it from what it already found. */
-export const EMPTY_ANSWER_NUDGE = "Write your final answer to my last question now, in plain prose, using the tool results you already have. Do not call more tools unless you must.";
+export { EMPTY_ANSWER_NUDGE };
 
 function structuredInstructions<T>(
   instructions: string,
@@ -579,7 +581,8 @@ export async function invokeChat(
         onToolEvent: durable.onToolEvent && ((event: ToolEvent) => durable.onToolEvent?.(event.type === "tool_start" && event.agent === agent.slug ? { ...event, agent: undefined } : event)),
       } : {}),
     });
-    const deepAgent = await buildAgentTree(agent, prompts.system, build);
+    const page = pagePromptSection(ctx.page ?? null);
+    const deepAgent = await buildAgentTree(agent, page ? `${prompts.system}\n\n${page}` : prompts.system, build);
     const overrides = runtimeOverrides(resolved.config);
     const config = {
       recursionLimit: overrides.recursionLimit ?? agent.tuning.recursionLimit ?? recursionLimitFor(agent.tuning.stepBudget),

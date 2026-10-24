@@ -92,7 +92,7 @@ describe("seed sync", () => {
     await syncRegistrySeeds();
     const version = await store.getRegistryVersion();
     const again = await syncRegistrySeeds();
-    expect(again).toEqual({ inserted: 0, upgraded: 0, updateAvailable: 0, bindingsRestored: 0 });
+    expect(again).toEqual({ inserted: 0, upgraded: 0, updateAvailable: 0, bindingsRestored: 0, bindingsMoved: 0, retired: 0 });
     expect(await store.getRegistryVersion()).toBe(version);
   });
 
@@ -139,7 +139,47 @@ describe("seed sync", () => {
     expect(result.bindingsRestored).toBe(2);
     const snapshot = await store.loadSnapshot();
     expect(snapshot.bindings.get("fleet-scan")!.agentId).toBe("builtin-agent-fleet-doctor");
-    expect(snapshot.bindings.get("chat")!.agentId).toBe("builtin-agent-clickhouse-data");
+    expect(snapshot.bindings.get("chat")!.agentId).toBe("builtin-agent-chouse-assistant");
+  });
+
+  it("moves the chat binding off the old default it set, but never an administrator's choice", async () => {
+    await syncRegistrySeeds();
+    // An install from before ADR 0025: the seed bound chat to ClickHouse Data.
+    await run(sql`UPDATE ai_feature_bindings SET agent_id = 'builtin-agent-clickhouse-data', updated_by = NULL WHERE feature_id = 'chat'`);
+    expect((await syncRegistrySeeds()).bindingsMoved).toBe(1);
+    expect((await store.loadSnapshot()).bindings.get("chat")!.agentId).toBe("builtin-agent-chouse-assistant");
+
+    // An administrator chose ClickHouse Data: it stays.
+    await run(sql`UPDATE ai_feature_bindings SET agent_id = 'builtin-agent-clickhouse-data', updated_by = 'admin-1' WHERE feature_id = 'chat'`);
+    expect((await syncRegistrySeeds()).bindingsMoved).toBe(0);
+    expect((await store.loadSnapshot()).bindings.get("chat")!.agentId).toBe("builtin-agent-clickhouse-data");
+    await run(sql`UPDATE ai_feature_bindings SET agent_id = 'builtin-agent-chouse-assistant', updated_by = NULL WHERE feature_id = 'chat'`);
+  });
+
+  it("retires CHouse Admin: its delegators and bindings move to the replacements, then it goes", async () => {
+    await syncRegistrySeeds();
+    const snapshot = await store.loadSnapshot();
+    const assistant = snapshot.agents.get("builtin-agent-chouse-assistant")!;
+    // The pre-ADR-0025 row, a custom agent delegating to it, and a feature bound to it.
+    await store.saveAgent({ ...inputOf(assistant), id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin", isSystem: true, customized: false, seedHash: "old", tools: ["whoami"], subagents: ["builtin-agent-access-auditor"] }, { actor: null, action: "seed" });
+    const custom = await service.createAgent(agentInput({ slug: "ops-desk", harnessId: "builtin-harness-delegating", subagents: ["builtin-agent-chouse-admin", "builtin-agent-access-auditor"] }), ACTOR);
+    await run(sql`UPDATE ai_feature_bindings SET agent_id = 'builtin-agent-chouse-admin' WHERE feature_id = 'draft-guardrail'`);
+
+    const result = await syncRegistrySeeds();
+    expect(result.retired).toBe(1);
+    const after = await store.loadSnapshot();
+    expect(after.agents.has("builtin-agent-chouse-admin")).toBe(false);
+    expect(after.agents.get(custom.id)!.subagents).toEqual(["builtin-agent-operations-analyst", "builtin-agent-access-auditor", "builtin-agent-platform-auditor"]);
+    expect(after.bindings.get("draft-guardrail")!.agentId).toBe("builtin-agent-chouse-assistant");
+  });
+
+  it("keeps a retired built-in an administrator customized", async () => {
+    await syncRegistrySeeds();
+    const assistant = (await store.loadSnapshot()).agents.get("builtin-agent-chouse-assistant")!;
+    await store.saveAgent({ ...inputOf(assistant), id: "builtin-agent-chouse-admin", slug: "chouse-admin", name: "CHouse Admin", isSystem: true, customized: true, seedHash: "old", tools: ["whoami"], subagents: [] }, { actor: "admin-1", action: "update" });
+    expect((await syncRegistrySeeds()).retired).toBe(0);
+    expect((await store.loadSnapshot()).agents.has("builtin-agent-chouse-admin")).toBe(true);
+    await run(sql`DELETE FROM ai_agents WHERE id = 'builtin-agent-chouse-admin'`);
   });
 });
 
@@ -214,7 +254,7 @@ describe("agents", () => {
 
   it("marks a built-in as customized on content edits but not on the enable switch", async () => {
     const snapshot = await store.loadSnapshot();
-    const builtin = snapshot.agents.get("builtin-agent-chouse-admin")!;
+    const builtin = snapshot.agents.get("builtin-agent-operations-analyst")!;
     const toggled = await service.updateAgent(builtin.id, { ...inputOf(builtin), enabled: false }, builtin.version, ACTOR);
     expect(toggled.customized).toBe(false);
     const edited = await service.updateAgent(builtin.id, { ...inputOf(toggled), systemPrompt: `${builtin.systemPrompt}\nBe brief.` }, toggled.version, ACTOR);

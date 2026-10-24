@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chatHint, effectiveStatus, sourceLabel, STATUS_FILTERS, STATUS_LABEL } from "./lib";
+import { chatHint, effectiveStatus, sourceLabel, STATUS_FILTERS, STATUS_LABEL, tierLabel } from "./lib";
 
 describe("approvals lib", () => {
   it("treats a pending action past its deadline as expired", () => {
@@ -10,8 +10,18 @@ describe("approvals lib", () => {
   });
 
   it("says who asked and where", () => {
-    expect(sourceLabel({ source: "chat", userName: "Alice", userId: "u1" })).toBe("Alice, in chat");
-    expect(sourceLabel({ source: "background", userName: null, userId: "u1" })).toBe("Background run as a deleted user");
+    expect(sourceLabel({ source: "chat", origin: "chat", userName: "Alice", userId: "u1" })).toBe("Alice, in chat");
+    expect(sourceLabel({ source: "background", origin: "background", userName: null, userId: "u1" })).toBe("Background run as a deleted user");
+    // ADR 0025: a held MCP call, and a queued T3 call that came from MCP or the CLI.
+    expect(sourceLabel({ source: "held", origin: "mcp", userName: "Alice", userId: "u1" })).toBe("Alice, over MCP");
+    expect(sourceLabel({ source: "background", origin: "cli", userName: "Bob", userId: "u2" })).toBe("Bob, from CLI");
+  });
+
+  it("names each tier, and none for actions recorded before tiers", () => {
+    expect(tierLabel("t1")).toBe("Undoable");
+    expect(tierLabel("t2")).toBe("Asks once");
+    expect(tierLabel("t3")).toBe("Second approver");
+    expect(tierLabel(null)).toBe("—");
   });
 
   it("points chat actions that wait back to their chat", () => {

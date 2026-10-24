@@ -27,6 +27,8 @@ import {
   requireJwtSession,
 } from "../middleware/rbacAuth";
 import { requestLogger } from "../../utils/logger";
+import { getTokenPolicy, saveTokenPolicy, tokenPolicySchema } from "../../services/ai/actions/tokenPolicy";
+import { getMcpSettings } from "../../mcp/settings";
 import { AppError } from "../../types";
 
 const patRoutes = new Hono();
@@ -153,10 +155,13 @@ patRoutes.post("/:id/rotate", async (c) => {
     throw AppError.notFound("User not found");
   }
 
+  const before = await getTokenPolicy(id);
   const rotated = await rotatePat(user.sub, id);
   if (!rotated) {
     throw AppError.notFound("Token not found");
   }
+  // The replacement token keeps the write policy (ADR 0025): rotating is not a way to reset it.
+  await saveTokenPolicy(rotated.id, before);
 
   await createAuditLogWithContext(c, AUDIT_ACTIONS.PAT_ROTATE, user.sub, {
     resourceType: "personal_access_token",
@@ -187,6 +192,49 @@ patRoutes.post("/:id/rotate", async (c) => {
     },
     201
   );
+});
+
+/** The caller's own, live token (the same owner scope as revoke and rotate), or 404. */
+async function ownToken(userId: string, id: string): Promise<void> {
+  if (!(await listPats(userId)).some((token) => token.id === id)) throw AppError.notFound("Token not found");
+}
+
+/**
+ * GET /rbac/pats/:id/write-policy
+ * Which toolkits the token gets as MCP/CLI write tools and how each tier is
+ * handled (ADR 0025), with the administrator's ceiling that bounds it.
+ */
+patRoutes.get("/:id/write-policy", async (c) => {
+  requireJwtSession(c);
+  const user = getRbacUser(c);
+  const id = c.req.param("id");
+  await ownToken(user.sub, id);
+  const settings = await getMcpSettings();
+  return c.json({
+    success: true,
+    data: {
+      policy: await getTokenPolicy(id),
+      ceiling: { toolkits: settings.actionToolkits, maxTier: settings.actionMaxTier },
+    },
+  });
+});
+
+/** PUT /rbac/pats/:id/write-policy — set it (owner only, from a browser session). */
+patRoutes.put("/:id/write-policy", zValidator("json", tokenPolicySchema), async (c) => {
+  requireJwtSession(c);
+  const user = getRbacUser(c);
+  const id = c.req.param("id");
+  await ownToken(user.sub, id);
+  const policy = c.req.valid("json");
+  await saveTokenPolicy(id, policy);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PAT_WRITE_POLICY_UPDATE, user.sub, {
+    resourceType: "personal_access_token",
+    resourceId: id,
+    details: { ...policy },
+    ipAddress: getClientIp(c),
+    status: "success",
+  });
+  return c.json({ success: true, data: { policy: await getTokenPolicy(id) } });
 });
 
 export default patRoutes;

@@ -172,6 +172,22 @@ chouse ai optimize -f slow.sql --yes
 
 `query` runs SELECT/WITH/SHOW/DESCRIBE/EXPLAIN directly; anything else needs `--raw`. Every change prints an `action=… target=… permission=…` line on stderr. Break-glass administration — creating or deleting connections, SSO, AI provider keys, users and roles, data-access policies, MCP settings, agent policies, audit pruning, importing files — stays in the UI.
 
+## AI write tools
+
+`chouse action` runs the same [write tools](/docs/ai-approvals/#the-write-tools) the chat and MCP agents use, checked the same way by [tier](/docs/ai-approvals/#tiers). Your token's [write policy](/docs/mcp/#write-tools) decides which you get.
+
+```bash
+chouse action tools                                   # what your token may run, and how each is checked
+chouse action run create_saved_query name=orders query="SELECT 1"
+chouse action run run_sql_change sql="INSERT INTO db.t VALUES (1)" --yes
+chouse action run create_dashboard --args '{"title":"Ingest","panels":[]}'
+chouse action status <id>                             # status, result, whether it can be undone
+chouse action undo <id> --yes                         # within 24 hours, unless it changed since
+chouse action activity --limit 20                     # what AI agents changed for you
+```
+
+Arguments are `key=value` (values that parse as JSON are JSON) or one `--args` object. An undoable change runs at once; a change that asks once prompts on a terminal or needs `--yes`; a high-risk change is always sent to a second person to approve in CHouse — `--yes` never covers it, and the command prints the action id to check.
+
 ## Upgrading from 0.x
 
 CLI 1.0 changes some commands and the default output:

@@ -21,6 +21,7 @@ export const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   dashboards: "Dashboards",
   ai: "Chouse AI",
   ai_governance: "AI governance",
+  access: "Access",
 };
 
 export const MCP_CATEGORY_ORDER: McpToolCategory[] = [
@@ -35,6 +36,7 @@ export const MCP_CATEGORY_ORDER: McpToolCategory[] = [
   "scheduling",
   "ai",
   "ai_governance",
+  "access",
 ];
 
 export const MCP_ACCESS_LABELS: Record<McpToolAccess, string> = {

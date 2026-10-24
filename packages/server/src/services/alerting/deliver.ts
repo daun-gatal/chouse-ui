@@ -13,11 +13,15 @@ const TEST_TITLE = "✅ CHouse UI — alerting test";
 const TEST_TEXT =
   "This is a test message from CHouse UI alerting. If you can read this, the channel is configured correctly.";
 
+/** A channel that does not answer in time fails the delivery instead of holding the request (or the scheduler) open. */
+const DELIVERY_TIMEOUT_MS = 15_000;
+
 async function postJson(url: string, body: unknown, headers?: Record<string, string>): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(headers ?? {}) },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}`);

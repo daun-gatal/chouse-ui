@@ -29,7 +29,12 @@ import { AppError } from "../../../types";
 import type { AgentTool } from "../langchainTools";
 import type { AgentRunContext, RenderedPrompts } from "../types";
 import { buildGrantedTools, catalogTool, type ToolRuntime } from "./catalog";
-import { actionDefinition } from "../actions/definitions";
+import { actionDefinition, type ActionDefinition } from "../actions/definitions";
+import { decisionRecordedFor } from "../actions/store";
+import { hasGrant } from "../actions/grants";
+import { resolveTier } from "../actions/tiers";
+import { turnIsTainted } from "../actions/taint";
+import { runActionContext } from "../actions/tools";
 import { applyDescriptionOverrides, applyPromptSuffix, generalPurposeSubagent, harnessToolMiddleware } from "./harness";
 import { RegistrySkillsBackend, skillFiles } from "./skillsBackend";
 import { renderTemplate, TemplateError, type TemplateValue } from "./template";
@@ -38,6 +43,7 @@ import { currentUsageRun, runInToolStep, type ModelRef, type ToolContext } from 
 import type { AgentDef, HarnessDef, RegistrySnapshot, SkillDef } from "./types";
 import { guardrailMiddleware } from "../guardrails/middleware";
 import { runtimeMiddleware } from "../runtime/middleware";
+import { LOAD_TOOLKIT_TOOL, toolkitMiddleware } from "../assistant/tools";
 import { skillIncludeTools } from "./skillTools";
 import { logger } from "../../../utils/logger";
 import type { GuardrailRunner } from "../guardrails/runner";
@@ -375,6 +381,8 @@ async function nodeParts(agent: AgentDef, build: BuildContext, node: NodeOptions
     // DeepAgents made the todo list opt-in (1.12); keep it for harnesses that expose write_todos.
     harness.excludedTools.includes("write_todos") ? null : todoListMiddleware(),
     harnessToolMiddleware(harness),
+    // An agent that loads toolkits sees only the write tools of those it loaded (ADR 0025 §5).
+    baseGrants.includes(LOAD_TOOLKIT_TOOL) ? toolkitMiddleware(build.runtime.ctx) : null,
     build.guardrails ? guardrailMiddleware(build.guardrails, { agentId: agent.id, agentSlug: agent.slug, path: node.path, isRoot: node.depth === 0 }) : null,
     sources.length > 0 ? createSkillsMiddleware({ backend: () => skillsBackend(skills), sources, tools: skillTools }) : null,
     ...runtimeMiddleware({ tuning: agent.tuning, fallback: await fallbackModel(agent, build) }),
@@ -386,23 +394,68 @@ function withSections(systemPrompt: string, sections: readonly string[]): string
   return [systemPrompt, ...sections].join("\n\n");
 }
 
+interface ApprovalRequest {
+  toolCall: { id?: string; name: string; args?: Record<string, unknown> };
+  state?: { messages?: unknown[] };
+}
+
+/** How many write calls the model asked for in its latest message (two or more make a plan). */
+function writeCallsInLatestMessage(messages: readonly unknown[], writes: ReadonlySet<string>): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const calls = (messages[i] as { tool_calls?: unknown } | null)?.tool_calls;
+    if (Array.isArray(calls) && calls.length > 0) {
+      return calls.filter((call) => writes.has(String((call as { name?: unknown }).name ?? ""))).length;
+    }
+  }
+  return 0;
+}
+
 /**
- * Per-call approval for the low-risk write tools of a chat run (ADR 0024
- * §Phase 2). It is always added for them: no harness or setting can skip it.
+ * Whether a write call pauses for the user (ADR 0025 §1, §3): every call of a
+ * plan does; a lone T1 call never does; a T2 call does unless the user
+ * granted the tool and the turn read no untrusted data; a T3 call never
+ * pauses here (the tool files it for a second approver). A call the user
+ * already answered always pauses again, so the recorded decision applies.
+ */
+async function needsConfirmation(definition: ActionDefinition, request: ApprovalRequest, writes: ReadonlySet<string>, ctx: AgentRunContext): Promise<boolean> {
+  const toolCallId = request.toolCall.id;
+  if (ctx.runId && toolCallId && (await decisionRecordedFor(ctx.runId, toolCallId))) return true;
+  const parsed = definition.schema.safeParse(request.toolCall.args ?? {});
+  // Invalid arguments fail in the tool itself; there is nothing to approve.
+  if (!parsed.success) return false;
+  const { tier } = await resolveTier(definition, parsed.data, runActionContext(ctx));
+  if (tier === "t3") return false;
+  const messages = request.state?.messages ?? [];
+  if (writeCallsInLatestMessage(messages, writes) >= 2) return true;
+  if (tier === "t1") return false;
+  if (turnIsTainted(messages)) return true;
+  return !(ctx.userId && (await hasGrant(ctx.userId, definition.name, ctx.threadId ?? null)));
+}
+
+/**
+ * Per-call approval for the write tools of a chat run (ADR 0024 §Phase 2, ADR
+ * 0025). It is always added for them: no harness or setting can skip it.
  * Runs without a person in the loop never get it; their write tools only
  * record pending actions.
  */
 function approvalMiddleware(toolNames: Iterable<string>, runtime: ToolRuntime): AgentMiddleware | null {
-  if (runtime.ctx.actionMode !== "approve") return null;
-  const interruptOn: Record<string, { allowedDecisions: Array<"approve" | "edit" | "reject">; description: (call: { args: Record<string, unknown> }) => string }> = {};
+  const { ctx } = runtime;
+  if (ctx.actionMode !== "approve") return null;
+  const writes = new Set<string>();
+  const definitions: ActionDefinition[] = [];
   for (const name of toolNames) {
-    const entry = catalogTool(name);
     const definition = actionDefinition(name);
-    if (entry?.access !== "write" || entry.risk !== "low" || !definition) continue;
-    interruptOn[name] = { allowedDecisions: ["approve", "edit", "reject"], description: (call) => definition.describe(call.args ?? {}) };
+    if (catalogTool(name)?.access !== "write" || !definition) continue;
+    writes.add(name);
+    definitions.push(definition);
   }
-  if (Object.keys(interruptOn).length === 0) return null;
-  return humanInTheLoopMiddleware({ interruptOn, interruptMode: "per_call" }) as AgentMiddleware;
+  if (definitions.length === 0) return null;
+  const interruptOn = Object.fromEntries(definitions.map((definition) => [definition.name, {
+    allowedDecisions: ["approve", "edit", "reject"] as Array<"approve" | "edit" | "reject">,
+    description: (call: { args?: Record<string, unknown> }) => definition.describe(call.args ?? {}),
+    when: (request: ApprovalRequest) => needsConfirmation(definition, request, writes, ctx),
+  }]));
+  return humanInTheLoopMiddleware({ interruptOn, interruptMode: "per_call" } as Parameters<typeof humanInTheLoopMiddleware>[0]) as AgentMiddleware;
 }
 
 function skillsBackend(skills: SkillDef[]): CompositeBackend {

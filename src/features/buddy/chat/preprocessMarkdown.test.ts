@@ -1,10 +1,10 @@
 /**
  * Unit tests for preprocessMarkdown (AI chat markdown normalisation).
- * See AiChatBubble.tsx JSDoc for the list of normalized quirks.
+ * See ChobiChat.tsx JSDoc for the list of normalized quirks.
  */
 
 import { describe, it, expect } from 'vitest';
-import { preprocessMarkdown } from './AiChatBubble';
+import { preprocessMarkdown } from './ChobiChat';
 
 describe('preprocessMarkdown', () => {
   describe('leading whitespace', () => {

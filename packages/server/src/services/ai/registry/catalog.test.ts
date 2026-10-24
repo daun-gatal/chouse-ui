@@ -18,18 +18,16 @@ describe("tool catalog", () => {
     expect(TOOL_CATALOG.some((t) => t.access === "destructive")).toBe(false);
   });
 
-  it("gives every write tool a risk class, and only write tools one (ADR 0024)", () => {
+  it("gives every write tool a tier and a toolkit, and only write tools one (ADR 0025)", () => {
     const writes = TOOL_CATALOG.filter((t) => t.access === "write");
-    expect(writes.map((t) => [t.name, t.risk])).toEqual([
-      ["kill_query", "low"],
-      ["create_saved_query", "low"],
-      ["create_scheduled_query", "low"],
-      ["create_health_promise", "low"],
-      ["create_dashboard", "low"],
-      ["update_table_context", "low"],
-      ["propose_remediation", "high"],
-    ]);
-    expect(TOOL_CATALOG.filter((t) => t.access === "read").every((t) => t.risk === undefined)).toBe(true);
+    expect(writes.length).toBeGreaterThan(0);
+    for (const t of writes) {
+      expect(t.tier).toBeDefined();
+      expect(t.toolkit).toBeDefined();
+    }
+    expect(writes.find((t) => t.name === "kill_query")?.tier).toBe("varies");
+    expect(writes.find((t) => t.name === "create_saved_query")?.tier).toBe("t1");
+    expect(TOOL_CATALOG.filter((t) => t.access === "read").every((t) => t.tier === undefined && t.toolkit === undefined)).toBe(true);
   });
 
   it("describes every entry for the UI", () => {

@@ -64,14 +64,14 @@ Check the answer uses `sumIf(amount, status = 'paid')`, that the tool calls look
 
 ## 4. Use it in the chat
 
-Open the chat bubble. **Chat agent** now lists *Shop Analyst* next to the built-in agents, for everyone who may use it. Pick it; the choice sticks to the thread. Each answer is labelled with the agent that gave it.
+Open [Chobi](/docs/chobi/)'s Chat tab. **Chat agent** now lists *Shop Analyst* next to the built-in agents, for everyone who may use it. Pick it; the choice sticks to the thread. Each answer is labelled with the agent that gave it.
 
-## 5. Optional: route to it automatically
+## 5. Optional: make it an investigator
 
-To let **Auto · CHouse Assistant** send shop questions to it, edit the *CHouse Assistant* router:
+To let *CHouse Assistant* delegate shop questions to it, edit *CHouse Assistant*:
 
 1. **Subagents**: check *Shop Analyst*.
-2. **Prompt**: add it to the router's list of agents, so the model knows when to use it:
+2. **Prompt**: add it to the list of investigators, so the model knows when to use it:
 
    ```text
    - shop-analyst — anything about the shop database: orders, revenue, customers, site events.
@@ -79,9 +79,9 @@ To let **Auto · CHouse Assistant** send shop questions to it, edit the *CHouse 
 
 3. **Save**, and test a shop question with the Chat feature in the **Test** tab.
 
-The router becomes *customized*: CHouse upgrades stop changing it until you reset it. To avoid that, create a router of your own instead — **New agent**, **Kind** *Router*, **Harness** *Router* — with ClickHouse Data, CHouse Admin and Shop Analyst as subagents, and a prompt modelled on the built-in one. A router appears in the picker as *Auto · \<name\>*.
+CHouse Assistant becomes *customized*: CHouse upgrades stop changing it until you reset it. Keep the Shop Analyst read-only — investigators answer, and CHouse Assistant makes every change.
 
-Users without the Shop Analyst's required permission never reach it through a router either: the subagent is left out of their run.
+Users without the Shop Analyst's required permission never reach it as an investigator either: the subagent is left out of their run.
 
 ## Next
 

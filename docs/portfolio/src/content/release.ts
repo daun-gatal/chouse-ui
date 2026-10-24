@@ -30,13 +30,13 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.16",
   kind: "minor",
-  summary: "Dashboards that show what changed and why it spiked, and AI agents that act with your approval, remember and investigate.",
+  summary: "Meet Chobi, the CHouse buddy: AI that acts across CHouse, checked by tier with Undo — and dashboards that show what changed and why it spiked.",
   highlights: [
+    { label: "Meet Chobi", href: "/docs/chobi/" },
+    { label: "AI changes with Undo", href: "/docs/ai-approvals/#tiers" },
     { label: "Dashboard canvas", href: "/docs/dashboards/#the-canvas" },
     { label: "Explain this spike", href: "/docs/dashboards/#annotations-and-notes" },
-    { label: "AI actions with approval", href: "/docs/ai-approvals/" },
     { label: "Auto-triage", href: "/docs/ai-triage/" },
-    { label: "Agent memory", href: "/docs/ai-memory/" },
   ],
 };
 

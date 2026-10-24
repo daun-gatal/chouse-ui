@@ -1,7 +1,7 @@
 ---
 generated: packages/server/src/services/ai/registry (catalog, harness) and seeds
 ---
-Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 71 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
+Everything an agent in **AI Governance › Assistant** is built from that is defined in code: the 142 catalog tools, the built-in DeepAgents tools a harness can hide, and the 14 skills CHouse ships. How to use them is in [AI agents](/docs/ai-agents/), [Harnesses](/docs/ai-harnesses/) and [Skills](/docs/ai-skills/).
 
 Catalog tools only read, except the [action tools](#action-tools), which wait for a person to approve each call. **Context** is what the run must provide — a tool whose context a feature doesn't provide is left out of that feature's runs (see [contexts](/docs/ai-features/)). **Needs any of** applies to the CHouse tools: the chat user must hold one of the permissions or the tool isn't offered, and the API behind it still checks every call as that user. Results of CHouse tools are capped at 100 rows, 2 KB per cell and 60 KB in all, and secrets are redacted.
 
@@ -9,25 +9,25 @@ Catalog tools only read, except the [action tools](#action-tools), which wait fo
 
 | Tool | Title | Context | Needs any of | What it does | Built-in agents |
 | --- | --- | --- | --- | --- | --- |
-| `list_databases` | List databases | ClickHouse session | — | List all available database names. Results are filtered by user permissions. | 5 |
-| `list_tables` | List tables | ClickHouse session | — | List all tables in a specific database. Results are filtered by user permissions. | 5 |
-| `get_table_schema` | Table schema | ClickHouse session | — | Get column names and types for a specific table. | 8 |
-| `get_table_ddl` | Table DDL | ClickHouse session | — | Get the CREATE TABLE statement (DDL) for a specific table. Use this to understand table engines, sorting keys, partition keys, and index settings. | 8 |
-| `get_table_size` | Table size | ClickHouse session | — | Get row count and disk size for a specific table. | 3 |
-| `get_table_sample` | Sample rows | ClickHouse session | — | Get first 5 rows of a table to preview the data. | 3 |
-| `run_select_query` | Run SELECT | ClickHouse session | — | Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. LIMIT 100 is added automatically if the query has no LIMIT. Results limited to 100 rows. NEVER include a FORMAT clause — the application handles formatting internally. | 3 |
-| `explain_query` | EXPLAIN a query | ClickHouse session | — | Get the EXPLAIN plan for a query to understand how ClickHouse will execute it. Useful for understanding index usage, partition pruning, and join strategies. NEVER include a FORMAT clause in the sql parameter. | 4 |
-| `get_database_info` | Database overview | ClickHouse session | — | Get table count and total size for a specific database. | 3 |
-| `get_running_queries` | Running queries | ClickHouse session | — | List currently running queries on the ClickHouse server. | 3 |
-| `get_server_info` | Server info | ClickHouse session | — | Get ClickHouse server version and uptime. | 3 |
-| `search_columns` | Search columns | ClickHouse session | — | Search for columns by name pattern across all accessible tables. | 3 |
-| `analyze_query` | Analyze a query | ClickHouse session | — | Analyze a SQL query for complexity, performance characteristics, and get optimization recommendations. | 6 |
-| `validate_sql` | Validate SQL | ClickHouse session | — | Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running. | 5 |
-| `export_query_result` | Export a result | ClickHouse session | — | Run a read-only SELECT query and return the result as a CSV or JSON string. Use when the user explicitly asks to export, download, or get data as CSV/JSON. Limited to 1000 rows. NEVER include a FORMAT clause in the sql — the format parameter controls output format instead. | 3 |
-| `get_slow_queries` | Slow queries | ClickHouse session | — | List recently executed queries that were slow (by duration). Useful for troubleshooting and finding heavy queries. Non-admin users see only their own queries. | 3 |
-| `render_chart` | Render a chart | ClickHouse session | — | MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends. Execute a SELECT query and return an interactive chart specification. Available chartType values: bar, horizontal_bar, grouped_bar, stacked_bar, line, multi_line, area, stacked_area, pie, donut, scatter, radar, treemap, funnel, histogram, heatmap. xAxis and yAxis can be omitted — they will be inferred from the query result columns. | 1 |
-| `generate_query` | Draft SQL from a description | — | — | Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools. After calling this, you MUST output the generated query in a `sql` code block. If the user wants the query executed, call run_select_query with that SQL. | 1 |
-| `optimize_query` | Optimize a query (runs the optimize-query feature) | ClickHouse session | — | Get AI-powered optimization suggestions for a SQL query. | 1 |
+| `list_databases` | List databases | ClickHouse session | — | List all available database names. Results are filtered by user permissions. | 6 |
+| `list_tables` | List tables | ClickHouse session | — | List all tables in a specific database. Results are filtered by user permissions. | 6 |
+| `get_table_schema` | Table schema | ClickHouse session | — | Get column names and types for a specific table. | 9 |
+| `get_table_ddl` | Table DDL | ClickHouse session | — | Get the CREATE TABLE statement (DDL) for a specific table. Use this to understand table engines, sorting keys, partition keys, and index settings. | 9 |
+| `get_table_size` | Table size | ClickHouse session | — | Get row count and disk size for a specific table. | 4 |
+| `get_table_sample` | Sample rows | ClickHouse session | — | Get first 5 rows of a table to preview the data. | 4 |
+| `run_select_query` | Run SELECT | ClickHouse session | — | Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. LIMIT 100 is added automatically if the query has no LIMIT. Results limited to 100 rows. NEVER include a FORMAT clause — the application handles formatting internally. | 4 |
+| `explain_query` | EXPLAIN a query | ClickHouse session | — | Get the EXPLAIN plan for a query to understand how ClickHouse will execute it. Useful for understanding index usage, partition pruning, and join strategies. NEVER include a FORMAT clause in the sql parameter. | 5 |
+| `get_database_info` | Database overview | ClickHouse session | — | Get table count and total size for a specific database. | 4 |
+| `get_running_queries` | Running queries | ClickHouse session | — | List currently running queries on the ClickHouse server. | 4 |
+| `get_server_info` | Server info | ClickHouse session | — | Get ClickHouse server version and uptime. | 4 |
+| `search_columns` | Search columns | ClickHouse session | — | Search for columns by name pattern across all accessible tables. | 4 |
+| `analyze_query` | Analyze a query | ClickHouse session | — | Analyze a SQL query for complexity, performance characteristics, and get optimization recommendations. | 7 |
+| `validate_sql` | Validate SQL | ClickHouse session | — | Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running. | 6 |
+| `export_query_result` | Export a result | ClickHouse session | — | Run a read-only SELECT query and return the result as a CSV or JSON string. Use when the user explicitly asks to export, download, or get data as CSV/JSON. Limited to 1000 rows. NEVER include a FORMAT clause in the sql — the format parameter controls output format instead. | 4 |
+| `get_slow_queries` | Slow queries | ClickHouse session | — | List recently executed queries that were slow (by duration). Useful for troubleshooting and finding heavy queries. Non-admin users see only their own queries. | 4 |
+| `render_chart` | Render a chart | ClickHouse session | — | MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends. Execute a SELECT query and return an interactive chart specification. Available chartType values: bar, horizontal_bar, grouped_bar, stacked_bar, line, multi_line, area, stacked_area, pie, donut, scatter, radar, treemap, funnel, histogram, heatmap. xAxis and yAxis can be omitted — they will be inferred from the query result columns. | 2 |
+| `generate_query` | Draft SQL from a description | — | — | Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools. After calling this, you MUST output the generated query in a `sql` code block. If the user wants the query executed, call run_select_query with that SQL. | 2 |
+| `optimize_query` | Optimize a query (runs the optimize-query feature) | ClickHouse session | — | Get AI-powered optimization suggestions for a SQL query. | 2 |
 | `run_bounded_aggregate` | Run a bounded aggregate | ClickHouse session | — | Run one read-only aggregate SELECT for a health recommendation. Raw-row SELECTs and SELECT * are rejected. | 1 |
 | `query_node` | Query a node's system tables | Fleet nodes | — | Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows. | 6 |
 
@@ -78,6 +78,10 @@ Catalog tools only read, except the [action tools](#action-tools), which wait fo
 | `list_dashboards` | Dashboards | Your CHouse access | `dashboards:view` | Custom dashboards the user may view: title, owner, panel count, the connections it is assigned to, the roles it is shared with, and whether the user pinned it. | 1 |
 | `get_dashboard` | Dashboard | Your CHouse access | `dashboards:view` | One custom dashboard: the connections it is assigned to, its variables and default range, and each panel's kind and title, with SQL, chart type and unit for charts, Markdown for text panels and the description for headings. | 1 |
 | `get_dashboard_annotations` | Dashboard annotations | Your CHouse access | `dashboards:view` | What changed around a dashboard's charts on the active connection over a recent range: DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes, newest first. Each kind says if it could not be read and why. | 1 |
+| `load_toolkit` | Load a toolkit | — | — | Load a toolkit's write tools before using them. Toolkits: data (Data & Query), scheduling (Scheduling), health (Data Health), observe (Observe & Ops), dashboards (Dashboards & Context), access (Access), platform (Platform & Audit). Data & Query and the page's toolkit are loaded already. The tools appear on your next step. | 1 |
+| `navigate` | Open a page | — | — | Open a CHouse page in the user's browser, e.g. /data/incidents or /dashboards. Only CHouse pages (/fleet, /overview, /monitoring, /dashboards, /data, /ai, /explorer, /admin, /preferences, /doctor). Use it when the user asks to go somewhere or to see something you found. | 1 |
+| `open_entity` | Open an item | — | — | Open one thing in the user's browser: an incident (source + id), a scheduled job, a dashboard, a dataset (database + table), a Doctor report, or the promise, incident or approval lists. | 1 |
+| `fill_form` | Fill a form | — | — | Put SQL into the user's SQL editor (form "sql_editor") in a new tab, without running or saving it — for "write that in my editor" or when they should review a query first. | 1 |
 
 ## Action tools
 
@@ -85,35 +89,102 @@ These tools change something, so nothing runs until a person says so. In a chat 
 
 | Tool | Title | Risk | Needs any of | What it does | Built-in agents |
 | --- | --- | --- | --- | --- | --- |
-| `kill_query` | Kill a query | low | `live_queries:kill`, `live_queries:kill_all` | Stop a running ClickHouse query by its query_id (from get_running_queries). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 2 |
-| `create_saved_query` | Save a query | low | `saved_queries:create` | Save a SQL query to the user's saved queries on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `create_scheduled_query` | Schedule a query | low | `scheduled_queries:edit` | Create a scheduled report query (read-only SELECT, no materialization) on the active connection. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `create_health_promise` | Create a data health promise | low | `data_health:edit` | Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `create_dashboard` | Create a dashboard | low | `dashboards:edit` | Create a dashboard on the active connection from panels (title, SQL, chart type and columns). The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `update_table_context` | Update table context | low | `context:edit` | Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. The user approves, edits or rejects each call before it runs; say what you are about to do and why. | 1 |
-| `propose_remediation` | Propose a fix | high | `remediation:propose` | File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes. | 2 |
+| `kill_query` | Kill a query | low | `live_queries:kill`, `live_queries:kill_all` | Stop a running ClickHouse query by its query_id (from get_running_queries). How it is checked depends on the call (whose query, which connection). | 2 |
+| `create_saved_query` | Save a query | low | `saved_queries:create` | Save a SQL query to the user's saved queries on the active connection. It runs at once and the user can undo it from Activity. | 1 |
+| `update_saved_query` | Edit a saved query | low | `saved_queries:update` | Change a saved query's name, SQL or description (from list_saved_queries). Only the fields given change. It runs at once and the user can undo it from Activity. | 1 |
+| `delete_saved_query` | Delete a saved query | low | `saved_queries:delete` | Delete one of the user's saved queries. Undo saves it again (with a new id). It runs at once and the user can undo it from Activity. | 1 |
+| `share_saved_query` | Share a saved query | low | `saved_queries:share` | Make a saved query visible to everyone who can see saved queries, or private again. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `create_database` | Create a database | low | `database:create` | Create a ClickHouse database on the active connection. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `create_table` | Create a table | low | `table:create` | Create a ClickHouse table on the active connection from columns, an engine and keys; CHouse validates every type and key expression. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `drop_table` | Drop a table | low | `table:drop` | Drop a ClickHouse table on the active connection. Irreversible: a second person approves it. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `drop_database` | Drop a database | low | `database:drop` | Drop a ClickHouse database and every table in it, on the active connection. Irreversible: a second person approves it. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `run_sql_change` | Change data or schema with SQL | low | `query:execute:dml`, `query:execute:ddl`, `table:insert`, `table:update`, `table:delete`, `table:create`, `table:alter`, `table:drop`, `database:create`, `database:drop` | Run one INSERT, UPDATE, DELETE, CREATE, DROP, ALTER or TRUNCATE statement on the active connection. INSERT and CREATE ask once; anything that alters, removes or rewrites data needs a second person's approval. Prefer create_table, drop_table and create_database when they fit. How it is checked depends on the call (whose query, which connection). | 1 |
+| `create_scheduled_query` | Schedule a query | low | `scheduled_queries:edit` | Create a scheduled report query (read-only SELECT, no materialization) on the active connection. It runs at once and the user can undo it from Activity. | 1 |
+| `update_scheduled_job` | Edit a scheduled query | low | `scheduled_queries:edit` | Change a scheduled query's name, description, SQL, schedule, row limit or timeout. Only the fields given change; its connection and output never do. It runs at once and the user can undo it from Activity. | 1 |
+| `pause_scheduled_job` | Pause a scheduled query | low | `scheduled_queries:edit` | Stop a scheduled query from running until it is resumed. It runs at once and the user can undo it from Activity. | 1 |
+| `resume_scheduled_job` | Resume a scheduled query | low | `scheduled_queries:edit` | Let a paused scheduled query run on its schedule again. It runs at once and the user can undo it from Activity. | 1 |
+| `run_scheduled_job` | Run a scheduled query now | low | `scheduled_queries:run` | Run a scheduled query once, now, outside its schedule (it may write to its destination and notify its channels). The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `delete_scheduled_job` | Delete a scheduled query | low | `scheduled_queries:delete` | Delete a scheduled query and its run history. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `create_health_promise` | Create a data health promise | low | `data_health:edit` | Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. It runs at once and the user can undo it from Activity. | 1 |
+| `watch_table` | Keep an eye on a table | low | `data_health:edit` | Watch a table on the active connection for a while ("keep an eye on shop.orders until tomorrow"): a personal Data Health promise, checked every 15 minutes, that says when new rows stop arriving and removes itself when the watch ends — 09:00 tomorrow by default, at most 7 days, five per connection. Needs the table's event-time column (look it up with the table's columns first). It runs at once and the user can undo it from Activity. | 1 |
+| `update_health_promise` | Edit a data health promise | low | `data_health:edit` | Change a promise's name, description, criticality, schedule, thresholds (grace, breach/recover after) or its whole list of checks. Only the fields given change. It runs at once and the user can undo it from Activity. | 1 |
+| `pause_health_promise` | Pause a data health promise | low | `data_health:edit` | Stop a promise's checks from running until it is resumed. It runs at once and the user can undo it from Activity. | 1 |
+| `resume_health_promise` | Resume a data health promise | low | `data_health:edit` | Let a paused promise's checks run on their schedule again. It runs at once and the user can undo it from Activity. | 1 |
+| `run_health_check` | Run a data health promise now | low | `data_health:run` | Evaluate a promise's checks once, now. It runs at once and the user can undo it from Activity. | 1 |
+| `acknowledge_health_incident` | Acknowledge a data health incident | low | `data_health:edit` | Mark a data health incident as acknowledged (someone is on it). It runs at once and the user can undo it from Activity. | 1 |
+| `snooze_health_incident` | Snooze a data health incident | low | `data_health:edit` | Silence a data health incident's notifications for a number of hours. It runs at once and the user can undo it from Activity. | 1 |
+| `delete_health_promise` | Delete a data health promise | low | `data_health:delete` | Delete a promise with its checks, samples and incident history. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `propose_remediation` | Propose a fix | low | `remediation:propose` | File a remediation proposal for approvers, under the remediation approval rules. params.type is one of: kill_query, pause_scheduled_job, resume_scheduled_job, delay_scheduled_job, set_profile_setting, optimize_partition, restart_replica, add_skip_index, modify_ttl, modify_column_codec, restart_engine_table, reload_dictionary, refresh_view, flush_distributed. It changes nothing by itself; approvers decide in Fixes. | 2 |
+| `create_alert_rule` | Create an alert rule | low | `alerting:edit` | Create an alert rule that notifies channels (from list_alerting) when its condition fires. Fleet threshold rules use config keys memoryPercent, queryMemoryGb, longQueryMin, partsEtaMin; only one fleet rule may be enabled. It runs at once and the user can undo it from Activity. | 1 |
+| `update_alert_rule` | Edit an alert rule | low | `alerting:edit` | Change an alert rule's name, severity, thresholds (config), channels or whether it is on. Only the fields given change. It runs at once and the user can undo it from Activity. | 1 |
+| `mute_alert_rule` | Mute an alert rule | low | `alerting:edit` | Turn an alert rule off so it stops notifying; undo (or update_alert_rule with enabled true) turns it back on. It runs at once and the user can undo it from Activity. | 1 |
+| `test_alert_channel` | Send a test alert | low | `alerting:edit` | Send a test notification to an alert channel (Slack, email…) to check it works. It reaches real people. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `post_alert_message` | Post to an alert channel | low | `alerting:edit` | Post a short message to an alert channel (Slack, email…) — a handoff, a status update. It reaches real people and cannot be taken back, so write it for them. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `clear_alert_events` | Clear recent alerts | low | `alerting:delete` | Delete fired alert events: all of them, or those older than a number of hours. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `acknowledge_observe_incident` | Acknowledge an observability incident | low | `observe:edit` | Mark an observability incident (from list_observe_incidents) as acknowledged. It runs at once and the user can undo it from Activity. | 1 |
+| `dismiss_suggestion` | Dismiss an Observe suggestion | low | `observe:edit` | Hide an Observe suggestion (by its key) so it is not offered again. It runs at once and the user can undo it from Activity. | 1 |
+| `pin_table_criticality` | Set a table's criticality | low | `observe:edit` | Pin how critical a table is (critical, important, standard), or clear the pin with null so Observe infers it. It runs at once and the user can undo it from Activity. | 1 |
+| `add_notebook_cell` | Add to an investigation notebook | low | `notebooks:edit` | Add a note or a query to the investigation notebook of an incident or Doctor report (created if it has none). Query cells run once when added. It runs at once and the user can undo it from Activity. | 1 |
+| `update_cost_rates` | Set cost rates | low | `settings:update` | Set the prices Observe uses to estimate query cost: per TiB read and per CPU hour, in a currency. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `update_collector_schedule` | Change the collection schedule | low | `connections:edit` | Change how often Observe collectors run on the active connection, or pause them. Keys are collector names (from get_collector_schedule); a null value inherits the default. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `start_codec_trial` | Try a column codec | low | `upgrades:run` | Measure how a different compression codec would do on one column, by writing a sample to a scratch table on the active connection. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `run_doctor_scan` | Run a Doctor scan | low | `doctor:run` | Run the fleet Doctor now over the last hours of metrics (it uses the AI model and takes a while). The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `update_doctor_schedule` | Schedule the Doctor | low | `doctor:run` | Turn the scheduled Doctor scan on or off and set when it runs. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `update_fleet_alert_config` | Change fleet alert thresholds | low | `settings:update` | Turn fleet threshold alerts on or off and set their thresholds. Notification channels and their secrets are left as they are. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `run_upgrade_assessment` | Assess an upgrade | low | `upgrades:run` | Assess what would break upgrading the active connection's ClickHouse to a version (it scans settings, functions and recent queries). The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `run_canary_replay` | Replay queries on a canary | low | `upgrades:run` | Replay recent read queries from the active connection against a canary connection to compare results before an upgrade. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `create_dashboard` | Create a dashboard | low | `dashboards:edit` | Create a dashboard on the active connection from panels (title, SQL, chart type and columns). It runs at once and the user can undo it from Activity. | 1 |
+| `update_dashboard` | Edit a dashboard | low | `dashboards:edit` | Change a dashboard's title, description, default time range or auto-refresh. Only the fields given change. It runs at once and the user can undo it from Activity. | 1 |
+| `add_panel` | Add a dashboard panel | low | `dashboards:edit` | Add a chart panel (title, read-only SQL, chart type, x and y columns) at the bottom of a dashboard. It runs at once and the user can undo it from Activity. | 1 |
+| `update_panel` | Edit a dashboard panel | low | `dashboards:edit` | Change a chart panel's title, SQL, chart type or columns. Only the fields given change; its place on the canvas stays. It runs at once and the user can undo it from Activity. | 1 |
+| `remove_panel` | Remove a dashboard panel | low | `dashboards:edit` | Remove a panel from a dashboard (its alerts go with it). It runs at once and the user can undo it from Activity. | 1 |
+| `restore_dashboard_version` | Restore a dashboard version | low | `dashboards:edit` | Save an older version of a dashboard (from its version history) as the newest one. It runs at once and the user can undo it from Activity. | 1 |
+| `delete_dashboard` | Delete a dashboard | low | `dashboards:delete` | Delete a dashboard (with its alerts). Undo creates it again from its last document, with a new id. It runs at once and the user can undo it from Activity. | 1 |
+| `add_dashboard_note` | Add a dashboard note | low | `dashboards:edit` | Pin a note to a moment on a dashboard's timeline (e.g. a deploy), on the active connection. It runs at once and the user can undo it from Activity. | 1 |
+| `delete_dashboard_note` | Delete a dashboard note | low | `dashboards:view` | Delete a note from a dashboard's timeline (yours, or any if you can edit the dashboard). It runs at once and the user can undo it from Activity. | 1 |
+| `share_dashboard` | Share a dashboard | low | `dashboards:share` | Set which roles can see a dashboard, and which of them can edit it. Replaces the current shares. The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `update_table_context` | Update table context | low | `context:edit` | Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. It runs at once and the user can undo it from Activity. | 1 |
+| `upsert_metric` | Define a metric | low | `context:edit` | Define (or redefine, by name) a business metric on a table: an aggregate SQL expression every agent and person reads, e.g. revenue = sum(price * qty). It runs at once and the user can undo it from Activity. | 1 |
+| `delete_metric` | Delete a metric | low | `context:edit` | Delete a table's business metric by name. It runs at once and the user can undo it from Activity. | 1 |
+| `create_user` | Create a user | low | `users:create` | Create a CHouse user with one role. CHouse generates their password and never shows it to the assistant: set it in Admin › Users, or the user signs in with SSO. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `update_user` | Edit a user | low | `users:update` | Change a user's email, username or display name. Use assign_role to change their role, deactivate_user to block them. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `deactivate_user` | Deactivate a user | low | `users:update` | Block a user from signing in (their sessions end); activate them again with active true. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `assign_role` | Assign a role | low | `roles:assign` | Give a user a role (a user has exactly one; this replaces it). You can only grant roles whose permissions you hold. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `create_role` | Create a role | low | `roles:create` | Create a role from permission ids (list_permissions) and at least one data access policy (list_data_access_policies). You can only include permissions you hold. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `update_role` | Edit a role | low | `roles:update` | Change a role's name, description, permissions or data access policies. Lists replace what the role has. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `delete_role` | Delete a role | low | `roles:delete` | Delete a custom role (system roles and roles still assigned to users cannot be deleted). It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `create_data_access_policy` | Create a data access policy | low | `data_access:create` | Create a data access policy: rules allowing or denying database/table patterns, on one connection or all. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `update_data_access_policy` | Edit a data access policy | low | `data_access:update` | Change a data access policy's name, description or rules (the rules list replaces the current one). It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `delete_data_access_policy` | Delete a data access policy | low | `data_access:delete` | Delete a data access policy (system policies cannot be deleted). It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `set_role_policies` | Set a role's data access policies | low | `data_access:assign` | Replace the data access policies attached to a role — which connections, databases and tables its users can reach. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `create_clickhouse_role` | Create a ClickHouse role | low | `clickhouse:roles:create` | Create a role in ClickHouse itself (on the active connection) with structured grants. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `update_clickhouse_role` | Change a ClickHouse role's grants | low | `clickhouse:roles:update` | Replace the grants of a ClickHouse role on the active connection. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `draft_ai_agent` | Draft an AI agent | low | `ai_agents:manage` | Save a new custom chat agent as a disabled draft: a prompt and the catalog tools it may use. Nobody can chat with it until it is published. It runs at once and the user can undo it from Activity. | 1 |
+| `run_ai_eval` | Run an agent's evals | low | `ai_agents:manage` | Run an agent's eval cases and score them (it calls the AI model once per case). The user confirms it before it runs; say what you are about to do and why. | 1 |
+| `publish_ai_agent` | Publish an AI agent | low | `ai_agents:manage` | Turn a drafted (disabled) custom agent on so people can chat with it. If the agent has an eval threshold, its evals must pass first. It needs a second person's approval: calling it files the request and returns at once. | 1 |
+| `update_my_preferences` | Change my preferences | low | — | Change the user's own Explorer preferences (sort order, view mode, favorites only). It runs at once and the user can undo it from Activity. | 1 |
 
 ## Built-in DeepAgents tools
 
 DeepAgents gives every agent these tools on top of its catalog tools. A harness hides the ones its agents should not see — here is what each built-in harness keeps:
 
-| Built-in tool | What it does | Focused | Delegating | Router |
-| --- | --- | --- | --- | --- |
-| `task` | Delegate work to a subagent. Required for agents with subagents. | hidden | ✓ | ✓ |
-| `write_todos` | Plan multi-step work as a todo list. | hidden | hidden | hidden |
-| `ls` | List files in the agent's virtual filesystem (skills live under /skills/). | hidden | hidden | hidden |
-| `read_file` | Read a file — how the agent opens a skill's SKILL.md and reference files. | ✓ | ✓ | hidden |
-| `glob` | Find files by pattern. | hidden | hidden | hidden |
-| `grep` | Search file contents. | hidden | hidden | hidden |
-| `write_file` | Write a scratch file in the run's in-memory filesystem (never to disk; skills stay read-only). | hidden | hidden | hidden |
-| `edit_file` | Edit a scratch file in the run's in-memory filesystem. | hidden | hidden | hidden |
-| `delete` | Delete a scratch file or folder in the run's in-memory filesystem (skills stay read-only). | hidden | hidden | hidden |
-| `execute` | Run a shell command — only available with a sandbox backend; CHouse never provides one. | hidden | hidden | hidden |
-| `start_async_task` | Start a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
-| `check_async_task` | Check a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
-| `update_async_task` | Update a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
-| `cancel_async_task` | Cancel a remote async subagent (not used by CHouse). | hidden | hidden | hidden |
-| `list_async_tasks` | List remote async subagents (not used by CHouse). | hidden | hidden | hidden |
+| Built-in tool | What it does | Focused | Delegating | Assistant | Router |
+| --- | --- | --- | --- | --- | --- |
+| `task` | Delegate work to a subagent. Required for agents with subagents. | hidden | ✓ | ✓ | ✓ |
+| `write_todos` | Plan multi-step work as a todo list. | hidden | hidden | ✓ | hidden |
+| `ls` | List files in the agent's virtual filesystem (skills live under /skills/). | hidden | hidden | hidden | hidden |
+| `read_file` | Read a file — how the agent opens a skill's SKILL.md and reference files. | ✓ | ✓ | ✓ | hidden |
+| `glob` | Find files by pattern. | hidden | hidden | hidden | hidden |
+| `grep` | Search file contents. | hidden | hidden | hidden | hidden |
+| `write_file` | Write a scratch file in the run's in-memory filesystem (never to disk; skills stay read-only). | hidden | hidden | hidden | hidden |
+| `edit_file` | Edit a scratch file in the run's in-memory filesystem. | hidden | hidden | hidden | hidden |
+| `delete` | Delete a scratch file or folder in the run's in-memory filesystem (skills stay read-only). | hidden | hidden | hidden | hidden |
+| `execute` | Run a shell command — only available with a sandbox backend; CHouse never provides one. | hidden | hidden | hidden | hidden |
+| `start_async_task` | Start a remote async subagent (not used by CHouse). | hidden | hidden | hidden | hidden |
+| `check_async_task` | Check a remote async subagent (not used by CHouse). | hidden | hidden | hidden | hidden |
+| `update_async_task` | Update a remote async subagent (not used by CHouse). | hidden | hidden | hidden | hidden |
+| `cancel_async_task` | Cancel a remote async subagent (not used by CHouse). | hidden | hidden | hidden | hidden |
+| `list_async_tasks` | List remote async subagents (not used by CHouse). | hidden | hidden | hidden | hidden |
 
 Agents run with an in-memory scratch filesystem that is discarded after the run; skills are mounted read-only under `/skills/`. Nothing an agent writes reaches disk.
 

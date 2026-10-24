@@ -495,6 +495,7 @@ export const AUDIT_ACTIONS = {
   PAT_CREATE: 'pat.create',
   PAT_REVOKE: 'pat.revoke',
   PAT_ROTATE: 'pat.rotate',
+  PAT_WRITE_POLICY_UPDATE: 'pat.write_policy_update',
 
   // MCP server (ADR 0013): one entry per agent-initiated tool call
   MCP_TOOL_CALL: 'mcp.tool_call',
@@ -595,6 +596,7 @@ export const AUDIT_ACTIONS = {
   ALERTING_CHANNEL_UPDATE: 'alerting.channel_update',
   ALERTING_CHANNEL_DELETE: 'alerting.channel_delete',
   ALERTING_CHANNEL_TEST: 'alerting.channel_test',
+  ALERTING_CHANNEL_MESSAGE: 'alerting.channel_message',
   ALERTING_EVENTS_CLEAR: 'alerting.events_clear',
 
   // Scheduled Queries (DataOps)
@@ -638,6 +640,7 @@ export const AUDIT_ACTIONS = {
   AGENT_POLICY_UPDATE: 'agent.policy_update',
   AGENT_ACCESS_PAUSE: 'agent.access_pause',
   AGENT_MCP_UPDATE: 'agent.mcp_update',
+  CHOBI_SETTINGS_UPDATE: 'chobi.settings_update',
 
   // AI agent registry (ADR 0019)
   AI_AGENT_CREATE: 'ai_agent.create',
@@ -666,6 +669,7 @@ export const AUDIT_ACTIONS = {
   // Approved actions (ADR 0024): a person deciding what an AI agent asked to do.
   AI_ACTION_APPROVE: 'ai_action.approve',
   AI_ACTION_REJECT: 'ai_action.reject',
+  AI_ACTION_UNDO: 'ai_action.undo',
 
   // AI memory (ADR 0024): notes agents keep about a user or a connection.
   AI_MEMORY_CREATE: 'ai_memory.create',

@@ -202,6 +202,6 @@ An alert runs on the connection that was active when it was created, which must 
 
 - CLI: `chouse dashboard list`, `get`, `export`, `apply -f FILE`, `run-panel <dashboard> <panel> --range 24h --var db=shop` (repeat `--var` for a multi-value variable), `versions`, `restore`, `snapshot create|list|get`, `import-grafana -f FILE [--apply]`, and `delete`.
 - MCP: `list_dashboards`, `get_dashboard`, `export_dashboard`, `run_dashboard_panel`, `list_dashboard_versions` and `get_dashboard_annotations` are on by default. `apply_dashboard` and `create_dashboard_snapshot` (write) and `delete_dashboard` (destructive) are off until an administrator enables them.
-- In the chat, *CHouse Admin* can list dashboards, read their panels and read what changed around them.
+- In [Chobi](/docs/chobi/), CHouse Assistant can list dashboards, read their panels and what changed around them, and create or edit them for you.
 
 A panel run from a token goes through the same [agent governance](/docs/agents/) as any query.

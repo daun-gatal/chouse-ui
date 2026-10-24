@@ -89,7 +89,7 @@ Safe by default: reads never prompt; commands that change things ask first
 	add("ops", a.newMetricsCmd(), a.newLogsCmd(), a.newLiveCmd(), a.newFleetCmd(), a.newPerfCmd(), a.newCapacityCmd(), a.newUpgradesCmd(),
 		a.newCollectorsCmd(), a.newDashboardCmd(), a.newScheduledCmd(), a.newAlertCmd(), a.newAuditCmd())
 	add("observe", a.newHealthCmd(), a.newLineageCmd(), a.newIncidentsCmd(), a.newRemediationCmd(), a.newContextCmd(), a.newNotebookCmd())
-	add("agents", a.newAICmd(), a.newDoctorCmd(), a.newAgentsCmd(), a.newMCPCmd())
+	add("agents", a.newAICmd(), a.newActionCmd(), a.newDoctorCmd(), a.newAgentsCmd(), a.newMCPCmd())
 	strictGroups(root)
 	return root
 }

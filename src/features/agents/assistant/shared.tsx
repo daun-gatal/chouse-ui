@@ -4,6 +4,7 @@
 
 import type { ReactElement, ReactNode } from "react";
 
+import type { AiActionTier } from "@/api/aiActions";
 import type { ToolContextKind } from "@/api/aiAgents";
 import { StatusPill } from "@/features/observe/ui";
 import { Label } from "@/components/ui/label";
@@ -36,13 +37,33 @@ export function ContextBadge({ kind }: { kind: ToolContextKind }): ReactElement 
   );
 }
 
-/** Write tools (ADR 0024): what happens before one runs. */
-export function ApprovalBadge({ risk }: { risk: "low" | "high" | undefined }): ReactElement {
-  return risk === "high" ? (
-    <span title="Only files a proposal; approvers decide in Fixes" className="rounded-xs border border-red-400/40 px-1.5 py-0.5 font-mono text-[10px] text-red-400">proposal only</span>
-  ) : (
-    <span title="A person approves, edits or rejects every call: in the chat, or in AI Governance › Approvals for runs with nobody there" className="rounded-xs border border-amber-400/40 px-1.5 py-0.5 font-mono text-[10px] text-amber-500">approval required</span>
-  );
+const TIER_BADGES: Record<AiActionTier | "varies", { label: string; hint: string; className: string }> = {
+  t1: {
+    label: "undoable",
+    hint: "Runs at once and can be undone for 24 hours. Asks first on a production connection, or as part of a plan of several writes.",
+    className: "border-emerald-400/40 text-emerald-500",
+  },
+  t2: {
+    label: "asks once",
+    hint: "The user confirms each call (or allows the tool for the thread). Needs a second approver on a production connection.",
+    className: "border-amber-400/40 text-amber-500",
+  },
+  t3: {
+    label: "second approver",
+    hint: "Another person who holds the tool's permission approves it in CHouse before it runs.",
+    className: "border-red-400/40 text-red-400",
+  },
+  varies: {
+    label: "depends on call",
+    hint: "How the call is checked depends on its arguments (for example, whose query it kills).",
+    className: "border-amber-400/40 text-amber-500",
+  },
+};
+
+/** Write tools (ADR 0025): how a call is checked before it runs. */
+export function TierBadge({ tier }: { tier: AiActionTier | "varies" | undefined }): ReactElement {
+  const badge = TIER_BADGES[tier ?? "t2"];
+  return <span title={badge.hint} className={`rounded-xs border px-1.5 py-0.5 font-mono text-[10px] ${badge.className}`}>{badge.label}</span>;
 }
 
 export function Field({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }): ReactElement {

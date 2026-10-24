@@ -29,6 +29,7 @@ import {
   ChartColumn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DOCK_RAIL_WIDTH_VAR } from "@/lib/layers";
 import { log } from "@/lib/log";
 import {
   Tooltip,
@@ -539,6 +540,15 @@ export default function FloatingDock() {
 
   const isVertical = orientation === "vertical";
   const isSidebar = dockMode === "sidebar";
+  const showsRail = isSidebar && !isFullscreen;
+  // Chobi parks beside the rail rather than on top of it (ADR 0025 §6).
+  useEffect(() => {
+    if (!showsRail) return undefined;
+    document.documentElement.style.setProperty(DOCK_RAIL_WIDTH_VAR, "56px");
+    return () => {
+      document.documentElement.style.removeProperty(DOCK_RAIL_WIDTH_VAR);
+    };
+  }, [showsRail]);
   // The rail's session/controls stack collapses to alerts+connection+account
   // on desktop; the onboarding guide force-expands so its launcher stays reachable.
   const isSessionExpanded = isMobile || sessionExpanded || isOnboardingGuideActive;
@@ -571,7 +581,7 @@ export default function FloatingDock() {
   // ============================================
   // Sidebar mode rendering (hidden during fullscreen)
   // ============================================
-  if (isSidebar && !isFullscreen) {
+  if (showsRail) {
     return (
       <motion.div
         data-onboarding-id="app-navigation"

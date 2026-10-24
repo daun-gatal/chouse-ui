@@ -68,6 +68,19 @@ Each promise runs as a [scheduled query](/docs/scheduled-queries/) under the hoo
 
 A breach that lasts past the thresholds opens an **incident**, which appears in [Data › Incidents](/docs/data-incidents/) next to pipeline and engine incidents. Acknowledge or snooze it there (needs `data_health:edit`). After fixing the cause, **Run** the promise to re-evaluate now (needs `data_health:run`) — or, when a job rewrites the window, its clear-and-rerun re-evaluates the affected windows.
 
+## Watches
+
+A **watch** is a short-lived, personal promise — *"keep an eye on shop.orders until tomorrow"* — usually created by asking [Chobi](/docs/chobi/#watches) (the `watch_table` tool). It checks every 15 minutes that new rows keep arriving (a freshness check on the table's event-time column), opens an incident like any promise when they stop, and **removes itself when it ends**, with its checks and incidents.
+
+| Rule | Value |
+| --- | --- |
+| Ends | 09:00 tomorrow by default, in your timezone; at most 7 days |
+| How many | 5 active watches per person per connection |
+| Owner | Always the person who asked; an administrator's edit can't move it |
+| Undo | Creating one is undoable for 24 hours, like other undoable AI changes |
+
+Your active watches are listed in Chobi's **Now** tab. To keep watching for longer, create a regular promise.
+
 ## Permissions
 
 | To | Needs |

@@ -1,6 +1,7 @@
 /**
  * AI Governance › Assistant (ADR 0019): every built-in AI agent — the chat and every
- * AI feature — with its harness, skills and tools, managed in the UI.
+ * AI feature — with its harness, skills and tools, managed in the UI, and the
+ * organization's Chobi settings (ADR 0025).
  * Viewing needs ai_agents:view; changing or testing needs ai_agents:manage.
  */
 
@@ -10,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ErrorState, Kpi, LoadingGrid, Panel } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { AgentEditor, type AgentEditorTarget } from "./AgentEditor";
+import { ChobiSettingsView } from "./ChobiSettingsView";
 import { HarnessesView } from "./HarnessesView";
 import { useAiRegistry } from "./hooks";
 import { AgentsView, FeaturesView, ToolsView } from "./RegistryViews";
@@ -24,6 +26,7 @@ const VIEWS = [
   { key: "skills", label: "Skills" },
   { key: "tools", label: "Tools" },
   { key: "test", label: "Test console" },
+  { key: "chobi", label: "Chobi" },
 ] as const;
 
 export function AssistantPanel(): ReactElement {
@@ -62,6 +65,7 @@ export function AssistantPanel(): ReactElement {
         <TabsContent value="test" className="mt-4">
           <Panel title="Test console" meta="Runs as you, on your active connection"><TestConsole registry={data} canManage={canManage} /></Panel>
         </TabsContent>
+        <TabsContent value="chobi" className="mt-4"><ChobiSettingsView canManage={canManage} /></TabsContent>
       </Tabs>
       {editing && (
         <AgentEditor

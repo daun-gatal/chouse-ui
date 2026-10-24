@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-router";
 import FloatingDock from "@/components/common/FloatingDock";
-import AiChatBubble from "@/components/common/AiChatBubble";
+import { Chobi } from "@/features/buddy";
 import CommandPalette from "@/components/common/CommandPalette";
 import { SchemaPreflightDialog } from "@/components/common/SchemaPreflightDialog";
 import HomePage from "@/pages/Home";
@@ -110,8 +110,8 @@ const MainLayout = () => {
       {/* Floating Dock / Sidebar Navigation */}
       <FloatingDock />
 
-      {/* AI Chat Assistant Bubble */}
-      <AiChatBubble />
+      {/* Chobi, the CHouse buddy (ADR 0025) */}
+      <Chobi />
 
       {/* Global Cmd/Ctrl+K command palette */}
       <CommandPalette open={isPaletteOpen} onOpenChange={setIsPaletteOpen} />

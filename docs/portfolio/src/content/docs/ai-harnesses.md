@@ -12,11 +12,12 @@ A **harness** decides how DeepAgents runs an agent. On top of the catalog tools 
 
 | Harness | Keeps | Use it for |
 | --- | --- | --- |
-| **Focused** | `read_file` (to read skills) | Tool-first, bounded work with no planning or delegation. Every built-in feature agent, ClickHouse Data, and the three CHouse Admin specialists |
-| **Delegating** | `task`, `read_file` | Agents with subagents that also use their own tools — CHouse Admin |
-| **Router** | `task` | Agents that only route to subagents and combine their answers — CHouse Assistant |
+| **Focused** | `read_file` (to read skills) | Tool-first, bounded work with no planning or delegation. Every built-in feature agent and CHouse Assistant's four investigators |
+| **Assistant** | `task`, `write_todos`, `read_file` | One agent that delegates read-only questions to investigators and plans multi-step changes — CHouse Assistant |
+| **Delegating** | `task`, `read_file` | Agents with subagents that also use their own tools |
+| **Router** | `task` | Agents that only route to subagents and combine their answers |
 
-Each also appends a prompt suffix. Focused tells the model to use its tools directly and not to plan or delegate; Delegating tells it to delegate focused sub-questions with full context, because subagents don't see the conversation. Router adds none — the router's own prompt carries its rules.
+Each also appends a prompt suffix. Focused tells the model to use its tools directly and not to plan or delegate; Assistant tells it that investigators change nothing and to plan two or more changes before requesting them together; Delegating tells it to delegate focused sub-questions with full context, because subagents don't see the conversation. Router adds none — the router's own prompt carries its rules.
 
 The [AI tool catalog](/docs/ai-tools/#built-in-deepagents-tools) shows every built-in DeepAgents tool and which harness hides it.
 

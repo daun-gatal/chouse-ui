@@ -4,6 +4,7 @@
  */
 
 import { api } from "./client";
+import type { AiActionTier, AiToolkit } from "./aiActions";
 
 export interface AgentSummary {
   paused: boolean;
@@ -139,7 +140,8 @@ export type McpToolCategory =
   | "performance"
   | "dashboards"
   | "ai"
-  | "ai_governance";
+  | "ai_governance"
+  | "access";
 
 export interface McpToolParameter {
   name: string;
@@ -168,6 +170,12 @@ export interface McpSettings {
   timeoutSeconds: number;
   /** Address agents use when it differs from the one the UI is opened on. */
   publicUrl: string | null;
+  /** ADR 0025 ceiling: toolkits whose write tools any token may get. */
+  actionToolkits: AiToolkit[];
+  /** ADR 0025 ceiling: the highest tier a write tool may have over MCP. */
+  actionMaxTier: AiActionTier;
+  /** How long a write held for its user's confirmation waits in the MCP call. */
+  approvalWaitSeconds: number;
   updatedBy: string | null;
   updatedAt: number | null;
 }
@@ -191,6 +199,9 @@ export interface McpSettingsUpdate {
   publicUrl?: string | null;
   /** Per-tool switches; tools left out keep their current state. */
   toolOverrides?: Record<string, boolean>;
+  actionToolkits?: AiToolkit[];
+  actionMaxTier?: AiActionTier;
+  approvalWaitSeconds?: number;
 }
 
 export function getMcpOverview(): Promise<McpOverview> {

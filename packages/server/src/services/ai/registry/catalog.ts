@@ -21,7 +21,9 @@ import { recordChouseSource } from "../usage";
 import { ACTION_STATUSES } from "../../remediation/store";
 import { summarizeRegistry, type RegistryPayload } from "./summary";
 import { ACTION_TOOLS } from "../actions/tools";
+import { ASSISTANT_TOOLS } from "../assistant/tools";
 import type { ToolContextKind } from "./types";
+import type { Tier, Toolkit } from "../actions/types";
 
 export type ToolDomain = "clickhouse" | "chouse";
 export type ToolAccess = "read" | "write" | "destructive";
@@ -40,10 +42,13 @@ export interface CatalogTool {
   category: string;
   access: ToolAccess;
   /**
-   * Write tools only (ADR 0024): `low` pauses a chat for the user's approval,
-   * `high` only files a proposal that the remediation queue decides.
+   * Write tools only (ADR 0025): how a call is checked — t1 runs with undo,
+   * t2 asks once, t3 needs a second approver; "varies" when it depends on the
+   * call. A production connection raises it one step.
    */
-  risk?: "low" | "high";
+  tier?: Tier | "varies";
+  /** Write tools only: the toolkit the tool belongs to. */
+  toolkit?: Toolkit;
   /** Run context the tool needs; null when it needs nothing. */
   requires: ToolContextKind | null;
   /**
@@ -651,6 +656,7 @@ export const TOOL_CATALOG: readonly CatalogTool[] = [
   ...managementTools,
   ...operationsTools,
   ...ACTION_TOOLS,
+  ...ASSISTANT_TOOLS,
 ];
 
 const BY_NAME = new Map(TOOL_CATALOG.map((entry) => [entry.name, entry]));

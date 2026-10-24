@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 71 tools the [MCP server](/docs/mcp/) offers. 56 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 137 tools the [MCP server](/docs/mcp/) offers. 122 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -30,6 +30,13 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`create_saved_query`](#create_saved_query) | Write | No | `saved_queries:create` |
 | [`query_raw`](#query_raw) | Destructive | No | `query:execute:ddl`, `query:execute:dml` |
 | [`delete_saved_query`](#delete_saved_query) | Destructive | No | `saved_queries:delete` |
+| [`update_saved_query`](#update_saved_query) | Write | Yes | `saved_queries:update` |
+| [`share_saved_query`](#share_saved_query) | Write | Yes | `saved_queries:share` |
+| [`create_database`](#create_database) | Write | Yes | `database:create` |
+| [`create_table`](#create_table) | Write | Yes | `table:create` |
+| [`drop_table`](#drop_table) | Destructive | Yes | `table:drop` |
+| [`drop_database`](#drop_database) | Destructive | Yes | `database:drop` |
+| [`run_sql_change`](#run_sql_change) | Write | Yes | `query:execute:dml`, `query:execute:ddl`, `table:insert`, `table:update`, `table:delete`, `table:create`, `table:alter`, `table:drop`, `database:create`, `database:drop` |
 | [`get_dataset_health`](#get_dataset_health) | Read | Yes | `observe:view` |
 | [`get_lineage`](#get_lineage) | Read | Yes | `observe:view` |
 | [`get_table_context`](#get_table_context) | Read | Yes | `observe:view` |
@@ -45,6 +52,14 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`health_timeline`](#health_timeline) | Read | Yes | `data_health:view` |
 | [`run_health_check`](#run_health_check) | Write | No | `data_health:run` |
 | [`acknowledge_incident`](#acknowledge_incident) | Write | No | `data_health:edit` |
+| [`create_health_promise`](#create_health_promise) | Write | Yes | `data_health:edit` |
+| [`watch_table`](#watch_table) | Write | Yes | `data_health:edit` |
+| [`update_health_promise`](#update_health_promise) | Write | Yes | `data_health:edit` |
+| [`pause_health_promise`](#pause_health_promise) | Write | Yes | `data_health:edit` |
+| [`resume_health_promise`](#resume_health_promise) | Write | Yes | `data_health:edit` |
+| [`acknowledge_health_incident`](#acknowledge_health_incident) | Write | Yes | `data_health:edit` |
+| [`snooze_health_incident`](#snooze_health_incident) | Write | Yes | `data_health:edit` |
+| [`delete_health_promise`](#delete_health_promise) | Write | Yes | `data_health:delete` |
 | [`get_query_regressions`](#get_query_regressions) | Read | Yes | `performance:view` |
 | [`get_query_shape_history`](#get_query_shape_history) | Read | Yes | `performance:view` |
 | [`get_capacity`](#get_capacity) | Read | Yes | `capacity:view` |
@@ -61,6 +76,18 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`create_dashboard_snapshot`](#create_dashboard_snapshot) | Write | No | `dashboards:view`, `query:execute` |
 | [`apply_dashboard`](#apply_dashboard) | Write | No | `dashboards:edit` |
 | [`delete_dashboard`](#delete_dashboard) | Destructive | No | `dashboards:delete` |
+| [`create_dashboard`](#create_dashboard) | Write | Yes | `dashboards:edit` |
+| [`update_dashboard`](#update_dashboard) | Write | Yes | `dashboards:edit` |
+| [`add_panel`](#add_panel) | Write | Yes | `dashboards:edit` |
+| [`update_panel`](#update_panel) | Write | Yes | `dashboards:edit` |
+| [`remove_panel`](#remove_panel) | Write | Yes | `dashboards:edit` |
+| [`restore_dashboard_version`](#restore_dashboard_version) | Write | Yes | `dashboards:edit` |
+| [`add_dashboard_note`](#add_dashboard_note) | Write | Yes | `dashboards:edit` |
+| [`delete_dashboard_note`](#delete_dashboard_note) | Write | Yes | `dashboards:view` |
+| [`share_dashboard`](#share_dashboard) | Write | Yes | `dashboards:share` |
+| [`update_table_context`](#update_table_context) | Write | Yes | `context:edit` |
+| [`upsert_metric`](#upsert_metric) | Write | Yes | `context:edit` |
+| [`delete_metric`](#delete_metric) | Write | Yes | `context:edit` |
 | [`metrics_overview`](#metrics_overview) | Read | Yes | `metrics:view` |
 | [`live_queries`](#live_queries) | Read | Yes | `live_queries:view` |
 | [`fleet_snapshots`](#fleet_snapshots) | Read | Yes | `fleet:view` |
@@ -70,15 +97,38 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`get_collector_schedule`](#get_collector_schedule) | Read | Yes | `connections:view` |
 | [`test_alert_channel`](#test_alert_channel) | Write | No | `alerting:edit` |
 | [`kill_query`](#kill_query) | Destructive | No | `live_queries:kill`, `live_queries:kill_all` |
+| [`create_alert_rule`](#create_alert_rule) | Write | Yes | `alerting:edit` |
+| [`update_alert_rule`](#update_alert_rule) | Write | Yes | `alerting:edit` |
+| [`mute_alert_rule`](#mute_alert_rule) | Write | Yes | `alerting:edit` |
+| [`post_alert_message`](#post_alert_message) | Write | Yes | `alerting:edit` |
+| [`clear_alert_events`](#clear_alert_events) | Write | Yes | `alerting:delete` |
+| [`acknowledge_observe_incident`](#acknowledge_observe_incident) | Write | Yes | `observe:edit` |
+| [`dismiss_suggestion`](#dismiss_suggestion) | Write | Yes | `observe:edit` |
+| [`pin_table_criticality`](#pin_table_criticality) | Write | Yes | `observe:edit` |
+| [`add_notebook_cell`](#add_notebook_cell) | Write | Yes | `notebooks:edit` |
+| [`update_cost_rates`](#update_cost_rates) | Write | Yes | `settings:update` |
+| [`update_collector_schedule`](#update_collector_schedule) | Write | Yes | `connections:edit` |
+| [`start_codec_trial`](#start_codec_trial) | Write | Yes | `upgrades:run` |
+| [`run_doctor_scan`](#run_doctor_scan) | Write | Yes | `doctor:run` |
+| [`update_doctor_schedule`](#update_doctor_schedule) | Write | Yes | `doctor:run` |
+| [`update_fleet_alert_config`](#update_fleet_alert_config) | Write | Yes | `settings:update` |
+| [`run_upgrade_assessment`](#run_upgrade_assessment) | Write | Yes | `upgrades:run` |
+| [`run_canary_replay`](#run_canary_replay) | Write | Yes | `upgrades:run` |
 | [`list_scheduled_jobs`](#list_scheduled_jobs) | Read | Yes | `scheduled_queries:view` |
 | [`get_scheduled_job`](#get_scheduled_job) | Read | Yes | `scheduled_queries:view` |
 | [`list_scheduled_runs`](#list_scheduled_runs) | Read | Yes | `scheduled_queries:view` |
 | [`run_scheduled_job`](#run_scheduled_job) | Write | No | `scheduled_queries:run` |
 | [`delete_scheduled_job`](#delete_scheduled_job) | Destructive | No | `scheduled_queries:delete` |
+| [`create_scheduled_query`](#create_scheduled_query) | Write | Yes | `scheduled_queries:edit` |
+| [`update_scheduled_job`](#update_scheduled_job) | Write | Yes | `scheduled_queries:edit` |
+| [`pause_scheduled_job`](#pause_scheduled_job) | Write | Yes | `scheduled_queries:edit` |
+| [`resume_scheduled_job`](#resume_scheduled_job) | Write | Yes | `scheduled_queries:edit` |
 | [`ai_optimize`](#ai_optimize) | Read · LLM | No | `ai:optimize` |
 | [`doctor_scan`](#doctor_scan) | Write · LLM | No | `doctor:run` |
 | [`doctor_reports`](#doctor_reports) | Read | Yes | `doctor:view` |
 | [`get_doctor_report`](#get_doctor_report) | Read | Yes | `doctor:view` |
+| [`get_action_status`](#get_action_status) | Write | Yes | any token |
+| [`undo_action`](#undo_action) | Write | Yes | any token |
 | [`get_ai_usage`](#get_ai_usage) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
 | [`get_ai_data_egress`](#get_ai_data_egress) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
 | [`list_ai_requests`](#list_ai_requests) | Read | Yes | `ai_usage:view`, `ai:chat`, `ai:optimize` |
@@ -86,6 +136,22 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`list_ai_agents`](#list_ai_agents) | Read | Yes | `ai_agents:view` |
 | [`list_ai_guardrails`](#list_ai_guardrails) | Read | Yes | `ai_guardrails:view` |
 | [`list_ai_guardrail_triggers`](#list_ai_guardrail_triggers) | Read | Yes | `ai_guardrails:view` |
+| [`draft_ai_agent`](#draft_ai_agent) | Write | Yes | `ai_agents:manage` |
+| [`run_ai_eval`](#run_ai_eval) | Write | Yes | `ai_agents:manage` |
+| [`publish_ai_agent`](#publish_ai_agent) | Destructive | Yes | `ai_agents:manage` |
+| [`create_user`](#create_user) | Destructive | Yes | `users:create` |
+| [`update_user`](#update_user) | Destructive | Yes | `users:update` |
+| [`deactivate_user`](#deactivate_user) | Destructive | Yes | `users:update` |
+| [`assign_role`](#assign_role) | Destructive | Yes | `roles:assign` |
+| [`create_role`](#create_role) | Destructive | Yes | `roles:create` |
+| [`update_role`](#update_role) | Destructive | Yes | `roles:update` |
+| [`delete_role`](#delete_role) | Destructive | Yes | `roles:delete` |
+| [`create_data_access_policy`](#create_data_access_policy) | Destructive | Yes | `data_access:create` |
+| [`update_data_access_policy`](#update_data_access_policy) | Destructive | Yes | `data_access:update` |
+| [`delete_data_access_policy`](#delete_data_access_policy) | Destructive | Yes | `data_access:delete` |
+| [`set_role_policies`](#set_role_policies) | Destructive | Yes | `data_access:assign` |
+| [`create_clickhouse_role`](#create_clickhouse_role) | Destructive | Yes | `clickhouse:roles:create` |
+| [`update_clickhouse_role`](#update_clickhouse_role) | Destructive | Yes | `clickhouse:roles:update` |
 
 ## Identity & connections
 
@@ -247,6 +313,90 @@ Delete a saved query by id. Destructive — enabled by an administrator and limi
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Saved query id |
+
+### update_saved_query
+
+*Edit a saved query* — **Write** · on by default · needs any of `saved_queries:update`
+
+Change a saved query's name, SQL or description (from list_saved_queries). Only the fields given change. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Saved query id |
+| `name` | `string` | No |   |
+| `query` | `string` | No |   |
+| `description` | `string` | No |   |
+
+### share_saved_query
+
+*Share a saved query* — **Write** · on by default · needs any of `saved_queries:share`
+
+Make a saved query visible to everyone who can see saved queries, or private again. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Saved query id |
+| `shared` | `boolean` | Yes | true to share with everyone, false to make it private |
+
+### create_database
+
+*Create a database* — **Write** · on by default · needs any of `database:create`
+
+Create a ClickHouse database on the active connection. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `engine` | `string` | No | Database engine, default Atomic |
+| `cluster` | `string` | No | ON CLUSTER name |
+
+### create_table
+
+*Create a table* — **Write** · on by default · needs any of `table:create`
+
+Create a ClickHouse table on the active connection from columns, an engine and keys; CHouse validates every type and key expression. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `name` | `string` | Yes |   |
+| `columns` | `array` | Yes |   |
+| `engine` | `string` | No | Default MergeTree() |
+| `orderBy` | `string` | No |   |
+| `partitionBy` | `string` | No |   |
+| `primaryKey` | `string` | No |   |
+| `cluster` | `string` | No |   |
+
+### drop_table
+
+*Drop a table* — **Destructive** · on by default · needs any of `table:drop`
+
+Drop a ClickHouse table on the active connection. Irreversible: a second person approves it. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+
+### drop_database
+
+*Drop a database* — **Destructive** · on by default · needs any of `database:drop`
+
+Drop a ClickHouse database and every table in it, on the active connection. Irreversible: a second person approves it. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+
+### run_sql_change
+
+*Change data or schema with SQL* — **Write** · on by default · needs any of `query:execute:dml`, `query:execute:ddl`, `table:insert`, `table:update`, `table:delete`, `table:create`, `table:alter`, `table:drop`, `database:create`, `database:drop`
+
+Run one INSERT, UPDATE, DELETE, CREATE, DROP, ALTER or TRUNCATE statement on the active connection. INSERT and CREATE ask once; anything that alters, removes or rewrites data needs a second person's approval. Prefer create_table, drop_table and create_database when they fit. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sql` | `string` | Yes | Exactly one statement |
 
 ## Data observability
 
@@ -419,6 +569,119 @@ Acknowledge an open data-health incident.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Resource id |
+
+### create_health_promise
+
+*Create a data health promise* — **Write** · on by default · needs any of `data_health:edit`
+
+Create a data health promise on a table of the active connection: checks (freshness, volume, nulls…) evaluated on a schedule. Use the check definitions recommend_health_promise or the data health docs describe. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `eventTimeColumn` | `string` | No | Column holding each row's event time, for freshness and slot checks |
+| `eventTimeEncoding` | `native | unix_seconds | unix_milliseconds | unix_microseconds | unix_nanoseconds | string` | No | How the event time is stored: native (a Date or DateTime column, the default), unix_* numbers, or string |
+| `eventTimeTimezone` | `string` | No | IANA timezone of string event-time values (string only) |
+| `criticality` | `standard | important | critical` | No |   |
+| `frequency` | `daily | weekly | monthly | cron` | Yes | How often it runs; for hourly or finer use cron with cronExpr (e.g. "0 * * * *") |
+| `hour` | `number` | No | Hour of day (daily, weekly, monthly) |
+| `dayOfWeek` | `number` | No | 0 = Sunday (weekly) |
+| `dayOfMonth` | `number` | No | Day of month (monthly) |
+| `cronExpr` | `string` | No | Cron expression (frequency cron) |
+| `timezone` | `string` | No | IANA timezone, default UTC |
+| `checks` | `array` | Yes | Check definitions, each with a type and its settings |
+
+### watch_table
+
+*Keep an eye on a table* — **Write** · on by default · needs any of `data_health:edit`
+
+Watch a table on the active connection for a while ("keep an eye on shop.orders until tomorrow"): a personal Data Health promise, checked every 15 minutes, that says when new rows stop arriving and removes itself when the watch ends — 09:00 tomorrow by default, at most 7 days, five per connection. Needs the table's event-time column (look it up with the table's columns first). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `eventTimeColumn` | `string` | Yes | Column holding each row's event time: the watch checks that new rows keep arriving |
+| `eventTimeEncoding` | `native | unix_seconds | unix_milliseconds | unix_microseconds | unix_nanoseconds | string` | No | How the event time is stored (default native) |
+| `maxAgeMinutes` | `number` | No | The newest row may be at most this old (default 60) |
+| `until` | `string` | No | When the watch ends, ISO 8601 (e.g. 2026-10-25T09:00:00Z); default 09:00 tomorrow |
+| `timezone` | `string` | No | IANA timezone for the default end (09:00 tomorrow); default UTC |
+
+### update_health_promise
+
+*Edit a data health promise* — **Write** · on by default · needs any of `data_health:edit`
+
+Change a promise's name, description, criticality, schedule, thresholds (grace, breach/recover after) or its whole list of checks. Only the fields given change. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health promise id (from list_health_checks) |
+| `name` | `string` | No |   |
+| `description` | `string` | No |   |
+| `criticality` | `standard | important | critical` | No |   |
+| `frequency` | `daily | weekly | monthly | cron` | No | How often it runs; for hourly or finer use cron with cronExpr (e.g. "0 * * * *") |
+| `hour` | `number` | No | Hour of day (daily, weekly, monthly) |
+| `dayOfWeek` | `number` | No | 0 = Sunday (weekly) |
+| `dayOfMonth` | `number` | No | Day of month (monthly) |
+| `cronExpr` | `string` | No | Cron expression (frequency cron) |
+| `graceSecs` | `number` | No |   |
+| `breachAfter` | `number` | No |   |
+| `recoverAfter` | `number` | No |   |
+| `checks` | `array` | No | Replaces every check |
+
+### pause_health_promise
+
+*Pause a data health promise* — **Write** · on by default · needs any of `data_health:edit`
+
+Stop a promise's checks from running until it is resumed. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health promise id (from list_health_checks) |
+
+### resume_health_promise
+
+*Resume a data health promise* — **Write** · on by default · needs any of `data_health:edit`
+
+Let a paused promise's checks run on their schedule again. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health promise id (from list_health_checks) |
+
+### acknowledge_health_incident
+
+*Acknowledge a data health incident* — **Write** · on by default · needs any of `data_health:edit`
+
+Mark a data health incident as acknowledged (someone is on it). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health incident id (from list_health_incidents) |
+
+### snooze_health_incident
+
+*Snooze a data health incident* — **Write** · on by default · needs any of `data_health:edit`
+
+Silence a data health incident's notifications for a number of hours. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health incident id (from list_health_incidents) |
+| `hours` | `number` | Yes | How long, in hours (up to a week) |
+
+### delete_health_promise
+
+*Delete a data health promise* — **Write** · on by default · needs any of `data_health:delete`
+
+Delete a promise with its checks, samples and incident history. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Data Health promise id (from list_health_checks) |
 
 ## Performance, capacity & upgrades
 
@@ -594,6 +857,162 @@ Delete a dashboard with its panels, shares, pins and panel alerts. Destructive �
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Dashboard id (from list_dashboards) |
 
+### create_dashboard
+
+*Create a dashboard* — **Write** · on by default · needs any of `dashboards:edit`
+
+Create a dashboard on the active connection from panels (title, SQL, chart type and columns). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `title` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `timeRange` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | No | Default time range, 24h if omitted |
+| `panels` | `array` | Yes |   |
+
+### update_dashboard
+
+*Edit a dashboard* — **Write** · on by default · needs any of `dashboards:edit`
+
+Change a dashboard's title, description, default time range or auto-refresh. Only the fields given change. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `title` | `string` | No |   |
+| `description` | `string` | No |   |
+| `timeRange` | `15m | 1h | 3h | 6h | 12h | 24h | 2d | 7d | 30d` | No |   |
+| `refreshSeconds` | `union` | No |   |
+
+### add_panel
+
+*Add a dashboard panel* — **Write** · on by default · needs any of `dashboards:edit`
+
+Add a chart panel (title, read-only SQL, chart type, x and y columns) at the bottom of a dashboard. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `title` | `string` | Yes |   |
+| `sql` | `string` | Yes | Read-only SELECT; may use {{from}} / {{to}} time-range macros |
+| `chart` | `bar | horizontal_bar | grouped_bar | stacked_bar | line | multi_line | area | stacked_area | pie | donut | scatter | radar | treemap | funnel | histogram | heatmap | stat | table` | Yes | Chart type; table shows every column |
+| `x` | `string` | No | x column (not for stat or table) |
+| `y` | `array` | No | y columns (stat: exactly one; table and histogram: none) |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+
+### update_panel
+
+*Edit a dashboard panel* — **Write** · on by default · needs any of `dashboards:edit`
+
+Change a chart panel's title, SQL, chart type or columns. Only the fields given change; its place on the canvas stays. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `panelId` | `string` | Yes | Panel id (from get_dashboard) |
+| `title` | `string` | No |   |
+| `sql` | `string` | No |   |
+| `chart` | `bar | horizontal_bar | grouped_bar | stacked_bar | line | multi_line | area | stacked_area | pie | donut | scatter | radar | treemap | funnel | histogram | heatmap | stat | table` | No |   |
+| `x` | `string` | No |   |
+| `y` | `array` | No |   |
+
+### remove_panel
+
+*Remove a dashboard panel* — **Write** · on by default · needs any of `dashboards:edit`
+
+Remove a panel from a dashboard (its alerts go with it). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `panelId` | `string` | Yes | Panel id (from get_dashboard) |
+
+### restore_dashboard_version
+
+*Restore a dashboard version* — **Write** · on by default · needs any of `dashboards:edit`
+
+Save an older version of a dashboard (from its version history) as the newest one. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `version` | `number` | Yes |   |
+
+### add_dashboard_note
+
+*Add a dashboard note* — **Write** · on by default · needs any of `dashboards:edit`
+
+Pin a note to a moment on a dashboard's timeline (e.g. a deploy), on the active connection. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `text` | `string` | Yes |   |
+| `at` | `string` | No | ISO time; default now |
+
+### delete_dashboard_note
+
+*Delete a dashboard note* — **Write** · on by default · needs any of `dashboards:view`
+
+Delete a note from a dashboard's timeline (yours, or any if you can edit the dashboard). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `noteId` | `string` | Yes |   |
+
+### share_dashboard
+
+*Share a dashboard* — **Write** · on by default · needs any of `dashboards:share`
+
+Set which roles can see a dashboard, and which of them can edit it. Replaces the current shares. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Dashboard id (from list_dashboards) |
+| `shares` | `array` | Yes |   |
+
+### update_table_context
+
+*Update table context* — **Write** · on by default · needs any of `context:edit`
+
+Set a table's curated context (description, grain, owner, tags) that every agent and person reads. Only the fields given change. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `grain` | `string` | No | What one row is, e.g. one order line |
+| `owner` | `string` | No |   |
+| `tags` | `array` | No |   |
+
+### upsert_metric
+
+*Define a metric* — **Write** · on by default · needs any of `context:edit`
+
+Define (or redefine, by name) a business metric on a table: an aggregate SQL expression every agent and person reads, e.g. revenue = sum(price * qty). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `name` | `string` | Yes |   |
+| `expression` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `owner` | `string` | No |   |
+
+### delete_metric
+
+*Delete a metric* — **Write** · on by default · needs any of `context:edit`
+
+Delete a table's business metric by name. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `name` | `string` | Yes |   |
+
 ## Monitoring
 
 ### metrics_overview
@@ -681,6 +1100,214 @@ Terminate a running ClickHouse query by query_id. Destructive — enabled by an 
 | `query_id` | `string` | Yes | query_id of the running query (see live_queries) |
 | `connection_id` | `string` | No | Connection id (defaults to the request/header connection) |
 
+### create_alert_rule
+
+*Create an alert rule* — **Write** · on by default · needs any of `alerting:edit`
+
+Create an alert rule that notifies channels (from list_alerting) when its condition fires. Fleet threshold rules use config keys memoryPercent, queryMemoryGb, longQueryMin, partsEtaMin; only one fleet rule may be enabled. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `sourceType` | `fleet_threshold | data_quality` | No | Default fleet_threshold |
+| `severity` | `info | warning | critical` | No |   |
+| `enabled` | `boolean` | No |   |
+| `config` | `record` | No |   |
+| `channelIds` | `array` | No |   |
+
+### update_alert_rule
+
+*Edit an alert rule* — **Write** · on by default · needs any of `alerting:edit`
+
+Change an alert rule's name, severity, thresholds (config), channels or whether it is on. Only the fields given change. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Alert rule id (from list_alerting with kind rules) |
+| `name` | `string` | No |   |
+| `severity` | `info | warning | critical` | No |   |
+| `enabled` | `boolean` | No |   |
+| `config` | `record` | No | Replaces the rule's config |
+| `channelIds` | `array` | No |   |
+
+### mute_alert_rule
+
+*Mute an alert rule* — **Write** · on by default · needs any of `alerting:edit`
+
+Turn an alert rule off so it stops notifying; undo (or update_alert_rule with enabled true) turns it back on. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Alert rule id (from list_alerting with kind rules) |
+
+### post_alert_message
+
+*Post to an alert channel* — **Write** · on by default · needs any of `alerting:edit`
+
+Post a short message to an alert channel (Slack, email…) — a handoff, a status update. It reaches real people and cannot be taken back, so write it for them. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Alert channel id (from list_alerting with kind channels) |
+| `title` | `string` | Yes |   |
+| `text` | `string` | Yes |   |
+
+### clear_alert_events
+
+*Clear recent alerts* — **Write** · on by default · needs any of `alerting:delete`
+
+Delete fired alert events: all of them, or those older than a number of hours. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `olderThanHours` | `number` | No | Only events older than this; omit for all |
+
+### acknowledge_observe_incident
+
+*Acknowledge an observability incident* — **Write** · on by default · needs any of `observe:edit`
+
+Mark an observability incident (from list_observe_incidents) as acknowledged. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+
+### dismiss_suggestion
+
+*Dismiss an Observe suggestion* — **Write** · on by default · needs any of `observe:edit`
+
+Hide an Observe suggestion (by its key) so it is not offered again. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `key` | `string` | Yes |   |
+
+### pin_table_criticality
+
+*Set a table's criticality* — **Write** · on by default · needs any of `observe:edit`
+
+Pin how critical a table is (critical, important, standard), or clear the pin with null so Observe infers it. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `criticality` | `critical | important | standard` | Yes |   |
+
+### add_notebook_cell
+
+*Add to an investigation notebook* — **Write** · on by default · needs any of `notebooks:edit`
+
+Add a note or a query to the investigation notebook of an incident or Doctor report (created if it has none). Query cells run once when added. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `attachedTo` | `incident_data_health | incident_observe | doctor_report` | Yes |   |
+| `ref` | `string` | Yes | The incident or report id |
+| `kind` | `note | query` | Yes |   |
+| `text` | `string` | No | Note text (kind note) |
+| `sql` | `string` | No | Read-only SELECT (kind query) |
+| `title` | `string` | No | Query cell title |
+
+### update_cost_rates
+
+*Set cost rates* — **Write** · on by default · needs any of `settings:update`
+
+Set the prices Observe uses to estimate query cost: per TiB read and per CPU hour, in a currency. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `currency` | `string` | Yes |   |
+| `perTibRead` | `number` | Yes |   |
+| `perCpuHour` | `number` | Yes |   |
+
+### update_collector_schedule
+
+*Change the collection schedule* — **Write** · on by default · needs any of `connections:edit`
+
+Change how often Observe collectors run on the active connection, or pause them. Keys are collector names (from get_collector_schedule); a null value inherits the default. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `collectors` | `record` | Yes |   |
+
+### start_codec_trial
+
+*Try a column codec* — **Write** · on by default · needs any of `upgrades:run`
+
+Measure how a different compression codec would do on one column, by writing a sample to a scratch table on the active connection. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | `string` | Yes |   |
+| `table` | `string` | Yes |   |
+| `column` | `string` | Yes |   |
+| `candidateCodec` | `string` | Yes |   |
+
+### run_doctor_scan
+
+*Run a Doctor scan* — **Write** · on by default · needs any of `doctor:run`
+
+Run the fleet Doctor now over the last hours of metrics (it uses the AI model and takes a while). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `hours` | `number` | No |   |
+| `connectionIds` | `array` | No | Default: every connection |
+
+### update_doctor_schedule
+
+*Schedule the Doctor* — **Write** · on by default · needs any of `doctor:run`
+
+Turn the scheduled Doctor scan on or off and set when it runs. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | Yes |   |
+| `frequency` | `daily | weekly | monthly` | Yes |   |
+| `hour` | `number` | Yes |   |
+| `dayOfWeek` | `number` | No |   |
+| `dayOfMonth` | `number` | No |   |
+| `hours` | `number` | No | Hours of metrics each scan reads |
+| `connectionIds` | `array` | No |   |
+| `deliver` | `boolean` | No | Send each report to the alert channels |
+
+### update_fleet_alert_config
+
+*Change fleet alert thresholds* — **Write** · on by default · needs any of `settings:update`
+
+Turn fleet threshold alerts on or off and set their thresholds. Notification channels and their secrets are left as they are. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | Yes |   |
+| `memoryPercent` | `number` | Yes |   |
+| `queryMemoryGb` | `number` | Yes |   |
+| `longQueryMin` | `number` | Yes |   |
+| `partsEtaMin` | `number` | No |   |
+
+### run_upgrade_assessment
+
+*Assess an upgrade* — **Write** · on by default · needs any of `upgrades:run`
+
+Assess what would break upgrading the active connection's ClickHouse to a version (it scans settings, functions and recent queries). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `targetVersion` | `string` | Yes |   |
+
+### run_canary_replay
+
+*Replay queries on a canary* — **Write** · on by default · needs any of `upgrades:run`
+
+Replay recent read queries from the active connection against a canary connection to compare results before an upgrade. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `canaryConnectionId` | `string` | Yes |   |
+| `assessmentId` | `string` | No |   |
+| `limit` | `number` | No |   |
+
 ## Scheduled queries
 
 ### list_scheduled_jobs
@@ -731,6 +1358,65 @@ Delete a scheduled query by id. Destructive — enabled by an administrator and 
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Scheduled query id |
 
+### create_scheduled_query
+
+*Schedule a query* — **Write** · on by default · needs any of `scheduled_queries:edit`
+
+Create a scheduled report query (read-only SELECT, no materialization) on the active connection. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `query` | `string` | Yes | Read-only SELECT |
+| `frequency` | `daily | weekly | monthly | cron` | Yes | How often it runs; for hourly or finer use cron with cronExpr (e.g. "0 * * * *") |
+| `hour` | `number` | No | Hour of day (daily, weekly, monthly) |
+| `dayOfWeek` | `number` | No | 0 = Sunday (weekly) |
+| `dayOfMonth` | `number` | No | Day of month (monthly) |
+| `cronExpr` | `string` | No | Cron expression (frequency cron) |
+| `timezone` | `string` | No | IANA timezone, default UTC |
+
+### update_scheduled_job
+
+*Edit a scheduled query* — **Write** · on by default · needs any of `scheduled_queries:edit`
+
+Change a scheduled query's name, description, SQL, schedule, row limit or timeout. Only the fields given change; its connection and output never do. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Scheduled query id (from list_scheduled_jobs) |
+| `name` | `string` | No |   |
+| `description` | `string` | No |   |
+| `query` | `string` | No | Read-only SELECT |
+| `frequency` | `daily | weekly | monthly | cron` | No | How often it runs; for hourly or finer use cron with cronExpr (e.g. "0 * * * *") |
+| `hour` | `number` | No | Hour of day (daily, weekly, monthly) |
+| `dayOfWeek` | `number` | No | 0 = Sunday (weekly) |
+| `dayOfMonth` | `number` | No | Day of month (monthly) |
+| `cronExpr` | `string` | No | Cron expression (frequency cron) |
+| `timezone` | `string` | No | IANA timezone, default UTC |
+| `maxRows` | `number` | No |   |
+| `timeoutSecs` | `number` | No |   |
+
+### pause_scheduled_job
+
+*Pause a scheduled query* — **Write** · on by default · needs any of `scheduled_queries:edit`
+
+Stop a scheduled query from running until it is resumed. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Scheduled query id (from list_scheduled_jobs) |
+
+### resume_scheduled_job
+
+*Resume a scheduled query* — **Write** · on by default · needs any of `scheduled_queries:edit`
+
+Let a paused scheduled query run on its schedule again. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | Scheduled query id (from list_scheduled_jobs) |
+
 ## Chouse AI
 
 ### ai_optimize
@@ -771,6 +1457,26 @@ Get one AI doctor report by id.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Doctor report id |
+
+### get_action_status
+
+*Check a write action* — **Write** · on by default · any token
+
+Check a write action this token started (by the actionId a write tool returned). If the user has confirmed it since, it runs now and the result comes back.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `action_id` | `string` | Yes | The actionId a write tool returned |
+
+### undo_action
+
+*Undo a write action* — **Write** · on by default · any token
+
+Undo an undoable action this user made (within 24 hours). Refused when the object changed since, so nobody's later change is overwritten.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `action_id` | `string` | Yes | The actionId a write tool returned |
 
 ## AI governance
 
@@ -847,3 +1553,196 @@ Recent guardrail triggers, newest first: guardrail, stage, action, mode, how man
 | `guardrailId` | `string` | No | Only this guardrail's triggers (id from list_ai_guardrails) |
 | `limit` | `number` | No | Rows to return (default 100) |
 | `offset` | `number` | No | Rows to skip, for paging |
+
+### draft_ai_agent
+
+*Draft an AI agent* — **Write** · on by default · needs any of `ai_agents:manage`
+
+Save a new custom chat agent as a disabled draft: a prompt and the catalog tools it may use. Nobody can chat with it until it is published. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slug` | `string` | Yes |   |
+| `name` | `string` | Yes |   |
+| `description` | `string` | Yes |   |
+| `systemPrompt` | `string` | Yes |   |
+| `tools` | `array` | Yes | Catalog tool names |
+| `subagents` | `array` | No | Agent ids |
+
+### run_ai_eval
+
+*Run an agent's evals* — **Write** · on by default · needs any of `ai_agents:manage`
+
+Run an agent's eval cases and score them (it calls the AI model once per case). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agentId` | `string` | Yes |   |
+
+### publish_ai_agent
+
+*Publish an AI agent* — **Destructive** · on by default · needs any of `ai_agents:manage`
+
+Turn a drafted (disabled) custom agent on so people can chat with it. If the agent has an eval threshold, its evals must pass first. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+
+## Access
+
+### create_user
+
+*Create a user* — **Destructive** · on by default · needs any of `users:create`
+
+Create a CHouse user with one role. CHouse generates their password and never shows it to the assistant: set it in Admin › Users, or the user signs in with SSO. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `email` | `string` | Yes |   |
+| `username` | `string` | Yes |   |
+| `displayName` | `string` | No |   |
+| `roleId` | `string` | No | Role id (from list_roles) |
+
+### update_user
+
+*Edit a user* — **Destructive** · on by default · needs any of `users:update`
+
+Change a user's email, username or display name. Use assign_role to change their role, deactivate_user to block them. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes | User id (from list_users) |
+| `email` | `string` | No |   |
+| `username` | `string` | No |   |
+| `displayName` | `string` | No |   |
+
+### deactivate_user
+
+*Deactivate a user* — **Destructive** · on by default · needs any of `users:update`
+
+Block a user from signing in (their sessions end); activate them again with active true. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+| `active` | `boolean` | No |   |
+
+### assign_role
+
+*Assign a role* — **Destructive** · on by default · needs any of `roles:assign`
+
+Give a user a role (a user has exactly one; this replaces it). You can only grant roles whose permissions you hold. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `userId` | `string` | Yes |   |
+| `roleId` | `string` | Yes |   |
+
+### create_role
+
+*Create a role* — **Destructive** · on by default · needs any of `roles:create`
+
+Create a role from permission ids (list_permissions) and at least one data access policy (list_data_access_policies). You can only include permissions you hold. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `displayName` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `permissionIds` | `array` | Yes |   |
+| `dataAccessPolicyIds` | `array` | Yes |   |
+
+### update_role
+
+*Edit a role* — **Destructive** · on by default · needs any of `roles:update`
+
+Change a role's name, description, permissions or data access policies. Lists replace what the role has. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+| `displayName` | `string` | No |   |
+| `description` | `string` | No |   |
+| `permissionIds` | `array` | No |   |
+| `dataAccessPolicyIds` | `array` | No |   |
+
+### delete_role
+
+*Delete a role* — **Destructive** · on by default · needs any of `roles:delete`
+
+Delete a custom role (system roles and roles still assigned to users cannot be deleted). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+
+### create_data_access_policy
+
+*Create a data access policy* — **Destructive** · on by default · needs any of `data_access:create`
+
+Create a data access policy: rules allowing or denying database/table patterns, on one connection or all. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `description` | `string` | No |   |
+| `rules` | `array` | Yes |   |
+
+### update_data_access_policy
+
+*Edit a data access policy* — **Destructive** · on by default · needs any of `data_access:update`
+
+Change a data access policy's name, description or rules (the rules list replaces the current one). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+| `name` | `string` | No |   |
+| `description` | `string` | No |   |
+| `rules` | `array` | No |   |
+
+### delete_data_access_policy
+
+*Delete a data access policy* — **Destructive** · on by default · needs any of `data_access:delete`
+
+Delete a data access policy (system policies cannot be deleted). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | Yes |   |
+
+### set_role_policies
+
+*Set a role's data access policies* — **Destructive** · on by default · needs any of `data_access:assign`
+
+Replace the data access policies attached to a role — which connections, databases and tables its users can reach. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `roleId` | `string` | Yes |   |
+| `policyIds` | `array` | Yes |   |
+
+### create_clickhouse_role
+
+*Create a ClickHouse role* — **Destructive** · on by default · needs any of `clickhouse:roles:create`
+
+Create a role in ClickHouse itself (on the active connection) with structured grants. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `cluster` | `string` | No |   |
+| `grants` | `array` | Yes |   |
+
+### update_clickhouse_role
+
+*Change a ClickHouse role's grants* — **Destructive** · on by default · needs any of `clickhouse:roles:update`
+
+Replace the grants of a ClickHouse role on the active connection. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | `string` | Yes |   |
+| `cluster` | `string` | No |   |
+| `grants` | `array` | Yes |   |

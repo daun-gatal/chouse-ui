@@ -200,6 +200,8 @@ export interface DataHealthPromiseRow {
   createdBy: string | null;
   createdAt: number;
   updatedAt: number;
+  /** A watch (ADR 0025): a personal promise removed once this time (ms) passes; null is permanent. */
+  expiresAt: number | null;
 }
 
 export interface DataHealthSampleRow {

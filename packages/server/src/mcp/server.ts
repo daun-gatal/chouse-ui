@@ -25,6 +25,7 @@ import { registerDashboardTools } from "./tools/dashboards";
 import { registerWriteTools } from "./tools/writes";
 import { registerDestructiveTools } from "./tools/destructive";
 import { registerAiTools } from "./tools/ai";
+import { actionToolListed, registerActionTools, type WriteAccess } from "./tools/actions";
 import { registerResources } from "./resources";
 import { registerPrompts } from "./prompts";
 
@@ -62,6 +63,8 @@ export function collectTools(deps: McpDeps): ChouseToolRegistration[] {
   registerDestructiveTools(sink, deps);
   registerAiTools(sink, deps);
   registerAiGovernanceTools(sink, deps);
+  // Last, so a generated write tool never replaces an MCP tool of the same name.
+  registerActionTools(sink, deps, new Set(tools.map((tool) => tool.name)));
   return tools;
 }
 
@@ -160,7 +163,7 @@ export function toolCatalog(tools: ChouseToolRegistration[], settings: Pick<McpS
  * caller's token can use are listed, so an agent's context holds nothing it
  * would be refused.
  */
-export function buildMcpServer(settings: Pick<McpSettings, "toolOverrides">, deps: McpDeps, identity: Pick<McpIdentity, "permissions">): McpServer {
+export function buildMcpServer(settings: Pick<McpSettings, "toolOverrides">, deps: McpDeps, identity: Pick<McpIdentity, "permissions">, writeAccess: WriteAccess | null = null): McpServer {
   const mcp = new McpServer(MCP_IMPLEMENTATION, {
     instructions:
       "CHouse UI operations over MCP. The tools listed are the ones an administrator enabled and this token may use; " +
@@ -169,8 +172,17 @@ export function buildMcpServer(settings: Pick<McpSettings, "toolOverrides">, dep
       "prompt before calling. Never send personal access tokens or secrets into tool arguments or prompts.",
   });
 
-  for (const tool of collectTools(deps)) {
-    if (isToolEnabled(settings, tool) && canUseTool(tool, identity)) {
+  const tools = collectTools(deps);
+  // Generated write tools (ADR 0025) also need the write ceiling and the token's policy.
+  const writeListed = (tool: ChouseToolRegistration): boolean => {
+    if (!tool.action) return true;
+    if (!writeAccess) return false;
+    if (tool.action.toolkit && tool.action.tier) return actionToolListed({ toolkit: tool.action.toolkit, tier: tool.action.tier }, writeAccess);
+    return tools.some((other) => other.action?.toolkit && other.action.tier && canUseTool(other, identity)
+      && actionToolListed({ toolkit: other.action.toolkit, tier: other.action.tier }, writeAccess));
+  };
+  for (const tool of tools) {
+    if (isToolEnabled(settings, tool) && canUseTool(tool, identity) && writeListed(tool)) {
       registerOnServer(mcp, tool);
     }
   }

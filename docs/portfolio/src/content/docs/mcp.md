@@ -141,6 +141,17 @@ The server also offers **resources** — `chouse://connection/{id}`, `chouse://d
 
 **Which connection:** pass `X-Connection-Id` as a request header or a `connection_id` argument on each tool call (`use_connection` only checks an id); otherwise the token owner's default connection is used. Nothing is pinned on the server, so any replica can serve any call.
 
+## Write tools
+
+Besides its hand-written tools, MCP offers CHouse's [write tools](/docs/ai-approvals/#the-write-tools) — the same 74 the chat uses, checked the same way by [tier](/docs/ai-approvals/#tiers). Only a token whose user has `ai:act` (or is an administrator) gets any. Which ones it gets is decided twice:
+
+- **The ceiling** — **AI Governance › MCP › Write tools**, for every token: which toolkits MCP may expose, the **highest change allowed** (*only undoable changes*, *up to changes that ask once* — the default — or *also high-risk changes*), and how long a held call waits for confirmation (300 seconds by default, up to 900).
+- **The token's policy** — the wrench next to a token in **Preferences › Access tokens**, set by its owner from a browser session: its toolkits (default: *Data & Query*), and for each tier what happens — **Run**, **Ask me in CHouse** or **Off** for undoable and ask-once changes; **Send to a second approver** or **Off** for high-risk ones. Rotating a token keeps its policy.
+
+A call that should **ask** is held: the client's call stays open (with progress notifications) while you confirm or decline it in [Chobi](/docs/chobi/#activity) or [Approvals](/docs/ai-approvals/). Confirmed in time, it runs and the call returns its result; otherwise the call returns a pending `action_id`, and `get_action_status` runs it once you confirm. Undoable changes return an `undo` id for `undo_action`. A token that cannot read its policy gets no write tools at all.
+
+The endpoint is stateless, so a policy change applies on the client's next `tools/list`, and CHouse never asks the client back: confirmations happen in CHouse, where they are audited.
+
 ## Human approval per client
 
 Once an administrator turns a destructive tool on, a person approves each call in the **client**, through the host's own permission prompt. The tool switches are the hard ceiling — an agent can never turn a tool on. Tool names below assume you registered the server as `chouse`.
@@ -194,8 +205,8 @@ approval_mode = "prompt"
 | Off by default | The endpoint, and every write, destructive and LLM-spending tool, stay off until an administrator turns them on; an agent can't opt in |
 | Live authorization | Every call checks the token against the user's current roles and the token's scopes; data access policies and rate limits apply as in the UI |
 | SQL classification | `query` accepts one `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, checked with the same parser that guards the API; anything else fails closed |
-| Human approval | Destructive calls are approved in the client (above) |
+| Human approval | Write tools ask in CHouse by their [tier](/docs/ai-approvals/#tiers) (above); hand-written destructive tools are approved in the client |
 | Result limits | 100 rows, 200 KB and 2 KB per cell, with tokens and password-like fields redacted before anything reaches the model |
-| Privilege fence | Tokens, passwords, sign-in, SSO, AI provider secrets, users, roles, policies, ClickHouse users and roles, creating or deleting connections, audit pruning and export, uploads, and approving or running fixes are never tools |
+| Privilege fence | Tokens, passwords, sign-in, SSO, AI provider secrets, ClickHouse users, creating or deleting connections, audit pruning and export, uploads, and approving actions or fixes are never tools. Users, roles and policies are second-approver write tools, off over MCP until an administrator allows high-risk changes |
 | Governance | Every call lands on an [agent session](/docs/agents/); queries pass budget checks, results carry health notices, and an administrator can pause all agent access (`AGENT_ACCESS_PAUSED` / `AGENT_POLICY_BLOCKED`) |
 | Audit | Every tool call is in the [audit log](/docs/audit-log/) as `mcp.tool_call`, attributed to the token's user |

@@ -26,7 +26,7 @@ import { AiDraftBanner, RefineWithAi, SaveWarning, SectionMark, SectionReview, u
 import { useAssistantMutations, useModelOptions, usePromptPreview } from "./hooks";
 import { agentSubtree, duplicateAgent, featuresBoundTo, groupTools, insertAt, problemsFor, variablesFor } from "./lib";
 import { RevisionHistory } from "./RevisionHistory";
-import { ApprovalBadge, ContextBadge, errorMessage, Field, INPUT_CLASS, OriginBadge, ProblemList, SWITCH_CLASS, TAB_CLASS, TEXTAREA_CLASS } from "./shared";
+import { ContextBadge, errorMessage, Field, INPUT_CLASS, OriginBadge, ProblemList, SWITCH_CLASS, TAB_CLASS, TEXTAREA_CLASS, TierBadge } from "./shared";
 import { TestConsole } from "./TestConsole";
 
 const DEFAULT_MODEL = "__default__";
@@ -313,7 +313,7 @@ export function AgentEditor({ registry, target, canManage, onClose, onOpenAgent 
                       <label key={tool.name} className="flex items-start gap-2 rounded-xs px-2 py-1.5 hover:bg-ink-200/30">
                         <Checkbox checked={checked} onCheckedChange={(v) => toggleTool(tool.name, v === true)} disabled={readOnly} aria-label={tool.name} />
                         <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-2 text-[12px] text-paper"><Mono>{tool.name}</Mono>{tool.requires && <ContextBadge kind={tool.requires} />}{tool.access === "write" && <ApprovalBadge risk={tool.risk} />}{unavailable && <span className="text-[10px] text-amber-500">not provided by the bound feature</span>}</span>
+                          <span className="flex flex-wrap items-center gap-2 text-[12px] text-paper"><Mono>{tool.name}</Mono>{tool.requires && <ContextBadge kind={tool.requires} />}{tool.access === "write" && <TierBadge tier={tool.tier} />}{unavailable && <span className="text-[10px] text-amber-500">not provided by the bound feature</span>}</span>
                           <span className="block text-[11px] text-paper-faint">{tool.description.split("\n")[0]}</span>
                         </span>
                       </label>
