@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { AppError } from "../types";
 import { logger } from "../utils/logger";
+import { quoteStringLiteral } from "../utils/sqlIdentifier";
 import { activeQueryObserver, jsonSize, reportQuery } from "./queryObserver";
 
 // ============================================
@@ -853,7 +854,7 @@ export class ClickHouseService {
   async getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
     try {
       // Build user filter clause if username is provided
-      const userFilter = username ? `AND user = '${username.replace(/'/g, "''")}'` : '';
+      const userFilter = username ? `AND user = ${quoteStringLiteral(username)}` : '';
 
       const result = await this.client.query({
         query: `

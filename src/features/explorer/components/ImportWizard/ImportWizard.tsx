@@ -161,12 +161,16 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         formData.append('hasHeader', String(headerBool));
 
         try {
+            const previewHeaders: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+            const previewToken = localStorage.getItem('rbac_access_token');
+            if (previewToken) {
+                previewHeaders['Authorization'] = `Bearer ${previewToken}`;
+            }
+
             const response = await fetch('/api/upload/preview', {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
+                headers: previewHeaders,
             });
 
             if (!response.ok) {

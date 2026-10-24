@@ -5,6 +5,7 @@ import {
   normalizePrivilege,
   privilegeSupportsColumns,
   quoteIdent,
+  escapeLiteral,
   formatGrantTarget,
   clusterClause,
   grantToAtoms,
@@ -199,5 +200,14 @@ describe('systemGrantRowsToGrants round-trip', () => {
     const atoms1 = grantsToAtoms(grants);
     const atoms2 = grantsToAtoms(atomsToGrants(atoms1));
     expect(new Set(atoms1.map((a) => JSON.stringify(a)))).toEqual(new Set(atoms2.map((a) => JSON.stringify(a))));
+  });
+});
+
+describe('SQL escaping helpers', () => {
+  it('escapes backslashes so a trailing one cannot swallow the closing quote', () => {
+    expect(escapeLiteral("pa\\")).toBe("pa\\\\");
+    expect(`'${escapeLiteral("it's")}'`).toBe("'it''s'");
+    expect(quoteIdent('role\\')).toBe('`role\\\\`');
+    expect(quoteIdent('a`b')).toBe('`a``b`');
   });
 });

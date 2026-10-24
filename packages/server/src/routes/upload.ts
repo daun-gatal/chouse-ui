@@ -7,9 +7,15 @@ import {
     type ConnectionContextVariables,
 } from "../middleware/connectionContext";
 import { AppError } from "../types";
+import { rbacAuthMiddleware } from "../rbac/middleware/rbacAuth";
+import { checkTableAccess } from "../middleware/dataAccess";
+import { PERMISSIONS } from "../rbac/schema/base";
 import { Readable, PassThrough } from "stream";
 
 const upload = new Hono<{ Variables: ConnectionContextVariables }>();
+
+/** The formats the import wizard sends and this route knows how to stream. */
+const UPLOAD_FORMATS = new Set(["CSV", "TSV", "TABSEPARATED", "JSON", "JSONEACHROW"]);
 const inferenceService = new InferenceService();
 
 // Schema for create table/insert parameters
@@ -26,7 +32,9 @@ const createParams = z.object({
  * Expects multipart/form-data with 'file' field
  * Limited to first chunk/snippet for preview
  */
-upload.post("/preview", async (c) => {
+// Preview parses the whole upload server-side, so it needs a signed-in user
+// like every other data route.
+upload.post("/preview", rbacAuthMiddleware, async (c) => {
     try {
         const body = await c.req.parseBody();
         const file = body["file"];
@@ -73,6 +81,21 @@ upload.post(
     zValidator("query", createParams),
     async (c) => {
         const { database, table, format, hasHeader, columns } = c.req.valid("query");
+
+        // An upload is an INSERT: it needs the same permission and data access
+        // rule as typing that INSERT into the SQL editor.
+        const isRbacAdmin = c.get("isRbacAdmin");
+        if (!isRbacAdmin && !(c.get("rbacPermissions") ?? []).includes(PERMISSIONS.TABLE_INSERT)) {
+            throw AppError.forbidden(`Permission '${PERMISSIONS.TABLE_INSERT}' required to import data`);
+        }
+        const connectionId = c.get("session")?.rbacConnectionId ?? c.get("rbacConnectionId");
+        const allowed = await checkTableAccess(c.get("rbacUserId"), isRbacAdmin, database, table, connectionId, "write");
+        if (!allowed) {
+            throw AppError.forbidden(`Access denied to ${database}.${table}`);
+        }
+        if (!UPLOAD_FORMATS.has(format.toUpperCase())) {
+            throw AppError.badRequest(`Unsupported import format: ${format}`);
+        }
         const hasHeaderBool = hasHeader !== "false";
 
         const columnArray = columns ? columns.split(',') : undefined;
@@ -135,8 +158,7 @@ upload.post(
                     })();
                 }
             } else {
-                // Fallback for other formats
-                nodeStream = c.req.raw.body as any;
+                throw AppError.badRequest(`Unsupported import format: ${format}`);
             }
 
             const result = await service.insertStream(

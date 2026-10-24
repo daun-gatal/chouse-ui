@@ -314,6 +314,26 @@ describe("Live Queries Routes", () => {
             expect(mockExecuteQuery).toHaveBeenCalledTimes(2); // check + KILL QUERY
         });
 
+        it("quotes the query id as a single string literal", async () => {
+            mockExecuteQuery.mockResolvedValue({ data: [], meta: [], statistics: {}, rows: 0 });
+
+            await app.request("/live-queries/kill", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer token",
+                    "X-Connection-Id": "conn1",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify({ queryId: "q\\' x" }),
+            });
+
+            expect(mockExecuteQuery).toHaveBeenCalled();
+            for (const [sql] of mockExecuteQuery.mock.calls) {
+                expect(sql).toContain("query_id = 'q\\\\\\' x'");
+            }
+        });
+
         it("should reject when queryId is missing", async () => {
             const res = await app.request("/live-queries/kill", {
                 method: "POST",

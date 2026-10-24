@@ -19,6 +19,7 @@ import { createAuditLogWithContext, userHasPermission, getUserById } from "../rb
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
+import { quoteStringLiteral } from "../utils/sqlIdentifier";
 
 // ============================================
 // Types
@@ -229,7 +230,7 @@ liveQueries.get("/", async (c) => {
  * Kill a running query by query_id
  */
 const killQuerySchema = z.object({
-    queryId: z.string().min(1, "Query ID is required"),
+    queryId: z.string().min(1, "Query ID is required").max(256),
 });
 
 liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
@@ -272,7 +273,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                 elapsed as elapsed_seconds,
                 Settings['log_comment'] as log_comment_json
               FROM system.processes
-              WHERE query_id = '${queryId.replace(/'/g, "''")}'
+              WHERE query_id = ${quoteStringLiteral(queryId)}
               LIMIT 1
             `, "JSON");
             const rawInfo = ((checkResult.data || [])[0]) as any;
@@ -301,7 +302,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
         // Execute KILL QUERY command
         await service.executeQuery(
-            `KILL QUERY WHERE query_id = '${queryId.replace(/'/g, "''")}'`,
+            `KILL QUERY WHERE query_id = ${quoteStringLiteral(queryId)}`,
             "JSON"
         );
 

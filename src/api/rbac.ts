@@ -1889,7 +1889,6 @@ export const rbacDataAccessPoliciesApi = {
 export async function checkRbacHealth(): Promise<{
   status: 'healthy' | 'unhealthy';
   database: string;
-  error?: string;
 }> {
   const response = await fetch('/api/rbac/health', {
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
