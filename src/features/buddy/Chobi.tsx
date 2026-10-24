@@ -229,7 +229,7 @@ export function Chobi(): React.JSX.Element | null {
         onTab={setTab}
       >
         {(option, width) => option === "chat"
-          ? <ChobiChat open={open} visible={open && tab === "chat"} width={width} onShowChat={showChat} />
+          ? <ChobiChat open={open} visible={open && tab === "chat"} width={width} plain={plain} onShowChat={showChat} />
           : option === "activity"
             ? <ActivityTab active={open && tab === "activity"} />
             : <NowTab briefing={briefing.data} loading={briefing.isLoading} error={briefing.isError} onOpenActivity={showActivity} onNavigated={afterNavigate} />}

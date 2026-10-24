@@ -78,7 +78,7 @@ function deferredRun(): { implementation: (request: unknown, onEvent: (event: un
   };
 }
 
-const COMPOSER = "Ask about your databases, schemas, queries…";
+const COMPOSER = "Ask Chobi about your databases…";
 
 /**
  * Type into the composer and send. The sheet re-renders its composer once the
@@ -452,7 +452,7 @@ describe("Chobi chat", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     await screen.findByText("New conversation");
-    const freshComposer = screen.getByPlaceholderText<HTMLTextAreaElement>("Ask about your databases, schemas, queries…");
+    const freshComposer = screen.getByPlaceholderText<HTMLTextAreaElement>("Ask Chobi about your databases…");
     expect(freshComposer.disabled).toBe(false);
     expect(screen.queryByRole("button", { name: "Stop generating" })).toBeNull();
 
@@ -542,7 +542,7 @@ describe("Chobi chat", () => {
   describe("durable runs (ADR 0024)", () => {
     const newThread = { id: "thread-run", userId: "user-1", title: null, connectionId: "connection-a", createdAt: "2026-07-17T00:00:00.000Z", updatedAt: "2026-07-17T00:00:00.000Z" };
 
-    async function openNewChat(placeholder: RegExp | string = "Ask about your databases, schemas, queries…"): Promise<HTMLTextAreaElement> {
+    async function openNewChat(placeholder: RegExp | string = "Ask Chobi about your databases…"): Promise<HTMLTextAreaElement> {
       mocks.createThread.mockResolvedValueOnce(newThread);
       render(<Chobi />, { wrapper: MemoryRouter });
       fireEvent.click(await screen.findByRole("button", { name: /open chobi/i }));

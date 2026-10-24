@@ -21,6 +21,8 @@ interface MascotProps {
   size?: number;
   /** Plain mode (an organization setting): the logo instead of the character. */
   plain?: boolean;
+  /** No idle motion, for small repeated avatars such as chat messages. */
+  still?: boolean;
   className?: string;
 }
 
@@ -47,6 +49,7 @@ const STYLES = `
 @keyframes chobi-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @keyframes chobi-wave { 0%, 100% { rotate: 0deg; } 50% { rotate: -14deg; } }
 @keyframes chobi-z { 0% { opacity: 0; transform: translate(0, 2px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(3px, -4px); } }
+.chobi-still .chobi-blink, .chobi-still .chobi-bob, .chobi-still .chobi-pulse, .chobi-still .chobi-wave, .chobi-still .chobi-z { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   .chobi-blink, .chobi-bob, .chobi-pulse, .chobi-wave, .chobi-z { animation: none; }
   .chobi-arm { transition: none; }
@@ -56,7 +59,7 @@ const STYLES = `
  * Chobi, the CHouse buddy (ADR 0025 §6): the logo's three bars as a chibi —
  * the tall middle bar is its head and body, the side bars its arms.
  */
-export function Mascot({ mood, size = 48, plain = false, className }: MascotProps): React.JSX.Element {
+export function Mascot({ mood, size = 48, plain = false, still = false, className }: MascotProps): React.JSX.Element {
   const id = useId().replace(/:/g, "");
   if (plain) {
     return <img src={withBasePath("logo.svg")} alt="" width={size} height={size} className={className} draggable={false} />;
@@ -68,7 +71,7 @@ export function Mascot({ mood, size = 48, plain = false, className }: MascotProp
       viewBox="0 0 64 64"
       width={size}
       height={size}
-      className={cn("overflow-visible", className)}
+      className={cn("overflow-visible", still && "chobi-still", className)}
       data-mood={mood}
       aria-hidden
       focusable={false}

@@ -68,26 +68,22 @@ import { toast } from 'sonner';
 import { useChobiStore, type AskContext } from '@/stores/chobi';
 import { uiActionFor, UI_TOOL_NAMES } from '@/lib/chobiUi';
 import { HandoffDialog } from './HandoffDialog';
+import { Mascot } from '../Mascot';
 import { log } from '@/lib/log';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import { OPEN_CHAT_THREAD_EVENT } from '@/features/agents/usage/lib';
 import {
     MessageSquare,
-    X,
     Plus,
     Trash2,
-    Send,
     Loader2,
     Bot,
-    User,
-    Sparkles,
     Database,
     Table2,
     Zap,
     Clock,
     PanelLeftClose,
     RefreshCw,
-    AlertCircle,
     ChevronDown,
     ChevronRight,
     CheckCircle2,
@@ -99,7 +95,6 @@ import {
     Settings,
     FileText,
     Server,
-    GripVertical,
     TrendingUp,
     PieChart,
     ScatterChart,
@@ -109,6 +104,9 @@ import {
     Share2,
     XCircle,
     Paperclip,
+    Square,
+    ArrowUp,
+    Cpu,
 } from 'lucide-react';
 
 import {
@@ -385,11 +383,10 @@ function SidebarThreadButton({
                     onLoad(thread.id);
                 }
             }}
-            className={`w-full text-left px-3 py-2 rounded-xs text-[13px]
-                      flex items-center justify-between group transition-colors duration-200 cursor-pointer border
+            className={`group flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors
                       ${activeId === thread.id
-                    ? 'border-ink-500 bg-ink-200 text-paper border-l-brand border-l-2'
-                    : 'border-transparent text-paper-muted hover:bg-ink-200 hover:text-paper'
+                    ? 'bg-brand/10 text-paper'
+                    : 'text-paper-muted hover:bg-ink-200 hover:text-paper'
                 }`}
         >
             <div className="flex-1 min-w-0 mr-2">
@@ -405,7 +402,7 @@ function SidebarThreadButton({
                             onCancelEdit();
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 text-[13px] text-paper focus:border-brand focus:outline-none focus:ring-0"
+                        className="w-full rounded-sm border border-ink-500 bg-ink-100 px-2 py-1 text-[12px] text-paper focus:border-brand focus:outline-none focus:ring-0"
                         placeholder="Thread title"
                         autoFocus
                         aria-label="Edit thread title"
@@ -413,7 +410,7 @@ function SidebarThreadButton({
                 ) : (
                     <>
                         <span className="block truncate">{thread.title || 'New Thread'}</span>
-                        <span className="flex items-center gap-1 mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                        <span className="mt-0.5 flex items-center gap-1 text-[10px] text-paper-faint">
                             {busy ? (
                                 <>
                                     <Loader2 className="w-2.5 h-2.5 text-brand motion-safe:animate-spin" aria-hidden />
@@ -437,7 +434,7 @@ function SidebarThreadButton({
                             onStartEdit(thread.id, e);
                             setEditValue(thread.title || '');
                         }}
-                        className="p-1 rounded-xs opacity-0 group-hover:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
+                        className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
                         title="Rename"
                         aria-label="Rename thread"
                     >
@@ -448,9 +445,9 @@ function SidebarThreadButton({
                             e.stopPropagation();
                             onDelete(thread.id, e);
                         }}
-                        className="p-1 rounded-xs opacity-0 group-hover:opacity-100
-                                 hover:bg-red-950/40 text-paper-dim hover:text-red-300 transition-colors"
+                        className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-red-950/40 hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
                         title="Delete chat"
+                        aria-label="Delete chat"
                     >
                         <Trash2 className="w-3 h-3" />
                     </button>
@@ -491,20 +488,15 @@ function CollapsibleThreadGroup({
     if (threads.length === 0) return null;
 
     return (
-        <div className="mb-4 last:mb-0">
+        <div className="mb-2 last:mb-0">
             <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="sticky top-0 z-10 border-b border-ink-500 flex items-center gap-1.5 w-[calc(100%+24px)] -mx-3 px-4 font-mono text-[10px] uppercase tracking-[0.18em] bg-ink-100 py-2.5 mb-2 transition-colors text-paper-dim hover:text-paper"
+                aria-expanded={isExpanded}
+                className="sticky top-0 z-10 mb-0.5 flex w-full items-center gap-1 bg-ink-100 px-1.5 py-1.5 text-[11px] font-medium text-paper-faint transition-colors hover:text-paper"
             >
-                <div className="flex items-center justify-center p-0.5 rounded-xs transition-colors hover:bg-ink-200">
-                    {isExpanded ? (
-                        <ChevronDown className="w-3 h-3 text-paper-dim" />
-                    ) : (
-                        <ChevronRight className="w-3 h-3 text-paper-dim" />
-                    )}
-                </div>
+                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 {title}
-                <span className="ml-auto font-mono text-[10px] text-paper-faint normal-case">{threads.length}</span>
+                <span className="ml-auto font-mono text-[10px]">{threads.length}</span>
             </button>
 
             <div
@@ -587,7 +579,7 @@ function ActivityPanel({ toolCalls, isInvoking, waiting }: { toolCalls: ToolCall
                         <div className="flex min-w-0 items-center gap-1.5">
                             <Icon className="h-3 w-3 shrink-0 text-paper-dim" />
                             <span className="truncate text-[12px] font-medium text-paper">{presentation.label}</span>
-                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{presentation.category}</span>
+                            <span className="shrink-0 text-[10px] text-paper-faint">{presentation.category}</span>
                         </div>
                         {step.agent && (
                             <p className="truncate font-mono text-[10px] text-brand/80" title="Subagent that made this call">via {step.agent}</p>
@@ -598,7 +590,7 @@ function ActivityPanel({ toolCalls, isInvoking, waiting }: { toolCalls: ToolCall
                         {args.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
                                 {args.map(([key, value]) => (
-                                    <span key={key} className="max-w-full truncate rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+                                    <span key={key} className="max-w-full truncate rounded-sm border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
                                         {key}: {value}
                                     </span>
                                 ))}
@@ -622,7 +614,7 @@ function ActivityPanel({ toolCalls, isInvoking, waiting }: { toolCalls: ToolCall
     };
 
     return (
-        <div className="mb-3 rounded-xs border border-ink-500 bg-ink-200 overflow-hidden">
+        <div className="mb-1 overflow-hidden rounded-md border border-ink-500 bg-ink-200/40">
             {/* Subtle pulse bar while running */}
             {isRunning && (
                 <div className="h-px w-full bg-brand/50 motion-safe:animate-pulse" />
@@ -630,20 +622,20 @@ function ActivityPanel({ toolCalls, isInvoking, waiting }: { toolCalls: ToolCall
             <button
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-ink-300"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-ink-300/60"
             >
                 {isRunning
-                    ? <Loader2 className="w-3.5 h-3.5 text-brand motion-safe:animate-spin flex-shrink-0" />
-                    : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/80 flex-shrink-0" />
+                    ? <Loader2 className="h-3 w-3 flex-shrink-0 text-brand motion-safe:animate-spin" />
+                    : <CheckCircle2 className="h-3 w-3 flex-shrink-0 text-emerald-400/80" />
                 }
-                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">{label}</span>
+                <span className="min-w-0 flex-1 text-[11px] text-paper-muted">{label}</span>
                 <ChevronDown
-                    className={`w-3.5 h-3.5 text-paper-dim transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                    className={`h-3 w-3 shrink-0 text-paper-dim transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
                 />
             </button>
 
             {expanded && (
-                <div className="px-3 pb-3 space-y-1 border-t border-ink-500">
+                <div className="space-y-1 border-t border-ink-500 px-2.5 pb-2.5">
                     {roots.map((step) => renderStep(step))}
                 </div>
             )}
@@ -656,7 +648,7 @@ type CodeComponentProps = React.ComponentPropsWithoutRef<'code'> & { className?:
 
 const markdownComponents = {
     table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
-        <div className="overflow-x-auto my-2 rounded-xs border border-ink-500">
+        <div className="my-2 overflow-x-auto rounded-md border border-ink-500">
             <table className="min-w-full text-[12px]" {...props}>{children}</table>
         </div>
     ),
@@ -664,7 +656,7 @@ const markdownComponents = {
         <thead className="bg-ink-200" {...props}>{children}</thead>
     ),
     th: ({ children, ...props }: React.ComponentPropsWithoutRef<'th'>) => (
-        <th className="px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim border-b border-ink-500 whitespace-nowrap" {...props}>{children}</th>
+        <th className="whitespace-nowrap border-b border-ink-500 px-3 py-1.5 text-left text-[11px] font-medium text-paper-dim" {...props}>{children}</th>
     ),
     td: ({ children, ...props }: React.ComponentPropsWithoutRef<'td'>) => (
         <td className="px-3 py-1.5 text-paper-muted border-b border-ink-500 whitespace-nowrap" {...props}>{children}</td>
@@ -686,7 +678,7 @@ const markdownComponents = {
                     <button
                         type="button"
                         onClick={() => copyToClipboard(codeStr, 'Code')}
-                        className="absolute top-2 right-2 p-1.5 rounded-xs opacity-0 group-hover/code:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
+                        className="absolute top-2 right-2 p-1.5 rounded-sm opacity-0 group-hover/code:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
                         title="Copy code"
                         aria-label="Copy code"
                     >
@@ -701,19 +693,19 @@ const markdownComponents = {
             );
         }
         // Inline code
-        return <code className="rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono text-[11px] text-paper" {...props}>{children}</code>;
+        return <code className="rounded-sm bg-ink-300/60 px-1 font-mono text-[11px] text-paper" {...props}>{children}</code>;
     },
     pre: ({ children, ...props }: React.ComponentPropsWithoutRef<'pre'>) => (
-        <pre className="rounded-xs border border-ink-500 bg-ink-200 p-3 overflow-x-auto my-2 font-mono text-[12px] text-paper" {...props}>{children}</pre>
+        <pre className="rounded-md border border-ink-500 bg-ink-200 p-3 overflow-x-auto my-2 font-mono text-[12px] text-paper" {...props}>{children}</pre>
     ),
     p: ({ children, ...props }: React.ComponentPropsWithoutRef<'p'>) => (
-        <p className="my-1.5 leading-relaxed text-paper-muted" {...props}>{children}</p>
+        <p className="my-1.5 leading-relaxed text-paper" {...props}>{children}</p>
     ),
     ul: ({ children, ...props }: React.ComponentPropsWithoutRef<'ul'>) => (
-        <ul className="list-disc list-outside ml-5 my-1.5 space-y-0.5 text-paper-muted marker:text-brand" {...props}>{children}</ul>
+        <ul className="list-disc list-outside ml-5 my-1.5 space-y-0.5 text-paper marker:text-brand" {...props}>{children}</ul>
     ),
     ol: ({ children, ...props }: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol className="list-decimal list-outside ml-5 my-1.5 space-y-0.5 text-paper-muted marker:text-brand" {...props}>{children}</ol>
+        <ol className="list-decimal list-outside ml-5 my-1.5 space-y-0.5 text-paper marker:text-brand" {...props}>{children}</ol>
     ),
     h1: ({ children, ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 className="text-[18px] font-semibold tracking-tight text-paper mt-3 mb-1" {...props}>{children}</h1>,
     h2: ({ children, ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 className="text-[16px] font-semibold tracking-tight text-paper mt-3 mb-1" {...props}>{children}</h2>,
@@ -1173,11 +1165,13 @@ export interface ChobiChatProps {
     visible: boolean;
     /** How wide the chat is, for its own layout (history beside or over the chat). */
     width: number;
+    /** Plain mode (an organization setting): the logo instead of the character. */
+    plain?: boolean;
     /** AI Activity's "Open in chat" asked for a thread: Chobi shows the Chat tab. */
     onShowChat: () => void;
 }
 
-export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowChat }: ChobiChatProps): React.JSX.Element {
+export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = false, onShowChat }: ChobiChatProps): React.JSX.Element {
     const hasPermission = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_CHAT));
     const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
     const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
@@ -1193,13 +1187,11 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
 
     // Adaptive internal layout thresholds
     const dockSidebarThreshold = 720;
-    const singleColPromptThreshold = 520;
     // Too narrow to dock the history beside the chat, so it slides over the chat instead.
     const sidebarIsOverlay = isMobile || logicalWidth < dockSidebarThreshold;
-    const useSingleColPrompt = isMobile || logicalWidth < singleColPromptThreshold;
-    // Narrow sheets drop header decoration so the controls always stay visible.
-    const compactHeader = !isMobile && logicalWidth < 600;
-    const pickerWidthClass = compactHeader ? 'max-w-[100px]' : 'max-w-[180px]';
+    // Narrow panels shorten the agent and model pickers and drop the composer hint.
+    const narrowPickers = isMobile || logicalWidth < 600;
+    const pickerWidthClass = narrowPickers ? 'max-w-[120px]' : 'max-w-[180px]';
 
     // Auto-close sidebar on smaller breakpoints
     useEffect(() => {
@@ -1856,578 +1848,526 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, onShowCh
         if (query?.query !== skillQuery?.query) setSkillIndex(0);
     }, [skillQuery]);
 
+    const activeThreadTitle = threads.find((t) => t.id === activeThreadId)?.title ?? 'New chat';
+    const currentAgentName = chatAgents.find((a) => a.id === selectedAgentId)?.name ?? chatAgents.find((a) => a.isDefault)?.name ?? 'Default agent';
+    const currentModelName = aiModels.find((m) => m.id === selectedModelId)?.name ?? 'Select model';
+    const iconButtonClass = 'grid h-7 w-7 shrink-0 place-items-center rounded-sm text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:cursor-not-allowed disabled:opacity-40';
+    const pickerClass = `inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] text-paper-muted transition-colors hover:bg-ink-300 hover:text-paper ${pickerWidthClass}`;
+
+    const startFromPrompt = async (prompt: string): Promise<void> => {
+        if (!activeThreadId) await handleNewThread();
+        setInput(prompt);
+        setTimeout(() => inputRef.current?.focus(), 100);
+    };
+
     return (
         <div className="flex h-full w-full flex-col" hidden={!visible} data-testid="chobi-chat">
-                            {/* Chat header: history, agent and model, export, new chat */}
-                            <div className="relative z-10 flex-shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 bg-ink-200 border-b border-ink-500">
-                                <div className="flex min-w-0 items-center gap-3">
+            {/* Toolbar: history, the thread, export, hand off, new chat */}
+            <div className="relative z-10 flex shrink-0 items-center gap-1 border-b border-ink-500 px-2 py-1.5">
+                <button
+                    type="button"
+                    onClick={() => setShowSidebar(!showSidebar)}
+                    className={`${iconButtonClass} ${showSidebar ? 'bg-ink-300 text-paper' : ''}`}
+                    title={showSidebar ? 'Close sidebar' : 'Thread history'}
+                    aria-label={showSidebar ? 'Close sidebar' : 'Thread history'}
+                >
+                    {showSidebar ? <PanelLeftClose className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                </button>
+                <span className="min-w-0 flex-1 truncate px-1 text-[12px] font-medium text-paper" title={activeThreadTitle}>
+                    {activeThreadTitle}
+                </span>
+                <button
+                    onClick={handleExportThread}
+                    disabled={!activeThreadId || messages.length === 0}
+                    className={iconButtonClass}
+                    title="Export thread"
+                    aria-label="Export thread"
+                >
+                    <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    onClick={() => setHandoffOpen(true)}
+                    disabled={!activeThreadId || messages.length === 0}
+                    className={iconButtonClass}
+                    title="Hand off"
+                    aria-label="Hand off"
+                >
+                    <Share2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    onClick={handleNewThreadFromHeader}
+                    className={iconButtonClass}
+                    title="New chat"
+                    aria-label="New chat"
+                >
+                    <Plus className="h-4 w-4" />
+                </button>
+            </div>
+
+            <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
+                {/* Thread history: full-screen on phones, slides over narrow panels, docked on wide ones. */}
+                {showSidebar && (
+                    <div
+                        data-testid="ai-chat-thread-sidebar"
+                        data-overlay={sidebarIsOverlay ? 'true' : 'false'}
+                        className={`z-20 flex-shrink-0 overflow-y-auto border-r border-ink-500 bg-ink-100 transition-all ${isMobile ? 'absolute inset-0 w-full' : sidebarIsOverlay ? 'absolute inset-y-0 left-0 w-72 max-w-[85%] shadow-2xl shadow-black/40' : 'relative w-64'}`}
+                    >
+                        <div className="p-2">
+                            <div className="mb-1 flex items-center justify-between px-2 pt-1">
+                                <h3 className="text-[12px] font-semibold text-paper">Conversations</h3>
+                                <span className="font-mono text-[10px] text-paper-faint">{threads.length}</span>
+                            </div>
+                            {isLoadingThreads ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="h-4 w-4 text-paper-dim motion-safe:animate-spin" />
+                                </div>
+                            ) : threads.length === 0 ? (
+                                <p className="py-8 text-center text-[12px] text-paper-faint">No conversations yet</p>
+                            ) : (
+                                <div className="py-1">
+                                    <CollapsibleThreadGroup
+                                        title="Recent"
+                                        threads={groupedThreads.recent}
+                                        activeId={activeThreadId}
+                                        editingId={editingThreadId}
+                                        onLoad={handleSelectThread}
+                                        onDelete={handleDeleteThread}
+                                        onStartEdit={handleStartEditThread}
+                                        onSaveTitle={handleSaveThreadTitle}
+                                        onCancelEdit={handleCancelEditThread}
+                                        busyIds={busyThreadIds}
+                                        defaultExpanded={true}
+                                    />
+                                    <CollapsibleThreadGroup
+                                        title="Last 24 Hours"
+                                        threads={groupedThreads.last24Hours}
+                                        activeId={activeThreadId}
+                                        editingId={editingThreadId}
+                                        onLoad={handleSelectThread}
+                                        onDelete={handleDeleteThread}
+                                        onStartEdit={handleStartEditThread}
+                                        onSaveTitle={handleSaveThreadTitle}
+                                        onCancelEdit={handleCancelEditThread}
+                                        busyIds={busyThreadIds}
+                                        defaultExpanded={true}
+                                    />
+                                    <CollapsibleThreadGroup
+                                        title="Previous 7 Days"
+                                        threads={groupedThreads.last7Days}
+                                        activeId={activeThreadId}
+                                        editingId={editingThreadId}
+                                        onLoad={handleSelectThread}
+                                        onDelete={handleDeleteThread}
+                                        onStartEdit={handleStartEditThread}
+                                        onSaveTitle={handleSaveThreadTitle}
+                                        onCancelEdit={handleCancelEditThread}
+                                        busyIds={busyThreadIds}
+                                        defaultExpanded={true}
+                                    />
+                                    {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (
+                                        <p className="py-8 text-center text-[12px] text-paper-faint">No recent conversations</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Conversation */}
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <div ref={scrollContainerRef} className={`flex-1 overflow-y-auto py-3 ${isMobile ? 'px-3' : 'px-4'}`}>
+                        {!activeThreadId || messages.length === 0 ? (
+                            /* Welcome: before a thread starts, and in an empty thread */
+                            <div className={`flex flex-col items-center px-2 text-center ${activeThreadId ? 'pt-8' : 'h-full justify-center'}`}>
+                                <Mascot mood="happy" plain={plain} size={56} />
+                                <h3 className="mt-3 text-[15px] font-semibold text-paper">
+                                    {activeThreadId ? 'New conversation' : 'Chobi chat'}
+                                </h3>
+                                <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-paper-muted">
+                                    Ask me about a table, a slow query or an error. I read your schema, and I ask before changes that undo can't reverse.
+                                </p>
+                                <div className="mt-5 flex w-full max-w-md flex-wrap justify-center gap-1.5">
+                                    {visiblePrompts.map((sp) => (
+                                        <button
+                                            key={sp.label}
+                                            type="button"
+                                            onClick={() => void startFromPrompt(sp.prompt)}
+                                            className="group inline-flex items-center gap-1.5 rounded-full border border-ink-500 bg-ink-100 px-3 py-1.5 text-left text-[12px] text-paper-muted transition-colors hover:border-brand/60 hover:text-paper"
+                                        >
+                                            <sp.icon className="h-3 w-3 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
+                                            <span className="truncate">{sp.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShuffleKey(Date.now())}
+                                    className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
+                                    title="Show different suggestions"
+                                >
+                                    <Shuffle className="h-3 w-3" />
+                                    More ideas
+                                </button>
+                                {!activeThreadId && (
                                     <button
                                         type="button"
-                                        onClick={() => setShowSidebar(!showSidebar)}
-                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
-                                        title={showSidebar ? 'Close sidebar' : 'Thread history'}
-                                        aria-label={showSidebar ? 'Close sidebar' : 'Thread history'}
+                                        onClick={handleNewThread}
+                                        className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-brand px-4 text-[12px] font-semibold text-ink-50 transition-colors hover:bg-brand-soft"
                                     >
-                                        {showSidebar ? <PanelLeftClose className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                                        <Plus className="h-4 w-4" />
+                                        Start new chat
                                     </button>
-                                    <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                                        {threads.find((t) => t.id === activeThreadId)?.title ?? 'New chat'}
-                                    </span>
-                                </div>
-
-                                <div className="flex shrink-0 items-center gap-0.5">
-                                    {chatAgents.length > 1 && (
-                                        <div className="mr-1 hidden sm:block">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <button type="button" aria-label="Chat agent" className={`inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors ${pickerWidthClass}`}>
-                                                        <span className="truncate">{chatAgents.find((a) => a.id === selectedAgentId)?.name ?? chatAgents.find((a) => a.isDefault)?.name ?? 'Default agent'}</span>
-                                                        <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
-                                                    </button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-[280px] rounded-md border-ink-500 bg-ink-100 p-0">
-                                                    <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                                                        Chat agent
-                                                    </div>
-                                                    <div className="flex max-h-[320px] flex-col gap-0.5 overflow-y-auto p-1">
-                                                        {chatAgents.map((a) => {
-                                                            const isCurrent = selectedAgentId === a.id || (selectedAgentId === null && a.isDefault);
-                                                            return (
-                                                                <DropdownMenuItem
-                                                                    key={a.id}
-                                                                    onClick={() => setSelectedAgentId(a.isDefault ? null : a.id)}
-                                                                    className={`flex items-start gap-2.5 rounded-xs px-3 py-2 cursor-pointer transition-colors hover:bg-ink-200 ${isCurrent ? "bg-ink-200" : ""}`}
-                                                                >
-                                                                    <div className="mt-0.5 flex-shrink-0">
-                                                                        <div className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${isCurrent ? "border-brand" : "border-ink-700"}`}>
-                                                                            {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex min-w-0 flex-col gap-0.5">
-                                                                        <span className={`truncate text-[13px] font-medium ${isCurrent ? "text-paper" : "text-paper-muted"}`}>
-                                                                            {a.kind === 'router' ? `Auto · ${a.name}` : a.name}{a.isDefault ? ' (default)' : ''}
-                                                                        </span>
-                                                                        <span className="line-clamp-2 text-[11px] text-paper-faint">{a.description}</span>
-                                                                    </div>
-                                                                </DropdownMenuItem>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-                                    )}
-                                    {aiModels.length > 0 && (
-                                        <div className="mr-2 hidden sm:block">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <button type="button" aria-label="AI model" className={`inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors ${pickerWidthClass}`}>
-                                                        <span className="truncate">{aiModels.find(m => m.id === selectedModelId)?.name || 'Select model'}</span>
-                                                        <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
-                                                    </button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-[240px] rounded-md border-ink-500 bg-ink-100 p-0">
-                                                    <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                                                        AI Models
-                                                    </div>
-                                                    <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
-                                                        {aiModels.map(m => {
-                                                            const isCurrent = selectedModelId === m.id;
-                                                            return (
-                                                                <DropdownMenuItem
-                                                                    key={m.id}
-                                                                    onClick={() => setSelectedModelId(m.id)}
-                                                                    className={`flex items-start gap-2.5 rounded-xs px-3 py-2 cursor-pointer transition-colors hover:bg-ink-200 ${isCurrent ? "bg-ink-200" : ""}`}
-                                                                >
-                                                                    <div className="mt-0.5 flex-shrink-0">
-                                                                        <div className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${isCurrent ? "border-brand" : "border-ink-700"}`}>
-                                                                            {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex min-w-0 flex-col gap-0.5">
-                                                                        <span className={`truncate text-[13px] font-medium ${isCurrent ? "text-paper" : "text-paper-muted"}`}>
-                                                                            {m.name}
-                                                                        </span>
-                                                                        <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                                                                            {m.provider || 'AI provider'}
-                                                                        </span>
-                                                                    </div>
-                                                                </DropdownMenuItem>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-                                    )}
-                                    <button
-                                        onClick={handleExportThread}
-                                        disabled={!activeThreadId || messages.length === 0}
-                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40 disabled:cursor-not-allowed"
-                                        title="Export thread"
-                                        aria-label="Export thread"
-                                    >
-                                        <Download className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => setHandoffOpen(true)}
-                                        disabled={!activeThreadId || messages.length === 0}
-                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40 disabled:cursor-not-allowed"
-                                        title="Hand off"
-                                        aria-label="Hand off"
-                                    >
-                                        <Share2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={handleNewThreadFromHeader}
-                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
-                                        title="New chat"
-                                        aria-label="New chat"
-                                    >
-                                        <Plus className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
-                                {/* Thread Sidebar — full-screen on phones, slides over narrow sheets, docked on wide ones. */}
-                                {showSidebar && (
-                                    <div
-                                        data-testid="ai-chat-thread-sidebar"
-                                        data-overlay={sidebarIsOverlay ? 'true' : 'false'}
-                                        className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : sidebarIsOverlay ? 'absolute inset-y-0 left-0 w-72 max-w-[85%] shadow-2xl shadow-black/40' : 'relative w-72'}`}
-                                    >
-                                        <div className="p-3">
-                                            <div className="mb-3 flex items-center justify-between px-1">
-                                                <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                                                    Conversations
-                                                </h3>
-                                                <span className="font-mono text-[10px] text-paper-faint">{threads.length}</span>
-                                            </div>
-                                            {isLoadingThreads ? (
-                                                <div className="flex items-center justify-center py-8">
-                                                    <Loader2 className="w-4 h-4 text-paper-dim motion-safe:animate-spin" />
-                                                </div>
-                                            ) : threads.length === 0 ? (
-                                                <p className="text-[12px] text-paper-faint text-center py-8">No conversations yet</p>
-                                            ) : (
-                                                <div className="py-2">
-                                                    <CollapsibleThreadGroup
-                                                        title="Recent"
-                                                        threads={groupedThreads.recent}
-                                                        activeId={activeThreadId}
-                                                        editingId={editingThreadId}
-                                                        onLoad={handleSelectThread}
-                                                        onDelete={handleDeleteThread}
-                                                        onStartEdit={handleStartEditThread}
-                                                        onSaveTitle={handleSaveThreadTitle}
-                                                        onCancelEdit={handleCancelEditThread}
-                                                        busyIds={busyThreadIds}
-                                                        defaultExpanded={true}
-                                                    />
-                                                    <CollapsibleThreadGroup
-                                                        title="Last 24 Hours"
-                                                        threads={groupedThreads.last24Hours}
-                                                        activeId={activeThreadId}
-                                                        editingId={editingThreadId}
-                                                        onLoad={handleSelectThread}
-                                                        onDelete={handleDeleteThread}
-                                                        onStartEdit={handleStartEditThread}
-                                                        onSaveTitle={handleSaveThreadTitle}
-                                                        onCancelEdit={handleCancelEditThread}
-                                                        busyIds={busyThreadIds}
-                                                        defaultExpanded={true}
-                                                    />
-                                                    <CollapsibleThreadGroup
-                                                        title="Previous 7 Days"
-                                                        threads={groupedThreads.last7Days}
-                                                        activeId={activeThreadId}
-                                                        editingId={editingThreadId}
-                                                        onLoad={handleSelectThread}
-                                                        onDelete={handleDeleteThread}
-                                                        onStartEdit={handleStartEditThread}
-                                                        onSaveTitle={handleSaveThreadTitle}
-                                                        onCancelEdit={handleCancelEditThread}
-                                                        busyIds={busyThreadIds}
-                                                        defaultExpanded={true}
-                                                    />
-                                                    {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (
-                                                        <p className="text-[12px] text-paper-faint text-center py-8">No recent conversations</p>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
                                 )}
-
-                                {/* Main Chat Pane */}
-                                <div className="flex flex-col flex-1 min-w-0">
-                                    {/* Messages Area */}
-                                    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-                                        {!activeThreadId ? (
-                                            /* Welcome screen */
-                                            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                                                <div className="relative mb-6 grid h-14 w-14 place-items-center rounded-md border border-ink-500 bg-ink-200">
-                                                    <Sparkles className="h-6 w-6 text-paper-muted" aria-hidden />
-                                                    <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-ink-100" aria-hidden />
-                                                </div>
-                                                <span className="mb-2 inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
-                                                    <span className="h-px w-6 bg-ink-700" aria-hidden />
-                                                    CHouse AI
-                                                </span>
-                                                <h3 className="mb-2 text-xl font-semibold tracking-tight text-paper">
-                                                    What do you want to{" "}
-                                                    <span className="text-paper-dim">know?</span>
-                                                </h3>
-                                                <p className="mb-8 max-w-md text-[13px] leading-relaxed text-paper-muted">
-                                                    Ask about a table, draft a query, debug an error — the assistant has read access to your schema.
-                                                </p>
-                                                {/* Suggested prompts */}
-                                                <div className="mb-6 w-full max-w-lg">
-                                                    <div className={`grid gap-2 ${useSingleColPrompt ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                                                        {visiblePrompts.map((sp) => (
-                                                            <button
-                                                                key={sp.label}
-                                                                type="button"
-                                                                onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
-                                                                className="group flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5 text-left transition-colors hover:border-ink-700 hover:bg-ink-300"
-                                                            >
-                                                                <sp.icon className="h-3.5 w-3.5 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
-                                                                <span className="text-[12px] text-paper-muted transition-colors group-hover:text-paper">{sp.label}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShuffleKey(Date.now())}
-                                                        className="mx-auto mt-3 flex items-center gap-1.5 rounded-xs px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
-                                                        title="Show different suggestions"
-                                                    >
-                                                        <Shuffle className="h-3 w-3" />
-                                                        More suggestions
-                                                    </button>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleNewThread}
-                                                    className="inline-flex h-10 items-center gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 transition-[transform,background-color] duration-200 hover:bg-brand-soft hover:-translate-y-px"
-                                                >
-                                                    <Plus className="h-4 w-4" />
-                                                    Start new chat
-                                                </button>
-                                            </div>
-                                        ) : messages.length === 0 ? (
-                                            /* Thread selected but empty — compact top-aligned, leaves space for input below */
-                                            <div className="flex flex-col items-start gap-5 px-6 pt-10">
-                                                <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
-                                                    <span className="h-px w-6 bg-ink-700" aria-hidden />
-                                                    New conversation
-                                                </span>
-                                                <h3 className="text-[15px] font-medium leading-snug text-paper">
-                                                    Ask anything about your ClickHouse databases.
-                                                </h3>
-                                                <div className="w-full">
-                                                    <div className={`grid gap-2 ${useSingleColPrompt ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                                                        {visiblePrompts.map((sp) => (
-                                                            <button
-                                                                key={sp.label}
-                                                                type="button"
-                                                                onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
-                                                                className="group flex items-center gap-2.5 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5 text-left transition-colors hover:border-ink-700 hover:bg-ink-300"
-                                                            >
-                                                                <sp.icon className="h-3 w-3 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
-                                                                <span className="text-[12px] text-paper-muted transition-colors group-hover:text-paper">{sp.label}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShuffleKey(Date.now())}
-                                                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-xs px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
-                                                        title="Show different suggestions"
-                                                    >
-                                                        <Shuffle className="h-3 w-3" />
-                                                        More suggestions
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            /* Message list (virtualized for long threads) */
-                                            <>
-                                                <div
-                                                    style={{
-                                                        height: `${messageVirtualizer.getTotalSize()}px`,
-                                                        width: '100%',
-                                                        position: 'relative',
-                                                    }}
-                                                >
-                                                    {messageVirtualizer.getVirtualItems().map((virtualRow) => {
-                                                        const msg = messages[virtualRow.index];
-                                                        const idx = virtualRow.index;
-                                                        return (
-                                                            <div
-                                                                key={msg.id}
-                                                                data-index={idx}
-                                                                ref={messageVirtualizer.measureElement}
-                                                                style={{
-                                                                    position: 'absolute',
-                                                                    top: 0,
-                                                                    left: 0,
-                                                                    width: '100%',
-                                                                    transform: `translateY(${virtualRow.start}px)`,
-                                                                    paddingBottom: '1.25rem',
-                                                                }}
-                                                            >
-                                                                <div
-                                                                    className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
-                                                                    style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
-                                                                >
-                                                        {msg.role === 'assistant' && (
-                                                            <div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-xs border
-                                                              ${msg.isError
-                                                                    ? 'border-red-900/60 bg-red-950/40'
-                                                                    : 'border-brand/40 bg-brand/5'}`}>
-                                                                {msg.isError
-                                                                    ? <AlertCircle className="w-3.5 h-3.5 text-red-300" />
-                                                                    : <Bot className="w-3.5 h-3.5 text-brand" />}
-                                                            </div>
-                                                        )}
-                                                        <div className={`flex flex-col gap-1 min-w-0 ${msg.role === 'assistant' && msg.chartSpecs?.length ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
-                                                            <div
-                                                                className={`rounded-xs px-3 py-2.5 text-[13px] leading-relaxed overflow-hidden border
-                                                              ${msg.role === 'user'
-                                                                        ? 'border-ink-500 bg-ink-200 text-paper'
-                                                                        : msg.isError
-                                                                            ? 'border-red-900/60 bg-red-950/40 text-red-200'
-                                                                            : 'border-ink-500 bg-ink-100 text-paper'
-                                                                    }`}
-                                                            >
-                                                                {msg.role === 'assistant' ? (
-                                                                    <>
-                                                                        {msg.agentName && chatAgents.length > 1 && (
-                                                                            <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{msg.agentName}</p>
-                                                                        )}
-                                                                        {msg.toolCalls && msg.toolCalls.length > 0 && (
-                                                                            <ActivityPanel
-                                                                                toolCalls={msg.toolCalls}
-                                                                                isInvoking={msg.isInvoking}
-                                                                                waiting={Boolean(msg.pending?.length)}
-                                                                            />
-                                                                        )}
-                                                                        {msg.pending && msg.pending.length > 0 && msg.runId && activeThreadId && (
-                                                                            <ApprovalCard
-                                                                                key={msg.runId + msg.pending.map((p) => p.actionId).join()}
-                                                                                pending={msg.pending}
-                                                                                canAct={canAct}
-                                                                                busy={isInvoking}
-                                                                                onSubmit={(decisions) => void answerApprovals(activeThreadId, msg.runId!, msg.pending!, decisions, msg.toolCalls ?? [])}
-                                                                            />
-                                                                        )}
-                                                                        {msg.isInvoking && msg.toolStatus && !msg.content && (
-                                                                            <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand" aria-live="polite">
-                                                                                <Loader2 className="w-3 h-3 motion-safe:animate-spin" />
-                                                                                <span>{msg.toolStatus}…</span>
-                                                                            </div>
-                                                                        )}
-                                                                        {msg.isError ? (
-                                                                            <div className="flex flex-col gap-2">
-                                                                                <p className="text-[13px] text-red-200">{msg.content}</p>
-                                                                                {msg.retryPrompt && (msg.retryable !== false) && (
-                                                                                    <button
-                                                                                        onClick={() => handleRetry(msg.retryPrompt!)}
-                                                                                        disabled={isInvoking}
-                                                                                        className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300 hover:text-red-200
-                                                                                     disabled:opacity-40 transition-colors self-start
-                                                                                     px-2 py-1 rounded-xs hover:bg-red-950/40"
-                                                                                        aria-label="Retry"
-                                                                                    >
-                                                                                        <RefreshCw className="w-3 h-3" />
-                                                                                        Retry
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <>
-                                                                                {msg.chartSpecs?.map((spec, i) => (
-                                                                                    <AiChartRenderer key={i} spec={spec} />
-                                                                                ))}
-                                                                                <div className="overflow-x-auto max-w-full">
-                                                                                    <ReactMarkdown
-                                                                                        remarkPlugins={[remarkGfm]}
-                                                                                        components={markdownComponents}
-                                                                                    >
-                                                                                        {preprocessMarkdown(msg.content) + (msg.isInvoking && !msg.toolStatus ? ' ▊' : '')}
-                                                                                    </ReactMarkdown>
-                                                                                </div>
-                                                                                {msg.memories && msg.memories.length > 0 && <MemoryNotes notes={msg.memories} />}
-                                                                                {msg.actions && msg.actions.length > 0 && <ActionReceipts ids={msg.actions} />}
-                                                                            </>
-                                                                        )}
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <span className="whitespace-pre-wrap">{msg.content}</span>
-                                                                        {msg.attachments && msg.attachments.length > 0 && (
-                                                                            <span className="mt-2 flex flex-wrap gap-1.5">
-                                                                                {msg.attachments.map((name) => (
-                                                                                    <span key={name} className="inline-flex max-w-full items-center gap-1 rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
-                                                                                        <Paperclip className="h-2.5 w-2.5 shrink-0" aria-hidden />
-                                                                                        <span className="truncate">{name}</span>
-                                                                                    </span>
-                                                                                ))}
-                                                                            </span>
-                                                                        )}
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                            <div className={`flex items-center gap-1 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{timeAgo(msg.createdAt)}</span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => copyToClipboard(msg.content, 'Message')}
-                                                                    className="p-1 rounded-xs opacity-0 group-hover:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
-                                                                    title="Copy message"
-                                                                    aria-label="Copy message"
-                                                                >
-                                                                    <Copy className="w-3 h-3" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        {
-                                                            msg.role === 'user' && (
-                                                                <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200">
-                                                                    <User className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
-                                                                </div>
-                                                            )
-                                                        }
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <div ref={messagesEndRef} />
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {/* Input area */}
-                                    {activeThreadId && (
-                                        <div className={`relative z-10 flex-shrink-0 border-t border-ink-500 bg-ink-200 px-4 ${isMobile ? 'pt-3 pb-6' : 'py-3'}`}>
-                                            <ComposerChips
-                                                attachments={attachments}
-                                                skills={pinnedSkills}
-                                                onRemoveAttachment={(id) => setAttachments((previous) => previous.filter((a) => a.id !== id))}
-                                            />
-                                            <form
-                                                onSubmit={handleSend}
-                                                className={`relative flex items-end gap-2 ${isDraggingFile ? 'rounded-xs outline outline-1 outline-dashed outline-brand' : ''}`}
-                                                onDragOver={(e) => {
-                                                    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
-                                                    e.preventDefault();
-                                                    setIsDraggingFile(true);
-                                                }}
-                                                onDragLeave={() => setIsDraggingFile(false)}
-                                                onDrop={(e) => {
-                                                    if (e.dataTransfer.files.length === 0) return;
-                                                    e.preventDefault();
-                                                    setIsDraggingFile(false);
-                                                    void addFiles(Array.from(e.dataTransfer.files));
+                            </div>
+                        ) : (
+                            /* Message list (virtualized for long threads) */
+                            <>
+                                <div
+                                    style={{
+                                        height: `${messageVirtualizer.getTotalSize()}px`,
+                                        width: '100%',
+                                        position: 'relative',
+                                    }}
+                                >
+                                    {messageVirtualizer.getVirtualItems().map((virtualRow) => {
+                                        const msg = messages[virtualRow.index];
+                                        const idx = virtualRow.index;
+                                        return (
+                                            <div
+                                                key={msg.id}
+                                                data-index={idx}
+                                                ref={messageVirtualizer.measureElement}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    left: 0,
+                                                    width: '100%',
+                                                    transform: `translateY(${virtualRow.start}px)`,
+                                                    paddingBottom: '1rem',
                                                 }}
                                             >
-                                                {skillPickerOpen && (
-                                                    <SkillSuggestions skills={skillMatches} activeIndex={skillIndex} onPick={pickSkill} onHover={setSkillIndex} />
-                                                )}
-                                                <input
-                                                    ref={fileInputRef}
-                                                    type="file"
-                                                    multiple
-                                                    accept={attachmentAccept(modelModalities)}
-                                                    className="hidden"
-                                                    aria-hidden
-                                                    tabIndex={-1}
-                                                    onChange={(e) => {
-                                                        const files = Array.from(e.target.files ?? []);
-                                                        e.target.value = '';
-                                                        void addFiles(files);
-                                                    }}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                    disabled={isInvoking}
-                                                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-dim transition-colors hover:border-ink-700 hover:bg-ink-300 hover:text-paper disabled:opacity-40"
-                                                    title={attachmentHint(modelModalities)}
-                                                    aria-label={attachmentHint(modelModalities)}
-                                                >
-                                                    <Paperclip className="h-4 w-4" />
-                                                </button>
-                                                <textarea
-                                                    ref={inputRef}
-                                                    value={input}
-                                                    onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-                                                    onKeyDown={handleKeyDown}
-                                                    onBlur={() => setSkillQuery(null)}
-                                                    onPaste={(e) => {
-                                                        const files = Array.from(e.clipboardData.files);
-                                                        if (files.length === 0) return;
-                                                        e.preventDefault();
-                                                        void addFiles(files);
-                                                    }}
-                                                    placeholder={chatSkills.length > 0 ? 'Ask about your databases… type / for skills' : 'Ask about your databases, schemas, queries…'}
-                                                    disabled={isInvoking}
-                                                    rows={1}
-                                                    aria-autocomplete={chatSkills.length > 0 ? 'list' : undefined}
-                                                    aria-expanded={skillPickerOpen}
-                                                    className="flex-1 resize-none rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5
-                                                               font-mono text-[12.5px] text-paper placeholder:text-paper-faint
-                                                               focus:border-brand focus:outline-none focus:ring-0
-                                                               disabled:opacity-40 transition-colors
-                                                               max-h-[120px] min-h-[44px]"
-                                                    style={{ height: 'auto' }}
-                                                    onInput={(e) => {
-                                                        const target = e.target as HTMLTextAreaElement;
-                                                        target.style.height = 'auto';
-                                                        target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                                                    }}
-                                                />
-                                                {isInvoking ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleStop}
-                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 transition-colors hover:border-red-700 hover:bg-red-900/50"
-                                                        title="Stop generating"
-                                                        aria-label="Stop generating"
+                                                {msg.role === 'user' ? (
+                                                    <div
+                                                        className="group flex flex-col items-end gap-1"
+                                                        style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
                                                     >
-                                                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
-                                                    </button>
+                                                        <div className="max-w-[85%] overflow-hidden rounded-lg rounded-br-sm border border-brand/25 bg-brand/10 px-3 py-2 text-[13px] leading-relaxed text-paper">
+                                                            <span className="whitespace-pre-wrap break-words">{msg.content}</span>
+                                                            {msg.attachments && msg.attachments.length > 0 && (
+                                                                <span className="mt-2 flex flex-wrap gap-1.5">
+                                                                    {msg.attachments.map((name) => (
+                                                                        <span key={name} className="inline-flex max-w-full items-center gap-1 rounded-sm border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+                                                                            <Paperclip className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                                                                            <span className="truncate">{name}</span>
+                                                                        </span>
+                                                                    ))}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <MessageMeta createdAt={msg.createdAt} content={msg.content} />
+                                                    </div>
                                                 ) : (
-                                                    <button
-                                                        type="submit"
-                                                        disabled={!input.trim() && attachments.length === 0}
-                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs bg-brand text-ink-50 transition-[transform,background-color] duration-200 hover:bg-brand-soft hover:-translate-y-px disabled:bg-ink-300 disabled:text-paper-faint disabled:translate-y-0"
-                                                        title="Send message"
-                                                        aria-label="Send"
+                                                    <div
+                                                        className="group flex gap-2.5"
+                                                        style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
                                                     >
-                                                        <Send className="h-4 w-4" />
-                                                    </button>
-                                                )}
-                                            </form>
-                                            <div className="mt-2 flex items-center justify-between px-1">
-                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                                                    Shift+Enter newline · Esc closes Chobi{chatSkills.length > 0 ? ' · / skills' : ''}
-                                                </span>
-                                                {isInvoking && toolStatus && (
-                                                    <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted" aria-live="polite">
-                                                        <Loader2 className="h-2.5 w-2.5 motion-safe:animate-spin" />
-                                                        {toolStatus}…
-                                                    </span>
+                                                        <Mascot
+                                                            mood={msg.isError ? 'alert' : msg.pending?.length ? 'waiting' : msg.isInvoking ? 'thinking' : 'idle'}
+                                                            plain={plain}
+                                                            still={!msg.isInvoking}
+                                                            size={26}
+                                                            className="mt-0.5 shrink-0"
+                                                        />
+                                                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                                            <p className="flex min-w-0 items-baseline gap-1.5 text-[11px]">
+                                                                <span className="font-semibold text-paper">Chobi</span>
+                                                                {msg.agentName && chatAgents.length > 1 && (
+                                                                    <span className="truncate text-paper-faint">· {msg.agentName}</span>
+                                                                )}
+                                                            </p>
+                                                            {msg.toolCalls && msg.toolCalls.length > 0 && (
+                                                                <ActivityPanel
+                                                                    toolCalls={msg.toolCalls}
+                                                                    isInvoking={msg.isInvoking}
+                                                                    waiting={Boolean(msg.pending?.length)}
+                                                                />
+                                                            )}
+                                                            {msg.pending && msg.pending.length > 0 && msg.runId && activeThreadId && (
+                                                                <ApprovalCard
+                                                                    key={msg.runId + msg.pending.map((p) => p.actionId).join()}
+                                                                    pending={msg.pending}
+                                                                    canAct={canAct}
+                                                                    busy={isInvoking}
+                                                                    onSubmit={(decisions) => void answerApprovals(activeThreadId, msg.runId!, msg.pending!, decisions, msg.toolCalls ?? [])}
+                                                                />
+                                                            )}
+                                                            {msg.isInvoking && msg.toolStatus && !msg.content && (
+                                                                <div className="flex items-center gap-2 py-0.5 text-[12px] text-paper-muted" aria-live="polite">
+                                                                    <Loader2 className="h-3 w-3 text-brand motion-safe:animate-spin" />
+                                                                    <span>{msg.toolStatus}…</span>
+                                                                </div>
+                                                            )}
+                                                            {msg.isError ? (
+                                                                <div className="flex flex-col gap-2 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2">
+                                                                    <p className="text-[13px] text-red-200">{msg.content}</p>
+                                                                    {msg.retryPrompt && (msg.retryable !== false) && (
+                                                                        <button
+                                                                            onClick={() => handleRetry(msg.retryPrompt!)}
+                                                                            disabled={isInvoking}
+                                                                            className="flex items-center gap-1.5 self-start rounded-sm px-2 py-1 text-[11px] font-medium text-red-300 transition-colors hover:bg-red-950/40 hover:text-red-200 disabled:opacity-40"
+                                                                            aria-label="Retry"
+                                                                        >
+                                                                            <RefreshCw className="h-3 w-3" />
+                                                                            Retry
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="min-w-0 text-[13px] leading-relaxed text-paper">
+                                                                    {msg.chartSpecs?.map((spec, i) => (
+                                                                        <AiChartRenderer key={i} spec={spec} />
+                                                                    ))}
+                                                                    <div className="max-w-full overflow-x-auto">
+                                                                        <ReactMarkdown
+                                                                            remarkPlugins={[remarkGfm]}
+                                                                            components={markdownComponents}
+                                                                        >
+                                                                            {preprocessMarkdown(msg.content) + (msg.isInvoking && !msg.toolStatus ? ' ▊' : '')}
+                                                                        </ReactMarkdown>
+                                                                    </div>
+                                                                    {msg.memories && msg.memories.length > 0 && <MemoryNotes notes={msg.memories} />}
+                                                                    {msg.actions && msg.actions.length > 0 && <ActionReceipts ids={msg.actions} />}
+                                                                </div>
+                                                            )}
+                                                            <MessageMeta createdAt={msg.createdAt} content={msg.content} />
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })}
                                 </div>
+                                <div ref={messagesEndRef} />
+                            </>
+                        )}
+                    </div>
+
+                    {/* Composer */}
+                    {activeThreadId && (
+                        <div className={`relative z-10 flex-shrink-0 border-t border-ink-500 px-3 pt-2 ${isMobile ? 'pb-5' : 'pb-2'}`}>
+                            <ComposerChips
+                                attachments={attachments}
+                                skills={pinnedSkills}
+                                onRemoveAttachment={(id) => setAttachments((previous) => previous.filter((a) => a.id !== id))}
+                            />
+                            <form
+                                onSubmit={handleSend}
+                                className={`relative flex items-end gap-1 rounded-lg border bg-ink-200/60 p-1 transition-colors focus-within:border-brand/70 ${isDraggingFile ? 'border-dashed border-brand' : 'border-ink-500'}`}
+                                onDragOver={(e) => {
+                                    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+                                    e.preventDefault();
+                                    setIsDraggingFile(true);
+                                }}
+                                onDragLeave={() => setIsDraggingFile(false)}
+                                onDrop={(e) => {
+                                    if (e.dataTransfer.files.length === 0) return;
+                                    e.preventDefault();
+                                    setIsDraggingFile(false);
+                                    void addFiles(Array.from(e.dataTransfer.files));
+                                }}
+                            >
+                                {skillPickerOpen && (
+                                    <SkillSuggestions skills={skillMatches} activeIndex={skillIndex} onPick={pickSkill} onHover={setSkillIndex} />
+                                )}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    multiple
+                                    accept={attachmentAccept(modelModalities)}
+                                    className="hidden"
+                                    aria-hidden
+                                    tabIndex={-1}
+                                    onChange={(e) => {
+                                        const files = Array.from(e.target.files ?? []);
+                                        e.target.value = '';
+                                        void addFiles(files);
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isInvoking}
+                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40"
+                                    title={attachmentHint(modelModalities)}
+                                    aria-label={attachmentHint(modelModalities)}
+                                >
+                                    <Paperclip className="h-4 w-4" />
+                                </button>
+                                <textarea
+                                    ref={inputRef}
+                                    value={input}
+                                    onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+                                    onKeyDown={handleKeyDown}
+                                    onBlur={() => setSkillQuery(null)}
+                                    onPaste={(e) => {
+                                        const files = Array.from(e.clipboardData.files);
+                                        if (files.length === 0) return;
+                                        e.preventDefault();
+                                        void addFiles(files);
+                                    }}
+                                    placeholder={chatSkills.length > 0 ? 'Ask Chobi… type / for skills' : 'Ask Chobi about your databases…'}
+                                    disabled={isInvoking}
+                                    rows={1}
+                                    aria-autocomplete={chatSkills.length > 0 ? 'list' : undefined}
+                                    aria-expanded={skillPickerOpen}
+                                    className="max-h-[120px] min-h-[32px] flex-1 resize-none border-0 bg-transparent px-1.5 py-1.5 text-[13px] leading-snug text-paper placeholder:text-paper-faint focus:outline-none focus:ring-0 disabled:opacity-40"
+                                    style={{ height: 'auto' }}
+                                    onInput={(e) => {
+                                        const target = e.target as HTMLTextAreaElement;
+                                        target.style.height = 'auto';
+                                        target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                                    }}
+                                />
+                                {isInvoking ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleStop}
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-red-50 text-red-700 transition-colors hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                                        title="Stop generating"
+                                        aria-label="Stop generating"
+                                    >
+                                        <Square className="h-3 w-3 fill-current" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="submit"
+                                        disabled={!input.trim() && attachments.length === 0}
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand text-ink-50 transition-colors hover:bg-brand-soft disabled:bg-ink-300 disabled:text-paper-faint"
+                                        title="Send message"
+                                        aria-label="Send"
+                                    >
+                                        <ArrowUp className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </form>
+                            <div className="mt-1 flex min-h-6 items-center gap-0.5">
+                                {chatAgents.length > 1 && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button type="button" aria-label="Chat agent" title="Chat agent" className={pickerClass}>
+                                                <Bot className="h-3 w-3 shrink-0" aria-hidden />
+                                                <span className="truncate">{currentAgentName}</span>
+                                                <ChevronDown className="h-3 w-3 shrink-0 text-paper-faint" aria-hidden />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start" side="top" className="w-[280px] rounded-md border-ink-500 bg-ink-100 p-0">
+                                            <div className="border-b border-ink-500 px-3 py-2 text-[11px] font-semibold text-paper-muted">
+                                                Chat agent
+                                            </div>
+                                            <div className="flex max-h-[320px] flex-col gap-0.5 overflow-y-auto p-1">
+                                                {chatAgents.map((a) => {
+                                                    const isCurrent = selectedAgentId === a.id || (selectedAgentId === null && a.isDefault);
+                                                    return (
+                                                        <DropdownMenuItem
+                                                            key={a.id}
+                                                            onClick={() => setSelectedAgentId(a.isDefault ? null : a.id)}
+                                                            className={`flex cursor-pointer items-start gap-2.5 rounded-sm px-3 py-2 transition-colors hover:bg-ink-200 ${isCurrent ? 'bg-ink-200' : ''}`}
+                                                        >
+                                                            <PickerDot current={isCurrent} />
+                                                            <div className="flex min-w-0 flex-col gap-0.5">
+                                                                <span className={`truncate text-[13px] font-medium ${isCurrent ? 'text-paper' : 'text-paper-muted'}`}>
+                                                                    {a.kind === 'router' ? `Auto · ${a.name}` : a.name}{a.isDefault ? ' (default)' : ''}
+                                                                </span>
+                                                                <span className="line-clamp-2 text-[11px] text-paper-faint">{a.description}</span>
+                                                            </div>
+                                                        </DropdownMenuItem>
+                                                    );
+                                                })}
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
+                                {aiModels.length > 0 && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button type="button" aria-label="AI model" title="AI model" className={pickerClass}>
+                                                <Cpu className="h-3 w-3 shrink-0" aria-hidden />
+                                                <span className="truncate">{currentModelName}</span>
+                                                <ChevronDown className="h-3 w-3 shrink-0 text-paper-faint" aria-hidden />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start" side="top" className="w-[240px] rounded-md border-ink-500 bg-ink-100 p-0">
+                                            <div className="border-b border-ink-500 px-3 py-2 text-[11px] font-semibold text-paper-muted">
+                                                AI model
+                                            </div>
+                                            <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+                                                {aiModels.map((m) => {
+                                                    const isCurrent = selectedModelId === m.id;
+                                                    return (
+                                                        <DropdownMenuItem
+                                                            key={m.id}
+                                                            onClick={() => setSelectedModelId(m.id)}
+                                                            className={`flex cursor-pointer items-start gap-2.5 rounded-sm px-3 py-2 transition-colors hover:bg-ink-200 ${isCurrent ? 'bg-ink-200' : ''}`}
+                                                        >
+                                                            <PickerDot current={isCurrent} />
+                                                            <div className="flex min-w-0 flex-col gap-0.5">
+                                                                <span className={`truncate text-[13px] font-medium ${isCurrent ? 'text-paper' : 'text-paper-muted'}`}>
+                                                                    {m.name}
+                                                                </span>
+                                                                <span className="truncate text-[11px] text-paper-faint">
+                                                                    {m.provider || 'AI provider'}
+                                                                </span>
+                                                            </div>
+                                                        </DropdownMenuItem>
+                                                    );
+                                                })}
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
+                                {isInvoking && toolStatus ? (
+                                    <span className="ml-auto flex min-w-0 items-center gap-1.5 truncate pl-2 text-[11px] text-paper-muted" aria-live="polite">
+                                        <Loader2 className="h-3 w-3 shrink-0 text-brand motion-safe:animate-spin" />
+                                        <span className="truncate">{toolStatus}…</span>
+                                    </span>
+                                ) : !narrowPickers && (
+                                    <span className="ml-auto pl-2 text-[11px] text-paper-faint">Shift+Enter for a new line</span>
+                                )}
                             </div>
+                        </div>
+                    )}
+                </div>
+            </div>
             {handoffOpen && <HandoffDialog open onClose={() => setHandoffOpen(false)} title={handoffTitle} messages={handoffMessages} actionIds={handoffActionIds} />}
+        </div>
+    );
+}
+
+/** The radio dot in the agent and model pickers. */
+function PickerDot({ current }: { current: boolean }): React.JSX.Element {
+    return (
+        <div className="mt-0.5 flex-shrink-0">
+            <div className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${current ? 'border-brand' : 'border-ink-700'}`}>
+                {current && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
+            </div>
+        </div>
+    );
+}
+
+/** When a message was sent, and a copy button that shows on hover. */
+function MessageMeta({ createdAt, content }: { createdAt: string; content: string }): React.JSX.Element {
+    return (
+        <div className="flex items-center gap-1">
+            <span className="text-[10px] text-paper-faint">{timeAgo(createdAt)}</span>
+            <button
+                type="button"
+                onClick={() => copyToClipboard(content, 'Message')}
+                className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
+                title="Copy message"
+                aria-label="Copy message"
+            >
+                <Copy className="h-3 w-3" />
+            </button>
         </div>
     );
 }
