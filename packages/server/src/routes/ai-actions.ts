@@ -173,13 +173,18 @@ aiActions.get("/inbox", async (c) => {
 
 const activityQuery = z.object({
   runId: z.string().min(1).optional(),
+  /** Comma-separated action ids (a reply's receipts); only the viewer's own come back. */
+  ids: z.string().max(2000).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 aiActions.get("/activity", zValidator("query", activityQuery), async (c) => {
-  const { runId, limit } = c.req.valid("query");
+  const { runId, ids, limit } = c.req.valid("query");
   const viewer = viewerOf(c);
-  const actions = await listActions({ userId: viewer.id, runId, limit: limit ?? 50 });
+  const wanted = ids ? [...new Set(ids.split(",").map((id) => id.trim()).filter(Boolean))].slice(0, 50) : null;
+  const actions = wanted
+    ? (await Promise.all(wanted.map((id) => getAction(id)))).filter((a): a is AiAction => a !== null && a.userId === viewer.id)
+    : await listActions({ userId: viewer.id, runId, limit: limit ?? 50 });
   return ok(c, { actions: await views(actions, viewer, await canAct(viewer)) });
 });
 

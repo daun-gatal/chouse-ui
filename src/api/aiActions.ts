@@ -87,10 +87,11 @@ export async function getAiActionInbox(): Promise<AiAction[]> {
   return (await api.get<{ actions: AiAction[] }>("/ai-actions/inbox")).actions;
 }
 
-/** What the AI did for the viewer, newest first; `runId` narrows it to one chat reply. */
-export async function getAiActivity(options: { runId?: string; limit?: number } = {}): Promise<AiAction[]> {
+/** What the AI did for the viewer, newest first; `runId` narrows it to one chat reply, `ids` to given actions. */
+export async function getAiActivity(options: { runId?: string; ids?: string[]; limit?: number } = {}): Promise<AiAction[]> {
   const params: Record<string, string> = {};
   if (options.runId) params.runId = options.runId;
+  if (options.ids?.length) params.ids = options.ids.join(",");
   if (options.limit) params.limit = String(options.limit);
   return (await api.get<{ actions: AiAction[] }>("/ai-actions/activity", { params })).actions;
 }

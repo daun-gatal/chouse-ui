@@ -71,6 +71,8 @@ import {
 import { ComposerChips, SkillSuggestions, type ComposerAttachment } from '@/components/common/ai-chat/ComposerExtras';
 import { ApprovalCard } from '@/components/common/ai-chat/ApprovalCard';
 import { MemoryNotes } from '@/components/common/ai-chat/MemoryNotes';
+import { ActionReceipts } from '@/components/common/ai-chat/ActionReceipts';
+import { actionReceipts } from '@/lib/aiActionReceipts';
 import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
@@ -180,6 +182,8 @@ interface UIMessage {
     pending?: PendingApproval[];
     /** Notes the assistant kept during this reply (ADR 0024 phase 3). */
     memories?: SavedMemoryNote[];
+    /** Actions this reply ran, filed or proposed (ADR 0025), shown with their undo. */
+    actions?: string[];
     /** Names of files sent with a user message. */
     attachments?: string[];
 }
@@ -922,6 +926,7 @@ function answerPatch(result: ChatRunAnswer, steps: ToolCallStep[]): Partial<UIMe
         })),
         chartSpecs: result.chartSpecs,
         memories: savedMemories(result.toolCalls),
+        actions: actionReceipts(result.toolCalls),
         agentName: result.agent?.name,
     };
 }
@@ -1692,6 +1697,7 @@ export default function AiChatBubble() {
                     role: m.role,
                     ...(m.role === 'user' ? splitAttachments(m.content) : { content: m.content }),
                     memories: m.role === 'assistant' ? savedMemories(m.toolCalls) : undefined,
+                    actions: m.role === 'assistant' ? actionReceipts(m.toolCalls) : undefined,
                     toolCalls: m.toolCalls?.map((tc, index) => ({
                         id: `saved_${m.id}_${index}`,
                         tool: tc.name,
@@ -2455,6 +2461,7 @@ export default function AiChatBubble() {
                                                                                     </ReactMarkdown>
                                                                                 </div>
                                                                                 {msg.memories && msg.memories.length > 0 && <MemoryNotes notes={msg.memories} />}
+                                                                                {msg.actions && msg.actions.length > 0 && <ActionReceipts ids={msg.actions} />}
                                                                             </>
                                                                         )}
                                                                     </>
