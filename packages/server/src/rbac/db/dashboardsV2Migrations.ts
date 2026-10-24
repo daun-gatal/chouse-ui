@@ -157,7 +157,7 @@ async function convertAlertConfigs(db: RbacDb): Promise<number> {
   let changed = 0;
   for (const alert of await rows(db, sql`SELECT id, config FROM dashboard_alerts ORDER BY id`)) {
     const json = parseJson(alert.config);
-    const config = json.ok ? z.record(z.unknown()).safeParse(json.value) : null;
+    const config = json.ok ? z.record(z.string(), z.unknown()).safeParse(json.value) : null;
     if (!config?.success) {
       logger.warn({ module: 'RBAC', phase: 'migration', alertId: String(alert.id) }, '[Migration 1.63.0] Panel alert left unconverted: its stored config is not a JSON object');
       continue;

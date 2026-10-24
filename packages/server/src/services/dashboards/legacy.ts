@@ -67,7 +67,7 @@ export type VizSpecV1 = z.infer<typeof vizSpecV1Schema>;
 const widthV1 = z.union([z.literal(3), z.literal(4), z.literal(6), z.literal(8), z.literal(12)]);
 
 export const panelV1Schema = z.object({
-  id: z.string().uuid().nullable(),
+  id: z.guid().nullable(),
   title: z.string().trim().min(1).max(200),
   sql: z.string().trim().min(1).max(MAX_SQL_LENGTH),
   viz: vizSpecV1Schema,

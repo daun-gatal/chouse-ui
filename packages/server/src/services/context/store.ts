@@ -187,15 +187,15 @@ export async function deleteMetric(id: string): Promise<boolean> {
 // --- dbt manifest import -----------------------------------------------------
 
 const manifestSchema = z.object({
-  nodes: z.record(z.object({
+  nodes: z.record(z.string(), z.object({
     resource_type: z.string(),
     schema: z.string().optional(),
     database: z.string().nullish(),
     alias: z.string().nullish(),
     name: z.string(),
     description: z.string().optional(),
-    meta: z.record(z.unknown()).optional(),
-    config: z.object({ meta: z.record(z.unknown()).optional() }).passthrough().optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+    config: z.object({ meta: z.record(z.string(), z.unknown()).optional() }).passthrough().optional(),
     tags: z.array(z.string()).optional(),
   }).passthrough()),
 }).passthrough();

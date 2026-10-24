@@ -88,7 +88,7 @@ async function backgroundAction(c: Context): Promise<AiAction> {
   return action;
 }
 
-const approveBody = z.object({ args: z.record(z.unknown()).optional() });
+const approveBody = z.object({ args: z.record(z.string(), z.unknown()).optional() });
 
 aiActions.post("/:id/approve", zValidator("json", approveBody), async (c) => {
   const user = getRbacUser(c);

@@ -190,7 +190,7 @@ userPreferencesRoutes.put(
     explorerSortBy: z.enum(['name', 'date', 'size']).optional(),
     explorerViewMode: z.enum(['tree', 'list', 'compact']).optional(),
     explorerShowFavoritesOnly: z.boolean().optional(),
-    workspacePreferences: z.record(z.unknown()).optional(),
+    workspacePreferences: z.record(z.string(), z.unknown()).optional(),
   })),
   async (c) => {
     const user = getRbacUser(c);

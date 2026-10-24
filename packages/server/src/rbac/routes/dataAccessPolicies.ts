@@ -33,7 +33,7 @@ const policyRoutes = new Hono();
 
 const ruleSchema = z.object({
   // null = applies to all connections
-  connectionId: z.string().uuid().nullable().optional(),
+  connectionId: z.guid().nullable().optional(),
   databasePattern: z.string().min(1).max(255).default('*'),
   tablePattern: z.string().min(1).max(255).default('*'),
   isAllowed: z.boolean().default(true),
@@ -54,7 +54,7 @@ const updatePolicySchema = z.object({
 });
 
 const setRolePoliciesSchema = z.object({
-  policyIds: z.array(z.string().uuid()),
+  policyIds: z.array(z.guid()),
 });
 
 // ============================================

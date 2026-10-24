@@ -30,7 +30,7 @@ const checkAccessSchema = z.object({
   database: z.string().min(1),
   table: z.string().optional(),
   accessType: accessTypeSchema.default('read'),
-  connectionId: z.string().uuid().optional(),
+  connectionId: z.guid().optional(),
 });
 
 // ============================================
@@ -72,7 +72,7 @@ dataAccessRoutes.post(
   rbacAuthMiddleware,
   zValidator('json', z.object({
     databases: z.array(z.string()),
-    connectionId: z.string().uuid().optional(),
+    connectionId: z.guid().optional(),
   })),
   async (c) => {
     try {
@@ -104,7 +104,7 @@ dataAccessRoutes.post(
   zValidator('json', z.object({
     database: z.string(),
     tables: z.array(z.string()),
-    connectionId: z.string().uuid().optional(),
+    connectionId: z.guid().optional(),
   })),
   async (c) => {
     try {

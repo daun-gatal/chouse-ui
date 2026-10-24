@@ -142,9 +142,9 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> exten
    * looser than the resulting `TInput` output type) remain assignable here —
    * only the parsed `Output` (`TInput`) is ever relied on.
    */
-  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  inputSchema: z.ZodType<TInput, unknown>;
   /** Schema the agent's final JSON must satisfy. Same `.default()` note as `inputSchema` above. */
-  outputSchema: z.ZodType<TParsed, z.ZodTypeDef, unknown>;
+  outputSchema: z.ZodType<TParsed, unknown>;
 
   /** Resolve everything the run needs before the model is called. */
   prepare(input: TInput, ctx: AgentRunContext): Promise<TPrepared> | TPrepared;

@@ -57,7 +57,7 @@ const aiModelParamsSchema = z.object({
     structuredOutputPolicy: z.enum(STRUCTURED_OUTPUT_POLICIES).optional(),
     contextWindow: z.number().int().min(1_024).max(10_000_000).optional(),
     inputModalities: z.array(z.enum(INPUT_MODALITIES)).max(2).optional(),
-    extra: z.record(z.unknown()).optional(),
+    extra: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 const createModelSchema = z.object({

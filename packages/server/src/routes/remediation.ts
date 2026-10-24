@@ -90,7 +90,7 @@ const contextOnly = "A panel rollup is proposed from the dashboard panel's cost 
 
 const proposeSchema = z.object({
   connectionId: z.string().min(1),
-  params: z.record(z.unknown()),
+  params: z.record(z.string(), z.unknown()),
   title: z.string().trim().max(200).optional(),
   rationale: z.string().trim().max(4000).nullish(),
   incidentSource: z.enum(["data_health", "observe"]).nullish(),
@@ -98,7 +98,7 @@ const proposeSchema = z.object({
   notebookId: z.string().max(64).nullish(),
 });
 
-remediation.post("/actions/preview", requireAnyPermission(ANY_REMEDIATION), zValidator("json", z.object({ params: z.record(z.unknown()) })), (c) => {
+remediation.post("/actions/preview", requireAnyPermission(ANY_REMEDIATION), zValidator("json", z.object({ params: z.record(z.string(), z.unknown()) })), (c) => {
   const parsed = actionParamsSchema.safeParse(c.req.valid("json").params);
   if (!parsed.success) throw AppError.badRequest(parsed.error.issues.map((i) => i.message).join("; "));
   if (CONTEXT_ONLY_TYPES.has(parsed.data.type)) throw AppError.badRequest(contextOnly);

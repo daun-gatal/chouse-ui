@@ -46,7 +46,7 @@ const incidentsSchema: Record<string, z.ZodTypeAny> = {
 
 const proposeSchema: Record<string, z.ZodTypeAny> = {
   type: z.string().min(1).describe("Catalog action type, e.g. kill_query, optimize_partition, restart_engine_table"),
-  params: z.record(z.unknown()).describe("Action parameters as defined by the remediation catalog"),
+  params: z.record(z.string(), z.unknown()).describe("Action parameters as defined by the remediation catalog"),
   rationale: z.string().min(1).max(4000).describe("Why this fix: the evidence it addresses"),
   incident_source: z.enum(["data_health", "observe"]).optional().describe("Incident this fixes"),
   incident_id: z.string().max(64).optional().describe("Incident id this fixes"),

@@ -50,7 +50,7 @@ const ExplainParsed = z.object({
   facts: z.array(z.string()),
   interpretation: z.array(z.string()),
   confidence: z.enum(["low", "medium", "high"]),
-  actionDrafts: z.array(z.object({ type: z.string(), params: z.record(z.unknown()), rationale: z.string() })),
+  actionDrafts: z.array(z.object({ type: z.string(), params: z.record(z.string(), z.unknown()), rationale: z.string() })),
 });
 
 export interface IncidentExplanation extends z.infer<typeof ExplainParsed> {
@@ -111,7 +111,7 @@ const WatcherParsed = z.object({
   name: z.string(),
   frequency: z.enum(["hourly", "daily"]),
   eventTimeColumn: z.string().nullable(),
-  check: z.record(z.unknown()),
+  check: z.record(z.string(), z.unknown()),
   explanation: z.string(),
 });
 

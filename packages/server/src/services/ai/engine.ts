@@ -8,7 +8,7 @@
  */
 
 import { toJsonSchema } from "@langchain/core/utils/json_schema";
-import type { ZodType, ZodTypeDef } from "zod";
+import type { ZodType } from "zod";
 import { isStructuredOutputPolicy } from "../../rbac/constants/aiModelParams";
 import { AppError } from "../../types";
 import { resolveDeepAgentModel, type ResolvedModel } from "./model";
@@ -142,7 +142,7 @@ export const EMPTY_ANSWER_NUDGE = "Write your final answer to my last question n
 
 function structuredInstructions<T>(
   instructions: string,
-  schema: ZodType<T, ZodTypeDef, unknown>,
+  schema: ZodType<T, unknown>,
 ): string {
   const jsonSchema = toJsonSchema(schema);
   const serialized = JSON.stringify(jsonSchema);

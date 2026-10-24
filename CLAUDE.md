@@ -82,7 +82,7 @@ bunx vitest run                # Frontend tests
 - Passwords: Argon2id via `Bun.password.hash` (NOT bcrypt)
 - JWT: `jose` library (NOT jsonwebtoken)
 - Connection password encryption: AES-256-GCM
-- Validation: Zod v4 (frontend), Zod v3 (server)
+- Validation: Zod v4 (frontend and server)
 - Server routes: `rbacAuthMiddleware` + `requirePermission` middleware
 - Client: `PermissionGuard` component for UI gating
 - SQL injection prevention via `node-sql-parser` middleware

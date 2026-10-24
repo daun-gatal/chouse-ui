@@ -59,14 +59,14 @@ export const harnessSchema = z.object({
     systemPrompt: z.string().max(100_000).nullable().optional(),
   }),
   promptSuffix: z.string().max(4_000).nullable(),
-  toolDescriptionOverrides: z.record(z.string().max(4_000)),
+  toolDescriptionOverrides: z.record(z.string(), z.string().max(4_000)),
   analysis: z.boolean().optional(),
 });
 
 export const skillSchema = z.object({
   path: z.string().trim().min(3).max(130),
   skillMd: z.string().min(1).max(1024 * 1024),
-  files: z.record(z.string().max(1024 * 1024)),
+  files: z.record(z.string(), z.string().max(1024 * 1024)),
   enabled: z.boolean(),
 });
 

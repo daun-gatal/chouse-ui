@@ -18,12 +18,12 @@ const runSchema: Record<string, z.ZodTypeAny> = {
   id: z.string().min(1).describe("Dashboard id"),
   panel_id: z.string().min(1).describe("Panel id (from get_dashboard)"),
   range: z.enum(RANGES).describe("How far back to run the panel"),
-  values: z.record(z.union([z.string(), z.array(z.string())])).optional().describe("Variable values by name: a string, or a list for a multi-value variable; a variable left out uses its default"),
+  values: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional().describe("Variable values by name: a string, or a list for a multi-value variable; a variable left out uses its default"),
   connection_id: z.string().min(1).optional().describe("Connection to run on (defaults to the request/header connection); a fleet panel runs on every connection"),
 };
 
 const applySchema: Record<string, z.ZodTypeAny> = {
-  dashboard: z.record(z.unknown()).describe(
+  dashboard: z.record(z.string(), z.unknown()).describe(
     "A dashboard export ({format: \"chouse.dashboard/v2\", id, dashboard}) as export_dashboard returns it; a chouse.dashboard/v1 export from before CHouse 3.16 is converted. " +
     "With an id, that dashboard is updated in place (its panel ids are kept); with id null, a new dashboard is created.",
   ),

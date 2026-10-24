@@ -17,10 +17,3 @@ ignore:
     package:
       name: braces
       type: npm
-  # zod 3.25.76 - High - DoS via unbounded array validation (review 2026-12-31).
-  # Fixed only in zod 4.6.6+; no 3.x fix. Removed by the server's zod 4 migration.
-  - vulnerability: CVE-2023-54404
-    package:
-      name: zod
-      version: 3.25.76
-      type: npm

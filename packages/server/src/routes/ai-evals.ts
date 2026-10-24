@@ -55,7 +55,7 @@ const caseSchema = z.object({
   name: z.string().trim().min(1).max(200),
   kind: z.enum(["chat", "feature"]),
   featureId: z.string().min(1).nullable().optional(),
-  input: z.record(z.unknown()),
+  input: z.record(z.string(), z.unknown()),
   expectedTools: z.array(z.string().min(1).max(100)).max(30),
   rubric: z.string().trim().max(4_000).nullable().optional(),
 });

@@ -67,7 +67,7 @@ export const triageIncidentCapability: StructuredCapability<TriageInput, TriageP
     trigger: z.enum(TRIAGE_TRIGGERS),
     title: z.string().min(1).max(500),
     connectionId: z.string().min(1).nullable(),
-    evidence: z.record(z.unknown()),
+    evidence: z.record(z.string(), z.unknown()),
   }),
   outputSchema: TriageParsed,
 

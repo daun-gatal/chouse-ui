@@ -182,7 +182,7 @@ export function draftMode(request: DraftRequest<unknown>): DraftMode {
 }
 
 /** Zod for a request, given the entity's input schema and its section names. */
-export function draftRequestSchema<T extends z.ZodTypeAny>(current: T, sections: readonly string[]): z.ZodType<DraftRequest<z.infer<T>>, z.ZodTypeDef, unknown> {
+export function draftRequestSchema<T extends z.ZodTypeAny>(current: T, sections: readonly string[]): z.ZodType<DraftRequest<z.infer<T>>, unknown> {
   const sectionEnum = z.enum(sections as [string, ...string[]]);
   return z.object({
     goal: z.string().trim().max(LIMITS.goal).optional(),
@@ -194,12 +194,12 @@ export function draftRequestSchema<T extends z.ZodTypeAny>(current: T, sections:
     instruction: z.string().trim().min(3).max(LIMITS.instruction).optional(),
     current: current.optional(),
     currentMeta: z.object({
-      reasons: z.record(z.string().max(LIMITS.rationale).nullable()),
-      rationale: z.record(z.array(z.object({ subject: z.string().max(200), why: z.string().max(LIMITS.rationale) })).max(100)),
+      reasons: z.record(z.string(), z.string().max(LIMITS.rationale).nullable()),
+      rationale: z.record(z.string(), z.array(z.object({ subject: z.string().max(200), why: z.string().max(LIMITS.rationale) })).max(100)),
     }).optional(),
     entityId: z.string().min(1).nullable().optional(),
     sections: z.array(sectionEnum).min(1).max(sections.length).optional(),
-    feedback: z.record(z.array(z.string().max(1_000)).max(20)).optional(),
+    feedback: z.record(z.string(), z.array(z.string().max(1_000)).max(20)).optional(),
   }).superRefine((value, ctx) => {
     const mode = draftMode(value);
     if (mode !== "draft" && !value.current) {
@@ -208,5 +208,5 @@ export function draftRequestSchema<T extends z.ZodTypeAny>(current: T, sections:
     if (mode === "draft" && (value.goal ?? "").length < 8) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["goal"], message: "Describe what you want in at least a few words" });
     }
-  }) as unknown as z.ZodType<DraftRequest<z.infer<T>>, z.ZodTypeDef, unknown>;
+  }) as unknown as z.ZodType<DraftRequest<z.infer<T>>, unknown>;
 }
