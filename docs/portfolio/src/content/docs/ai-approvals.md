@@ -2,12 +2,15 @@
 app: AI Governance › Approvals
 route: /ai/approvals
 permissions: ai:act, ai:chat, ai:optimize
+screenshot: ai-approvals
 ---
 # Approvals
 
 AI agents in CHouse can change things — save a query, schedule a job, mute an alert, create a role — through **write tools**. Every write runs as the person it is for, through the same CHouse routes, checks and audit as doing it in the UI. How much a person is asked depends on the change's **tier**, not on a click for every write.
 
 **AI Governance › Approvals** (`/ai/approvals`) is the full history of those changes and the queue of the ones waiting for someone. Each person also sees theirs in Chobi's [Activity tab](/docs/chobi/#activity).
+
+**In short:** ask for a change in the chat. If it can be undone, it runs and shows **Undo**. If it can't, you approve it once. If it is privileged or destructive, someone else approves it here. [Let Chobi make a change](/docs/guide-first-ai-change/) shows each case.
 
 ## Tiers
 
@@ -23,6 +26,10 @@ The tier is decided per call, in one place:
 - **The call itself.** Raw SQL is tiered by statement (`INSERT` and `CREATE` ask once; `ALTER`, `DELETE`, `DROP`, `TRUNCATE` need a second approver); `kill_query` asks once for your own query and needs a second approver for someone else's.
 - **Production.** On a connection an administrator marked **Production** ([Connections](/docs/connections/#environment)), every write goes up a tier: Undoable asks once, Asks once needs a second approver.
 - **Your own access.** A change to your own roles, policies or grants always needs a second approver.
+
+![A change with Done · Undo in the chat](/docs/img/app/chobi-undo.jpg "Undoable: the change runs at once, and the receipt says Done · Undo")
+
+![An approval card in the chat](/docs/img/app/chobi-approval.jpg "Asks once: the reply pauses on a card with Approve, Edit and Reject")
 
 ### Undo
 

@@ -87,6 +87,15 @@ const FAQS: FaqItem[] = [
     docs: [{ label: "AI Assist", href: "/docs/workspace-ai-assist/" }],
   },
   {
+    question: "Can Chouse AI change things for me?",
+    answer: "Yes, as you and within your permissions. Ask Chobi to save a query, watch a table, create a table or mute an alert: undoable changes run at once and show Undo for 24 hours, changes undo can't reverse ask once, and privileged or destructive ones (DROP, roles, policies) need a second person who holds the same permission. A production connection makes every change one tier stricter, and passwords, connections, SSO, tokens and guardrails are never AI's to touch. Requests that wait on a person can be approved from Slack, Google Chat or Telegram.",
+    docs: [
+      { label: "Approvals & tiers", href: "/docs/ai-approvals/" },
+      { label: "Chobi", href: "/docs/chobi/" },
+      { label: "Chat apps", href: "/docs/chat-apps/" },
+    ],
+  },
+  {
     question: "Can AI agents or scripts query my cluster?",
     answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in AI Governance › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at lab.chouse-ui.com/mcp lets you try the MCP endpoint without deploying anything.",
     docs: [

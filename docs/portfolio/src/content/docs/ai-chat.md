@@ -1,6 +1,7 @@
 ---
 app: Chobi › Chat
 permissions: ai:chat
+screenshot: chobi-chat
 ---
 # Using the chat
 
@@ -33,6 +34,8 @@ Questions you [ask from elsewhere](/docs/chobi/#asking-from-anywhere) — a sele
 Type `/` in the message box to pick one of the agent's [skills](/docs/ai-skills/), or write `/skill:name`. The skill's instructions go to the agent with that message only, as if it had read the skill first. Chips above the box show the skills and files that go with the next message.
 
 ## Changes
+
+![An approval card in the chat](/docs/img/app/chobi-approval.jpg "A change that asks once pauses the reply until you approve, edit or reject it")
 
 CHouse Assistant can change things for you with [write tools](/docs/ai-approvals/#the-write-tools). How much you are asked depends on the change's [tier](/docs/ai-approvals/#tiers):
 

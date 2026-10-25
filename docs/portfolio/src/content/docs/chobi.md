@@ -1,12 +1,21 @@
 ---
 app: Chobi
 permissions: ai:chat
+screenshot: chobi-now
 ---
 # Chobi
 
 **Chobi** is the CHouse buddy: a little character made of the logo's three bars that parks on the edge of the screen and is the one place for AI in CHouse. It shows what needs a look, chats with [CHouse Assistant](/docs/ai-chat-agents/), lists what AI changed for you, and points out news on its own — without getting in the way of what you are doing.
 
 Chobi appears for users with `ai:chat` once an AI model is set up.
+
+**Get started in three steps:**
+
+1. Click Chobi on the right edge of the screen, or press **Ctrl/⌘ J**.
+2. Look at **Now** for what needs a look, or switch to **Chat** and ask a question — *Which tables went stale today?*
+3. Ask for a change — *keep an eye on shop.orders until tomorrow* — and see it in **Activity**, with **Undo**.
+
+New to it? [Let Chobi make a change](/docs/guide-first-ai-change/) walks through it with screenshots.
 
 ## The launcher
 
@@ -44,11 +53,15 @@ What needs a look across **every connection you can reach**, built from data (no
 
 The chat with [CHouse Assistant](/docs/ai-chat-agents/). See [Using the chat](/docs/ai-chat/).
 
+![The Chat tab with an answer and its steps](/docs/img/app/chobi-chat.jpg "Chat: each step shows as it happens, then the answer")
+
 **Memory suggestions** — when a conversation has been quiet for a while, Chobi asks once for notes worth keeping and shows up to three above the composer: **Save to me**, **Propose to team** (for knowledge about the connection; an admin reviews it) or **Dismiss**. Nothing is saved without a click. **Anything worth remembering?** asks at once. Suggestions skip what [memory](/docs/ai-memory/) already holds and anything an enforced guardrail keeps from the provider; each ask is one AI call, counted in [AI usage](/docs/ai-usage/) as *Suggest memories*.
 
 ### Activity
 
 What waits for you and what AI changed:
+
+![The Activity tab](/docs/img/app/chobi-activity.jpg "Activity: what waits for your answer, and every change AI made for you, with Undo")
 
 - **Needs you** — MCP calls held for your confirmation (**Confirm** / **Decline**), and second-approver changes you may approve.
 - **Recent** — every change an agent made for you, in the chat, over MCP or the CLI, with its status and **Undo** while it is available.
@@ -105,5 +118,7 @@ Each alert says what the request does, who asked through what, the connection an
 Alerts need `PUBLIC_BASE_URL` for the review link; without it none are sent and the settings say so. Each send is audited as `chobi.alert_sent`.
 
 ## Plain mode and other settings
+
+![Chobi settings in AI Governance](/docs/img/app/ai-chobi-settings.jpg "AI Governance › Assistant › Chobi: plain mode, nudges, memory suggestions and Need You alerts")
 
 In **AI Governance › Assistant › Chobi** (`ai_agents:manage`, audited as `chobi.settings_update`) an administrator can show the CHouse logo instead of the character, turn nudges off for everyone, turn memory suggestions off, and set up Need You alerts.

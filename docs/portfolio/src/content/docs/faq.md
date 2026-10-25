@@ -41,7 +41,9 @@ See the [compatibility matrix](/docs/compatibility/). Features that need a newer
 ## AI
 
 **Can the AI change my cluster?**
-Not on its own. The Doctor investigates with read-only queries (`readonly=1`, single `SELECT` on `system.*`). AI can *draft* fixes, but a fix only runs after people approve it, and an AI-drafted fix can't be approved by whoever submitted it. See [fixes with approval](/docs/data-incidents/#fixes-with-approval).
+Only as you, and only as far as you allow. In [Chobi](/docs/chobi/)'s chat, CHouse Assistant can make the changes you ask for — save a query, watch a table, create a table, mute an alert — through the same routes, permissions and audit as the UI, and only for users with `ai:act`. How much you are asked depends on the change's [tier](/docs/ai-approvals/#tiers): undoable changes run at once with **Undo**, others wait for one confirm, and privileged or destructive ones (`DROP`, roles, policies) need a second person. A production connection makes every change one tier stricter, and passwords, connections, SSO, tokens and guardrails are never AI tools.
+
+Investigations stay read-only: the Doctor uses read-only queries (`readonly=1`, single `SELECT` on `system.*`), and fixes it drafts only run after people approve them — never by whoever submitted them. See [fixes with approval](/docs/data-incidents/#fixes-with-approval).
 
 **Which AI providers are supported?**
 OpenAI, Anthropic, Google, Azure OpenAI, Amazon Bedrock, Groq, Mistral, Cohere, xAI, DeepSeek, Cerebras, Fireworks, Together, OpenRouter, Ollama and any OpenAI-compatible server. See [AI models](/docs/ai-models/).

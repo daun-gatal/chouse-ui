@@ -7,7 +7,7 @@ import {
   LayoutGrid, BellRing, Radar, CalendarClock, GitBranch, HeartPulse,
   Workflow, ShieldCheck, BookOpen, Siren, Wrench, NotebookPen, GitPullRequestArrow,
   TrendingUp, HardDrive, ArrowUpCircle, ArrowRight, LayoutDashboard, Timer,
-  WandSparkles, Coins, ShieldHalf,
+  WandSparkles, Coins, ShieldHalf, History, Camera, Import, Smile, Undo2, Brain,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -38,9 +38,23 @@ const GROUPS: FeatureGroup[] = [
       { icon: HardDrive, title: "Capacity & cost", desc: "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer" },
       { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
       { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
-      { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, email or webhooks — with an AI root-cause report on breach" },
-      { icon: LayoutDashboard, title: "Dashboards", desc: "Your own panels in SQL, or a template to start from — variables, fleet-wide panels, sharing by role, and threshold alerts on any panel" },
+      { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, Telegram, email or webhooks — with an AI root-cause report on breach, and one hub that shows where each alert went" },
       { icon: Timer, title: "Collection schedule", desc: "How often each collector samples, for every connection or one — incremental reads keep the load on ClickHouse low" },
+    ],
+  },
+  {
+    category: "Dashboards",
+    icon: LayoutDashboard,
+    docs: "/docs/dashboards/",
+    items: [
+      { icon: LayoutGrid, title: "A free canvas", desc: "Drag and resize panels on a 24-column grid, add Markdown text and headings, and let Tidy up lay it all out in one click" },
+      { icon: History, title: "What changed, on the chart", desc: "DDL, upgrades, settings changes, new writers, incidents, fixes and notes marked along the time axis — each read with your own access" },
+      { icon: Sparkles, title: "Explain this spike", desc: "Select a range and Chouse AI reads it against a week earlier, the changes, queries, mutations and merges, and gives the likely cause with its evidence" },
+      { icon: TrendingUp, title: "Is this normal?", desc: "Compare with a day or a week earlier, draw the range a value usually falls in, and alert when it leaves the band" },
+      { icon: WandSparkles, title: "Drafted with AI", desc: "Describe a dashboard; review a full-screen draft laid out as it will be saved, then Refine it or Regenerate one panel" },
+      { icon: Camera, title: "Snapshots, reports & history", desc: "Freeze what you saw for chosen roles, send a daily or weekly digest, and restore any of the last 50 saves" },
+      { icon: Import, title: "Import from Grafana", desc: "See panel by panel what converts, what changed and what was skipped before anything is saved" },
+      { icon: Coins, title: "Panel cost & rollups", desc: "What each panel reads per run and per hour, and a verified 1-minute rollup for heavy ones, through the approval flow" },
     ],
   },
   {
@@ -66,18 +80,22 @@ const GROUPS: FeatureGroup[] = [
       { icon: Wrench, title: "Fixes with approval", desc: "A closed catalog of actions, run with a separate credential only after approval — two approvers for high-impact changes, verified, reversible" },
       { icon: NotebookPen, title: "Investigation notebooks", desc: "AI findings, query snapshots and notes in one shared notebook, exported as a postmortem" },
       { icon: GitPullRequestArrow, title: "Schema preflight", desc: "DDL that would break a view, dictionary, job, promise or saved query is stopped with the impact and a safer plan" },
-      { icon: MessageSquare, title: "Approve anywhere", desc: "In the UI, from signed Slack buttons, or with chouse remediation approve" },
+      { icon: MessageSquare, title: "Approve anywhere", desc: "In the UI, from Slack, Google Chat or Telegram buttons that run as the person who pressed them, or with chouse remediation approve" },
     ],
   },
   {
-    category: "Chouse AI",
+    category: "Chobi & Chouse AI",
     icon: Sparkles,
-    docs: "/docs/doctor/",
+    docs: "/docs/chobi/",
     items: [
+      { icon: Smile, title: "Chobi, the CHouse buddy", desc: "On the edge of the screen and above any dialog: what needs a look across every connection, the chat, and what AI changed for you" },
+      { icon: Undo2, title: "AI changes with Undo", desc: "74 write tools across CHouse — undoable changes run at once with Undo, others ask once, high-risk ones need a second person; production is one tier stricter" },
+      { icon: MessageSquare, title: "A chat that streams", desc: "Each step as it happens, Stop on the server, replies that survive a reload, files and skills with a message" },
+      { icon: Brain, title: "Memory & auto-triage", desc: "Agents remember preferences and reviewed team knowledge, and investigate new incidents on their own within a budget" },
       { icon: Stethoscope, title: "Doctor", desc: "An AI health check of your fleet with read-only queries — scheduled, or triggered by an alert — that proposes fixes for approval" },
       { icon: Zap, title: "Optimize & diagnose in place", desc: "A rewrite of a logged query with a before→after EXPLAIN, or the cause and ordered fixes for an error or a part-log entry" },
       { icon: WandSparkles, title: "Draft with AI", desc: "Describe a dashboard, agent, harness or skill and review the draft, section by section, before anything is saved" },
-      { icon: MessageSquare, title: "AI Assist & chat", desc: "Schema-aware optimizer, debugger and chat in the SQL editor" },
+      { icon: FileText, title: "AI Assist in the editor", desc: "Schema-aware optimizer and debugger, and Ask Chobi about this SQL with Ctrl/⌘ J" },
       { icon: Eye, title: "Facts vs. interpretation", desc: "Incident explanations keep what was observed apart from what is inferred — the AI never picks the root cause" },
       { icon: KeyRound, title: "Your model", desc: "OpenAI, Anthropic, Google, Azure, Bedrock, Ollama and ten more, or any OpenAI-compatible server you host — one picker everywhere, with each model's context window" },
     ],
@@ -100,12 +118,12 @@ const GROUPS: FeatureGroup[] = [
     icon: Bot,
     docs: "/docs/automation/",
     items: [
-      { icon: Bot, title: "MCP at /mcp", desc: "On the UI's own address, turned on and tool-by-tool in AI Governance › MCP — reads on, everything else off until you say so" },
+      { icon: Bot, title: "MCP at /mcp", desc: "On the UI's own address, turned on and tool-by-tool in AI Governance › MCP — and write tools checked by tier, held while you confirm in CHouse" },
       { icon: Gauge, title: "Agent governance", desc: "Every agent session recorded, budgets checked with EXPLAIN ESTIMATE before queries run, health notices in results, a pause switch" },
       { icon: Terminal, title: "chouse CLI 1.0", desc: "Tables in a terminal, JSON when piped, profiles, exit codes, and --yes / --dry-run on anything that changes data" },
       { icon: KeyRound, title: "Personal access tokens", desc: "Scoped, expiring, rotatable ch_pat_ tokens that carry their owner's live permissions" },
       { icon: ShieldHalf, title: "AI guardrails", desc: "PII and secret redaction, prompt-injection warnings, call limits and SQL safety on what the AI and MCP see and return — try new rules in shadow mode" },
-      { icon: Coins, title: "AI activity & cost", desc: "Every AI request from the UI, MCP or a token: who started it, each step, tokens, price, and which tables' data was sent to the model" },
+      { icon: Coins, title: "AI activity, cost & budgets", desc: "Every AI request from the UI, MCP or a token — who, each step, tokens, price, data sent — with caps per feature and user that stop or switch to a cheaper model" },
     ],
   },
   {
@@ -158,7 +176,7 @@ const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
   {
     icon: Stethoscope,
     title: "An AI SRE that shows its work",
-    desc: "Chouse AI investigates with read-only queries, cites its evidence, and only ever proposes changes.",
+    desc: "Chouse AI investigates with read-only queries and cites its evidence; the changes it makes for you come with Undo, a confirm, or a second person.",
     meta: "Your model",
   },
   {
@@ -187,7 +205,7 @@ export default function Features() {
           eyebrow="What's inside"
           eyebrowIndex={2}
           title="Everything you need to give ClickHouse to a team."
-          description="Seven areas, one consistent UI. Pick one to browse it — every item is documented."
+          description="Eight areas, one consistent UI. Pick one to browse it — every item is documented."
         />
 
         {/* Desktop: category rail + detail panel */}

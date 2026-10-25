@@ -2,6 +2,7 @@
 app: AI Governance › Memories
 route: /ai/memories
 permissions: ai:chat, ai:optimize, ai_memories:manage
+screenshot: ai-memories
 ---
 # Memory
 

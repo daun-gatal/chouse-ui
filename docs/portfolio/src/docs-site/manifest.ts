@@ -259,6 +259,9 @@ export const DOC_SECTIONS: DocSection[] = [
         pages: [
           { slug: "guide-investigate-stale-table", title: "Investigate a stale table", description: "From \"the dashboard shows yesterday\" to the root cause, the people affected and a fix." },
           { slug: "guide-approve-a-fix", title: "Approve and roll back a fix", description: "Set up a remediation credential, then propose, approve, run, verify and roll back one fix." },
+          { slug: "guide-first-ai-change", title: "Let Chobi make a change", description: "Set up AI changes once, then meet all three tiers: a change with Undo, one that asks first, and one that needs a second person." },
+          { slug: "guide-approve-from-chat", title: "Approve from Slack", description: "Connect a Slack channel as a chat app, send approvals and alerts there, and act on them with buttons that run as you." },
+          { slug: "guide-build-a-dashboard", title: "Build a dashboard on the canvas", description: "From a template to a tidy canvas, then what changed, whether it is normal, why it spiked, and sharing what you saw." },
           { slug: "guide-watch-a-pipeline", title: "Watch a Kafka pipeline", description: "Make sure a Kafka consumer's failures — including silent retries — get noticed." },
           { slug: "guide-first-promise", title: "Set up your first promise", description: "A freshness promise with an alert, from choosing the table to validating the generated SQL." },
           { slug: "guide-customize-an-ai-feature", title: "Customize an AI feature", description: "Teach Optimize your team's SQL conventions with a skill and a copied agent, test it, switch over and roll back." },

@@ -2,10 +2,13 @@
 app: Admin › Alerting
 route: /admin/alerting?view=channels
 permissions: alerting:edit
+screenshot: admin-alerting-add-channel
 ---
 # Chat apps
 
 A webhook only posts. A **chat app** — a Slack app, a Google Chat app or a Telegram bot — can also **edit** what it posted and carry **buttons** that call back to CHouse: Acknowledge and Snooze on [Data Health](/docs/data-health/) alerts, Approve and Reject on [remediation](/docs/guide-approve-a-fix/) proposals, Approve and Decline on [Need You alerts](/docs/chobi/#need-you-alerts). Every feature that sends alerts can use any channel.
+
+Step by step, with screenshots: [Approve from Slack](/docs/guide-approve-from-chat/).
 
 Set one up in **Admin › Alerting › Channels › Add channel**. Buttons need CHouse reachable from the platform over HTTPS at `PUBLIC_BASE_URL` (Helm `publicBaseUrl`); without it, messages still go out and are still edited, but nobody can press a button.
 
@@ -55,6 +58,8 @@ Google signs every event with its own keys; CHouse checks the signature, the iss
 1. Talk to **@BotFather**, send `/newbot`, and copy the token (`123456789:AA…`).
 2. Add the bot to the group, send a message there, and read the chat ID (a negative number such as `-1001234567890`) from `https://api.telegram.org/bot<token>/getUpdates`. Do this before saving the channel: once CHouse registers the bot's webhook, `getUpdates` stops answering.
 3. In CHouse, add a **Telegram** channel with the token and the chat ID; for a forum group, add the topic ID. Saving registers the webhook with a secret token Telegram sends back with every update. **Test** shows **Button presses reach CHouse** when that worked.
+
+![Linked chat accounts in Preferences](/docs/img/app/preferences-chat-accounts.jpg "Preferences › Linked chat accounts")
 
 Telegram has no email, so each person links their account once: **Preferences › Linked chat accounts › Link Telegram** opens the bot with a one-time code (it works for ten minutes); pressing **Start** links the account. Codes only work in a private chat with the bot.
 

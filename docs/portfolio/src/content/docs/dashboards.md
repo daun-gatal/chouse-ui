@@ -8,6 +8,8 @@ screenshot: dashboards
 
 **Dashboards** (`/dashboards`) are your own charts of ClickHouse: each chart panel is a read-only query with a chart, laid out on a canvas you arrange freely, with a shared time range, variables and auto-refresh. They are built on what CHouse already knows about you. A panel runs with **each viewer's own** connection and table access, so a shared dashboard never shows anyone more than they could query themselves.
 
+New to dashboards? [Build a dashboard on the canvas](/docs/guide-build-a-dashboard/) goes from a template to a tidy, annotated dashboard.
+
 The page lists every dashboard you may view in one table, with tabs for **All**, **Mine**, **Shared with me**, **Pinned** and **Templates**. Search by title, description or owner, sort by recently updated, name or panel count, and page through 25 at a time; the tab, search, sort and page are kept in the URL. The pin on each row pins or unpins it in place. Open one at `/dashboards/<id>`.
 
 ## Who sees what
@@ -67,6 +69,8 @@ Each dashboard is assigned to **All connections** or to a list of connections. C
 
 ### The canvas
 
+![A dashboard in edit mode](/docs/img/app/dashboards-canvas.jpg "Edit mode: drag by the grip, resize from any edge, add text and headings, or Tidy up")
+
 Panels sit on a 24-column grid. While editing, drag a panel anywhere by its grip and resize it from any edge or corner; panels never go below their kind's minimum size and never overlap, and panels move up into gaps. **Tidy up** lays the dashboard out for you: headings start sections, and within each section current values (stat panels) share a row at the top, then trends, then breakdowns, rankings and distributions two to a row, then tables at full width. Text panels keep their size. It only changes the dashboard you are editing; save to keep it, or restore the previous [version](#version-history). On a screen narrower than 768 px, panels stack in reading order at full width.
 
 Text panels render Markdown; raw HTML is not rendered, and links open in a new tab.
@@ -109,6 +113,8 @@ When the fix is mechanical, such as adding `LIMIT 12` or switching to a bar char
 
 ## Annotations and notes
 
+![Annotation markers on a chart](/docs/img/app/dashboards-annotations.jpg "Markers along the time axis: what changed around the chart, and your notes")
+
 Line and area charts mark what changed around them, as small markers along the time axis: DDL on the tables involved, ClickHouse upgrades, settings changes, new writers, the dashboard's [panel alerts](#panel-alerts), incidents, [fixes](/docs/guide-approve-a-fix/) and notes. Each kind is read with your own access: DDL only for tables you may read, alerts with `alerting:view`, incidents and fixes with their permissions. A kind you may not read says so in the **Annotations** menu, where you can also hide kinds for this view. Click a marker for what happened.
 
 Select a range on a chart by dragging across it, or click a point, for:
@@ -143,6 +149,8 @@ It needs two approvers with `remediation:approve_high`, runs in the maintenance 
 
 ## Version history
 
+![Version history](/docs/img/app/dashboards-history.jpg "Version history: what a restore brings back, removes and changes")
+
 **More › Version history** lists the last 50 saves, with who saved them and how (in the UI, with a token, by import, restore or rollup). Pick one to see what restoring it would bring back, remove and change, including the alerts it would delete with removed panels. **Restore** saves that version as a new one, so a restore can itself be undone.
 
 ## Snapshots
@@ -158,6 +166,8 @@ Its creator, and members of the roles it names who can still view the dashboard,
 A report runs with the access of whoever last saved it, checked again on every run, on the connection it was made on, with the variables' defaults. A run that fails sends nothing and records why; every run is listed in **Admin › Alerting** with its digest. Reports need `PUBLIC_BASE_URL` (Helm `publicBaseUrl`) for their link, and cannot be saved without it. A channel a report sends to cannot be deleted.
 
 ## Import from Grafana
+
+![Grafana import preview](/docs/img/app/dashboards-grafana-import.jpg "The preview: ready, changed and skipped panels, before anything is saved")
 
 **Import** takes a Grafana dashboard JSON (schema 30 or later, as Grafana 8+ exports it) and shows what converts before anything is saved:
 
