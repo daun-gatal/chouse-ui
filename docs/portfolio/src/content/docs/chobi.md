@@ -44,6 +44,8 @@ What needs a look across **every connection you can reach**, built from data (no
 
 The chat with [CHouse Assistant](/docs/ai-chat-agents/). See [Using the chat](/docs/ai-chat/).
 
+**Memory suggestions** — when a conversation has been quiet for a while, Chobi asks once for notes worth keeping and shows up to three above the composer: **Save to me**, **Propose to team** (for knowledge about the connection; an admin reviews it) or **Dismiss**. Nothing is saved without a click. **Anything worth remembering?** asks at once. Suggestions skip what [memory](/docs/ai-memory/) already holds and anything an enforced guardrail keeps from the provider; each ask is one AI call, counted in [AI usage](/docs/ai-usage/) as *Suggest memories*.
+
 ### Activity
 
 What waits for you and what AI changed:
@@ -88,6 +90,20 @@ The context arrives as a text file with your message; a draft you are typing is 
 | **Post a summary** — an alert channel (Slack, email…), after a second click | The channel's audience (needs `alerting:edit`); audited as `alerting.channel_message` |
 | **Copy** or **Download .md** | You |
 
-## Plain mode
+## Need You alerts
 
-An administrator can show the CHouse logo instead of the character, and turn nudges off for everyone, in **AI Governance › Assistant › Chobi** (`ai_agents:manage`, audited as `chobi.settings_update`).
+Requests that wait on a person can go to team channels, so nobody has to open CHouse to notice them. In **AI Governance › Assistant › Chobi › Alerts** (`ai_agents:manage`) choose:
+
+| Setting | What it does |
+| --- | --- |
+| **Send for** | Second-approver changes (T3), background approvals (auto-triage proposals), held MCP and CLI calls |
+| **Send if still waiting after** | Only alert once a request has waited this many minutes (0 = at once) |
+| **Channels** | Where alerts go; on a [chat app](/docs/chat-apps/) channel, **Approve from chat** adds Approve and Decline |
+
+Each alert says what the request does, who asked through what, the connection and when it expires — never its raw arguments — with **Review in CHouse**. It goes to each channel once, and is edited when the request is decided, runs, fails or expires, wherever that happened. Approve and Decline run as the person who pressed them, with the same checks as [Approvals](/docs/ai-approvals/): a second-approver change can't be approved by the person who asked for it, but they can decline (withdraw) it. Who may press the buttons is set on each channel, in [Admin › Alerting](/docs/alerting/#who-can-act-from-this-channel).
+
+Alerts need `PUBLIC_BASE_URL` for the review link; without it none are sent and the settings say so. Each send is audited as `chobi.alert_sent`.
+
+## Plain mode and other settings
+
+In **AI Governance › Assistant › Chobi** (`ai_agents:manage`, audited as `chobi.settings_update`) an administrator can show the CHouse logo instead of the character, turn nudges off for everyone, turn memory suggestions off, and set up Need You alerts.

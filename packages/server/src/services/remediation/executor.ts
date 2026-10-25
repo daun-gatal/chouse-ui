@@ -29,6 +29,7 @@ import { setJobEnabled, getJob } from "../scheduledQueries/store";
 import { acquireLease } from "../observe/lease";
 import { RollupPrecondition, readRollupPrior, switchPanelToRollup } from "../dashboards/rollupAction";
 import { actionParamsSchema, buildAction, compare, quoteString, type ActionParams, type PriorState } from "./catalog";
+import { refreshRemediationMessages } from "./notify";
 import * as store from "./store";
 
 export class RemediationError extends Error {
@@ -232,6 +233,9 @@ export async function approveAction(actionId: string, actor: Actor, channel: sto
   await createAuditLog(AUDIT_ACTIONS.REMEDIATION_APPROVE, actor.id, { resourceType: "remediation_action", resourceId: actionId, details: { channel, approvals: counted.length, needed } });
   if (counted.length >= needed) {
     await store.transitionStatus(actionId, ["proposed"], "approved");
+  } else {
+    // A first of two approvals changes no status, but the messages show the count.
+    void refreshRemediationMessages(actionId);
   }
   const updated = await store.getAction(actionId);
   return { action: updated ?? action, approvalsNeeded: needed, approvalsGiven: counted.length };

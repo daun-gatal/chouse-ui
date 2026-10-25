@@ -19,6 +19,7 @@ import type { AgentRunContext } from "../types";
 import { InProcessApiClient } from "./inProcessApi";
 import { recordChouseSource } from "../usage";
 import { ACTION_STATUSES } from "../../remediation/store";
+import { ALERTING_SCHEMA, alertingRequest } from "../../alerting/toolSchema";
 import { summarizeRegistry, type RegistryPayload } from "./summary";
 import { ACTION_TOOLS } from "../actions/tools";
 import { ASSISTANT_TOOLS } from "../assistant/tools";
@@ -418,9 +419,9 @@ const managementTools: CatalogTool[] = [
   }),
   apiTool({
     name: "list_alerting", title: "Alerting", category: "operations", permissions: [PERMISSIONS.ALERTING_VIEW],
-    description: "Alert notification channels or alert rules (channel secrets redacted).",
-    schema: z.object({ kind: z.enum(["channels", "rules"]).describe("channels or rules") }),
-    request: (a) => ({ path: `/api/alerting/${a.kind === "rules" ? "rules" : "channels"}` }),
+    description: "Alerting: channels (with delivery health and what uses each; secrets redacted), fleet rules, sources (everything that sends alerts, as far as you can see), overview (what fires, sent and failed in 24h), or events (history; filter with q, source, severity, channelId, failed, from, to, and page with cursor).",
+    schema: ALERTING_SCHEMA,
+    request: (a) => alertingRequest(a),
   }),
   apiTool({
     name: "list_observe_incidents", title: "Observability incidents", category: "operations", permissions: [PERMISSIONS.OBSERVE_VIEW],

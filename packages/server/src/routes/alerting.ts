@@ -27,7 +27,15 @@ import {
 import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
-import { sendChannelMessage, sendChannelTest } from "../services/alerting/deliver";
+import { checkChannel, sendToChannel, TEST_MESSAGE, type ChannelCheck } from "../services/alerting/notify";
+import { channelHealth } from "../services/alerting/notify/log";
+import { channelUsage, emptyUsage, firingNow, waitingRequests } from "../services/alerting/usage";
+import { InProcessApiClient } from "../services/ai/registry/inProcessApi";
+import { extractTokenFromHeader } from "../rbac/services/jwt";
+import { parseServiceAccount } from "../services/alerting/notify/platforms/googleChat";
+import { channelActorsSchema } from "../services/alerting/notify/actors";
+import { registerTelegramWebhook } from "../services/alerting/notify/telegramWebhook";
+import { getRemediationNotify, remediationNotifySchema, saveRemediationNotify } from "../services/remediation/notify";
 
 const alerting = new Hono();
 
@@ -46,27 +54,97 @@ function userId(c: Context): string | undefined {
 /**
  * Validate + clean an incoming channel config for its type. On create, required
  * secrets must be present; on update a blank secret means "keep existing" and is
- * dropped here (the store merges the previous encrypted value). Returns the
- * cleaned config or throws a message for the route to surface as 400.
+ * dropped here (the store merges the previous encrypted value) — but only when
+ * the channel keeps its mode: switching mode needs the new mode's secrets.
+ * Returns the cleaned config or throws a message for the route to surface as 400.
  */
-function cleanChannelConfig(
+export function cleanChannelConfig(
   type: ChannelType,
   raw: Record<string, unknown>,
-  isCreate: boolean,
+  prev: { config: Record<string, unknown>; configured: Record<string, boolean> } | null,
+): Record<string, unknown> {
+  const config = cleanTypeConfig(type, raw, prev);
+  // Only channels that carry buttons have a "who can act from this channel" list.
+  const bot = type === ChannelType.Telegram || ((type === ChannelType.Slack || type === ChannelType.GoogleChat) && config.mode === "app");
+  if (!bot) return config;
+  // Leaving the list out keeps the stored one: an edit must never widen who can act by omission.
+  const sameMode = prev !== null && (prev.config.mode ?? "webhook") === (config.mode ?? "webhook");
+  const given = raw.actors === undefined || raw.actors === null ? (sameMode ? prev?.config.actors : undefined) : raw.actors;
+  if (given === undefined || given === null) return config;
+  const actors = channelActorsSchema.safeParse(given);
+  if (!actors.success) throw new Error(actors.error.issues[0]?.message ?? "The list of people who can act is not valid");
+  return actors.data.mode === "any" ? config : { ...config, actors: actors.data };
+}
+
+function cleanTypeConfig(
+  type: ChannelType,
+  raw: Record<string, unknown>,
+  prev: { config: Record<string, unknown>; configured: Record<string, boolean> } | null,
 ): Record<string, unknown> {
   const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const mode = raw.mode === "app" ? "app" : "webhook";
+  const prevMode = prev?.config.mode === "app" ? "app" : "webhook";
+  /** A blank secret on update keeps the stored one, if the mode did not change. */
+  const keeps = (key: string): boolean => prev !== null && prevMode === mode && prev.configured[key] === true;
+  const secret = (key: string, label: string, check?: (v: string) => string | null): Record<string, string> => {
+    const value = str(raw[key]);
+    if (!value) {
+      if (keeps(key)) return {};
+      throw new Error(`${label} is required`);
+    }
+    const problem = check?.(value);
+    if (problem) throw new Error(problem);
+    return { [key]: value };
+  };
   switch (type) {
     case ChannelType.Slack:
     case ChannelType.GoogleChat: {
-      const webhookUrl = str(raw.webhookUrl);
-      if (isCreate && !webhookUrl) throw new Error("webhookUrl is required");
-      return webhookUrl ? { webhookUrl } : {};
+      if (mode === "webhook") return secret("webhookUrl", "webhookUrl");
+      if (type === ChannelType.Slack) {
+        const channelId = str(raw.channelId);
+        if (!/^[A-Z0-9]{8,20}$/.test(channelId)) throw new Error("The Slack channel ID looks like C0123ABCD (channel details › About)");
+        return {
+          mode: "app",
+          channelId,
+          ...secret("botToken", "The bot token", (v) => (/^xox[bp]-[A-Za-z0-9-]+$/.test(v) ? null : "The bot token starts with xoxb-")),
+          ...secret("signingSecret", "The signing secret", (v) => (/^[A-Za-z0-9]{16,128}$/.test(v) ? null : "The signing secret is the hex string under Basic Information › App Credentials")),
+        };
+      }
+      const space = str(raw.space).replace(/^spaces\//, "");
+      if (!/^[A-Za-z0-9_-]{4,64}$/.test(space)) throw new Error("The space looks like spaces/AAAA… (from the space's URL)");
+      const audience = str(raw.audience);
+      if (audience && !/^\d{6,20}$/.test(audience) && !/^https:\/\/\S+$/.test(audience)) throw new Error("The audience is the Cloud project number, or the events URL");
+      return {
+        mode: "app",
+        space: `spaces/${space}`,
+        ...(audience ? { audience } : {}),
+        ...secret("serviceAccountJson", "The service account key", (v) => {
+          try {
+            parseServiceAccount(v);
+            return null;
+          } catch (err) {
+            return err instanceof Error ? err.message : "The service account key is not valid";
+          }
+        }),
+      };
+    }
+    case ChannelType.Telegram: {
+      const chatId = str(raw.chatId);
+      if (!/^-?\d{1,20}$/.test(chatId) && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(chatId)) throw new Error("The chat ID is a number like -1001234567890, or @channelname");
+      const topicRaw = raw.topicId;
+      const topicId = topicRaw === undefined || topicRaw === null || topicRaw === "" ? null : Number(topicRaw);
+      if (topicId !== null && (!Number.isInteger(topicId) || topicId <= 0)) throw new Error("The topic ID is a positive number");
+      return {
+        chatId,
+        ...(topicId ? { topicId } : {}),
+        ...secret("botToken", "The bot token", (v) => (/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(v) ? null : "The bot token looks like 123456789:AA… (from BotFather)")),
+      };
     }
     case ChannelType.Webhook: {
       const url = str(raw.url);
       if (!url) throw new Error("url is required");
-      const secret = str(raw.secret);
-      return secret ? { url, secret } : { url };
+      const secretValue = str(raw.secret);
+      return secretValue ? { url, secret: secretValue } : { url };
     }
     case ChannelType.Email: {
       const host = str(raw.host) || "smtp.gmail.com";
@@ -78,7 +156,7 @@ function cleanChannelConfig(
       const password = str(raw.password);
       if (!user) throw new Error("user is required");
       if (!to) throw new Error("to is required");
-      if (isCreate && !password) throw new Error("password is required");
+      if (prev === null && !password) throw new Error("password is required");
       const out: Record<string, unknown> = { host, port, secure, user, to, from };
       if (password) out.password = password;
       return out;
@@ -98,7 +176,7 @@ const channelBodySchema = z.object({
 // --- channels ---------------------------------------------------------------
 
 alerting.get("/channels", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
-  const channels = await store.listChannels();
+  const [channels, health, usage] = await Promise.all([store.listChannels(), channelHealth(), channelUsage()]);
   const data = channels.map((ch) => {
     const stored = JSON.parse(ch.config) as Record<string, unknown>;
     const { config, configured } = store.maskChannelConfig(ch.type, stored);
@@ -111,9 +189,29 @@ alerting.get("/channels", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c
       configured,
       createdAt: ch.createdAt,
       updatedAt: ch.updatedAt,
+      // ADR 0026: delivery health from the message log, and what sends here (counts only).
+      health: health.get(ch.id) ?? { channelId: ch.id, lastSentAt: null, lastFailedAt: null, lastError: null, sent24h: 0, failed24h: 0 },
+      usedBy: usage.get(ch.id) ?? emptyUsage(),
     };
   });
   return c.json({ success: true, data });
+});
+
+/** The Overview tab: what fires, what was sent and failed in the last day, what waits on a person. */
+alerting.get("/overview", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const [channels, health, firing, waiting] = await Promise.all([store.listChannels(), channelHealth(), firingNow(), waitingRequests()]);
+  let sent24h = 0;
+  let failed24h = 0;
+  const failing: Array<{ id: string; name: string; failed24h: number; lastError: string | null }> = [];
+  for (const ch of channels) {
+    const h = health.get(ch.id);
+    if (!h) continue;
+    sent24h += h.sent24h;
+    failed24h += h.failed24h;
+    // Failing now: its latest attempt failed.
+    if (h.failed24h > 0 && (h.lastSentAt ?? 0) < (h.lastFailedAt ?? 0)) failing.push({ id: ch.id, name: ch.name, failed24h: h.failed24h, lastError: h.lastError });
+  }
+  return c.json({ success: true, data: { firing, sent24h, failed24h, waiting, failing } });
 });
 
 alerting.post(
@@ -124,7 +222,7 @@ alerting.post(
     const body = c.req.valid("json");
     let config: Record<string, unknown>;
     try {
-      config = cleanChannelConfig(body.type, body.config, true);
+      config = cleanChannelConfig(body.type, body.config, null);
     } catch (err) {
       return c.json({ success: false, error: err instanceof Error ? err.message : "Invalid config" }, 400);
     }
@@ -132,6 +230,7 @@ alerting.post(
       { name: body.name, type: body.type, enabled: body.enabled, config },
       userId(c),
     );
+    if (body.type === ChannelType.Telegram) await registerTelegramWebhook(id);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_CREATE, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
@@ -148,9 +247,13 @@ alerting.put(
   async (c) => {
     const id = requireParam(c, "id");
     const body = c.req.valid("json");
+    const existing = await store.getChannel(id);
+    if (!existing) return c.json({ success: false, error: "Channel not found" }, 404);
     let config: Record<string, unknown>;
     try {
-      config = cleanChannelConfig(body.type, body.config, false);
+      // A type change is validated like a new channel: the old type's secrets mean nothing to the new one.
+      const prev = existing.type === body.type ? store.maskChannelConfig(existing.type, JSON.parse(existing.config) as Record<string, unknown>) : null;
+      config = cleanChannelConfig(body.type, body.config, prev);
     } catch (err) {
       return c.json({ success: false, error: err instanceof Error ? err.message : "Invalid config" }, 400);
     }
@@ -161,6 +264,7 @@ alerting.put(
       config,
     });
     if (!ok) return c.json({ success: false, error: "Channel not found" }, 404);
+    if (body.type === ChannelType.Telegram) await registerTelegramWebhook(id);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_UPDATE, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
@@ -201,17 +305,23 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
   const id = requireParam(c, "id");
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
-  const stored = JSON.parse(ch.config) as Record<string, unknown>;
-  const decrypted = store.decryptChannelConfig(ch.type, stored);
+  // A bot channel is checked first (who the bot is, that it reaches its chat), then gets the test message.
+  const checks: ChannelCheck[] = [];
   try {
-    await sendChannelTest(ch.type, decrypted);
+    checks.push(...(await checkChannel(ch)));
+    if (ch.type === ChannelType.Telegram) {
+      const registration = await registerTelegramWebhook(id);
+      checks.push({ label: registration.registered ? "Button presses reach CHouse" : `Buttons are off: ${registration.error ?? "the webhook is not registered"}`, ok: registration.registered });
+    }
+    await sendToChannel(ch, TEST_MESSAGE, { feature: "test" });
+    checks.push({ label: "Test message sent", ok: true });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_TEST, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
       status: "success",
       details: { type: ch.type },
     });
-    return c.json({ success: true });
+    return c.json({ success: true, data: { checks } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Delivery failed";
     logger.warn({ module: "Alerting", channelId: id, err: message }, "Channel test failed");
@@ -222,7 +332,7 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
       errorMessage: message,
       details: { type: ch.type },
     });
-    return c.json({ success: false, error: message }, 502);
+    return c.json({ success: false, error: message, data: { checks } }, 502);
   }
 });
 
@@ -242,11 +352,9 @@ alerting.post("/channels/:id/message", requirePermission(PERMISSIONS.ALERTING_ED
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
   if (!ch.enabled) return c.json({ success: false, error: "This channel is turned off" }, 409);
-  const stored = JSON.parse(ch.config) as Record<string, unknown>;
-  const decrypted = store.decryptChannelConfig(ch.type, stored);
   const audit = { resourceType: "notification_channel", resourceId: id, details: { type: ch.type, title, length: text.length } };
   try {
-    await sendChannelMessage(ch.type, decrypted, { title, text });
+    await sendToChannel(ch, { title, text }, { feature: "handoff" });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_MESSAGE, userId(c), { ...audit, status: "success" });
     return c.json({ success: true, data: { sent: true, channel: ch.name } });
   } catch (err) {
@@ -410,6 +518,52 @@ alerting.get(
   },
 );
 
+const searchEventsQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  source: z.string().trim().max(50).optional(),
+  severity: z.nativeEnum(AlertSeverity).optional(),
+  channelId: z.string().trim().max(100).optional(),
+  failed: z.enum(["true", "false"]).optional(),
+  from: z.coerce.number().int().nonnegative().optional(),
+  to: z.coerce.number().int().positive().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+function decodeCursor(raw: string | undefined): { firedAt: number; id: string } | undefined {
+  if (!raw) return undefined;
+  try {
+    const [firedAt, id] = Buffer.from(raw, "base64url").toString("utf8").split("|");
+    const at = Number(firedAt);
+    return Number.isFinite(at) && id ? { firedAt: at, id } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * History with search, filters and pages (ADR 0026 §7). `GET /events` keeps
+ * answering a plain list for its existing callers.
+ */
+alerting.get("/events/search", requirePermission(PERMISSIONS.ALERTING_VIEW), zValidator("query", searchEventsQuerySchema), async (c) => {
+  const query = c.req.valid("query");
+  const channel = query.channelId ? await store.getChannel(query.channelId) : null;
+  if (query.channelId && !channel) return c.json({ success: true, data: { events: [], nextCursor: null } });
+  const { events, next } = await store.searchEvents({
+    q: query.q || undefined,
+    source: query.source || undefined,
+    severity: query.severity,
+    channel: channel ? { id: channel.id, name: channel.name } : undefined,
+    failed: query.failed === undefined ? undefined : query.failed === "true",
+    from: query.from,
+    to: query.to,
+    cursor: decodeCursor(query.cursor),
+    limit: query.limit,
+  });
+  const nextCursor = next ? Buffer.from(`${next.firedAt}|${next.id}`, "utf8").toString("base64url") : null;
+  return c.json({ success: true, data: { events, nextCursor } });
+});
+
 const clearEventsQuerySchema = z.object({
   /** Clear events fired at or before this epoch-ms cutoff. Omit to clear all. */
   before: z.coerce.number().int().positive().optional(),
@@ -430,6 +584,76 @@ alerting.delete(
     return c.json({ success: true });
   },
 );
+
+// --- sources (for AI and MCP) ---------------------------------------------------
+
+type Row = Record<string, unknown>;
+const pick = (row: Row, keys: string[]): Row => Object.fromEntries(keys.filter((k) => k in row).map((k) => [k, row[k]]));
+const listOf = (value: unknown, key?: string): Row[] => {
+  const list = key && value && typeof value === "object" && !Array.isArray(value) ? (value as Row)[key] : value;
+  return Array.isArray(list) ? (list as Row[]) : [];
+};
+
+/**
+ * Everything that sends alerts, read from each feature's own list route as
+ * the caller, so the answer holds only what they can already see; a list they
+ * may not read is named in `hidden`.
+ */
+alerting.get("/sources", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const token = extractTokenFromHeader(c.req.header("Authorization"));
+  if (!token) return c.json({ success: false, error: "Sign in again" }, 401);
+  const api = new InProcessApiClient(token);
+  const hidden: string[] = [];
+  const read = async (name: string, path: string): Promise<unknown> => {
+    try {
+      return await api.get(path);
+    } catch {
+      hidden.push(name);
+      return null;
+    }
+  };
+  const [rules, panelAlerts, promises, jobs, triage, remediation] = await Promise.all([
+    read("fleet rules", "/api/alerting/rules"),
+    read("dashboard alerts", "/api/dashboards/alerts"),
+    read("Data Health", "/api/data-health"),
+    read("scheduled queries", "/api/scheduled-queries"),
+    read("auto-triage", "/api/ai-triage/rules"),
+    read("remediation", "/api/alerting/settings/remediation"),
+  ]);
+  const promiseJobs = new Set(listOf(promises, "promises").map((p) => String(p.scheduledQueryId)));
+  return c.json({ success: true, data: {
+    fleetRules: listOf(rules).map((r) => pick(r, ["id", "name", "enabled", "severity", "channelIds"])),
+    dashboardAlerts: listOf(panelAlerts).map((a) => ({ ...pick(a, ["id", "name", "dashboardId", "dashboardTitle", "enabled", "severity", "channelIds"]), state: (a.status as Row | null | undefined)?.state ?? null })),
+    dataHealth: listOf(promises, "promises").map((p) => pick(p, ["id", "name", "enabled", "status", "channelIds"])),
+    // A promise's monitor job is the promise; a job without channels alerts nobody.
+    scheduledQueries: listOf(jobs, "jobs").filter((j) => !promiseJobs.has(String(j.id)) && listOf(j.channelIds).length > 0)
+      .map((j) => ({ ...pick(j, ["id", "name", "enabled", "channelIds"]), lastRunStatus: (j.lastRun as Row | null | undefined)?.status ?? null })),
+    triage: listOf(triage, "rules").map((t) => pick(t, ["trigger", "label", "enabled", "channelIds"])),
+    remediation: remediation ? pick(remediation as Row, ["channelIds", "envSlack"]) : null,
+    hidden,
+  } });
+});
+
+// --- settings -----------------------------------------------------------------
+
+/** Where remediation approvals are posted (ADR 0026 §6), besides the Slack bot set by environment variables. */
+alerting.get("/settings/remediation", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  return c.json({ success: true, data: { ...(await getRemediationNotify()), envSlack: Boolean(process.env.SLACK_BOT_TOKEN && process.env.SLACK_SIGNING_SECRET && process.env.REMEDIATION_SLACK_CHANNEL) } });
+});
+
+alerting.put("/settings/remediation", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", remediationNotifySchema), async (c) => {
+  const body = c.req.valid("json");
+  for (const channelId of body.channelIds) {
+    if (!(await store.getChannel(channelId))) return c.json({ success: false, error: `Channel ${channelId} not found` }, 400);
+  }
+  const saved = await saveRemediationNotify(body, userId(c) ?? null);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_SETTINGS_UPDATE, userId(c), {
+    resourceType: "alerting_settings",
+    resourceId: "remediation",
+    details: { channels: saved.channelIds.length },
+  });
+  return c.json({ success: true, data: saved });
+});
 
 // --- meta -------------------------------------------------------------------
 

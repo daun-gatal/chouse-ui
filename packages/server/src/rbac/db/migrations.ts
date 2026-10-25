@@ -20,6 +20,7 @@ import { COLLECTOR_LOAD_MIGRATIONS } from './collectorLoadMigrations';
 import { AI_REGISTRY_MIGRATIONS } from './aiRegistryMigrations';
 import { AI_PLATFORM_MIGRATIONS } from './aiPlatformMigrations';
 import { AI_ASSISTANT_MIGRATIONS } from './aiAssistantMigrations';
+import { NOTIFY_MIGRATIONS } from './notifyMigrations';
 import { AI_USAGE_MIGRATIONS } from './aiUsageMigrations';
 import { DASHBOARDS_MIGRATIONS } from './dashboardsMigrations';
 import { DASHBOARDS_V2_MIGRATIONS } from './dashboardsV2Migrations';
@@ -54,7 +55,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.73.0';
+export const APP_VERSION = '1.74.0';
 
 // ============================================
 // Error Helpers
@@ -4743,6 +4744,7 @@ export const MIGRATIONS: Migration[] = [
   ...DASHBOARDS_V2_MIGRATIONS,
   ...AI_PLATFORM_MIGRATIONS,
   ...AI_ASSISTANT_MIGRATIONS,
+  ...NOTIFY_MIGRATIONS,
 ];
 
 // ============================================

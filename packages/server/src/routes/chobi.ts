@@ -2,7 +2,7 @@
  * /api/chobi — Chobi, the CHouse buddy (ADR 0025 §6).
  *
  *   GET /briefing   the Now tab: what needs a look across the viewer's connections (ai:chat)
- *   GET /settings   plain mode and nudges for the organization (ai:chat)
+ *   GET /settings   plain mode, nudges and Need You alerts for the organization (ai:chat)
  *   PUT /settings   change them (ai_agents:manage, audited)
  */
 
@@ -16,6 +16,8 @@ import { extractTokenFromHeader } from "../rbac/services/jwt";
 import { buildBriefing, type Briefing } from "../services/chobi/briefing";
 import { chobiSettingsUpdateSchema, getChobiSettings, saveChobiSettings, type StoredChobiSettings } from "../services/chobi/settings";
 import { InProcessApiClient } from "../services/ai/registry/inProcessApi";
+import { getChannel } from "../services/alerting/store";
+import { publicBaseUrl } from "../services/alerting/notify/links";
 import { AppError } from "../types";
 
 const chobi = new Hono();
@@ -40,8 +42,8 @@ export function resetBriefingCache(): void {
   briefings.clear();
 }
 
-function settingsView(settings: StoredChobiSettings): Pick<StoredChobiSettings, "plainMode" | "nudges" | "updatedAt"> {
-  return { plainMode: settings.plainMode, nudges: settings.nudges, updatedAt: settings.updatedAt };
+function settingsView(settings: StoredChobiSettings): Pick<StoredChobiSettings, "plainMode" | "nudges" | "alerts" | "memorySuggestions" | "updatedAt"> & { publicBaseUrl: boolean } {
+  return { plainMode: settings.plainMode, nudges: settings.nudges, alerts: settings.alerts, memorySuggestions: settings.memorySuggestions, updatedAt: settings.updatedAt, publicBaseUrl: publicBaseUrl() !== null };
 }
 
 chobi.get("/briefing", requirePermission(PERMISSIONS.AI_CHAT), async (c) => {
@@ -72,6 +74,12 @@ chobi.get("/settings", requirePermission(PERMISSIONS.AI_CHAT), async (c) => {
 chobi.put("/settings", requirePermission(PERMISSIONS.AI_AGENTS_MANAGE), zValidator("json", chobiSettingsUpdateSchema), async (c) => {
   const update = c.req.valid("json");
   const user = getRbacUser(c);
+  for (const target of update.alerts?.channels ?? []) {
+    if (!(await getChannel(target.channelId))) throw AppError.badRequest(`Channel ${target.channelId} not found`);
+  }
+  if (update.alerts && new Set(update.alerts.channels.map((t) => t.channelId)).size !== update.alerts.channels.length) {
+    throw AppError.badRequest("A channel is listed twice");
+  }
   const saved = await saveChobiSettings(update, user.sub);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.CHOBI_SETTINGS_UPDATE, user.sub, {
     resourceType: "chobi_settings",

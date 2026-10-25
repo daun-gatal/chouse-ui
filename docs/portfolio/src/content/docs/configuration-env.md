@@ -119,7 +119,7 @@ Every setting the server reads, with its default. Set them as environment variab
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DOCTOR_SCHEDULE_FILE` | `/app/data/doctor-schedule.json` | Legacy doctor schedule file, imported into the database on upgrade. YAML: `doctor.schedule_file`. |
-| `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` | `60` | Minimum minutes between automatic root-cause runs for one server after an alert. YAML: `doctor.auto_rca_cooldown_minutes`. |
+| `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` | `15` | Minimum minutes between automatic root-cause runs for one server after an alert. YAML: `doctor.auto_rca_cooldown_minutes`. |
 
 ## Scheduled queries & HA
 

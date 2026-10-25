@@ -7,6 +7,7 @@
  *   GET    /team               team memories of the connections you can reach (all of them with ai_memories:manage)
  *   GET    /for-table          team memories that name one table (shown with its context)
  *   GET    /pending-count      team proposals waiting for review (ai_memories:manage)
+ *   POST   /suggest            notes worth keeping from one of your conversations (never saves)
  *   POST   /                   add a memory (user: saved; connection: proposed, or saved by a manager)
  *   PUT    /:id                edit (yours; team ones with ai_memories:manage, or your own proposal)
  *   DELETE /:id                delete (same rule)
@@ -36,12 +37,16 @@ import {
   listUserMemories,
   MEMORY_MAX_CHARS,
   memoryEnabled,
+  normalizeNote,
   pendingMemoryCount,
   setMemoryEnabled,
   updateMemoryContent,
   type AiMemory,
 } from "../services/ai/memory/store";
 import { all, sql, str } from "../services/observe/db";
+import { getMessages, getThread } from "../services/chatHistory";
+import { getChobiSettings } from "../services/chobi/settings";
+import { MAX_SUGGESTIONS, suggestMemoriesCapability } from "../services/ai/capabilities/memories";
 import { AppError, requireParam } from "../types";
 
 const aiMemories = new Hono();
@@ -178,6 +183,70 @@ const createBody = z.object({
   scope: z.enum(["user", "connection"]),
   content: z.string().trim().min(3).max(MEMORY_MAX_CHARS),
   connectionId: z.string().min(1).optional(),
+});
+
+// --- suggestions (ADR 0026 §9) ------------------------------------------------
+
+/** How much of a conversation one suggestion call reads. */
+const SUGGEST_TURNS = 20;
+const SUGGEST_TURN_CHARS = 1_500;
+/** The same thread at the same length gets the same answer, without another model call. */
+const SUGGEST_CACHE_MS = 10 * 60_000;
+const suggestCache = new Map<string, { at: number; value: Array<{ note: string; scope: "user" | "connection" }> }>();
+
+export function resetSuggestCache(): void {
+  suggestCache.clear();
+}
+
+/**
+ * POST /suggest — notes worth keeping from one of your conversations, for you
+ * to save or dismiss. Never saves anything. Suggestions that match an enforced
+ * guardrail, or that memory already holds, are left out.
+ */
+aiMemories.post("/suggest", zValidator("json", z.object({ threadId: z.string().min(1).max(100) })), async (c) => {
+  const user = getRbacUser(c);
+  const { threadId } = c.req.valid("json");
+  if (!(await getChobiSettings()).memorySuggestions) return ok(c, { suggestions: [], off: true });
+  const thread = await getThread(threadId, user.sub);
+  if (!thread) throw AppError.notFound("Thread not found");
+  const messages = (await getMessages(threadId)).filter((m) => m.content.trim().length > 0);
+  if (!messages.some((m) => m.role === "user") || !messages.some((m) => m.role === "assistant")) return ok(c, { suggestions: [] });
+  const userMemory = await memoryEnabled(user.sub);
+  const connectionId = thread.connectionId;
+  if (connectionId) await assertConnection(c, connectionId);
+  const mine = userMemory ? await listUserMemories(user.sub) : [];
+  const team = connectionId ? (await listConnectionMemories({ connectionId })).filter((m) => m.status !== "rejected") : [];
+
+  // The model's answer is cached per thread length; what memory holds is checked on every ask.
+  const key = `${user.sub}|${threadId}|${messages.length}`;
+  let raw = suggestCache.get(key);
+  if (!raw || raw.at <= Date.now() - SUGGEST_CACHE_MS) {
+    // The AI engine loads on first use: the rest of this router never needs it.
+    const [{ isAIEnabled }, { runStructuredCapability }] = await Promise.all([import("../services/aiConfig"), import("../services/ai/engine")]);
+    if (!(await isAIEnabled().catch(() => false))) return ok(c, { suggestions: [] });
+    const permissions: string[] = c.get("rbacPermissions") ?? [];
+    const result = await runStructuredCapability(suggestMemoriesCapability, {
+      turns: messages.slice(-SUGGEST_TURNS).map((m) => ({ role: m.role, text: m.content.slice(0, SUGGEST_TURN_CHARS) })),
+      existing: { user: mine.map((m) => m.content), team: team.map((m) => m.content) },
+      userMemory,
+    }, { userId: user.sub, isAdmin: isSuperAdmin(c), permissions, connectionId: connectionId ?? undefined, threadId });
+    raw = { at: Date.now(), value: result.suggestions };
+    suggestCache.set(key, raw);
+  }
+
+  const known = new Set([...mine, ...team].map((m) => normalizeNote(m.content).toLowerCase()));
+  const suggestions: Array<{ note: string; scope: "user" | "connection" }> = [];
+  for (const s of raw.value) {
+    const note = normalizeNote(s.note);
+    const id = note.toLowerCase();
+    if (known.has(id) || suggestions.some((x) => x.note.toLowerCase() === id)) continue;
+    if (s.scope === "user" && !userMemory) continue;
+    if (s.scope === "connection" && !connectionId) continue;
+    // Whatever a guardrail keeps from the provider is never offered for keeping.
+    if ((await screenNote(note)).length > 0) continue;
+    suggestions.push({ note, scope: s.scope });
+  }
+  return ok(c, { suggestions: suggestions.slice(0, MAX_SUGGESTIONS), connectionId });
 });
 
 aiMemories.post("/", zValidator("json", createBody), async (c) => {

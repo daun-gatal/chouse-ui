@@ -46,7 +46,14 @@ export const CONFIG_SECTIONS = [
  * Variables the server reads that are not user configuration: test
  * harnesses and values the runtime sets for the process.
  */
-export const IGNORED_ENV = new Set(["DOCKER_HOST", "MIGRATION_TEST_PG_HOST", "MIGRATION_TEST_PG_PORT"]);
+export const IGNORED_ENV = new Set([
+  "DOCKER_HOST",
+  "MIGRATION_TEST_PG_HOST",
+  "MIGRATION_TEST_PG_PORT",
+  // The e2e suite's fake chat platforms (ADR 0026): never set in a deployment.
+  "CHOUSE_ALLOW_TEST_OVERRIDES",
+  "CHOUSE_INTEGRATIONS_TEST_HOSTS",
+]);
 
 export const CONFIG_KEYS: ConfigKey[] = [
   // Core server
@@ -124,7 +131,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
 
   // Doctor
   { name: "DOCTOR_SCHEDULE_FILE", section: "Doctor", default: "/app/data/doctor-schedule.json", description: "Legacy doctor schedule file, imported into the database on upgrade." },
-  { name: "DOCTOR_AUTO_RCA_COOLDOWN_MINUTES", section: "Doctor", default: "60", description: "Minimum minutes between automatic root-cause runs for one server after an alert." },
+  { name: "DOCTOR_AUTO_RCA_COOLDOWN_MINUTES", section: "Doctor", default: "15", description: "Minimum minutes between automatic root-cause runs for one server after an alert." },
 
   // Scheduler / HA
   { name: "SCHEDULED_QUERIES_ENABLED", section: "Scheduled queries & HA", default: "true", description: "`false` stops this pod from running scheduled queries (for a dedicated scheduler deployment). Job leases make running it on every pod safe." },

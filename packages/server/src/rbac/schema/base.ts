@@ -598,6 +598,10 @@ export const AUDIT_ACTIONS = {
   ALERTING_CHANNEL_TEST: 'alerting.channel_test',
   ALERTING_CHANNEL_MESSAGE: 'alerting.channel_message',
   ALERTING_EVENTS_CLEAR: 'alerting.events_clear',
+  ALERTING_CHAT_ACTION: 'alerting.chat_action',
+  ALERTING_SETTINGS_UPDATE: 'alerting.settings_update',
+  CHAT_IDENTITY_LINK: 'chat_identity.link',
+  CHAT_IDENTITY_UNLINK: 'chat_identity.unlink',
 
   // Scheduled Queries (DataOps)
   SCHEDULED_QUERY_CREATE: 'scheduled_query.create',
@@ -641,6 +645,7 @@ export const AUDIT_ACTIONS = {
   AGENT_ACCESS_PAUSE: 'agent.access_pause',
   AGENT_MCP_UPDATE: 'agent.mcp_update',
   CHOBI_SETTINGS_UPDATE: 'chobi.settings_update',
+  CHOBI_ALERT_SENT: 'chobi.alert_sent',
 
   // AI agent registry (ADR 0019)
   AI_AGENT_CREATE: 'ai_agent.create',

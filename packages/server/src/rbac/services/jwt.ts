@@ -84,13 +84,13 @@ export interface DecodedToken {
 /**
  * Generate an access token
  */
-export async function generateAccessToken(payload: Omit<TokenPayload, 'type' | 'iat' | 'exp' | 'iss' | 'aud'>): Promise<string> {
+export async function generateAccessToken(payload: Omit<TokenPayload, 'type' | 'iat' | 'exp' | 'iss' | 'aud'>, expiry: string = ACCESS_TOKEN_EXPIRY): Promise<string> {
   const token = await new SignJWT({ ...payload, type: 'access' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
-    .setExpirationTime(ACCESS_TOKEN_EXPIRY)
+    .setExpirationTime(expiry)
     .sign(JWT_SECRET);
 
   return token;

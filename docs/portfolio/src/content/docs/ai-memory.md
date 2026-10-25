@@ -11,6 +11,8 @@ Agents with memory turned on remember short notes between conversations: your ow
 
 When you state a lasting preference or fact — *show timestamps in UTC*, *I own the billing tables* — the agent saves it with its `remember` tool, and the reply says **Saved to your memory** with **Undo**. Every later conversation with an agent that has memory turned on sees your notes as background, never as instructions: what you ask now always wins.
 
+After a conversation in [Chobi](/docs/chobi/#chat), Chobi may also **suggest** notes worth keeping; they are saved only when you pick **Save to me** or **Propose to team**.
+
 On the Memories tab you can add, edit and delete your notes, **Export** them as JSON, and turn **Memory** off. With memory off, agents neither read nor keep notes about you; your notes stay until you delete them. Only you see your memories. They're deleted with your user.
 
 ## Team memories

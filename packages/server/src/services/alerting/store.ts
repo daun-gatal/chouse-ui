@@ -55,17 +55,26 @@ const bool = (v: unknown): boolean => Number(v) === 1;
 
 // --- secret-field handling --------------------------------------------------
 
-/** JSON keys whose values are secrets (encrypted at rest) per channel type. */
+/** JSON keys whose values are secrets (encrypted at rest) per channel type, in any mode. */
 const SECRET_KEYS: Record<ChannelType, string[]> = {
-  [ChannelType.Slack]: ["webhookUrl"],
-  [ChannelType.GoogleChat]: ["webhookUrl"],
+  [ChannelType.Slack]: ["webhookUrl", "botToken", "signingSecret"],
+  [ChannelType.GoogleChat]: ["webhookUrl", "serviceAccountJson"],
   [ChannelType.Webhook]: ["secret"],
   [ChannelType.Email]: ["password"],
+  [ChannelType.Telegram]: ["botToken"],
 };
+
+/** The secrets a channel uses in its mode: the other mode's secrets are dropped on save. */
+export function secretKeysForMode(type: ChannelType, config: Record<string, unknown>): string[] {
+  if (type === ChannelType.Slack) return config.mode === "app" ? ["botToken", "signingSecret"] : ["webhookUrl"];
+  if (type === ChannelType.GoogleChat) return config.mode === "app" ? ["serviceAccountJson"] : ["webhookUrl"];
+  return SECRET_KEYS[type];
+}
 
 /**
  * Encrypt the secret fields of an incoming (plaintext) channel config. A blank
  * secret means "keep existing", so it's dropped here and merged from `prev`.
+ * Secrets the channel's mode does not use are dropped.
  */
 function encryptChannelConfig(
   type: ChannelType,
@@ -73,9 +82,12 @@ function encryptChannelConfig(
   prev?: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...incoming };
+  const used = new Set(secretKeysForMode(type, incoming));
   for (const key of SECRET_KEYS[type]) {
     const val = incoming[key];
-    if (typeof val === "string" && val.length > 0) {
+    if (!used.has(key)) {
+      delete out[key];
+    } else if (typeof val === "string" && val.length > 0) {
       out[key] = encryptSecret(val);
     } else if (prev && typeof prev[key] === "string") {
       out[key] = prev[key]; // keep existing encrypted secret
@@ -215,6 +227,17 @@ export async function upsertChannel(id: string, input: ChannelInput): Promise<vo
   `);
 }
 
+/** Merge non-secret settings into a channel's stored config (e.g. a bot's registration state). */
+export async function patchChannelConfig(id: string, patch: Record<string, unknown>): Promise<void> {
+  const existing = await getChannel(id);
+  if (!existing) return;
+  const merged = { ...(JSON.parse(existing.config) as Record<string, unknown>), ...patch };
+  for (const key of SECRET_KEYS[existing.type]) {
+    if (key in patch) throw new Error(`patchChannelConfig cannot change the secret ${key}`);
+  }
+  await run(sql`UPDATE notification_channels SET config = ${JSON.stringify(merged)}, updated_at = ${Date.now()} WHERE id = ${id}`);
+}
+
 export async function setChannelEnabled(id: string, enabled: boolean): Promise<void> {
   await run(sql`UPDATE notification_channels SET enabled = ${enabled ? 1 : 0}, updated_at = ${Date.now()} WHERE id = ${id}`);
 }
@@ -338,21 +361,6 @@ export async function setRuleChannels(ruleId: string, channelIds: string[]): Pro
   }
 }
 
-/** Channels linked to a rule, with secrets decrypted (for delivery). */
-export async function getRuleChannelsDecrypted(
-  ruleId: string,
-): Promise<Array<{ row: NotificationChannelRow; config: Record<string, unknown> }>> {
-  const ids = await getRuleChannelIds(ruleId);
-  const out: Array<{ row: NotificationChannelRow; config: Record<string, unknown> }> = [];
-  for (const id of ids) {
-    const row = await getChannel(id);
-    if (!row || !row.enabled) continue;
-    const stored = JSON.parse(row.config) as Record<string, unknown>;
-    out.push({ row, config: decryptChannelConfig(row.type, stored) });
-  }
-  return out;
-}
-
 // --- events -----------------------------------------------------------------
 
 export interface AlertEventInput {
@@ -360,13 +368,20 @@ export interface AlertEventInput {
   severity: AlertSeverity;
   payload: string;
   deliveredTo: string[];
+  /** Which feature fired it (ADR 0026): what Admin › Alerting filters history by. */
+  source?: string;
+  /** Ids of the channels it reached. */
+  channelIds?: string[];
+  /** Whether any channel failed to receive it. */
+  deliveryFailed?: boolean;
 }
 
 export async function recordEvent(input: AlertEventInput): Promise<void> {
   const id = randomUUID();
   await run(sql`
-    INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to, resolved_at)
-    VALUES (${id}, ${input.ruleId}, ${input.severity}, ${Date.now()}, ${input.payload}, ${JSON.stringify(input.deliveredTo)}, NULL)
+    INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to, resolved_at, source, channel_ids, delivery_failed)
+    VALUES (${id}, ${input.ruleId}, ${input.severity}, ${Date.now()}, ${input.payload}, ${JSON.stringify(input.deliveredTo)}, NULL,
+      ${input.source ?? "other"}, ${input.channelIds ? JSON.stringify(input.channelIds) : null}, ${input.deliveryFailed ? 1 : 0})
   `);
 }
 
@@ -378,6 +393,34 @@ export interface AlertEvent {
   payload: string | null;
   deliveredTo: string[];
   resolvedAt: number | null;
+  /** Which feature fired it (ADR 0026). */
+  source: string;
+  channelIds: string[];
+  deliveryFailed: boolean;
+}
+
+function jsonList(raw: unknown): string[] {
+  try {
+    const parsed: unknown = JSON.parse(String(raw ?? "[]"));
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toEvent(r: Record<string, unknown>): AlertEvent {
+  return {
+    id: String(r.id),
+    ruleId: r.rule_id == null ? null : String(r.rule_id),
+    severity: String(r.severity),
+    firedAt: Number(r.fired_at ?? 0),
+    payload: r.payload == null ? null : String(r.payload),
+    deliveredTo: jsonList(r.delivered_to),
+    resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    source: r.source == null ? "other" : String(r.source),
+    channelIds: jsonList(r.channel_ids),
+    deliveryFailed: Number(r.delivery_failed ?? 0) === 1,
+  };
 }
 
 /**
@@ -395,22 +438,46 @@ export async function clearEvents(before?: number): Promise<void> {
 
 export async function listEvents(limit = 50): Promise<AlertEvent[]> {
   const rows = await all(sql`SELECT * FROM alert_events ORDER BY fired_at DESC LIMIT ${limit}`);
-  return rows.map((r) => {
-    let deliveredTo: string[] = [];
-    try {
-      const parsed = JSON.parse(String(r.delivered_to ?? "[]"));
-      if (Array.isArray(parsed)) deliveredTo = parsed.map(String);
-    } catch {
-      deliveredTo = [];
-    }
-    return {
-      id: String(r.id),
-      ruleId: r.rule_id == null ? null : String(r.rule_id),
-      severity: String(r.severity),
-      firedAt: Number(r.fired_at ?? 0),
-      payload: r.payload == null ? null : String(r.payload),
-      deliveredTo,
-      resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
-    };
-  });
+  return rows.map(toEvent);
+}
+
+export interface EventSearch {
+  /** Words in the alert's title or text. */
+  q?: string;
+  source?: string;
+  severity?: string;
+  /** Reached (or was meant to reach) this channel. */
+  channel?: { id: string; name: string };
+  /** true: some channel failed; false: every channel got it. */
+  failed?: boolean;
+  from?: number;
+  to?: number;
+  /** Where the previous page ended. */
+  cursor?: { firedAt: number; id: string };
+  limit: number;
+}
+
+/** `%`, `_` and `\` in a search term match themselves, not wildcards. */
+function likeTerm(value: string): string {
+  return `%${value.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+}
+
+/** One page of history, newest first, and where the next page starts (null at the end). */
+export async function searchEvents(search: EventSearch): Promise<{ events: AlertEvent[]; next: { firedAt: number; id: string } | null }> {
+  const where = [sql`1 = 1`];
+  if (search.q) where.push(sql`LOWER(COALESCE(payload, '')) LIKE ${likeTerm(search.q.toLowerCase())} ESCAPE '\\'`);
+  if (search.source) where.push(sql`source = ${search.source}`);
+  if (search.severity) where.push(sql`severity = ${search.severity}`);
+  if (search.channel) {
+    // Events before 1.74.0 name their channels; later ones keep their ids.
+    where.push(sql`(channel_ids LIKE ${likeTerm(JSON.stringify(search.channel.id))} ESCAPE '\\' OR delivered_to LIKE ${likeTerm(JSON.stringify(search.channel.name))} ESCAPE '\\')`);
+  }
+  if (search.failed !== undefined) where.push(sql`delivery_failed = ${search.failed ? 1 : 0}`);
+  if (search.from !== undefined) where.push(sql`fired_at >= ${search.from}`);
+  if (search.to !== undefined) where.push(sql`fired_at < ${search.to}`);
+  if (search.cursor) where.push(sql`(fired_at < ${search.cursor.firedAt} OR (fired_at = ${search.cursor.firedAt} AND id < ${search.cursor.id}))`);
+  const rows = await all(sql`SELECT * FROM alert_events WHERE ${sql.join(where, sql` AND `)} ORDER BY fired_at DESC, id DESC LIMIT ${search.limit + 1}`);
+  const events = rows.slice(0, search.limit).map(toEvent);
+  const last = events[events.length - 1];
+  return { events, next: rows.length > search.limit && last ? { firedAt: last.firedAt, id: last.id } : null };
 }

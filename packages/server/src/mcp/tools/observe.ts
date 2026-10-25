@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
 import { runApiTool, toolContext, argString, argNumber, argEnum, registerChouseTool, type McpToolSink } from "./helpers";
+import { ALERTING_KINDS, ALERTING_SCHEMA, alertingRequest } from "../../services/alerting/toolSchema";
 
 // Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
 const getJobSchema: Record<string, z.ZodTypeAny> = {
@@ -17,9 +18,8 @@ const getHealthSchema: Record<string, z.ZodTypeAny> = {
   id: z.string().min(1).describe("Data-health check id"),
 };
 
-const listAlertsSchema: Record<string, z.ZodTypeAny> = {
-  kind: z.enum(["channels", "rules", "events"]).describe("Which alerting object to list"),
-};
+/** The same kinds and history filters as the assistant's list_alerting (ADR 0026 §8). */
+const listAlertsSchema: Record<string, z.ZodTypeAny> = ALERTING_SCHEMA.shape;
 
 const auditListSchema: Record<string, z.ZodTypeAny> = {
   limit: z.number().int().min(1).max(100).default(20).describe("Entries to return"),
@@ -175,18 +175,21 @@ export function registerObserveTools(sink: McpToolSink, deps: McpDeps): void {
     category: "monitoring",
     access: "read",
     permissions: [PERMISSIONS.ALERTING_VIEW],
-    description: "List alerting configuration and events: channels, rules, or events.",
+    description: "List alerting: channels (with delivery health and what uses each; secrets redacted), rules, sources (everything that sends alerts, as far as you can see), overview, or events (history; filter with q, source, severity, channelId, failed, from, to, and page with cursor; without filters it is the newest events).",
     inputSchema: listAlertsSchema,
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const kind = argEnum(args, "kind", ["channels", "rules", "events"]);
+      const kind = argEnum(args, "kind", [...ALERTING_KINDS]);
       if (!kind) {
         return runApiTool(ctx, deps.clientFor(ctx), "list_alerts", undefined, async () => {
-          throw new Error("kind must be one of: channels, rules, events");
+          throw new Error(`kind must be one of: ${ALERTING_KINDS.join(", ")}`);
         });
       }
+      const filtered = ["q", "source", "severity", "channelId", "failed", "from", "to", "cursor", "limit"].some((key) => args[key] !== undefined);
+      // events without filters keep answering the plain newest-first list it always did.
+      const { path, query } = kind === "events" && !filtered ? { path: "/api/alerting/events", query: undefined } : alertingRequest({ ...args, kind });
       return runApiTool(ctx, deps.clientFor(ctx), "list_alerts", kind, () =>
-        deps.clientFor(ctx).request("GET", `/api/alerting/${kind}`)
+        deps.clientFor(ctx).request("GET", path, query ? { query: Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined)) as Record<string, string> } : undefined)
       );
     },
   });

@@ -22,7 +22,7 @@ export const ACTION_STATUSES = [
 ] as const;
 export type ActionStatus = (typeof ACTION_STATUSES)[number];
 export type ProposedSource = "user" | "ai" | "mcp" | "doctor";
-export type ApprovalChannel = "ui" | "slack" | "cli";
+export type ApprovalChannel = "ui" | "slack" | "cli" | "google_chat" | "telegram";
 
 export interface StoredActionParams {
   params: ActionParams;
@@ -178,6 +178,8 @@ export async function transitionStatus(id: string, from: ActionStatus[], to: Act
     WHERE id = ${id} AND status IN (${sql.join(from.map((s) => sql`${s}`), sql`, `)})
     RETURNING id
   `);
+  // Every status change shows in the approval's chat messages (ADR 0026), whoever made it.
+  if (rows.length > 0) void import("./notify").then((m) => m.refreshRemediationMessages(id));
   return rows.length > 0;
 }
 

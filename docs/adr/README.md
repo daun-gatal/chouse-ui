@@ -50,6 +50,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0023](0023-dashboards-v2.md) | Dashboards v2: Canvas, Intent-Based AI Layout, Context, Baselines and Production Features | Proposed |
 | [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Accepted |
 | [0025](0025-ai-write-tiers-assistant-v3-chobi.md) | AI Write Tiers, CHouse Assistant v3 and Chobi | Accepted |
+| [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
 
 ## Conventions
 

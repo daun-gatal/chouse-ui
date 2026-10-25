@@ -20,6 +20,7 @@ import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { ACTION_TYPES, CONTEXT_ONLY_TYPES, REQUIRED_GRANTS, actionParamsSchema, buildAction } from "../services/remediation/catalog";
 import { approveAction, executeAction, proposeAction, rejectAction, rollbackAction, RemediationError } from "../services/remediation/executor";
 import { postApprovalRequest } from "../services/remediation/slack";
+import { notifyProposed } from "../services/remediation/notify";
 import * as store from "../services/remediation/store";
 import { AppError, requireParam } from "../types";
 import { actor, assertConnectionAccess, tableAccess } from "./observe/access";
@@ -125,15 +126,24 @@ remediation.post("/actions", requirePermission(PERMISSIONS.REMEDIATION_PROPOSE),
     toAppError(error);
   }
   void postApprovalRequest(action);
+  void notifyProposed(action);
   return ok(c, action, 201);
 });
 
 const decisionSchema = z.object({ comment: z.string().trim().max(2000).nullish() });
 
+/** Where a decision was made: a chat app's button (ADR 0026), the CLI, or the UI. */
+function approvalChannel(c: Context): store.ApprovalChannel {
+  const session = getRbacUser(c).sessionId ?? "";
+  const chat = /^chat:(slack|google_chat|telegram):/.exec(session)?.[1];
+  if (chat === "slack" || chat === "google_chat" || chat === "telegram") return chat;
+  return c.get("authMethod") === "pat" ? "cli" : "ui";
+}
+
 remediation.post("/actions/:id/approve", requireAnyPermission(APPROVERS), zValidator("json", decisionSchema), async (c) => {
   const action = await guardAction(c, requireParam(c, "id"));
   try {
-    const channel = c.get("authMethod") === "pat" ? "cli" : "ui";
+    const channel = approvalChannel(c);
     return ok(c, await approveAction(action.id, actor(c), channel, c.req.valid("json").comment ?? null));
   } catch (error) {
     toAppError(error);
@@ -143,7 +153,7 @@ remediation.post("/actions/:id/approve", requireAnyPermission(APPROVERS), zValid
 remediation.post("/actions/:id/reject", requireAnyPermission([...APPROVERS, PERMISSIONS.REMEDIATION_PROPOSE]), zValidator("json", decisionSchema), async (c) => {
   const action = await guardAction(c, requireParam(c, "id"));
   try {
-    const channel = c.get("authMethod") === "pat" ? "cli" : "ui";
+    const channel = approvalChannel(c);
     return ok(c, await rejectAction(action.id, actor(c), channel, c.req.valid("json").comment ?? null));
   } catch (error) {
     toAppError(error);

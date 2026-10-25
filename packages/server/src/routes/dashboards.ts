@@ -67,6 +67,7 @@ import { convertGrafana } from "../services/dashboards/grafana";
 import { analyzeRollup, readsRollup, rollupTarget } from "../services/dashboards/rollup";
 import { proposeAction, RemediationError } from "../services/remediation/executor";
 import { postApprovalRequest } from "../services/remediation/slack";
+import { notifyProposed } from "../services/remediation/notify";
 import { reportRangeSchema, reportScheduleSchema } from "../services/dashboards/reportDigest";
 import * as reports from "../services/dashboards/reports";
 import * as snapshots from "../services/dashboards/snapshots";
@@ -546,6 +547,7 @@ dashboards.post("/:id/panels/:panelId/rollup", requirePermission(PERMISSIONS.REM
     throw error;
   }
   void postApprovalRequest(action);
+  void notifyProposed(action);
   return ok(c, action, 201);
 });
 

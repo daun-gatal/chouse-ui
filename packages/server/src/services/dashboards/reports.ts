@@ -19,9 +19,10 @@ import { hostname } from "os";
 
 import { sql } from "drizzle-orm";
 
-import { decryptChannelConfig, getChannel, recordEvent } from "../alerting/store";
-import { sendChannelMessage } from "../alerting/deliver";
+import { recordEvent } from "../alerting/store";
 import { AlertSeverity } from "../alerting/types";
+import { notifyChannelIds } from "../alerting/notify";
+import { publicBaseUrl } from "../alerting/notify/links";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { getUserById } from "../../rbac/services/rbac";
 import { logger } from "../../utils/logger";
@@ -65,11 +66,7 @@ export interface Report extends ReportInput {
   updatedAt: number;
 }
 
-/** The public origin links are built on, without a trailing slash; null when unset. */
-export function publicBaseUrl(): string | null {
-  const raw = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, "");
-  return raw ? raw : null;
-}
+export { publicBaseUrl };
 
 function statusOf(value: unknown): ReportStatus | null {
   return value === "sent" || value === "skipped" || value === "failed" ? value : null;
@@ -249,21 +246,13 @@ async function compose(report: Report, nowMs: number): Promise<{ title: string; 
   return buildDigest({ reportName: report.name, dashboardTitle: detail.dashboard.title, from: window.from, to: window.to, timezone: report.schedule.timezone, panels, firedAlerts: fired, link });
 }
 
-async function send(channelIds: string[], message: { title: string; text: string }): Promise<{ deliveredTo: string[]; failed: RunOutcome["failed"] }> {
-  const deliveredTo: string[] = [];
-  const failed: RunOutcome["failed"] = [];
-  for (const channelId of channelIds) {
-    const row = await getChannel(channelId);
-    if (!row) { failed.push({ channelId, error: `${channelId}: channel no longer exists` }); continue; }
-    if (!row.enabled) { failed.push({ channelId, error: `${row.name}: channel is disabled` }); continue; }
-    try {
-      await sendChannelMessage(row.type, decryptChannelConfig(row.type, JSON.parse(row.config) as Record<string, unknown>), message);
-      deliveredTo.push(row.name);
-    } catch (error) {
-      failed.push({ channelId, error: `${row.name}: ${error instanceof Error ? error.message : String(error)}` });
-    }
-  }
-  return { deliveredTo, failed };
+async function send(report: Report, nowMs: number, message: { title: string; text: string }): Promise<{ deliveredTo: string[]; channelIds: string[]; failed: RunOutcome["failed"] }> {
+  const result = await notifyChannelIds(report.channelIds, message, { feature: "dashboard_report", subjectId: report.id, kind: `run:${nowMs}` });
+  return {
+    deliveredTo: result.deliveredTo,
+    channelIds: result.channelIds,
+    failed: result.failed.map((f) => ({ channelId: f.channelId, error: f.name ? `${f.name}: ${f.error}` : `${f.channelId}: ${f.error}` })),
+  };
 }
 
 /**
@@ -273,15 +262,17 @@ async function send(channelIds: string[], message: { title: string; text: string
  */
 export async function runReport(report: Report, nowMs: number = Date.now(), advance = true): Promise<RunOutcome> {
   let outcome: RunOutcome;
+  let sentTo: string[] = [];
   try {
     const composed = await compose(report, nowMs);
     if ("skipped" in composed) {
       outcome = { status: "skipped", error: composed.skipped, title: null, text: null, deliveredTo: [], failed: [] };
     } else {
-      const { deliveredTo, failed } = await send(report.channelIds, composed);
+      const { deliveredTo, channelIds, failed } = await send(report, nowMs, composed);
       const status: ReportStatus = deliveredTo.length > 0 ? "sent" : "failed";
       const error = failed.length > 0 ? failed.map((f) => f.error).join("; ") : null;
       outcome = { status, error, title: composed.title, text: composed.text, deliveredTo, failed };
+      sentTo = channelIds;
     }
   } catch (error) {
     outcome = { status: "failed", error: error instanceof Error ? error.message : String(error), title: null, text: null, deliveredTo: [], failed: [] };
@@ -300,6 +291,9 @@ export async function runReport(report: Report, nowMs: number = Date.now(), adva
       failed: outcome.failed,
     }),
     deliveredTo: outcome.deliveredTo,
+    source: "dashboard_report",
+    channelIds: sentTo,
+    deliveryFailed: outcome.failed.length > 0,
   });
   const next = advance ? nextRunAt(report.schedule, nowMs) : report.nextRunAt;
   await run(sql`UPDATE dashboard_reports SET last_run_at = ${nowMs}, last_status = ${outcome.status}, last_error = ${outcome.error}, next_run_at = ${next} WHERE id = ${report.id}`);

@@ -62,7 +62,7 @@ Keep secrets such as SSO client secrets out of `config:`; pass them through `sec
 
 ## Data observability, fixes and Slack
 
-The collector needs no values. Optional values tune it and enable Slack approvals for [fixes](/docs/data-incidents/#approve-from-slack):
+The collector needs no values. Optional values tune it and enable Slack approvals for [fixes](/docs/data-incidents/#approve-from-chat):
 
 | Value | Sets |
 | --- | --- |

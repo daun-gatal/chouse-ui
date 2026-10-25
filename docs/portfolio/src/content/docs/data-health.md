@@ -51,7 +51,7 @@ Each check is a **warning** or **critical**. Windowed checks need an **event-tim
 2. **Dataset** — a table or view, or a read-only **dataset query** when you need joins or casts. Set the event-time column and an optional row filter (e.g. one tenant).
 3. **Evaluation cadence** — **Daily**, **Weekly**, **Monthly**, **Custom cron**, **Manual only**, or **After a scheduled query succeeds** (evaluate right after a materialize job loads the data).
 4. **Checks** — add them by hand, or let the **AI coverage advisor** propose an editable draft from the schema and recent evidence (needs `ai:optimize`). Set **Alert after breaches**, **Recover after passes** and a grace period to avoid flapping.
-5. **Notify on incident transitions** — pick channels configured in **Admin › Alerting**.
+5. **Notify on incident transitions** — pick channels configured in **Admin › Alerting**. On a [chat app](/docs/chat-apps/) channel the alert carries **Acknowledge** and **Snooze 1h**, and shows when the incident recovers.
 6. **Validate before activation** checks access, shows the **generated SQL** and the next evaluation slots. Then save.
 
 Each promise runs as a [scheduled query](/docs/scheduled-queries/) under the hood, with the same per-job leases, so it is evaluated once however many replicas you run.

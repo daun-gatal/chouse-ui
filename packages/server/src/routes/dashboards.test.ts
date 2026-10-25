@@ -37,12 +37,11 @@ mock.module("../services/scheduledQueries/chClient", () => ({
 
 const delivered: Array<{ title: string; text: string }> = [];
 let deliveryError: string | null = null;
-mock.module("../services/alerting/deliver", () => ({
-  sendChannelMessage: async (_type: string, _config: unknown, message: { title: string; text: string }) => {
+mock.module("../services/alerting/notify/platforms/webhook", () => ({
+  postWebhook: async (_config: unknown, message: { title: string; text?: string }) => {
     if (deliveryError) throw new Error(deliveryError);
-    delivered.push(message);
+    delivered.push({ title: message.title, text: message.text ?? "" });
   },
-  sendChannelTest: async () => undefined,
 }));
 
 const { Hono: HonoApp } = await import("hono");

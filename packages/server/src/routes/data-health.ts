@@ -10,6 +10,7 @@ import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { compileDataHealthQuery, DataHealthCompileError, eventTimeTypeFromSchema, isDateOnlyEventTimeType } from "../services/dataHealth/compiler";
 import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
 import * as healthStore from "../services/dataHealth/store";
+import { refreshIncidentMessages } from "../services/dataHealth/notify";
 import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } from "../services/dataHealth/types";
 import { fireTimesBetween, isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
 import * as runner from "../services/scheduledQueries/runner";
@@ -575,6 +576,7 @@ dataHealth.post("/incidents/:id/acknowledge", requirePermission(PERMISSIONS.DATA
   await loadVisiblePromise(c, incident.promiseId);
   const updated = await healthStore.acknowledgeIncident(id, currentUser(c).sub);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_INCIDENT_ACKNOWLEDGE, currentUser(c).sub, { resourceType: "data_health_incident", resourceId: id });
+  void refreshIncidentMessages(id);
   return ok(c, { incident: updated });
 });
 
@@ -591,6 +593,7 @@ dataHealth.post(
     if (until < Date.now() + 60_000) throw AppError.badRequest("Snooze time must be at least one minute in the future");
     const updated = await healthStore.snoozeIncident(id, currentUser(c).sub, until);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_INCIDENT_SNOOZE, currentUser(c).sub, { resourceType: "data_health_incident", resourceId: id });
+    void refreshIncidentMessages(id);
     return ok(c, { incident: updated });
   },
 );

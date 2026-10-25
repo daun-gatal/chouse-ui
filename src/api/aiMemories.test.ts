@@ -12,6 +12,7 @@ import {
   getTeamMemories,
   reviewMemory,
   setMemoryEnabled,
+  suggestMemories,
   updateMemory,
 } from "./aiMemories";
 
@@ -104,5 +105,17 @@ describe("aiMemories API", () => {
       { status: 400 },
     )));
     await expect(createMemory({ scope: "user", content: "a@b.co" })).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("memory suggestions API", () => {
+  it("asks for one thread's suggestions", async () => {
+    let body: unknown = null;
+    server.use(http.post("/api/ai-memories/suggest", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ success: true, data: { suggestions: [{ note: "Uses UTC.", scope: "user" }], connectionId: "c1" } });
+    }));
+    expect((await suggestMemories("t1")).suggestions).toEqual([{ note: "Uses UTC.", scope: "user" }]);
+    expect(body).toEqual({ threadId: "t1" });
   });
 });
