@@ -5,14 +5,17 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { generateKeyPairSync } from "crypto";
 import { sql } from "drizzle-orm";
 
 import { closeDatabase } from "../../../rbac/db";
 import { runMigrations } from "../../../rbac/db/migrations";
 import { freshDatabase, rawAll, rawRun } from "../../../rbac/db/migrationTestHarness";
-import { createChannel, getChannel } from "../store";
+import { createChannel, getChannel, maskChannelConfig, updateChannel } from "../store";
 import { ChannelType } from "../types";
-import { editSubject, isDeliverable, notifyChannelIds, sendToChannel, TEST_MESSAGE } from "./index";
+import { capabilitiesOf, checkChannel, editSubject, isDeliverable, notifyChannelIds, sendToChannel, TEST_MESSAGE } from "./index";
+import { resetPlatformHosts } from "./hosts";
+import { renderTelegram } from "./platforms/telegram";
 import { claimMessage, markFailed, openMessages } from "./log";
 import { renderGoogleChat } from "./platforms/googleChat";
 import { renderSlack } from "./platforms/slack";
@@ -243,5 +246,148 @@ describe("sending", () => {
     expect(await openMessages("fleet_alert", "latch-1")).toEqual([]);
     expect(await editSubject("fleet_alert", "latch-1", { title: "resolved" }, { close: true })).toBe(0);
     expect(received).toHaveLength(1);
+  });
+});
+
+describe("bot channels (App mode, Telegram)", () => {
+  const calls: Array<{ path: string; body: unknown; auth: string | null }> = [];
+  let bots: ReturnType<typeof Bun.serve>;
+  let nextId = 100;
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+  const serviceAccount = JSON.stringify({ type: "service_account", client_email: "chouse@proj.iam.gserviceaccount.com", private_key: privateKey, project_id: "proj" });
+
+  beforeAll(() => {
+    bots = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const u = new URL(req.url);
+        const text = await req.text();
+        const body: unknown = text.startsWith("{") ? JSON.parse(text) : Object.fromEntries(new URLSearchParams(text));
+        calls.push({ path: u.pathname + u.search, body, auth: req.headers.get("authorization") });
+        const json = (v: unknown, status = 200): Response => new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
+        if (u.pathname === "/slack/api/chat.postMessage") return json({ ok: true, channel: "C0TEST123", ts: `1700000000.${nextId++}` });
+        if (u.pathname === "/slack/api/chat.update") return json({ ok: true });
+        if (u.pathname === "/slack/api/auth.test") return req.headers.get("authorization") === "Bearer xoxb-good" ? json({ ok: true, user: "chouse", team: "Acme" }) : json({ ok: false, error: "invalid_auth" });
+        if (u.pathname === "/goauth/token") return json({ access_token: "ya29.test", expires_in: 3600 });
+        if (u.pathname.startsWith("/gchat/v1/spaces/AAAA") && req.method === "GET") return json({ name: "spaces/AAAA", displayName: "Ops" });
+        if (u.pathname === "/gchat/v1/spaces/AAAA/messages") return json({ name: `spaces/AAAA/messages/m${nextId++}` });
+        if (u.pathname.startsWith("/gchat/v1/spaces/AAAA/messages/")) return json({ name: u.pathname.slice(10) });
+        const tg = /^\/tg\/bot([^/]+)\/(\w+)$/.exec(u.pathname);
+        if (tg) {
+          if (tg[1] !== "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123") return json({ ok: false, description: "Unauthorized" }, 401);
+          if (tg[2] === "sendMessage") return json({ ok: true, result: { message_id: nextId++, chat: { id: -1001 } } });
+          if (tg[2] === "editMessageText") return json({ ok: true, result: true });
+          if (tg[2] === "getMe") return json({ ok: true, result: { username: "chouse_bot" } });
+          if (tg[2] === "getChat") return json({ ok: true, result: { title: "Ops group" } });
+        }
+        return json({ ok: false, error: "unknown" }, 404);
+      },
+    });
+    process.env.CHOUSE_ALLOW_TEST_OVERRIDES = "1";
+    const base = `http://127.0.0.1:${bots.port}`;
+    process.env.CHOUSE_INTEGRATIONS_TEST_HOSTS = JSON.stringify({ slack: `${base}/slack`, googleOauth: `${base}/goauth`, googleChat: `${base}/gchat`, telegram: `${base}/tg` });
+    resetPlatformHosts();
+  });
+
+  afterAll(() => {
+    bots.stop(true);
+    delete process.env.CHOUSE_INTEGRATIONS_TEST_HOSTS;
+    delete process.env.CHOUSE_ALLOW_TEST_OVERRIDES;
+    resetPlatformHosts();
+  });
+
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  const alert: NotifyMessage = { title: "Disk <full>", text: "ch-1", buttons: [{ action: "data_health.ack", label: "Acknowledge", value: "inc-1" }], links: [{ label: "Open", url: "http://localhost:5521/x" }] };
+
+  it("Slack App mode posts with the bot, carries buttons, and edits in place", async () => {
+    const id = await createChannel({ name: "slack-app", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-good", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" }, enabled: true });
+    const row = (await getChannel(id))!;
+    expect(capabilitiesOf(row)).toEqual({ edit: true, actions: true });
+    expect(isDeliverable(row)).toBe(true);
+    const sent = await sendToChannel(row, alert, { feature: "data_health", subjectId: "inc-1" });
+    expect(calls[0].path).toBe("/slack/api/chat.postMessage");
+    expect(calls[0].auth).toBe("Bearer xoxb-good");
+    expect(JSON.stringify(calls[0].body)).toContain(`"value":"${sent.messageId}:0"`);
+    const open = await openMessages("data_health", "inc-1");
+    expect(open).toHaveLength(1);
+    expect(open[0].ref).toEqual({ platform: "slack", channel: "C0TEST123", ts: expect.stringMatching(/^1700000000\./) });
+    expect(open[0].buttons).toEqual([{ action: "data_health.ack", value: "inc-1" }]);
+    expect(await editSubject("data_health", "inc-1", (posted) => ({ ...posted, title: "Acknowledged", buttons: [] }), { close: true })).toBe(1);
+    expect(calls[1].path).toBe("/slack/api/chat.update");
+    expect(JSON.stringify(calls[1].body)).toContain("Acknowledged");
+    expect(JSON.stringify(calls[1].body)).not.toContain("chouse_0");
+    expect(await openMessages("data_health", "inc-1")).toEqual([]);
+    expect(await checkChannel(row)).toEqual([{ label: "Bot connected as @chouse (Acme)", ok: true }]);
+  });
+
+  it("a bad bot token fails the check with Slack's reason, never the token", async () => {
+    const id = await createChannel({ name: "slack-bad", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-bad", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" }, enabled: true });
+    await expect(checkChannel((await getChannel(id))!)).rejects.toThrow("Slack auth.test: invalid_auth");
+  });
+
+  it("Google Chat App mode signs in with the service account, posts and edits", async () => {
+    const id = await createChannel({ name: "chat-app", type: ChannelType.GoogleChat, config: { mode: "app", serviceAccountJson: serviceAccount, space: "spaces/AAAA" }, enabled: true });
+    const row = (await getChannel(id))!;
+    await sendToChannel(row, alert, { feature: "data_health", subjectId: "inc-2" });
+    const token = calls.find((c) => c.path === "/goauth/token")!;
+    expect((token.body as Record<string, string>).grant_type).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
+    const post = calls.find((c) => c.path === "/gchat/v1/spaces/AAAA/messages")!;
+    expect(post.auth).toBe("Bearer ya29.test");
+    expect(JSON.stringify(post.body)).toContain('"function":"chouse"');
+    await editSubject("data_health", "inc-2", { title: "Snoozed" }, { close: true });
+    expect(calls.some((c) => c.path.startsWith("/gchat/v1/spaces/AAAA/messages/m") && c.path.endsWith("?updateMask=text,cardsV2"))).toBe(true);
+    expect(await checkChannel(row)).toEqual([{ label: "Signed in as chouse@proj.iam.gserviceaccount.com", ok: true }, { label: "Can reach Ops", ok: true }]);
+  });
+
+  it("Telegram posts HTML, keeps localhost links in the text, edits, and only carries buttons once its webhook is registered", async () => {
+    const token = "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123";
+    const id = await createChannel({ name: "tg", type: ChannelType.Telegram, config: { botToken: token, chatId: "-1001", topicId: 7 }, enabled: true });
+    const row = (await getChannel(id))!;
+    expect(capabilitiesOf(row)).toEqual({ edit: true, actions: false });
+    await sendToChannel(row, alert, { feature: "data_health", subjectId: "inc-3" });
+    const body = calls[0].body as Record<string, unknown>;
+    expect(calls[0].path).toBe(`/tg/bot${token}/sendMessage`);
+    expect(body.chat_id).toBe("-1001");
+    expect(body.message_thread_id).toBe(7);
+    expect(body.parse_mode).toBe("HTML");
+    expect(String(body.text)).toContain("<b>Disk &lt;full&gt;</b>");
+    expect(String(body.text)).toContain('<a href="http://localhost:5521/x">Open</a>');
+    expect(body.reply_markup).toBeUndefined();
+    await editSubject("data_health", "inc-3", { title: "Done" }, { close: true });
+    expect(calls[1].path).toBe(`/tg/bot${token}/editMessageText`);
+    expect(await checkChannel(row)).toEqual([{ label: "Bot @chouse_bot", ok: true }, { label: "Chat: Ops group", ok: true }]);
+    await rawRun(sql`UPDATE notification_channels SET config = ${JSON.stringify({ ...JSON.parse((await getChannel(id))!.config), webhookRegistered: true })} WHERE id = ${id}`);
+    expect(capabilitiesOf((await getChannel(id))!).actions).toBe(true);
+  });
+
+  it("a Telegram error never leaks the bot token", async () => {
+    const id = await createChannel({ name: "tg-bad", type: ChannelType.Telegram, config: { botToken: "999999:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", chatId: "-1001" }, enabled: true });
+    const error = await sendToChannel((await getChannel(id))!, { title: "x" }, { feature: "test" }).catch((e: Error) => e);
+    expect(String(error)).toContain("Telegram sendMessage: Unauthorized");
+    expect(String(error)).not.toContain("ZZZZ");
+  });
+
+  it("renders Telegram buttons as callback data within 64 bytes and public links as url buttons", () => {
+    const { payload, buttons } = renderTelegram({ ...alert, links: [{ label: "Open", url: "https://chouse.example.com/x" }] }, { actions: true, rowId: "0e6b3c3a-1f6d-4c55-9a2b-1c2d3e4f5a6b" });
+    const keyboard = payload.reply_markup!.inline_keyboard;
+    expect(keyboard[0][0]).toEqual({ text: "Acknowledge", callback_data: "0e6b3c3a-1f6d-4c55-9a2b-1c2d3e4f5a6b:0" });
+    expect(Buffer.byteLength(String(keyboard[0][0].callback_data))).toBeLessThanOrEqual(64);
+    expect(keyboard[1][0]).toEqual({ text: "Open", url: "https://chouse.example.com/x" });
+    expect(buttons).toEqual([{ action: "data_health.ack", value: "inc-1" }]);
+    const long = renderTelegram({ title: "T", text: "a".repeat(10_000), sections: Array.from({ length: 20 }, () => ({ text: "b".repeat(800) })) }, { actions: false, rowId: "r" });
+    expect(long.payload.text.length).toBeLessThanOrEqual(4096);
+    expect(long.payload.text.startsWith("<b>T</b>")).toBe(true);
+  });
+
+  it("keeps only the secrets a channel's mode uses", async () => {
+    const id = await createChannel({ name: "switch", type: ChannelType.Slack, config: { webhookUrl: "https://hooks.slack.com/services/x" }, enabled: true });
+    await updateChannel(id, { name: "switch", type: ChannelType.Slack, enabled: true, config: { mode: "app", botToken: "xoxb-good", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" } });
+    const stored = JSON.parse((await getChannel(id))!.config) as Record<string, unknown>;
+    expect(stored.webhookUrl).toBeUndefined();
+    expect(String(stored.botToken)).not.toContain("xoxb");
+    expect(maskChannelConfig(ChannelType.Slack, stored).configured).toEqual({ webhookUrl: false, botToken: true, signingSecret: true });
   });
 });

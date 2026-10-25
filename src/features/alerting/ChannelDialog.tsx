@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -36,6 +37,7 @@ import {
   ChannelType,
   CHANNEL_FIELD_SPECS,
   CHANNEL_TYPE_LABELS,
+  visibleFieldSpecs,
   type NotificationChannel,
   type ChannelInput,
   type ChannelFieldSpec,
@@ -59,7 +61,7 @@ function errMessage(e: unknown): string {
 
 function defaultConfigFor(specs: ChannelFieldSpec[]): Record<string, unknown> {
   const cfg: Record<string, unknown> = {};
-  for (const s of specs) cfg[s.key] = s.kind === "boolean" ? true : "";
+  for (const s of specs) cfg[s.key] = s.kind === "boolean" ? true : s.kind === "select" ? s.options?.[0]?.value ?? "" : "";
   return cfg;
 }
 
@@ -78,7 +80,7 @@ export function ChannelDialog({ open, channel, onClose }: ChannelDialogProps) {
   const [enabled, setEnabled] = useState(true);
   const [config, setConfig] = useState<Record<string, unknown>>({});
 
-  const specs = CHANNEL_FIELD_SPECS[type];
+  const specs = visibleFieldSpecs(type, config);
 
   useEffect(() => {
     if (!open) return;
@@ -130,6 +132,7 @@ export function ChannelDialog({ open, channel, onClose }: ChannelDialogProps) {
       for (const s of specs) {
         const v = config[s.key];
         if (s.secret && (v === "" || v === undefined || v === null)) continue;
+        if (s.kind === "number" && !s.required && (v === "" || v === undefined || v === null)) continue;
         cleaned[s.key] = s.kind === "number" ? Number(v) || 0 : v;
       }
       const input: ChannelInput = { name: name.trim(), type, enabled, config: cleaned };
@@ -162,7 +165,7 @@ export function ChannelDialog({ open, channel, onClose }: ChannelDialogProps) {
                 {isEdit ? "Edit channel" : "New notification channel"}
               </span>
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                Slack · Google Chat · Email · Webhook
+                Slack · Google Chat · Telegram · Email · Webhook
               </span>
             </span>
           </DialogTitle>
@@ -203,19 +206,56 @@ export function ChannelDialog({ open, channel, onClose }: ChannelDialogProps) {
                 </div>
               );
             }
-            const secretConfigured = spec.secret && isEdit && channel?.configured[spec.key];
+            if (spec.kind === "select") {
+              return (
+                <div key={spec.key} className="space-y-1.5">
+                  <Label className={LABEL_CLASS}>{spec.label}</Label>
+                  <Select value={String(value || spec.options?.[0]?.value || "")} onValueChange={(v) => setConfig((c) => ({ ...c, [spec.key]: v }))}>
+                    <SelectTrigger aria-label={spec.label}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(spec.options ?? []).map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {spec.hint && <p className="text-[11px] text-paper-faint">{spec.hint}</p>}
+                </div>
+              );
+            }
+            // A secret only counts as kept while the channel keeps its mode: the server drops the other mode's secrets.
+            const sameMode = (channel?.config.mode ?? "webhook") === (config.mode ?? "webhook");
+            const secretConfigured = spec.secret && isEdit && channel?.type === type && sameMode && channel?.configured[spec.key];
+            const placeholder = secretConfigured ? "•••••••• (unchanged)" : spec.placeholder;
+            const text = value === undefined || value === null ? "" : String(value);
             return (
               <div key={spec.key} className="space-y-1.5">
-                <Label className={LABEL_CLASS}>
+                <Label className={LABEL_CLASS} htmlFor={`channel-${spec.key}`}>
                   {spec.label}
                   {spec.required && <span className="text-brand"> *</span>}
                 </Label>
-                <Input
-                  type={spec.kind === "password" ? "password" : spec.kind === "number" ? "number" : "text"}
-                  value={value === undefined || value === null ? "" : String(value)}
-                  onChange={(e) => setConfig((c) => ({ ...c, [spec.key]: e.target.value }))}
-                  placeholder={secretConfigured ? "•••••••• (unchanged)" : spec.placeholder}
-                />
+                {spec.kind === "textarea" ? (
+                  <Textarea
+                    id={`channel-${spec.key}`}
+                    rows={4}
+                    className="font-mono text-[12px]"
+                    value={text}
+                    onChange={(e) => setConfig((c) => ({ ...c, [spec.key]: e.target.value }))}
+                    placeholder={placeholder}
+                  />
+                ) : (
+                  <Input
+                    id={`channel-${spec.key}`}
+                    type={spec.kind === "password" ? "password" : spec.kind === "number" ? "number" : "text"}
+                    value={text}
+                    onChange={(e) => setConfig((c) => ({ ...c, [spec.key]: e.target.value }))}
+                    placeholder={placeholder}
+                  />
+                )}
+                {spec.hint && <p className="text-[11px] text-paper-faint">{spec.hint}</p>}
               </div>
             );
           })}

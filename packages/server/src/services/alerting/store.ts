@@ -55,17 +55,26 @@ const bool = (v: unknown): boolean => Number(v) === 1;
 
 // --- secret-field handling --------------------------------------------------
 
-/** JSON keys whose values are secrets (encrypted at rest) per channel type. */
+/** JSON keys whose values are secrets (encrypted at rest) per channel type, in any mode. */
 const SECRET_KEYS: Record<ChannelType, string[]> = {
-  [ChannelType.Slack]: ["webhookUrl"],
-  [ChannelType.GoogleChat]: ["webhookUrl"],
+  [ChannelType.Slack]: ["webhookUrl", "botToken", "signingSecret"],
+  [ChannelType.GoogleChat]: ["webhookUrl", "serviceAccountJson"],
   [ChannelType.Webhook]: ["secret"],
   [ChannelType.Email]: ["password"],
+  [ChannelType.Telegram]: ["botToken"],
 };
+
+/** The secrets a channel uses in its mode: the other mode's secrets are dropped on save. */
+export function secretKeysForMode(type: ChannelType, config: Record<string, unknown>): string[] {
+  if (type === ChannelType.Slack) return config.mode === "app" ? ["botToken", "signingSecret"] : ["webhookUrl"];
+  if (type === ChannelType.GoogleChat) return config.mode === "app" ? ["serviceAccountJson"] : ["webhookUrl"];
+  return SECRET_KEYS[type];
+}
 
 /**
  * Encrypt the secret fields of an incoming (plaintext) channel config. A blank
  * secret means "keep existing", so it's dropped here and merged from `prev`.
+ * Secrets the channel's mode does not use are dropped.
  */
 function encryptChannelConfig(
   type: ChannelType,
@@ -73,9 +82,12 @@ function encryptChannelConfig(
   prev?: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...incoming };
+  const used = new Set(secretKeysForMode(type, incoming));
   for (const key of SECRET_KEYS[type]) {
     const val = incoming[key];
-    if (typeof val === "string" && val.length > 0) {
+    if (!used.has(key)) {
+      delete out[key];
+    } else if (typeof val === "string" && val.length > 0) {
       out[key] = encryptSecret(val);
     } else if (prev && typeof prev[key] === "string") {
       out[key] = prev[key]; // keep existing encrypted secret

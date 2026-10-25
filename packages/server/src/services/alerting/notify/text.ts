@@ -62,20 +62,21 @@ export function isPublicHttpsUrl(url: string): boolean {
 }
 
 /**
- * POST or PATCH JSON with a timeout. `secrets` are masked out of any error
- * message (a Telegram bot token lives in its URL).
+ * Call an HTTP endpoint (JSON or form body) with a timeout. `secrets` are
+ * masked out of any error message (a Telegram bot token lives in its URL).
  */
 export async function requestJson(
   url: string,
-  init: { method?: "POST" | "PATCH" | "GET"; body?: unknown; headers?: Record<string, string>; secrets?: string[] },
+  init: { method?: "POST" | "PATCH" | "GET"; body?: unknown; form?: Record<string, string>; headers?: Record<string, string>; secrets?: string[] },
 ): Promise<{ status: number; ok: boolean; json: unknown; text: string }> {
   const mask = (message: string): string => (init.secrets ?? []).filter((s) => s.length > 0).reduce((m, s) => m.split(s).join("•••"), message);
+  const contentType: Record<string, string> = init.form ? { "Content-Type": "application/x-www-form-urlencoded" } : init.body === undefined ? {} : { "Content-Type": "application/json; charset=utf-8" };
   let res: Response;
   try {
     res = await fetch(url, {
       method: init.method ?? "POST",
-      headers: init.body === undefined ? init.headers : { "Content-Type": "application/json; charset=utf-8", ...(init.headers ?? {}) },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      headers: { ...contentType, ...(init.headers ?? {}) },
+      body: init.form ? new URLSearchParams(init.form).toString() : init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
   } catch (error) {

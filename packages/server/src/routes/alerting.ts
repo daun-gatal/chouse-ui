@@ -27,7 +27,8 @@ import {
 import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
-import { sendToChannel, TEST_MESSAGE } from "../services/alerting/notify";
+import { checkChannel, sendToChannel, TEST_MESSAGE, type ChannelCheck } from "../services/alerting/notify";
+import { parseServiceAccount } from "../services/alerting/notify/platforms/googleChat";
 
 const alerting = new Hono();
 
@@ -46,27 +47,79 @@ function userId(c: Context): string | undefined {
 /**
  * Validate + clean an incoming channel config for its type. On create, required
  * secrets must be present; on update a blank secret means "keep existing" and is
- * dropped here (the store merges the previous encrypted value). Returns the
- * cleaned config or throws a message for the route to surface as 400.
+ * dropped here (the store merges the previous encrypted value) — but only when
+ * the channel keeps its mode: switching mode needs the new mode's secrets.
+ * Returns the cleaned config or throws a message for the route to surface as 400.
  */
-function cleanChannelConfig(
+export function cleanChannelConfig(
   type: ChannelType,
   raw: Record<string, unknown>,
-  isCreate: boolean,
+  prev: { config: Record<string, unknown>; configured: Record<string, boolean> } | null,
 ): Record<string, unknown> {
   const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const mode = raw.mode === "app" ? "app" : "webhook";
+  const prevMode = prev?.config.mode === "app" ? "app" : "webhook";
+  /** A blank secret on update keeps the stored one, if the mode did not change. */
+  const keeps = (key: string): boolean => prev !== null && prevMode === mode && prev.configured[key] === true;
+  const secret = (key: string, label: string, check?: (v: string) => string | null): Record<string, string> => {
+    const value = str(raw[key]);
+    if (!value) {
+      if (keeps(key)) return {};
+      throw new Error(`${label} is required`);
+    }
+    const problem = check?.(value);
+    if (problem) throw new Error(problem);
+    return { [key]: value };
+  };
   switch (type) {
     case ChannelType.Slack:
     case ChannelType.GoogleChat: {
-      const webhookUrl = str(raw.webhookUrl);
-      if (isCreate && !webhookUrl) throw new Error("webhookUrl is required");
-      return webhookUrl ? { webhookUrl } : {};
+      if (mode === "webhook") return secret("webhookUrl", "webhookUrl");
+      if (type === ChannelType.Slack) {
+        const channelId = str(raw.channelId);
+        if (!/^[A-Z0-9]{8,20}$/.test(channelId)) throw new Error("The Slack channel ID looks like C0123ABCD (channel details › About)");
+        return {
+          mode: "app",
+          channelId,
+          ...secret("botToken", "The bot token", (v) => (/^xox[bp]-[A-Za-z0-9-]+$/.test(v) ? null : "The bot token starts with xoxb-")),
+          ...secret("signingSecret", "The signing secret", (v) => (/^[A-Za-z0-9]{16,128}$/.test(v) ? null : "The signing secret is the hex string under Basic Information › App Credentials")),
+        };
+      }
+      const space = str(raw.space).replace(/^spaces\//, "");
+      if (!/^[A-Za-z0-9_-]{4,64}$/.test(space)) throw new Error("The space looks like spaces/AAAA… (from the space's URL)");
+      const audience = str(raw.audience);
+      if (audience && !/^\d{6,20}$/.test(audience) && !/^https:\/\/\S+$/.test(audience)) throw new Error("The audience is the Cloud project number, or the events URL");
+      return {
+        mode: "app",
+        space: `spaces/${space}`,
+        ...(audience ? { audience } : {}),
+        ...secret("serviceAccountJson", "The service account key", (v) => {
+          try {
+            parseServiceAccount(v);
+            return null;
+          } catch (err) {
+            return err instanceof Error ? err.message : "The service account key is not valid";
+          }
+        }),
+      };
+    }
+    case ChannelType.Telegram: {
+      const chatId = str(raw.chatId);
+      if (!/^-?\d{1,20}$/.test(chatId) && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(chatId)) throw new Error("The chat ID is a number like -1001234567890, or @channelname");
+      const topicRaw = raw.topicId;
+      const topicId = topicRaw === undefined || topicRaw === null || topicRaw === "" ? null : Number(topicRaw);
+      if (topicId !== null && (!Number.isInteger(topicId) || topicId <= 0)) throw new Error("The topic ID is a positive number");
+      return {
+        chatId,
+        ...(topicId ? { topicId } : {}),
+        ...secret("botToken", "The bot token", (v) => (/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(v) ? null : "The bot token looks like 123456789:AA… (from BotFather)")),
+      };
     }
     case ChannelType.Webhook: {
       const url = str(raw.url);
       if (!url) throw new Error("url is required");
-      const secret = str(raw.secret);
-      return secret ? { url, secret } : { url };
+      const secretValue = str(raw.secret);
+      return secretValue ? { url, secret: secretValue } : { url };
     }
     case ChannelType.Email: {
       const host = str(raw.host) || "smtp.gmail.com";
@@ -78,7 +131,7 @@ function cleanChannelConfig(
       const password = str(raw.password);
       if (!user) throw new Error("user is required");
       if (!to) throw new Error("to is required");
-      if (isCreate && !password) throw new Error("password is required");
+      if (prev === null && !password) throw new Error("password is required");
       const out: Record<string, unknown> = { host, port, secure, user, to, from };
       if (password) out.password = password;
       return out;
@@ -124,7 +177,7 @@ alerting.post(
     const body = c.req.valid("json");
     let config: Record<string, unknown>;
     try {
-      config = cleanChannelConfig(body.type, body.config, true);
+      config = cleanChannelConfig(body.type, body.config, null);
     } catch (err) {
       return c.json({ success: false, error: err instanceof Error ? err.message : "Invalid config" }, 400);
     }
@@ -148,9 +201,13 @@ alerting.put(
   async (c) => {
     const id = requireParam(c, "id");
     const body = c.req.valid("json");
+    const existing = await store.getChannel(id);
+    if (!existing) return c.json({ success: false, error: "Channel not found" }, 404);
     let config: Record<string, unknown>;
     try {
-      config = cleanChannelConfig(body.type, body.config, false);
+      // A type change is validated like a new channel: the old type's secrets mean nothing to the new one.
+      const prev = existing.type === body.type ? store.maskChannelConfig(existing.type, JSON.parse(existing.config) as Record<string, unknown>) : null;
+      config = cleanChannelConfig(body.type, body.config, prev);
     } catch (err) {
       return c.json({ success: false, error: err instanceof Error ? err.message : "Invalid config" }, 400);
     }
@@ -201,15 +258,19 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
   const id = requireParam(c, "id");
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
+  // A bot channel is checked first (who the bot is, that it reaches its chat), then gets the test message.
+  const checks: ChannelCheck[] = [];
   try {
+    checks.push(...(await checkChannel(ch)));
     await sendToChannel(ch, TEST_MESSAGE, { feature: "test" });
+    checks.push({ label: "Test message sent", ok: true });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_TEST, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
       status: "success",
       details: { type: ch.type },
     });
-    return c.json({ success: true });
+    return c.json({ success: true, data: { checks } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Delivery failed";
     logger.warn({ module: "Alerting", channelId: id, err: message }, "Channel test failed");
@@ -220,7 +281,7 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
       errorMessage: message,
       details: { type: ch.type },
     });
-    return c.json({ success: false, error: message }, 502);
+    return c.json({ success: false, error: message, data: { checks } }, 502);
   }
 });
 

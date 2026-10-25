@@ -5,7 +5,7 @@
  * welding together "what fires" (rules), "where it delivers" (channels) and the
  * AI-RCA toggle. That blob is now normalized across four tables:
  *
- *   - notification_channels   where to deliver (slack/google_chat/email/webhook)
+ *   - notification_channels   where to deliver (slack/google_chat/telegram/email/webhook)
  *   - alert_rules             what fires (fleet_threshold today, data_quality next)
  *   - alert_rule_channels     M:N link between a rule and its channels
  *   - alert_events            history of fires + deliveries
@@ -21,6 +21,7 @@ export enum ChannelType {
   GoogleChat = "google_chat",
   Email = "email",
   Webhook = "webhook",
+  Telegram = "telegram",
 }
 
 /** What produced an alert rule. Persisted verbatim in alert_rules.source_type. */
@@ -59,12 +60,22 @@ export function isAlertSeverity(v: unknown): v is AlertSeverity {
  * password) are encrypted at rest with AES-256-GCM (encryptSecret) and never
  * returned to the client in plaintext.
  */
-export interface SlackChannelConfig {
-  webhookUrl: string;
-}
+/** Slack: an incoming webhook (no `mode`, as every channel before ADR 0026), or a bot (App mode). */
+export type SlackChannelConfig =
+  | { mode?: "webhook"; webhookUrl: string }
+  | { mode: "app"; botToken: string; signingSecret: string; channelId: string };
 
-export interface GoogleChatChannelConfig {
-  webhookUrl: string;
+/** Google Chat: an incoming webhook, or a Chat app signed in with a service account. */
+export type GoogleChatChannelConfig =
+  | { mode?: "webhook"; webhookUrl: string }
+  | { mode: "app"; serviceAccountJson: string; space: string; audience?: string };
+
+export interface TelegramChannelConfig {
+  botToken: string;
+  chatId: string;
+  topicId?: number;
+  /** Set once CHouse registered its webhook with the bot, so buttons call back. */
+  webhookRegistered?: boolean;
 }
 
 export interface WebhookChannelConfig {
@@ -86,6 +97,7 @@ export interface EmailChannelConfig {
 export type ChannelConfig =
   | SlackChannelConfig
   | GoogleChatChannelConfig
+  | TelegramChannelConfig
   | WebhookChannelConfig
   | EmailChannelConfig;
 

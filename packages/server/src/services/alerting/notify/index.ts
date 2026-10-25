@@ -17,8 +17,9 @@ import { decryptChannelConfig, getChannel } from "../store";
 import { ChannelType, type NotificationChannelRow } from "../types";
 import { claimMessage, markEdited, markFailed, markSent, openMessages } from "./log";
 import { sendEmail } from "./platforms/email";
-import { postGoogleChatWebhook, renderGoogleChat } from "./platforms/googleChat";
-import { postSlackWebhook, renderSlack } from "./platforms/slack";
+import { googleChatSpace, parseServiceAccount, postGoogleChatApp, postGoogleChatWebhook, renderGoogleChat, updateGoogleChatApp } from "./platforms/googleChat";
+import { postSlackApp, postSlackWebhook, renderSlack, slackIdentity, updateSlackApp } from "./platforms/slack";
+import { postTelegram, renderTelegram, telegramIdentity, updateTelegram } from "./platforms/telegram";
 import { postWebhook } from "./platforms/webhook";
 import type { ChannelCapabilities, NotifyFeature, NotifyMessage, PlatformRef, StoredButton } from "./types";
 
@@ -58,8 +59,17 @@ function parseConfig(row: NotificationChannelRow): Record<string, unknown> {
 }
 
 /** What a channel can do with a message, from its type and settings (no secrets needed). */
-export function capabilitiesOf(_row: NotificationChannelRow): ChannelCapabilities {
-  return { edit: false, actions: false };
+export function capabilitiesOf(row: NotificationChannelRow): ChannelCapabilities {
+  const config = parseConfig(row);
+  switch (row.type) {
+    case ChannelType.Slack:
+    case ChannelType.GoogleChat:
+      return config.mode === "app" ? { edit: true, actions: true } : { edit: false, actions: false };
+    case ChannelType.Telegram:
+      return { edit: true, actions: config.webhookRegistered === true };
+    default:
+      return { edit: false, actions: false };
+  }
 }
 
 /**
@@ -71,8 +81,11 @@ export function isDeliverable(row: NotificationChannelRow): boolean {
   const has = (key: string): boolean => typeof config[key] === "string" && (config[key] as string).length > 0;
   switch (row.type) {
     case ChannelType.Slack:
+      return config.mode === "app" ? has("botToken") && has("channelId") : has("webhookUrl");
     case ChannelType.GoogleChat:
-      return has("webhookUrl");
+      return config.mode === "app" ? has("serviceAccountJson") && has("space") : has("webhookUrl");
+    case ChannelType.Telegram:
+      return has("botToken") && has("chatId");
     case ChannelType.Webhook:
       return has("url");
     case ChannelType.Email:
@@ -87,18 +100,36 @@ interface Delivered {
   buttons: StoredButton[];
 }
 
+function topicOf(config: Record<string, unknown>): number | null {
+  const topic = Number(config.topicId);
+  return Number.isInteger(topic) && topic > 0 ? topic : null;
+}
+
 async function deliver(row: NotificationChannelRow, config: Record<string, unknown>, message: NotifyMessage, rowId: string): Promise<Delivered> {
   const actions = capabilitiesOf(row).actions;
   switch (row.type) {
     case ChannelType.Slack: {
       const { payload, buttons } = renderSlack(message, { actions, rowId });
+      if (config.mode === "app") {
+        const posted = await postSlackApp(String(config.botToken ?? ""), String(config.channelId ?? ""), payload);
+        return { ref: { platform: "slack", ...posted }, buttons };
+      }
       await postSlackWebhook(String(config.webhookUrl ?? ""), payload);
       return { ref: null, buttons };
     }
     case ChannelType.GoogleChat: {
       const { payload, buttons } = renderGoogleChat(message, { actions, rowId });
+      if (config.mode === "app") {
+        const posted = await postGoogleChatApp(String(config.serviceAccountJson ?? ""), String(config.space ?? ""), payload);
+        return { ref: { platform: "google_chat", ...posted }, buttons };
+      }
       await postGoogleChatWebhook(String(config.webhookUrl ?? ""), payload);
       return { ref: null, buttons };
+    }
+    case ChannelType.Telegram: {
+      const { payload, buttons } = renderTelegram(message, { actions, rowId });
+      const posted = await postTelegram(String(config.botToken ?? ""), String(config.chatId ?? ""), topicOf(config), payload);
+      return { ref: { platform: "telegram", ...posted }, buttons };
     }
     case ChannelType.Webhook:
       await postWebhook(config, message);
@@ -109,6 +140,55 @@ async function deliver(row: NotificationChannelRow, config: Record<string, unkno
     default:
       throw new Error(`Unknown channel type: ${String(row.type)}`);
   }
+}
+
+/** Replace a posted message in place. Returns the buttons it now carries. */
+async function update(row: NotificationChannelRow, config: Record<string, unknown>, ref: PlatformRef, message: NotifyMessage, rowId: string): Promise<StoredButton[]> {
+  const actions = capabilitiesOf(row).actions;
+  if (ref.platform === "slack" && row.type === ChannelType.Slack) {
+    const { payload, buttons } = renderSlack(message, { actions, rowId });
+    await updateSlackApp(String(config.botToken ?? ""), ref, payload);
+    return buttons;
+  }
+  if (ref.platform === "google_chat" && row.type === ChannelType.GoogleChat) {
+    const { payload, buttons } = renderGoogleChat(message, { actions, rowId });
+    await updateGoogleChatApp(String(config.serviceAccountJson ?? ""), ref.name, payload);
+    return buttons;
+  }
+  if (ref.platform === "telegram" && row.type === ChannelType.Telegram) {
+    const { payload, buttons } = renderTelegram(message, { actions, rowId });
+    await updateTelegram(String(config.botToken ?? ""), ref, payload);
+    return buttons;
+  }
+  throw new Error("The channel changed type since the message was posted");
+}
+
+export interface ChannelCheck {
+  label: string;
+  ok: boolean;
+}
+
+/**
+ * Check a bot channel before its test message: who the bot is and that it
+ * reaches its chat. Webhook channels have nothing to check beyond the send.
+ * Throws with the platform's reason on the first failing check.
+ */
+export async function checkChannel(row: NotificationChannelRow): Promise<ChannelCheck[]> {
+  const config = decryptChannelConfig(row.type, parseConfig(row));
+  if (row.type === ChannelType.Slack && config.mode === "app") {
+    const me = await slackIdentity(String(config.botToken ?? ""));
+    return [{ label: `Bot connected as @${me.user}${me.team ? ` (${me.team})` : ""}`, ok: true }];
+  }
+  if (row.type === ChannelType.GoogleChat && config.mode === "app") {
+    const account = parseServiceAccount(String(config.serviceAccountJson ?? ""));
+    const space = await googleChatSpace(String(config.serviceAccountJson ?? ""), String(config.space ?? ""));
+    return [{ label: `Signed in as ${account.client_email}`, ok: true }, { label: `Can reach ${space}`, ok: true }];
+  }
+  if (row.type === ChannelType.Telegram) {
+    const who = await telegramIdentity(String(config.botToken ?? ""), String(config.chatId ?? ""));
+    return [{ label: `Bot ${who.bot}`, ok: true }, { label: `Chat: ${who.chat}`, ok: true }];
+  }
+  return [];
 }
 
 export type SendStatus = "sent" | "duplicate";
@@ -193,7 +273,9 @@ export async function editSubject(feature: NotifyFeature, subjectId: string, edi
         continue;
       }
       const message = typeof edit === "function" ? edit(posted.message, posted.createdAt) : edit;
-      await markEdited(posted.id, [], message, options.close);
+      const config = decryptChannelConfig(row.type, parseConfig(row));
+      const buttons = await update(row, config, posted.ref, message, posted.id);
+      await markEdited(posted.id, buttons, message, options.close);
       edited++;
     } catch (error) {
       logger.warn({ module: "Notify", feature, subjectId, messageId: posted.id, err: error instanceof Error ? error.message : String(error) }, "Could not edit a posted message");
