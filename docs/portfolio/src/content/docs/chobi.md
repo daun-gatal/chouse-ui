@@ -7,6 +7,8 @@ screenshot: chobi-now
 
 **Chobi** is the CHouse buddy: a little character made of the logo's three bars that parks on the edge of the screen and is the one place for AI in CHouse. It shows what needs a look, chats with [CHouse Assistant](/docs/ai-chat-agents/), lists what AI changed for you, and points out news on its own — without getting in the way of what you are doing.
 
+**Why "Chobi"?** The name is **CHouse UI** + **chibi** (ちび), the Japanese word for something small and cute — the style of the little, big-eyed character drawn from the CHouse logo.
+
 Chobi appears for users with `ai:chat` once an AI model is set up.
 
 **Get started in three steps:**
