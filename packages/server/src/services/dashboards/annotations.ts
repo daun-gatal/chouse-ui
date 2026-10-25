@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { evaluateRules, getRulesForUser } from "../../rbac/services/dataAccess";
 import { all, num, one, run, str, strOrNull } from "../observe/db";
+import { incidentTitle } from "../observe/incidents";
 import type { Permission } from "../../rbac/schema/base";
 import { has, isAdmin, type Viewer } from "./access";
 import type { AnnotationSource } from "./spec";
@@ -147,10 +148,10 @@ async function incidentEvents(q: AnnotationQuery, allowed: TablePredicate): Prom
     const opened = num(r.opened_at);
     const recovered = r.recovered_at === null || r.recovered_at === undefined ? null : num(r.recovered_at);
     if (opened >= q.fromMs && opened < q.toMs) {
-      events.push({ id: `incident:${str(r.id)}:open`, source: "incidents", at: opened, title: `Incident (${str(r.severity)}): ${str(r.summary)}`, detail: str(r.kind), objectRef: subject });
+      events.push({ id: `incident:${str(r.id)}:open`, source: "incidents", at: opened, title: `Incident (${str(r.severity)}): ${incidentTitle(str(r.summary))}`, detail: str(r.kind), objectRef: subject });
     }
     if (recovered !== null && recovered >= q.fromMs && recovered < q.toMs) {
-      events.push({ id: `incident:${str(r.id)}:recovered`, source: "incidents", at: recovered, title: `Recovered: ${str(r.summary)}`, detail: str(r.kind), objectRef: subject });
+      events.push({ id: `incident:${str(r.id)}:recovered`, source: "incidents", at: recovered, title: `Recovered: ${incidentTitle(str(r.summary))}`, detail: str(r.kind), objectRef: subject });
     }
   }
   events.sort((a, b) => b.at - a.at);

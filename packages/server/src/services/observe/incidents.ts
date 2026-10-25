@@ -11,11 +11,21 @@
 import { randomUUID } from "crypto";
 
 import { logger } from "../../utils/logger";
+import { headline } from "../../utils/text";
 import { all, num, numOrNull, one, run, sql, str, strOrNull, type Row } from "./db";
 import { downstreamOf, type GraphEdge } from "./rca";
 
 export type ObserveIncidentKind = "pipeline" | "engine" | "regression" | "capacity";
 export type IncidentSource = "data_health" | "observe";
+
+/**
+ * The title shown for an incident. Summaries often end in a whole ClickHouse
+ * error with the failing SQL; the title keeps its first line, shortened, while
+ * the stored summary stays complete for alerts, root cause and timeline.
+ */
+export function incidentTitle(summary: string, promiseName?: string): string {
+  return headline(promiseName ? `${promiseName}: ${summary}` : summary, 160);
+}
 
 export interface ObserveIncident {
   id: string;
