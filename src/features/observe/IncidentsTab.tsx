@@ -19,6 +19,7 @@ import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useAcknowledgeObserveIncident, useIncident, useIncidents, useRecomputeRca } from "./hooks";
 import { formatAgo, humanize, LAYER_LABEL, nodeKind, nodeLabel, severityTone } from "./lib";
 import { AiInvestigatedBadge } from "@/features/agents/triage/AiInvestigatedBadge";
+import { IncidentHeading } from "./IncidentHeading";
 import { NotebookPanel } from "./NotebookPanel";
 import { dataPaths } from "./paths";
 import { RemediationPanel, type ProposeDraft } from "./RemediationPanel";
@@ -192,7 +193,7 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Button variant="ghost" className="-ml-2 h-7 rounded-xs px-2 text-[11px] text-paper-muted" onClick={() => navigate(dataPaths.tab("incidents"))}><ArrowLeft className="mr-1 h-3 w-3" /> Incidents</Button>
-          <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-paper">{data.title}</h2>
+          <IncidentHeading key={`${source}:${id}`} title={data.title} fullTitle={data.fullTitle} />
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill tone={severityTone(data.severity)}>{data.severity}</StatusPill>
             <StatusPill tone="muted" dot={false}>{data.status}</StatusPill>

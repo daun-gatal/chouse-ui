@@ -72,12 +72,14 @@ describe("incident views", () => {
     expect(byId.get("dh1")?.startsWith("Orders fresh: upstream pipeline failed: Hourly join")).toBe(true);
   });
 
-  it("shortens the detail title and keeps the full summary", async () => {
+  it("shortens the detail title and keeps the full text alongside", async () => {
     const observe = await views.incidentDetail("observe", "ob-long");
     expect(Array.from(String(observe?.title)).length).toBeLessThanOrEqual(160);
     expect(observe?.summary).toBe(ERROR);
+    expect(observe?.fullTitle).toBe(ERROR);
     const health = await views.incidentDetail("data_health", "dh1");
     expect(Array.from(String(health?.title)).length).toBeLessThanOrEqual(160);
+    expect(health?.fullTitle).toBe(`Orders fresh: upstream pipeline failed: ${ERROR}`);
   });
 
   it("shortens the titles of related incidents", async () => {

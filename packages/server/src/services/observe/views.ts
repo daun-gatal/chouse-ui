@@ -380,13 +380,13 @@ export async function incidentDetail(source: IncidentSource, id: string): Promis
     if (!i) return null;
     const events = (await all(sql`SELECT type, created_at, payload FROM data_health_incident_events WHERE incident_id = ${id} ORDER BY created_at`)).map((e) => ({ type: str(e.type), at: num(e.created_at), payload: json(e.payload, {}) }));
     base = {
-      source, id, connectionId: str(i.connection_id), kind: str(i.kind), title: incidentTitle(str(i.summary), str(i.promise_name)), status: str(i.status), severity: str(i.severity),
+      source, id, connectionId: str(i.connection_id), kind: str(i.kind), title: incidentTitle(str(i.summary), str(i.promise_name)), fullTitle: `${str(i.promise_name)}: ${str(i.summary)}`, status: str(i.status), severity: str(i.severity),
       openedAt: num(i.opened_at), lastEventAt: num(i.last_event_at), promiseId: str(i.promise_id), database: strOrNull(i.database_name), table: strOrNull(i.table_name), events,
     };
   } else {
     const i = await getObserveIncident(id);
     if (!i) return null;
-    base = { source, ...i, title: incidentTitle(i.summary), acknowledgedByName: await userName(i.acknowledgedBy) };
+    base = { source, ...i, title: incidentTitle(i.summary), fullTitle: i.summary, acknowledgedByName: await userName(i.acknowledgedBy) };
   }
   const connectionId = str(base.connectionId);
   const connectionName = (await connectionNames([connectionId])).get(connectionId) ?? null;

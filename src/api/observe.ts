@@ -227,7 +227,9 @@ export interface IncidentDetail {
   connectionId: string;
   connectionName?: string | null;
   kind: string;
+  /** One short line; `fullTitle` is the complete text, often a whole ClickHouse error. */
   title: string;
+  fullTitle?: string;
   status: string;
   severity: "warning" | "critical";
   openedAt: number;
