@@ -5,6 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.16.0] - 2026-10-25
+
+### Added
+- **Chat apps** — Slack and Google Chat channels gain an **App** mode (a Slack bot token and signing secret; a Google Chat app with a service account), and **Telegram** channels arrive. These channels edit what they posted — a fleet or dashboard alert shows *resolved* in place, a request shows who decided it — and carry buttons that call back to CHouse
+- **Act from chat** — **Acknowledge** and **Snooze 1h** on Data Health alerts, **Approve** and **Reject** on remediation proposals, **Approve** and **Decline** on AI requests. Every press is checked by its platform, matched to an active CHouse user (Slack and Google Chat by email, Telegram by an account linked in **Preferences › Linked chat accounts**), and runs through the same route the UI uses as that person. Audited as `alerting.chat_action`
+- **Who can act from this channel** — an allowlist per channel (Slack users and user groups, Google emails and domains, Telegram user IDs, CHouse users and roles) that narrows who may press its buttons
+- **Need You alerts** — AI Governance › Assistant › Chobi › Alerts sends second-approver changes, background proposals and optionally held MCP calls to team channels after a delay, with Approve and Decline where the channel allows, and edits them once they are settled
+- **Memory suggestions** — after a quiet Chobi conversation, up to three notes worth keeping appear as chips (**Save to me**, **Propose to team**, **Dismiss**); nothing is saved without a click, and administrators can turn it off
+- **Remediation channels** — post remediation proposals to any alert channel, picked in Admin › Alerting › Rules; the Slack bot set by environment variables keeps working
+- **Alerting history API** — `GET /api/alerting/events/search` with search, source, severity, channel, delivery and time filters and cursor pages; `GET /api/alerting/overview` and `GET /api/alerting/sources`; channels report delivery health and what uses them. `list_alerting` and the MCP `list_alerts` gain `sources`, `overview` and filtered `events`
+- **Chobi** — the chat becomes Chobi, a buddy made of the logo's three bars that parks on the screen edge (drag to move, Ctrl/⌘ J) and stays usable above any dialog. Panels in Bubble, Docked and Focus sizes with three tabs: **Now** (what needs a look across every connection you can reach, built from data), **Chat** and **Activity** (changes waiting for you and what AI changed, with Undo)
+- **Nudges** — Chobi points out new incidents, failed jobs, unreachable clusters and approvals waiting for you, from data and never an AI call; at most one every two minutes and six an hour, with mute and quiet hours per person
+- **AI write tiers** — 74 write tools in seven toolkits, each checked by tier: undoable changes run at once with **Done · Undo** for 24 hours, changes undo can't reverse ask once (or once for a plan of several, with "allow in this chat / for 1 hour"), and privileged or destructive ones need a second person who holds the same permission. A production connection makes every change one tier stricter; passwords, connections, SSO, tokens, guardrails and approvals are never AI tools
+- **Connection environment** — mark a connection Production, Staging or Development in **Admin › Connections**
+- **MCP write tools** — the same write tools over MCP for tokens whose user has `ai:act`, bounded by an administrator ceiling (**AI Governance › MCP › Write tools**) and each token's write policy (the wrench in **Preferences › Access tokens**); a call that asks is held while you confirm in CHouse, then returns its result or a pending action id for `get_action_status`; `undo_action` reverses undoable ones
+- **CHouse Assistant v3** — one agent that owns the conversation and every change: Data & Query and the page's toolkit loaded up front, others with `load_toolkit`; four read-only investigators; `navigate`, `open_entity` and `fill_form` to show a page or put SQL in the editor; plans for multi-step changes. Ships with 40 eval cases
+- **Watches** — "keep an eye on this table until tomorrow": a personal Data Health check every 15 minutes that removes itself when it ends (default 09:00 tomorrow, at most 7 days, five per connection)
+- **Ask from anywhere** — Ctrl/⌘ J with text selected, drop text or an item on Chobi, Ctrl/⌘ J or **Ask Chobi about this SQL** in the SQL editor, or **Ask** on a Now item
+- **Hand off** — turn a conversation into a note for an incident's notebook, a Markdown file, or a short post to an alert channel (new `POST /api/alerting/channels/:id/message` and `post_alert_message` tool)
+- **Plain mode** — administrators can show the CHouse logo instead of the character and turn nudges off, in **AI Governance › Assistant › Chobi**
+- **Scheduled job links** — `/data/scheduled-queries/jobs?job=<id>` opens one job
+- **ClickHouse privilege check for connections** — Test connection checks the connection's ClickHouse user against what every feature needs (Core, Monitoring and fleet, Data health and observability, Query control, Data editing, ClickHouse access admin) and lists anything missing as copyable `GRANT` statements, with **Copy all grants** and **Check again**. Works on ClickHouse versions with and without `SHOW GRANTS FINAL`, and counts grants that come through roles.
+- **ClickHouse privileges docs page** — generated from the same catalog, with a ready-made script for a user that has everything.
+- **Security rules for contributors** — `.rules/SECURITY.md` is the security baseline: threat model, authorization and privilege escalation, data access and SQL building, tokens and sessions, SSO, browser controls, SSRF, secrets and audit, AI/MCP, resource limits and uploads, ClickHouse user management, CLI, container/Helm, dependencies and CI, vulnerability handling, and a review checklist
+- **Streaming chat runs** — chat replies show each step as it happens, keep going when the chat is closed or the page reloads (reopening the thread picks the reply up), and stop on the server with **Stop**; the final answer appears once the output guardrails have checked it
+- **Files and skills in the chat** — attach up to 3 files per message (CSV, TSV, text, logs, Markdown, JSON, SQL, and images or PDFs for models set to accept them in AI models); type `/` to give the agent one of its skills for that message
+- **Approved AI actions** — agents can kill a query, save or schedule a query, create a health promise or a dashboard, update a table's context, or propose a fix; in the chat each action pauses the reply for the user to approve, edit or reject, then runs as them through the usual checks and audit. Actions from runs nobody watches wait in **AI Governance › Approvals**. New `ai:act` permission
+- **Memory** — agents with memory turned on remember users' lasting preferences (saved with Undo) and team knowledge about a connection (after admin review, new `ai_memories:manage` permission); **AI Governance › Memories** to manage, export or turn memory off, and team notes about a table show with its context
+- **Auto-triage** — per trigger (Data Health and Observe incidents, fleet alerts, failed scheduled runs, Doctor findings), an agent investigates new events on its own within a cooldown and a daily token budget, writes the likely cause to the incident's notebook, notifies alerting channels and proposes fixes for approval; **AI Governance › Triage**, with an **AI investigated** badge
+- **AI budgets** — token and cost caps per AI feature and per user, per day or month, that stop requests or switch to a cheaper model when used up (new `ai_budgets:manage` permission); AI activity shows prompt-cache savings
+- **Agent runtime settings** — fallback model, model and tool retries, model and tool call caps, prompt caching (on by default for Anthropic and Bedrock), clearing old tool results, and subagents that inherit the conversation
+- **Analysis sandbox** — a harness can give its agents `js_eval`, a QuickJS sandbox that calls their read-only tools as functions and computes over the rows without sending them to the model
+- **Agent evals** — test cases with expected tools and a judged rubric, run against an agent's draft from its Evals tab; an eval threshold blocks saving a draft that scores too low. Save cases from the test console or from chat requests in AI activity
+- **Skill tools** — a skill can list tools that stay hidden from an agent until it reads the skill
+- **Refine and Regenerate AI dashboard drafts** — revise the whole draft from a note, keeping your fixes and the panels you left out, or draft one panel again; undo up to five steps
+- **Dashboard canvas** — panels are placed and resized freely on a 24-column grid, never overlapping or going below a readable size; new text (Markdown) and heading panels; **Tidy up** lays a dashboard out by section and role. Existing dashboards are converted on upgrade, and `chouse.dashboard/v1` exports still import
+- **AI-chosen charts and layout** — Ask AI says what each panel is for, CHouse picks a fitting chart and places it, and drafts run in full with a chart-fit check that can switch a crowded chart
+- **Annotations and notes** — line and area charts mark DDL, upgrades, settings changes, new writers, panel alerts, incidents, fixes and notes, each read with the viewer's access; select a range to zoom, open its slowest queries or add a note
+- **Explain this spike** — Chouse AI explains a selected range from the panel, a week earlier, the changes, queries, mutations and merges, and lists what it could not read
+- **Compare and expected ranges** — draw a chart a day or a week earlier, or the band a value usually falls in over the past 2–8 weeks, with panel alerts on leaving the band
+- **Drill-down links and multi-value variables** — click through to another dashboard, filter this one or open a table; variables can hold several values
+- **Panel cost and rollups** — each panel shows what it reads per run and per hour; a time-bucketed aggregate panel can propose a verified 1-minute rollup through the fixes approval flow
+- **Version history, snapshots and scheduled reports** — restore any of the last 50 saves; freeze a dashboard's results for chosen roles; send a daily or weekly digest with a link (needs `PUBLIC_BASE_URL`)
+- **Grafana import** — preview what converts, what changed and what was skipped before importing a Grafana dashboard
+- **MCP and chat** — `list_dashboard_versions`, `get_dashboard_annotations` and `create_dashboard_snapshot` (off by default); the chat can read a dashboard's annotations
+
+### Changed
+- **Admin › Alerting** — becomes Overview, Channels, Rules and Activity, with search, filters and pages kept in the address. Adding a channel is four steps (platform, connect, test, who can act); Rules lists every feature that sends alerts; Activity shows where each alert went and whether it got there
+- **One alert format** — every feature sends through one notify layer, so every channel type and mode works for fleet alerts, the Doctor's root-cause report, scheduled queries, Data Health, dashboard alerts and reports, auto-triage and hand off. Webhook JSON bodies are unchanged; fleet emails use the shared alert layout
+- **Chat agents** — the chat runs CHouse Assistant; ClickHouse Data becomes its read-only investigator, and CHouse Admin is retired (agents and features that used it move to its replacements; a customized copy stays)
+- **AI approvals** — undoable AI changes no longer pause for approval: they run and show Undo
+- **Saving a connection requires every privilege** — Create, and an update that changes the host, port, user, password, SSL or default database, run the check on the server first and refuse to save (`422 PRIVILEGES_MISSING` with the report, `400 CONNECTION_TEST_FAILED` when the login fails). Existing connections keep working, and renames or switching a connection on or off are never checked.
+- **Test on the connections list** warns when the connection's user is missing privileges.
+- **Observability grants panel removed** from the connection edit dialog; Test connection covers it.
+- **Moving a connection needs its password** — changing the host or port, or switching SSL off, asks for the password again (`400 PASSWORD_REQUIRED`), so the saved password is never sent to another server.
+- **DeepAgents 1.15 and LangChain 1.5** — the AI runtime is upgraded; agents keep a to-do list again where their harness allows `write_todos`
+- **Test console** — write tools only say what they would do; nothing is changed or recorded
+- **Ask AI review** — the draft opens full screen with a live preview laid out as it will be saved, panels grouped by section with bulk selection and filters, Apply all fixes, and a confirmation before adding panels that need a look; tabs and slide-in details on tablets and phones. Panels added to a dashboard are scrolled to and outlined
+- **Dashboards list** — one searchable, sortable, paged table with tabs for all, mine, shared, pinned and templates
+- **Exports** — dashboards export as `chouse.dashboard/v2`
+
+### Fixed
+- **Slack mentions from data** — text in Slack alerts is escaped, so a table name or message containing `<!channel>` can no longer ping a channel
+- **Auto-RCA cooldown docs** — `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` defaults to 15, as the server applies it
+- **Alert channel deliveries time out** — a webhook or Slack channel that never answers fails the delivery after 15 seconds instead of holding the request or the scheduler open
+- **Test connection while editing** uses the saved password when the password field is empty, instead of failing.
+- **Connection tests close their ClickHouse client** when the login fails.
+- **Data access rules cover every table a query touches** — tables read through scalar or `IN`/`EXISTS` subqueries, `UNION` arms, `INSERT … SELECT` / `CREATE … AS SELECT` sources, a same-named table in another database, a db-qualified name shadowed by a CTE, and `dictGet`/`joinGet` lookups are now checked against the user's data access rules, so a user limited to some databases can no longer read others through them
+- **Data-reaching table functions are admin-only** — `remote`, `cluster`, `merge`, `url`, `file`, `s3` and similar table functions are denied to non-admins because they read data the per-table rules can't see; inline-data functions such as `numbers()` keep working
+- **Explorer create/drop respect data access rules** — creating or dropping a database or table from the explorer now checks the user's data access rules, like the same statement in the SQL editor
+- **Explorer table creation validates every clause** — column types, engines and ORDER BY / PARTITION BY / PRIMARY KEY must be well-formed on their own, `DEFAULT`/`COMMENT` values escape backslashes, and non-admins are limited to local-storage table and database engines
+- **Admins can't grant more than they hold** — assigning a role, creating or updating a user, and creating or updating a role now refuse anything that grants permissions the caller doesn't have, so an `admin` can no longer make themselves or a new account `super_admin`
+- **Request size limit counts the bytes actually received** — the 10 MB cap now also applies to requests sent without a `Content-Length` header
+- **File import respects permissions and data access rules** — importing a file now needs `table:insert` and access to the target table, only CSV, TSV and JSON are accepted, and the import preview requires a signed-in user
+- **Backslashes are escaped in generated ClickHouse statements** — ClickHouse user/role management, the live-query kill action and the recent-queries filter now escape `\` as well as quotes, so values ending in a backslash (such as a password) no longer break or alter the statement
+- **Health endpoints no longer return raw database errors** — `/api/rbac/health` and `/api/rbac/status` log the error server-side instead of returning it
+- **Login brute-force limit can't be bypassed with `X-Forwarded-For`** — the per-IP login and SSO limits key on the address the nearest proxy appended, and login adds a per-account limit (20 attempts per 15 minutes)
+- **No credentialed CORS for a wildcard origin** — with `CORS_ORIGIN=*` the server no longer echoes any origin with `Access-Control-Allow-Credentials`, and `*.example.com` entries match on hostname so lookalike domains are rejected
+- **SSO redirect guard rejects control characters** — a post-login redirect such as `/\t/evil.com` falls back to `/`
+- **Dependency advisories** — nodemailer 10.1.4 (address-parser recipient injection), fast-uri 3.1.9, vite 7.3.7, rollup, postcss and other transitive packages are patched; vitest moves to 4.1.12; the unused `happy-dom` and `drizzle-kit` dev dependencies are removed; `bun audit` is clean for the app and the docs site
+- **Dependency security updates** — DOMPurify 3.4.17, js-yaml 4.3.2, body-parser 2.4.0, Hono 4.13.13, ip-address 10.7.4 and zod 4.6.7 fix newly published advisories
+- **Chat answers showing raw tool output** — when a model ended its turn with an empty message after a tool call, the chat showed the tool's JSON result as the answer. The answer now comes only from the agent's final message, and an empty one gets one retry before the chat reports an error
+- **Incident notebooks with long titles** — an incident whose title was a whole ClickHouse error no longer fails with "The notebook could not be opened"; the notebook title is shortened instead. The same fix applies to Chobi's "Send to notebook" handoff.
+- **Incident titles** — incident titles keep to one short line in the incident list, the incident page, related incidents and dashboard annotations, while alerts, the root-cause chain and the timeline keep the full error. The incident page heading is clamped to three lines, with **Show more** to read the complete text.
+- **Root cause chain on phones** — on narrow screens the root cause steps stack, and long SQL in a step wraps inside its card instead of running past the edge.
+- **Ask AI save connection** — a draft is saved for the connection it was checked on, not whichever connection is active when you press Create
+- **Ask AI dashboard limits** — adding panels that would pass a dashboard's 60-panel, 40-chart or 10-variable limit is stopped with the reason instead of failing the save
+- **Ask AI variables** — panels drafted for an existing dashboard are checked with the dashboard's own definition of a variable name it already has
+- **Chobi launcher** — no round background behind Chobi; hovering it lifts, glows and waves.
+- **Dashboard annotation lines** — easy to hover and click (a wide hit area instead of the 1px line), and clicking one no longer starts a range selection.
+- **Button style** — buttons use the app's square corners, and primary and confirm buttons are yellow or red only.
+- **MCP `run_dashboard_panel`** — accepts a list for a multi-value variable, as its schema documents
+- **MCP SDK** — updated `@modelcontextprotocol/sdk` to 1.32.0 for two high-severity advisories (GHSA-22jm-h49p-29qw, GHSA-46jr-4wx8-v453)
+- **Server on zod 4** — the API server's request validation moves from zod 3.25.76 to zod 4.6.7, which fixes CVE-2023-54404 (denial of service through unbounded array validation) and removes its accepted-risk exception from the security scans
+
 ## [v3.15.0] - 2026-10-17
 
 ### Added
@@ -183,12 +278,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Security** — upgraded react-router to v8.3.0, resolving GHSA-qwww-vcr4-c8h2 (High), and bumped dompurify to 3.4.12 (GHSA-c2j3-45gr-mqc4, Low); dependency scans now report no known vulnerabilities.
 - **RBAC version reporting** — servers no longer log a contradictory "current 1.47.0 / target 1.46.0" migration state; the schema version constant now matches the newest migration and is guarded by a test.
-
-## [v3.10.0] - 2026-07-19
-
-### Added
-- **Clear & rerun (ADR 0007)** — every run in a Scheduled Query's history and a Data Health promise's evaluation timeline gains a per-run **Rerun** action that re-executes exactly that slot over its original window; rerunning a materializing slot automatically re-verifies its linked Data Health promises over the same window. The recovery planner additionally supports range reruns — including already-succeeded slots — and Data Health promises gain a "Rerun range" action. Replays are idempotent: samples are replaced in place, and only the newest slot can change current status, incidents, or notifications — historical slots are corrected silently.
-
-### Fixed
-- **AI chat connection switching** — New threads, displayed chat state, and asynchronous history refreshes now follow the currently active ClickHouse connection.
 

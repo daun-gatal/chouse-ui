@@ -8,7 +8,7 @@ type: application
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
 version: 2.0.4
 # App version — owned by auto-release.yml; never edit by hand.
-appVersion: "3.15.0"
+appVersion: "3.16.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/daun-gatal/chouse-ui
 # Rendered as the package logo on artifacthub.io and by other chart UIs.
@@ -46,7 +46,7 @@ annotations:
       url: https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0010-pod-local-state-and-multi-replica-correctness.md
   artifacthub.io/images: |
     - name: chouse-ui
-      image: ghcr.io/daun-gatal/chouse-ui:v3.15.0
+      image: ghcr.io/daun-gatal/chouse-ui:v3.16.0
   artifacthub.io/changes: |
     - kind: changed
       description: scheduledQueries.enabled and dedicatedScheduler.enabled also place the scheduled dashboard report sender (CHouse UI 3.16); no values change
