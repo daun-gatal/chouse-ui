@@ -29,8 +29,8 @@ interface ConfirmationDialogProps {
 /**
  * Variant style table. Chip uses the shared `.status-*` utility classes from
  * index.css so light/dark mode flip is handled centrally — no per-variant
- * dark: pairings to maintain. Confirm button colours stay inline because they
- * carry intent (danger button needs to look dangerous in both modes).
+ * dark: pairings to maintain. Confirm buttons use the two button colours only:
+ * red when the action takes something away, brand yellow otherwise.
  */
 const variantStyles: Record<
   Variant,
@@ -50,7 +50,7 @@ const variantStyles: Record<
     icon: <AlertTriangle className="h-4 w-4" aria-hidden />,
     chipClass: "status-warn",
     confirmBtn:
-      "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500",
+      "bg-red-600 text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600",
   },
   info: {
     icon: <Info className="h-4 w-4" aria-hidden />,
@@ -62,7 +62,7 @@ const variantStyles: Record<
     icon: <CheckCircle className="h-4 w-4" aria-hidden />,
     chipClass: "status-success",
     confirmBtn:
-      "bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500",
+      "bg-brand text-ink-50 hover:bg-brand-soft",
   },
 };
 

@@ -173,18 +173,20 @@ export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals,
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
         className={cn(
-          "relative grid touch-none select-none place-items-center rounded-full border border-ink-500 bg-ink-100/95 shadow-lg shadow-black/40 backdrop-blur transition-[transform,border-color] duration-200",
-          "hover:-translate-y-0.5 hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
-          drag ? "cursor-grabbing" : "cursor-pointer",
-          (open || dropping) && "border-brand",
-          dropping && "scale-110",
-          unavailable && "cursor-not-allowed opacity-60 hover:translate-y-0 hover:border-ink-500",
+          // No disc behind Chobi: a drop shadow keeps it readable on any background.
+          "relative grid touch-none select-none place-items-center rounded-2xl transition-[translate,scale,filter] duration-200 ease-out",
+          "drop-shadow-[0_4px_8px_rgba(0,0,0,0.45)] hover:-translate-y-1 hover:scale-110 hover:drop-shadow-[0_0_12px_rgba(255,204,1,0.55)]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+          drag ? "cursor-grabbing scale-110" : "cursor-pointer",
+          (open || dropping) && "drop-shadow-[0_0_12px_rgba(255,204,1,0.55)]",
+          dropping && "scale-125",
+          unavailable && "cursor-not-allowed opacity-60 hover:translate-y-0 hover:scale-100 hover:drop-shadow-[0_4px_8px_rgba(0,0,0,0.45)]",
         )}
         style={{ width: SIZE, height: SIZE }}
       >
-        <Mascot mood={unavailable ? "sleeping" : dropping ? "happy" : mood} plain={plain} size={plain ? 30 : 44} />
+        <Mascot mood={unavailable ? "sleeping" : dropping ? "happy" : mood} greet={hover && !unavailable && !drag} plain={plain} size={plain ? 36 : 54} />
         {pendingApprovals > 0 && !unavailable && (
-          <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold text-ink-50 ring-2 ring-ink-100" aria-hidden>
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold text-ink-50 ring-2 ring-ink-100" aria-hidden>
             {pendingApprovals > 9 ? "9+" : pendingApprovals}
           </span>
         )}

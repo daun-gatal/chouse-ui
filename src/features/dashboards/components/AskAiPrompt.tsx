@@ -68,7 +68,7 @@ export function AskAiPrompt({ goal, onGoal, onDraft, drafting, onCancel, error, 
       />
       <div className="flex flex-wrap gap-1.5" aria-label="Examples">
         {EXAMPLES.map((example) => (
-          <button key={example} type="button" onClick={() => onGoal(example)} className="min-h-8 rounded-full border border-ink-500 px-3 py-1 text-left text-[11px] text-paper-dim hover:border-paper-dim hover:text-paper">
+          <button key={example} type="button" onClick={() => onGoal(example)} className="min-h-8 rounded-xs border border-ink-500 px-3 py-1 text-left text-[11px] text-paper-dim hover:border-paper-dim hover:text-paper">
             {example}
           </button>
         ))}

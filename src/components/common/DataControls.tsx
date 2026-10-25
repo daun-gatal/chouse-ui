@@ -62,7 +62,7 @@ export function DataControls({
                                 className={cn(
                                     "h-7 w-7 rounded-xs",
                                     autoRefresh
-                                        ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                        ? "bg-brand/10 text-brand hover:bg-brand/20"
                                         : "text-paper-muted hover:bg-ink-300 hover:text-paper",
                                 )}
                             >

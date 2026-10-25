@@ -282,7 +282,7 @@ export default function ClickHouseRolesManagement() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className={outlineBtn}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="h-9 rounded-xs bg-rose-600 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:bg-rose-500">
+            <AlertDialogAction onClick={handleDelete} className="h-9 rounded-xs bg-red-600 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white hover:bg-red-500">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

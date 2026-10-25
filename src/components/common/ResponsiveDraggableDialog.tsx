@@ -330,7 +330,7 @@ export function ResponsiveDraggableDialog({
                         <button
                           type="button"
                           onClick={handleClose}
-                          className={cn("p-2 rounded-md hover:bg-muted transition-colors shrink-0", closeButtonClassName)}
+                          className={cn("p-2 rounded-xs hover:bg-muted transition-colors shrink-0", closeButtonClassName)}
                           aria-label="Close"
                         >
                           <X className="w-5 h-5" />

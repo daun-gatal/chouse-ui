@@ -70,7 +70,7 @@ export function fireAlertToast(opts: {
           type="button"
           onClick={() => toast.dismiss(id)}
           aria-label="Dismiss"
-          className="grid h-6 w-6 shrink-0 self-center place-items-center rounded-full text-red-400 transition-colors hover:bg-red-100 hover:text-red-700 dark:text-red-400/70 dark:hover:bg-red-900/50 dark:hover:text-red-200"
+          className="grid h-6 w-6 shrink-0 self-center place-items-center rounded-xs text-red-400 transition-colors hover:bg-red-100 hover:text-red-700 dark:text-red-400/70 dark:hover:bg-red-900/50 dark:hover:text-red-200"
         >
           <X className="h-3.5 w-3.5" aria-hidden />
         </button>

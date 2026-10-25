@@ -1855,7 +1855,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
     const currentAgentName = chatAgents.find((a) => a.id === selectedAgentId)?.name ?? chatAgents.find((a) => a.isDefault)?.name ?? 'Default agent';
     const currentModelName = aiModels.find((m) => m.id === selectedModelId)?.name ?? 'Select model';
     const iconButtonClass = 'grid h-7 w-7 shrink-0 place-items-center rounded-sm text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:cursor-not-allowed disabled:opacity-40';
-    const pickerClass = `inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] text-paper-muted transition-colors hover:bg-ink-300 hover:text-paper ${pickerWidthClass}`;
+    const pickerClass = `inline-flex h-6 items-center gap-1 rounded-xs px-2 text-[11px] text-paper-muted transition-colors hover:bg-ink-300 hover:text-paper ${pickerWidthClass}`;
 
     const startFromPrompt = async (prompt: string): Promise<void> => {
         if (!activeThreadId) await handleNewThread();
@@ -1995,7 +1995,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                             key={sp.label}
                                             type="button"
                                             onClick={() => void startFromPrompt(sp.prompt)}
-                                            className="group inline-flex items-center gap-1.5 rounded-full border border-ink-500 bg-ink-100 px-3 py-1.5 text-left text-[12px] text-paper-muted transition-colors hover:border-brand/60 hover:text-paper"
+                                            className="group inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-3 py-1.5 text-left text-[12px] text-paper-muted transition-colors hover:border-brand/60 hover:text-paper"
                                         >
                                             <sp.icon className="h-3 w-3 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
                                             <span className="truncate">{sp.label}</span>
@@ -2005,7 +2005,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                 <button
                                     type="button"
                                     onClick={() => setShuffleKey(Date.now())}
-                                    className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
+                                    className="mt-2 inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-[11px] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
                                     title="Show different suggestions"
                                 >
                                     <Shuffle className="h-3 w-3" />
@@ -2015,7 +2015,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                     <button
                                         type="button"
                                         onClick={handleNewThread}
-                                        className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-brand px-4 text-[12px] font-semibold text-ink-50 transition-colors hover:bg-brand-soft"
+                                        className="mt-5 inline-flex h-9 items-center gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 transition-colors hover:bg-brand-soft"
                                     >
                                         <Plus className="h-4 w-4" />
                                         Start new chat
@@ -2206,7 +2206,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isInvoking}
-                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40"
+                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40"
                                     title={attachmentHint(modelModalities)}
                                     aria-label={attachmentHint(modelModalities)}
                                 >
@@ -2241,7 +2241,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                     <button
                                         type="button"
                                         onClick={handleStop}
-                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-red-50 text-red-700 transition-colors hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-xs bg-red-50 text-red-700 transition-colors hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-900/50"
                                         title="Stop generating"
                                         aria-label="Stop generating"
                                     >
@@ -2251,7 +2251,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                     <button
                                         type="submit"
                                         disabled={!input.trim() && attachments.length === 0}
-                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand text-ink-50 transition-colors hover:bg-brand-soft disabled:bg-ink-300 disabled:text-paper-faint"
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-xs bg-brand text-ink-50 transition-colors hover:bg-brand-soft disabled:bg-ink-300 disabled:text-paper-faint"
                                         title="Send message"
                                         aria-label="Send"
                                     >

@@ -23,6 +23,8 @@ interface MascotProps {
   plain?: boolean;
   /** No idle motion, for small repeated avatars such as chat messages. */
   still?: boolean;
+  /** The pointer is on Chobi: it waves hello (only while idle, so a mood still reads). */
+  greet?: boolean;
   className?: string;
 }
 
@@ -59,12 +61,13 @@ const STYLES = `
  * Chobi, the CHouse buddy (ADR 0025 §6): the logo's three bars as a chibi —
  * the tall middle bar is its head and body, the side bars its arms.
  */
-export function Mascot({ mood, size = 48, plain = false, still = false, className }: MascotProps): React.JSX.Element {
+export function Mascot({ mood, size = 48, plain = false, still = false, greet = false, className }: MascotProps): React.JSX.Element {
   const id = useId().replace(/:/g, "");
   if (plain) {
     return <img src={withBasePath("logo.svg")} alt="" width={size} height={size} className={className} draggable={false} />;
   }
-  const arms = ARM_ANGLES[mood];
+  const waving = mood === "happy" || (greet && mood === "idle");
+  const arms = waving ? ARM_ANGLES.happy : ARM_ANGLES[mood];
   const antenna = mood === "alert" ? "#ff6b4a" : mood === "waiting" ? "#7dd3fc" : mood === "thinking" ? "#fff6c2" : "#ffe680";
   return (
     <svg
@@ -90,7 +93,7 @@ export function Mascot({ mood, size = 48, plain = false, still = false, classNam
 
       <g className={mood === "sleeping" ? undefined : "chobi-bob"}>
         {/* Left arm (the logo's short bar) */}
-        <g className={cn("chobi-arm", mood === "happy" && "chobi-wave")} style={{ transform: `rotate(${arms.left}deg)`, transformOrigin: "100% 0%" }}>
+        <g className={cn("chobi-arm", waving && "chobi-wave")} style={{ transform: `rotate(${arms.left}deg)`, transformOrigin: "100% 0%" }}>
           <rect x="7" y="34" width="11" height="19" rx="4.5" fill={`url(#${id}-body)`} stroke="#fff" strokeOpacity="0.25" />
         </g>
         {/* Right arm (the logo's middle-height bar) */}

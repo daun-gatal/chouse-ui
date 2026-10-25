@@ -412,18 +412,18 @@ export function DashboardView({ id }: { id: string }): React.ReactElement {
           <button
             type="button"
             onClick={() => setConnectionsOpen(true)}
-            className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim transition-colors hover:border-ink-400 hover:text-paper"
+            className="flex items-center gap-1 rounded-xs border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim transition-colors hover:border-ink-400 hover:text-paper"
             aria-label={`Connections: ${scopeLabel(data.scope)}. Change`}
             data-testid="dashboard-scope"
           >
             <Database className="h-3 w-3" aria-hidden /> {scopeLabel(data.scope)}
           </button>
         ) : (
-          <span className="flex items-center gap-1 rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim" data-testid="dashboard-scope">
+          <span className="flex items-center gap-1 rounded-xs border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim" data-testid="dashboard-scope">
             <Database className="h-3 w-3" aria-hidden /> {scopeLabel(data.scope)}
           </span>
         )}
-        {data.shares.length > 0 && <span className="rounded-full border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
+        {data.shares.length > 0 && <span className="rounded-xs border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-dim">Shared · {data.shares.map((s) => s.roleDisplayName).join(", ")}</span>}
         {editing ? (
           <>
             <DropdownMenu>
