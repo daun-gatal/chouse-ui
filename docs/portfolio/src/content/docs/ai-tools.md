@@ -55,7 +55,7 @@ Catalog tools only read, except the [action tools](#action-tools), which wait fo
 | `list_health_checks` | Data health promises | Your CHouse access | `data_health:view` | Data Health promises you can see with their current status. | 1 |
 | `get_health_check` | Data health promise | Your CHouse access | `data_health:view` | One Data Health promise by id with its checks. | 1 |
 | `list_health_incidents` | Data health incidents | Your CHouse access | `data_health:view` | Open and recent Data Health incidents you can see. | 1 |
-| `list_alerting` | Alerting | Your CHouse access | `alerting:view` | Alert notification channels or alert rules (channel secrets redacted). | 1 |
+| `list_alerting` | Alerting | Your CHouse access | `alerting:view` | Alerting: channels (with delivery health and what uses each; secrets redacted), fleet rules, sources (everything that sends alerts, as far as you can see), overview (what fires, sent and failed in 24h), or events (history; filter with q, source, severity, channelId, failed, from, to, and page with cursor). | 1 |
 | `list_observe_incidents` | Observability incidents | Your CHouse access | `observe:view` | Data observability incidents with their root-cause summaries. | 1 |
 | `list_doctor_reports` | Doctor reports | Your CHouse access | `doctor:view` | Recent fleet Doctor reports: verdict, summary, model and when they ran. | 1 |
 | `fleet_snapshots` | Fleet snapshot | Your CHouse access | `fleet:view` | Latest health snapshot of every ClickHouse node (memory, CPU, queries, replication). | 1 |

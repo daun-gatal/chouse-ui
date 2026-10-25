@@ -46,7 +46,14 @@ export const CONFIG_SECTIONS = [
  * Variables the server reads that are not user configuration: test
  * harnesses and values the runtime sets for the process.
  */
-export const IGNORED_ENV = new Set(["DOCKER_HOST", "MIGRATION_TEST_PG_HOST", "MIGRATION_TEST_PG_PORT"]);
+export const IGNORED_ENV = new Set([
+  "DOCKER_HOST",
+  "MIGRATION_TEST_PG_HOST",
+  "MIGRATION_TEST_PG_PORT",
+  // The e2e suite's fake chat platforms (ADR 0026): never set in a deployment.
+  "CHOUSE_ALLOW_TEST_OVERRIDES",
+  "CHOUSE_INTEGRATIONS_TEST_HOSTS",
+]);
 
 export const CONFIG_KEYS: ConfigKey[] = [
   // Core server

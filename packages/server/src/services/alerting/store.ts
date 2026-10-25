@@ -393,6 +393,34 @@ export interface AlertEvent {
   payload: string | null;
   deliveredTo: string[];
   resolvedAt: number | null;
+  /** Which feature fired it (ADR 0026). */
+  source: string;
+  channelIds: string[];
+  deliveryFailed: boolean;
+}
+
+function jsonList(raw: unknown): string[] {
+  try {
+    const parsed: unknown = JSON.parse(String(raw ?? "[]"));
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toEvent(r: Record<string, unknown>): AlertEvent {
+  return {
+    id: String(r.id),
+    ruleId: r.rule_id == null ? null : String(r.rule_id),
+    severity: String(r.severity),
+    firedAt: Number(r.fired_at ?? 0),
+    payload: r.payload == null ? null : String(r.payload),
+    deliveredTo: jsonList(r.delivered_to),
+    resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    source: r.source == null ? "other" : String(r.source),
+    channelIds: jsonList(r.channel_ids),
+    deliveryFailed: Number(r.delivery_failed ?? 0) === 1,
+  };
 }
 
 /**
@@ -410,22 +438,46 @@ export async function clearEvents(before?: number): Promise<void> {
 
 export async function listEvents(limit = 50): Promise<AlertEvent[]> {
   const rows = await all(sql`SELECT * FROM alert_events ORDER BY fired_at DESC LIMIT ${limit}`);
-  return rows.map((r) => {
-    let deliveredTo: string[] = [];
-    try {
-      const parsed = JSON.parse(String(r.delivered_to ?? "[]"));
-      if (Array.isArray(parsed)) deliveredTo = parsed.map(String);
-    } catch {
-      deliveredTo = [];
-    }
-    return {
-      id: String(r.id),
-      ruleId: r.rule_id == null ? null : String(r.rule_id),
-      severity: String(r.severity),
-      firedAt: Number(r.fired_at ?? 0),
-      payload: r.payload == null ? null : String(r.payload),
-      deliveredTo,
-      resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
-    };
-  });
+  return rows.map(toEvent);
+}
+
+export interface EventSearch {
+  /** Words in the alert's title or text. */
+  q?: string;
+  source?: string;
+  severity?: string;
+  /** Reached (or was meant to reach) this channel. */
+  channel?: { id: string; name: string };
+  /** true: some channel failed; false: every channel got it. */
+  failed?: boolean;
+  from?: number;
+  to?: number;
+  /** Where the previous page ended. */
+  cursor?: { firedAt: number; id: string };
+  limit: number;
+}
+
+/** `%`, `_` and `\` in a search term match themselves, not wildcards. */
+function likeTerm(value: string): string {
+  return `%${value.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+}
+
+/** One page of history, newest first, and where the next page starts (null at the end). */
+export async function searchEvents(search: EventSearch): Promise<{ events: AlertEvent[]; next: { firedAt: number; id: string } | null }> {
+  const where = [sql`1 = 1`];
+  if (search.q) where.push(sql`LOWER(COALESCE(payload, '')) LIKE ${likeTerm(search.q.toLowerCase())} ESCAPE '\\'`);
+  if (search.source) where.push(sql`source = ${search.source}`);
+  if (search.severity) where.push(sql`severity = ${search.severity}`);
+  if (search.channel) {
+    // Events before 1.74.0 name their channels; later ones keep their ids.
+    where.push(sql`(channel_ids LIKE ${likeTerm(JSON.stringify(search.channel.id))} ESCAPE '\\' OR delivered_to LIKE ${likeTerm(JSON.stringify(search.channel.name))} ESCAPE '\\')`);
+  }
+  if (search.failed !== undefined) where.push(sql`delivery_failed = ${search.failed ? 1 : 0}`);
+  if (search.from !== undefined) where.push(sql`fired_at >= ${search.from}`);
+  if (search.to !== undefined) where.push(sql`fired_at < ${search.to}`);
+  if (search.cursor) where.push(sql`(fired_at < ${search.cursor.firedAt} OR (fired_at = ${search.cursor.firedAt} AND id < ${search.cursor.id}))`);
+  const rows = await all(sql`SELECT * FROM alert_events WHERE ${sql.join(where, sql` AND `)} ORDER BY fired_at DESC, id DESC LIMIT ${search.limit + 1}`);
+  const events = rows.slice(0, search.limit).map(toEvent);
+  const last = events[events.length - 1];
+  return { events, next: rows.length > search.limit && last ? { firedAt: last.firedAt, id: last.id } : null };
 }

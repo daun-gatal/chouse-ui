@@ -197,6 +197,7 @@ const AUDIT_AREAS: Record<string, string> = {
   ai_budget: "AI budgets",
   ai_action: "AI actions",
   chobi: "Chobi",
+  chat_identity: "Linked chat accounts",
   ai_memory: "AI memory",
   ai_triage: "AI auto-triage",
   ai_eval: "AI agent evals",

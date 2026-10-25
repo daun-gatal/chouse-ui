@@ -1,7 +1,7 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 164 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 169 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
@@ -23,7 +23,8 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 164 in al
 | Saved queries | `saved_query.create`, `saved_query.update`, `saved_query.delete` |
 | Fleet | `fleet.alert_config_update` |
 | Doctor | `doctor.scan_run`, `doctor.schedule_update`, `doctor.report_delete` |
-| Alerting | `alerting.channel_create`, `alerting.channel_update`, `alerting.channel_delete`, `alerting.channel_test`, `alerting.channel_message`, `alerting.events_clear` |
+| Alerting | `alerting.channel_create`, `alerting.channel_update`, `alerting.channel_delete`, `alerting.channel_test`, `alerting.channel_message`, `alerting.events_clear`, `alerting.chat_action`, `alerting.settings_update` |
+| Linked chat accounts | `chat_identity.link`, `chat_identity.unlink` |
 | Scheduled queries | `scheduled_query.create`, `scheduled_query.update`, `scheduled_query.delete`, `scheduled_query.run` |
 | Data health | `data_health.promise_create`, `data_health.promise_update`, `data_health.promise_delete`, `data_health.promise_run`, `data_health.incident_acknowledge`, `data_health.incident_snooze`, `data_health.incident_note` |
 | Data observability | `observe.suggestion_accept`, `observe.suggestion_dismiss`, `observe.criticality_pin`, `observe.incident_acknowledge`, `observe.cost_rates_update`, `observe.codec_trial`, `observe.collectors_update` |
@@ -33,7 +34,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 164 in al
 | Notebooks | `notebook.cell_add` |
 | Upgrades | `upgrade.assess`, `upgrade.replay` |
 | Agents | `agent.policy_update`, `agent.access_pause`, `agent.mcp_update` |
-| Chobi | `chobi.settings_update` |
+| Chobi | `chobi.settings_update`, `chobi.alert_sent` |
 | AI agents | `ai_agent.create`, `ai_agent.update`, `ai_agent.delete` |
 | AI harnesses | `ai_harness.create`, `ai_harness.update`, `ai_harness.delete` |
 | AI skills | `ai_skill.create`, `ai_skill.update`, `ai_skill.delete` |

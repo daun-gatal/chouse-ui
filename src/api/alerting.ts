@@ -31,6 +31,38 @@ export enum AlertSeverity {
   Critical = "critical",
 }
 
+/** Delivery health from the message log (ADR 0026). */
+export interface ChannelHealth {
+  lastSentAt: number | null;
+  lastFailedAt: number | null;
+  lastError: string | null;
+  sent24h: number;
+  failed24h: number;
+}
+
+/** What sends to a channel, per feature (counts only). */
+export interface ChannelUsage {
+  fleetRules: number;
+  dashboardAlerts: number;
+  dashboardReports: number;
+  scheduledQueries: number;
+  dataHealth: number;
+  triage: number;
+  chobi: number;
+  remediation: number;
+}
+
+export const USAGE_LABELS: Record<keyof ChannelUsage, string> = {
+  fleetRules: "Fleet rules",
+  dashboardAlerts: "Dashboard alerts",
+  dashboardReports: "Dashboard reports",
+  scheduledQueries: "Scheduled queries",
+  dataHealth: "Data Health",
+  triage: "Auto-triage",
+  chobi: "Chobi",
+  remediation: "Remediation",
+};
+
 export interface NotificationChannel {
   id: string;
   name: string;
@@ -42,6 +74,13 @@ export interface NotificationChannel {
   configured: Record<string, boolean>;
   createdAt: number;
   updatedAt: number;
+  health?: ChannelHealth;
+  usedBy?: ChannelUsage;
+}
+
+/** How many things send to a channel. */
+export function usageTotal(usage: ChannelUsage | undefined): number {
+  return usage ? Object.values(usage).reduce((sum, n) => sum + n, 0) : 0;
 }
 
 export interface ChannelInput {
@@ -72,6 +111,67 @@ export interface AlertEvent {
   payload: string | null;
   deliveredTo: string[];
   resolvedAt: number | null;
+  /** Which feature fired it. */
+  source?: string;
+  channelIds?: string[];
+  deliveryFailed?: boolean;
+}
+
+/** Event sources, as history is filtered by them. */
+export const EVENT_SOURCE_LABELS: Record<string, string> = {
+  fleet_alert: "Fleet alert",
+  fleet_rca: "Fleet root-cause report",
+  dashboard_alert: "Dashboard alert",
+  dashboard_report: "Dashboard report",
+  scheduled_query: "Scheduled query",
+  data_health: "Data Health",
+  triage: "Auto-triage",
+  other: "Other",
+};
+
+export interface EventSearch {
+  q?: string;
+  source?: string;
+  severity?: string;
+  channelId?: string;
+  failed?: boolean;
+  from?: number;
+  to?: number;
+  cursor?: string | null;
+  limit?: number;
+}
+
+/** One page of history (newest first) and where the next starts. */
+export function searchEvents(search: EventSearch): Promise<{ events: AlertEvent[]; nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(search)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  return api.get<{ events: AlertEvent[]; nextCursor: string | null }>(`/alerting/events/search?${params.toString()}`);
+}
+
+export interface AlertingOverview {
+  firing: { fleet: number; dashboards: number; dataHealth: number };
+  sent24h: number;
+  failed24h: number;
+  /** Requests waiting on a person. */
+  waiting: number;
+  /** Channels whose latest delivery failed. */
+  failing: Array<{ id: string; name: string; failed24h: number; lastError: string | null }>;
+}
+
+export function getAlertingOverview(): Promise<AlertingOverview> {
+  return api.get<AlertingOverview>("/alerting/overview");
+}
+
+/** Where remediation approvals are posted, besides the Slack bot set by environment variables. */
+export function getRemediationChannels(): Promise<{ channelIds: string[]; envSlack: boolean }> {
+  return api.get<{ channelIds: string[]; envSlack: boolean }>("/alerting/settings/remediation");
+}
+
+export function saveRemediationChannels(channelIds: string[]): Promise<{ channelIds: string[] }> {
+  return api.put<{ channelIds: string[] }>("/alerting/settings/remediation", { channelIds });
 }
 
 // --- channels ---------------------------------------------------------------

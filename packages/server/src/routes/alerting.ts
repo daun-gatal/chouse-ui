@@ -28,6 +28,10 @@ import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
 import { checkChannel, sendToChannel, TEST_MESSAGE, type ChannelCheck } from "../services/alerting/notify";
+import { channelHealth } from "../services/alerting/notify/log";
+import { channelUsage, emptyUsage, firingNow, waitingRequests } from "../services/alerting/usage";
+import { InProcessApiClient } from "../services/ai/registry/inProcessApi";
+import { extractTokenFromHeader } from "../rbac/services/jwt";
 import { parseServiceAccount } from "../services/alerting/notify/platforms/googleChat";
 import { channelActorsSchema } from "../services/alerting/notify/actors";
 import { registerTelegramWebhook } from "../services/alerting/notify/telegramWebhook";
@@ -172,7 +176,7 @@ const channelBodySchema = z.object({
 // --- channels ---------------------------------------------------------------
 
 alerting.get("/channels", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
-  const channels = await store.listChannels();
+  const [channels, health, usage] = await Promise.all([store.listChannels(), channelHealth(), channelUsage()]);
   const data = channels.map((ch) => {
     const stored = JSON.parse(ch.config) as Record<string, unknown>;
     const { config, configured } = store.maskChannelConfig(ch.type, stored);
@@ -185,9 +189,29 @@ alerting.get("/channels", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c
       configured,
       createdAt: ch.createdAt,
       updatedAt: ch.updatedAt,
+      // ADR 0026: delivery health from the message log, and what sends here (counts only).
+      health: health.get(ch.id) ?? { channelId: ch.id, lastSentAt: null, lastFailedAt: null, lastError: null, sent24h: 0, failed24h: 0 },
+      usedBy: usage.get(ch.id) ?? emptyUsage(),
     };
   });
   return c.json({ success: true, data });
+});
+
+/** The Overview tab: what fires, what was sent and failed in the last day, what waits on a person. */
+alerting.get("/overview", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const [channels, health, firing, waiting] = await Promise.all([store.listChannels(), channelHealth(), firingNow(), waitingRequests()]);
+  let sent24h = 0;
+  let failed24h = 0;
+  const failing: Array<{ id: string; name: string; failed24h: number; lastError: string | null }> = [];
+  for (const ch of channels) {
+    const h = health.get(ch.id);
+    if (!h) continue;
+    sent24h += h.sent24h;
+    failed24h += h.failed24h;
+    // Failing now: its latest attempt failed.
+    if (h.failed24h > 0 && (h.lastSentAt ?? 0) < (h.lastFailedAt ?? 0)) failing.push({ id: ch.id, name: ch.name, failed24h: h.failed24h, lastError: h.lastError });
+  }
+  return c.json({ success: true, data: { firing, sent24h, failed24h, waiting, failing } });
 });
 
 alerting.post(
@@ -494,6 +518,52 @@ alerting.get(
   },
 );
 
+const searchEventsQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  source: z.string().trim().max(50).optional(),
+  severity: z.nativeEnum(AlertSeverity).optional(),
+  channelId: z.string().trim().max(100).optional(),
+  failed: z.enum(["true", "false"]).optional(),
+  from: z.coerce.number().int().nonnegative().optional(),
+  to: z.coerce.number().int().positive().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+function decodeCursor(raw: string | undefined): { firedAt: number; id: string } | undefined {
+  if (!raw) return undefined;
+  try {
+    const [firedAt, id] = Buffer.from(raw, "base64url").toString("utf8").split("|");
+    const at = Number(firedAt);
+    return Number.isFinite(at) && id ? { firedAt: at, id } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * History with search, filters and pages (ADR 0026 §7). `GET /events` keeps
+ * answering a plain list for its existing callers.
+ */
+alerting.get("/events/search", requirePermission(PERMISSIONS.ALERTING_VIEW), zValidator("query", searchEventsQuerySchema), async (c) => {
+  const query = c.req.valid("query");
+  const channel = query.channelId ? await store.getChannel(query.channelId) : null;
+  if (query.channelId && !channel) return c.json({ success: true, data: { events: [], nextCursor: null } });
+  const { events, next } = await store.searchEvents({
+    q: query.q || undefined,
+    source: query.source || undefined,
+    severity: query.severity,
+    channel: channel ? { id: channel.id, name: channel.name } : undefined,
+    failed: query.failed === undefined ? undefined : query.failed === "true",
+    from: query.from,
+    to: query.to,
+    cursor: decodeCursor(query.cursor),
+    limit: query.limit,
+  });
+  const nextCursor = next ? Buffer.from(`${next.firedAt}|${next.id}`, "utf8").toString("base64url") : null;
+  return c.json({ success: true, data: { events, nextCursor } });
+});
+
 const clearEventsQuerySchema = z.object({
   /** Clear events fired at or before this epoch-ms cutoff. Omit to clear all. */
   before: z.coerce.number().int().positive().optional(),
@@ -514,6 +584,55 @@ alerting.delete(
     return c.json({ success: true });
   },
 );
+
+// --- sources (for AI and MCP) ---------------------------------------------------
+
+type Row = Record<string, unknown>;
+const pick = (row: Row, keys: string[]): Row => Object.fromEntries(keys.filter((k) => k in row).map((k) => [k, row[k]]));
+const listOf = (value: unknown, key?: string): Row[] => {
+  const list = key && value && typeof value === "object" && !Array.isArray(value) ? (value as Row)[key] : value;
+  return Array.isArray(list) ? (list as Row[]) : [];
+};
+
+/**
+ * Everything that sends alerts, read from each feature's own list route as
+ * the caller, so the answer holds only what they can already see; a list they
+ * may not read is named in `hidden`.
+ */
+alerting.get("/sources", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  const token = extractTokenFromHeader(c.req.header("Authorization"));
+  if (!token) return c.json({ success: false, error: "Sign in again" }, 401);
+  const api = new InProcessApiClient(token);
+  const hidden: string[] = [];
+  const read = async (name: string, path: string): Promise<unknown> => {
+    try {
+      return await api.get(path);
+    } catch {
+      hidden.push(name);
+      return null;
+    }
+  };
+  const [rules, panelAlerts, promises, jobs, triage, remediation] = await Promise.all([
+    read("fleet rules", "/api/alerting/rules"),
+    read("dashboard alerts", "/api/dashboards/alerts"),
+    read("Data Health", "/api/data-health"),
+    read("scheduled queries", "/api/scheduled-queries"),
+    read("auto-triage", "/api/ai-triage/rules"),
+    read("remediation", "/api/alerting/settings/remediation"),
+  ]);
+  const promiseJobs = new Set(listOf(promises, "promises").map((p) => String(p.scheduledQueryId)));
+  return c.json({ success: true, data: {
+    fleetRules: listOf(rules).map((r) => pick(r, ["id", "name", "enabled", "severity", "channelIds"])),
+    dashboardAlerts: listOf(panelAlerts).map((a) => ({ ...pick(a, ["id", "name", "dashboardId", "dashboardTitle", "enabled", "severity", "channelIds"]), state: (a.status as Row | null | undefined)?.state ?? null })),
+    dataHealth: listOf(promises, "promises").map((p) => pick(p, ["id", "name", "enabled", "status", "channelIds"])),
+    // A promise's monitor job is the promise; a job without channels alerts nobody.
+    scheduledQueries: listOf(jobs, "jobs").filter((j) => !promiseJobs.has(String(j.id)) && listOf(j.channelIds).length > 0)
+      .map((j) => ({ ...pick(j, ["id", "name", "enabled", "channelIds"]), lastRunStatus: (j.lastRun as Row | null | undefined)?.status ?? null })),
+    triage: listOf(triage, "rules").map((t) => pick(t, ["trigger", "label", "enabled", "channelIds"])),
+    remediation: remediation ? pick(remediation as Row, ["channelIds", "envSlack"]) : null,
+    hidden,
+  } });
+});
 
 // --- settings -----------------------------------------------------------------
 

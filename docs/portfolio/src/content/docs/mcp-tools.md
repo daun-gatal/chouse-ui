@@ -1043,11 +1043,20 @@ No parameters.
 
 *Alert rules and channels* — **Read** · on by default · needs any of `alerting:view`
 
-List alerting configuration and events: channels, rules, or events.
+List alerting: channels (with delivery health and what uses each; secrets redacted), rules, sources (everything that sends alerts, as far as you can see), overview, or events (history; filter with q, source, severity, channelId, failed, from, to, and page with cursor; without filters it is the newest events).
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `kind` | `channels | rules | events` | Yes | Which alerting object to list |
+| `kind` | `channels | rules | sources | overview | events` | Yes | channels, rules, sources, overview or events |
+| `q` | `string` | No | events: words in the alert |
+| `source` | `string` | No | events: fleet_alert, fleet_rca, dashboard_alert, dashboard_report, scheduled_query, data_health, triage |
+| `severity` | `info | warning | critical` | No | events: severity |
+| `channelId` | `string` | No | events: reached this channel |
+| `failed` | `boolean` | No | events: true for ones some channel failed to get |
+| `from` | `number` | No | events: fired at or after (epoch ms) |
+| `to` | `number` | No | events: fired before (epoch ms) |
+| `cursor` | `string` | No | events: nextCursor from the previous page |
+| `limit` | `number` | No | events: page size (default 50) |
 
 ### audit_list
 
