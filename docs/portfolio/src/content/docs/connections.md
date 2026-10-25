@@ -18,7 +18,7 @@ A **connection** is a ClickHouse server CHouse UI talks to. You can register man
    - **Default database** (optional) — empty uses the server's default
    - **SSL / TLS** — connect over HTTPS
    - **Environment** (optional) — see [below](#environment)
-3. **Test Connection** shows the server version and latency. Save.
+3. **Test connection** shows the server version and latency, and checks the ClickHouse user against [every feature](#required-clickhouse-privileges). **Create** saves it once every check passes.
 
 `CLICKHOUSE_DEFAULT_URL`, `CLICKHOUSE_DEFAULT_USER` and `CLICKHOUSE_PRESET_URLS` pre-fill the form — see [Environment variables](/docs/configuration-env/#clickhouse-connection-defaults).
 
@@ -32,9 +32,19 @@ A **connection** is a ClickHouse server CHouse UI talks to. You can register man
 
 A new connection is invisible to non-admins until a [data access policy](/docs/data-access-rules/) with an allow rule for it is attached to their role. The list shows **who can reach** each connection. One connection can be the **default**, selected first for new sessions; a connection can be set **Inactive** to hide it without deleting it.
 
-## Check privileges
+## Required ClickHouse privileges
 
-Open a connection's **Edit** dialog. The **Observability grants** panel checks what the connection's ClickHouse user can read and lists the exact `GRANT` statements for anything missing. Saving never fails because of a missing grant — the collector that needs it is simply switched off, and the affected features show missing evidence. See [How data is watched](/docs/data-observability/#grant-the-collector-what-it-needs).
+**Test connection** checks the connection's ClickHouse user against what every feature needs — the explorer and editor, monitoring, Data Health, killing queries, changing tables in the default database, and ClickHouse users and roles — and lists each feature as granted or missing. **Create** and **Update** run the same check on the server, and save only when every feature is granted.
+
+When something is missing, the dialog says **Can't create this connection yet** (or **Can't save these changes yet**), opens each failing feature with its `GRANT` statements and a **Copy** button, and highlights the username. **Copy all grants** copies the whole script. Run it as a ClickHouse admin — or grant it to a role the user has — and press **Check again**; once every feature passes, save.
+
+![A connection that can't be saved yet, with the grants to run](/docs/img/app/admin-connection-privileges.jpg "The ClickHouse user is missing privileges: each failing feature lists its GRANT statements")
+
+- **Editing** a connection checks again only when you change its host, port, user, password, SSL or default database; renaming it, or switching it on or off, doesn't. With the password field empty, the saved password is used — except when you change the host or port, or switch SSL off: then enter the password again, so the saved one never goes to another server.
+- A table the server doesn't have is shown as *not available* and doesn't count. A check that fails for another reason, such as a timeout, blocks the save until **Check again** gets through.
+- Existing connections keep working. **Test** on a row of the list warns when the user is missing something.
+
+The full list, how the check works and a script for a user that has everything are on [ClickHouse privileges](/docs/connection-privileges/).
 
 ## Collection schedule
 
@@ -60,7 +70,7 @@ The connection user's ClickHouse rights are the outer limit: CHouse UI's [permis
 | Team need | ClickHouse grant |
 | --- | --- |
 | Query and explore | `SELECT` on the databases people use |
-| Monitoring and data observability | Read access to the `system` tables listed by **Check privileges** |
+| Monitoring and data observability | Read access to the `system` tables on [ClickHouse privileges](/docs/connection-privileges/) |
 | Loading data, scheduled-query destinations | `INSERT` (and `CREATE TABLE` for create-if-missing) on target databases |
 | Schema management in the Explorer | `CREATE`, `ALTER`, `DROP` on target databases |
 | Codec trials and upgrade checks | Write access to the scratch database (`chouse_scratch`) |

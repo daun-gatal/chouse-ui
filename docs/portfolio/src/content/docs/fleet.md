@@ -36,7 +36,7 @@ The collector runs on every pod; a lease per connection makes sure only one pod 
 
 > **Note:** Before 3.14 the collector was optional (`FLEET_POLLER_ENABLED`). It now always runs; the variable is ignored with a warning.
 
-If the page shows **Snapshot worker stalled**, no fresh samples have arrived. Check the server logs for collector errors and that the connection's user can read the system tables (**Admin › Connections › Edit › Check privileges**).
+If the page shows **Snapshot worker stalled**, no fresh samples have arrived. Check the server logs for collector errors and that the connection's user can read the system tables (**Admin › Connections › Edit › Test connection**).
 
 ## Alerts
 

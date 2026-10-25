@@ -66,6 +66,10 @@ It also gives CHouse a buddy: **Chobi**, the one place for AI, above every dialo
 
 ![Alerting channels](/docs/img/app/admin-alerting-channels.jpg "Admin › Alerting: each channel's health and what uses it")
 
+**Connections that work everywhere** — **Test connection** now checks the connection's ClickHouse user against what every feature needs and lists anything missing as `GRANT` statements to copy, and a connection is saved only once every feature is granted. → [ClickHouse privileges](/docs/connection-privileges/)
+
+![A connection that can't be saved yet, with the grants to run](/docs/img/app/admin-connection-privileges.jpg "Each failing feature lists the GRANT statements that fix it")
+
 **Memory suggestions** — After a conversation goes quiet, Chobi suggests up to three notes worth keeping; save one to your memory or propose it to the team with a click. → [Chobi chat](/docs/chobi/#chat)
 
 ## Upgrading from 3.15
@@ -95,6 +99,7 @@ Migrations run on start; nothing to run by hand. Check these:
 | Buttons in chat call back to CHouse at `PUBLIC_BASE_URL` | To use them, set `PUBLIC_BASE_URL` (Helm `publicBaseUrl`) to an https address the chat platform can reach, and let `/api/integrations/*` through your ingress. Without it, chat apps still post and update their messages |
 | The remediation Slack bot set by `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` and `REMEDIATION_SLACK_CHANNEL` | Nothing to do; it keeps working. To post proposals to other channels or platforms, pick them in **Admin › Alerting › Rules › Remediation approvals** |
 | Need You alerts start off; memory suggestions start on, one AI call per quiet conversation | Turn alerts on, or suggestions off, in **AI Governance › Assistant › Chobi**. A built-in *Memory Suggester* agent is installed on start |
+| Adding a connection, or changing its host, port, user, password, SSL or default database, needs its ClickHouse user to hold [every privilege](/docs/connection-privileges/) CHouse UI uses; the API answers `422 PRIVILEGES_MISSING` otherwise | Nothing to do for existing connections. Before changing one, press **Test connection** in its Edit dialog and run any `GRANT`s it lists. Scripts that create connections need a user with every privilege |
 | Fleet alert emails use the shared alert layout, and Slack alert text is escaped | Nothing to do. Webhook JSON bodies are unchanged; mentions such as `<!channel>` inside alert text no longer ping |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).

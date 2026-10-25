@@ -14,6 +14,7 @@
  *   audit-events.md        packages/server rbac/schema/base.ts AUDIT_ACTIONS
  *   ai-features.md         packages/server services/ai capabilities + seeds (built-in agents and bindings)
  *   ai-tools.md            packages/server services/ai registry/catalog.ts, registry/harness.ts + seeds (harnesses, skills)
+ *   connection-privileges.md  packages/server services/connectionPrivileges.ts (the check Test and Save run)
  *
  * plus src/content/reference/permissions.json, which build-docs uses to
  * validate and link the `permissions:` frontmatter on every page.
@@ -45,6 +46,7 @@ import { BUILTIN_TOOLS } from "../../../packages/server/src/services/ai/registry
 import { SEED_AGENTS, SEED_BINDINGS, SEED_HARNESSES, SEED_SKILLS, type SeedAgent } from "../../../packages/server/src/services/ai/seeds";
 import type { AnyCapability } from "../../../packages/server/src/services/ai/types";
 import { CONTEXT_HINTS, CONTEXT_LABELS, SURFACE_LABELS, SURFACE_ORDER } from "../../../src/features/agents/assistant/lib";
+import { PRIVILEGE_FEATURES } from "../../../packages/server/src/services/connectionPrivileges";
 import { CONFIG_KEYS, CONFIG_SECTIONS, IGNORED_ENV } from "../src/content/reference/config-keys";
 import { RELEASE } from "../src/content/release";
 import { slugify } from "../src/docs-site/lib";
@@ -218,6 +220,68 @@ function auditEventsPage(): string {
 Every action the [audit log](/docs/audit-log/) can record, by area — ${Object.keys(AUDIT_ACTIONS).length} in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 ${table(["Area", "Actions"], rows)}
+`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connection privileges
+
+function connectionPrivilegesPage(): string {
+  const rows = PRIVILEGE_FEATURES.map((feature) => [
+    `**${feature.name}**`,
+    cell(feature.description),
+    feature.systemTables.length ? feature.systemTables.map((t) => code(`system.${t}`)).join(", ") : "—",
+    (["global", "database"] as const)
+      .map((scope) => {
+        const names = feature.privileges.filter((p) => p.scope === scope).map((p) => code(p.privilege));
+        return names.length ? `${names.join(", ")} on ${scope === "global" ? code("*.*") : "the default database"}` : "";
+      })
+      .filter(Boolean)
+      .join("; ") || "—",
+  ]);
+  const tables = [...new Set(PRIVILEGE_FEATURES.flatMap((f) => f.systemTables))];
+  const byScope = (scope: "global" | "database"): string[] =>
+    [...new Set(PRIVILEGE_FEATURES.flatMap((f) => f.privileges.filter((p) => p.scope === scope).map((p) => p.privilege)))];
+  const script = [
+    "CREATE USER chouse_ui IDENTIFIED BY 'change-me';",
+    "-- What people query: repeat for each database",
+    "GRANT SELECT ON analytics.* TO chouse_ui;",
+    ...tables.map((t) => `GRANT SELECT ON system.${t} TO chouse_ui;`),
+    `GRANT ${byScope("global").join(", ")} ON *.* TO chouse_ui;`,
+    "-- The connection's default database",
+    `GRANT ${byScope("database").join(", ")} ON analytics.* TO chouse_ui;`,
+  ].join("\n");
+  return page(
+    "PRIVILEGE_FEATURES in packages/server/src/services/connectionPrivileges.ts",
+    `
+# ClickHouse privileges
+
+What a [connection](/docs/connections/)'s ClickHouse user must be able to do for every CHouse UI feature to work. **Test connection** checks the user against every feature below, and a connection is only saved once every check passes: **Create** and **Update** run the same check on the server first. Whatever is missing comes back as \`GRANT\` statements you can copy and run as a ClickHouse admin.
+
+## What each feature needs
+
+${table(["Feature", "Covers", "Read (\`SELECT\`)", "Privileges"], rows)}
+
+Data editing is checked on the connection's **default database** (\`default\` when none is set). Grant the same on any other database people should be able to change.
+
+## How the check works
+
+- **System tables** are read with \`LIMIT 0\`, so a grant that comes through a role, or a revoke on one table, counts exactly as ClickHouse applies it. A table the server doesn't have, such as \`system.crash_log\` on a server that never crashed, or \`system.distributed_ddl_queue\` without Keeper, is shown as *not available* and doesn't count — except \`system.query_log\`, which every server creates on its first flush, so its grant is checked even before the table exists.
+- **Other privileges** are checked against the user's own \`SHOW GRANTS\`, with roles expanded (\`SHOW GRANTS FINAL\` where the server supports it, each enabled role on older servers) and ClickHouse's privilege tree from \`system.privileges\`, so \`ALL\`, \`ACCESS MANAGEMENT\` or \`ALTER\` cover the privileges under them.
+- The check needs no privilege of its own and changes nothing on the server.
+
+Existing connections are never blocked: the check runs when you create one, change its host, port, user, password, SSL or default database, or press **Test**. **Test** on a row of the connection list warns when that connection's user is missing something.
+
+## A user with everything
+
+Change the password and database names, then run as a ClickHouse admin. The admin needs these privileges itself (\`WITH GRANT OPTION\` for the access-management ones); \`GRANT CURRENT GRANTS\` is a shortcut when it has more.
+
+\`\`\`sql
+${script}
+\`\`\`
+
+To let [ClickHouse users & roles](/docs/clickhouse-users-roles/) hand out privileges to others, the connection user also needs those privileges \`WITH GRANT OPTION\`.
 `
   );
 }
@@ -835,6 +899,7 @@ function main(): void {
     [join(DOCS, "audit-events.md")]: auditEventsPage(),
     [join(DOCS, "ai-features.md")]: aiFeaturesPage(),
     [join(DOCS, "ai-tools.md")]: aiToolsPage(),
+    [join(DOCS, "connection-privileges.md")]: connectionPrivilegesPage(),
     [join(REFERENCE, "permissions.json")]: `${JSON.stringify(permissionIndex(), null, 2)}\n`,
   };
 
