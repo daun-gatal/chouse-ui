@@ -19,6 +19,7 @@ import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useAcknowledgeObserveIncident, useIncident, useIncidents, useRecomputeRca } from "./hooks";
 import { formatAgo, humanize, LAYER_LABEL, nodeKind, nodeLabel, severityTone } from "./lib";
 import { AiInvestigatedBadge } from "@/features/agents/triage/AiInvestigatedBadge";
+import { IncidentHeading } from "./IncidentHeading";
 import { NotebookPanel } from "./NotebookPanel";
 import { dataPaths } from "./paths";
 import { RemediationPanel, type ProposeDraft } from "./RemediationPanel";
@@ -79,14 +80,14 @@ function ChainView({ chain }: { chain: ChainStep[] }): ReactElement {
   return (
     <ol className="relative space-y-0">
       {chain.map((step, i) => (
-        <li key={`${step.layer}:${i}`} className="relative grid grid-cols-[96px_1fr] gap-4 pb-4 last:pb-0">
-          <div className="flex flex-col items-start">
+        <li key={`${step.layer}:${i}`} className="relative grid grid-cols-1 gap-2 pb-4 last:pb-0 sm:grid-cols-[96px_minmax(0,1fr)] sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-start sm:gap-0">
             <span className={cn("font-mono text-[10px] uppercase tracking-[0.14em]", step.isRoot ? "text-brand" : "text-paper-faint")}>
               {String(i + 1).padStart(2, "0")} · {LAYER_LABEL[step.layer]}
             </span>
-            {step.isRoot && <StatusPill tone="brand" dot={false} className="mt-1">Root cause</StatusPill>}
+            {step.isRoot && <StatusPill tone="brand" dot={false} className="sm:mt-1">Root cause</StatusPill>}
           </div>
-          <div className={cn("rounded-xs border p-3", step.isRoot ? "border-brand/50 bg-brand/[0.04]" : "border-ink-500 bg-ink-200/20")}>
+          <div className={cn("min-w-0 rounded-xs border p-3 wrap-anywhere", step.isRoot ? "border-brand/50 bg-brand/[0.04]" : "border-ink-500 bg-ink-200/20")}>
             <p className="text-[13px] font-medium text-paper">{step.summary}</p>
             <p className="mt-0.5 font-mono text-[10px] text-paper-muted">{step.label}{step.onsetAt ? ` · since ${new Date(step.onsetAt).toLocaleTimeString()}` : ""}</p>
             <pre className="mt-2 whitespace-pre-wrap rounded-xs bg-ink-300 p-2 font-mono text-[10px] text-paper-muted">{step.evidence.source}{step.evidence.detail ? `\n${step.evidence.detail}` : ""}</pre>
@@ -192,7 +193,7 @@ function IncidentDetailView({ source, id }: { source: IncidentSource; id: string
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Button variant="ghost" className="-ml-2 h-7 rounded-xs px-2 text-[11px] text-paper-muted" onClick={() => navigate(dataPaths.tab("incidents"))}><ArrowLeft className="mr-1 h-3 w-3" /> Incidents</Button>
-          <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-paper">{data.title}</h2>
+          <IncidentHeading key={`${source}:${id}`} title={data.title} fullTitle={data.fullTitle} />
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill tone={severityTone(data.severity)}>{data.severity}</StatusPill>
             <StatusPill tone="muted" dot={false}>{data.status}</StatusPill>

@@ -7,7 +7,7 @@
 
 import { all, json, num, numOrNull, one, run, sql, str } from "./db";
 import { blastRadius, computeRca, type ChainStep, type GraphEdge, type RcaLayer, type RcaSignal } from "./rca";
-import type { IncidentSource } from "./incidents";
+import { incidentTitle, type IncidentSource } from "./incidents";
 import { principalNodeLabels, relabelPrincipalNodes } from "./principals";
 
 const LOOKBACK_MS = 6 * 3600 * 1000;
@@ -204,11 +204,11 @@ async function relatedTitles(related: Array<{ source: string; id: string }>): Pr
     const rows = await all(sql`
       SELECT i.id, i.summary, p.name FROM data_health_incidents i JOIN data_health_promises p ON p.id = i.promise_id
       WHERE i.id IN (${sql.join(health.map((id) => sql`${id}`), sql`, `)})`);
-    for (const r of rows) out.set(`data_health:${str(r.id)}`, `${str(r.name)}: ${str(r.summary)}`);
+    for (const r of rows) out.set(`data_health:${str(r.id)}`, incidentTitle(str(r.summary), str(r.name)));
   }
   if (observe.length > 0) {
     const rows = await all(sql`SELECT id, summary FROM obs_incidents WHERE id IN (${sql.join(observe.map((id) => sql`${id}`), sql`, `)})`);
-    for (const r of rows) out.set(`observe:${str(r.id)}`, str(r.summary));
+    for (const r of rows) out.set(`observe:${str(r.id)}`, incidentTitle(str(r.summary)));
   }
   return out;
 }

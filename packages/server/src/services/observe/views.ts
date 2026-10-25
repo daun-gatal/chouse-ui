@@ -8,7 +8,7 @@ import { all, json, num, numOrNull, one, sql, str, strOrNull, type Row } from ".
 import { effectiveSchedule, getCollectorSettings } from "./collectorSettings";
 import { downstreamOf, upstreamOf, type ChainStep, type GraphEdge } from "./rca";
 import { getStoredRca } from "./rcaService";
-import { getObserveIncident, listObserveIncidents, type IncidentSource } from "./incidents";
+import { getObserveIncident, incidentTitle, listObserveIncidents, type IncidentSource } from "./incidents";
 import { checkVolume, type VolumeBand } from "./baselines";
 import { isQuietStatus } from "./pipelineStatus";
 import { principalLabels, principalNodeLabels } from "./principals";
@@ -354,7 +354,7 @@ export async function listIncidents(connectionIds: string[], allowed: Map<string
     if (!pred || !pred(strOrNull(i.database_name), strOrNull(i.table_name))) continue;
     out.push({
       source: "data_health", id: str(i.id), connectionId: str(i.connection_id), kind: str(i.kind) === "execution" ? "execution" : "data",
-      title: `${str(i.promise_name)}: ${str(i.summary)}`, status: str(i.status), severity: str(i.severity), openedAt: num(i.opened_at), lastEventAt: num(i.last_event_at),
+      title: incidentTitle(str(i.summary), str(i.promise_name)), status: str(i.status), severity: str(i.severity), openedAt: num(i.opened_at), lastEventAt: num(i.last_event_at),
       subject: i.database_name ? `table:${str(i.database_name)}.${str(i.table_name)}` : null, rootCause: rcas.get(`data_health:${str(i.id)}`) ?? null,
       connectionName: names.get(str(i.connection_id)) ?? null,
     });
@@ -364,7 +364,7 @@ export async function listIncidents(connectionIds: string[], allowed: Map<string
     const subject = pipeline ? strOrNull(pipeline.target_node) : null;
     if (!nodeOk(allowed.get(i.connectionId) ?? (() => false), subject)) continue;
     out.push({
-      source: "observe", id: i.id, connectionId: i.connectionId, kind: i.kind, title: i.summary, status: i.status, severity: i.severity,
+      source: "observe", id: i.id, connectionId: i.connectionId, kind: i.kind, title: incidentTitle(i.summary), status: i.status, severity: i.severity,
       openedAt: i.openedAt, lastEventAt: i.lastEventAt, subject, rootCause: rcas.get(`observe:${i.id}`) ?? null,
       connectionName: names.get(i.connectionId) ?? null,
     });
@@ -380,13 +380,13 @@ export async function incidentDetail(source: IncidentSource, id: string): Promis
     if (!i) return null;
     const events = (await all(sql`SELECT type, created_at, payload FROM data_health_incident_events WHERE incident_id = ${id} ORDER BY created_at`)).map((e) => ({ type: str(e.type), at: num(e.created_at), payload: json(e.payload, {}) }));
     base = {
-      source, id, connectionId: str(i.connection_id), kind: str(i.kind), title: `${str(i.promise_name)}: ${str(i.summary)}`, status: str(i.status), severity: str(i.severity),
+      source, id, connectionId: str(i.connection_id), kind: str(i.kind), title: incidentTitle(str(i.summary), str(i.promise_name)), fullTitle: `${str(i.promise_name)}: ${str(i.summary)}`, status: str(i.status), severity: str(i.severity),
       openedAt: num(i.opened_at), lastEventAt: num(i.last_event_at), promiseId: str(i.promise_id), database: strOrNull(i.database_name), table: strOrNull(i.table_name), events,
     };
   } else {
     const i = await getObserveIncident(id);
     if (!i) return null;
-    base = { source, ...i, title: i.summary, acknowledgedByName: await userName(i.acknowledgedBy) };
+    base = { source, ...i, title: incidentTitle(i.summary), fullTitle: i.summary, acknowledgedByName: await userName(i.acknowledgedBy) };
   }
   const connectionId = str(base.connectionId);
   const connectionName = (await connectionNames([connectionId])).get(connectionId) ?? null;

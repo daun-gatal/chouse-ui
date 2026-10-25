@@ -39,6 +39,12 @@ function ok(c: Context, data: unknown, status: 200 | 201 = 200): any {
 const ATTACHMENTS = ["incident_data_health", "incident_observe", "doctor_report"] as const;
 type Attachment = (typeof ATTACHMENTS)[number];
 
+/**
+ * Incident titles carry whole error messages, so a long title is shortened by
+ * the store rather than refused; this cap only rejects absurd payloads.
+ */
+const MAX_TITLE_INPUT = 10_000;
+
 /** Throws unless the caller may read what the notebook is attached to. Returns its connection. */
 async function guardAttachment(c: Context, kind: notebooks.AttachedKind, ref: string | null): Promise<string | null> {
   if (kind === "doctor_report") {
@@ -68,12 +74,12 @@ async function guardNotebook(c: Context, id: string): Promise<notebooks.Notebook
 
 notebooksRoute.post(
   "/ensure",
-  zValidator("json", z.object({ kind: z.enum(ATTACHMENTS), ref: z.string().min(1).max(100), title: z.string().trim().max(200).optional() })),
+  zValidator("json", z.object({ kind: z.enum(ATTACHMENTS), ref: z.string().min(1).max(100), title: z.string().max(MAX_TITLE_INPUT).optional() })),
   async (c) => {
     const { kind, ref, title } = c.req.valid("json");
     const connectionId = await guardAttachment(c, kind as Attachment, ref);
     if (kind === "doctor_report" && !(await getDoctorReport(ref))) throw AppError.notFound("Doctor report not found");
-    const notebook = await notebooks.ensureNotebook(kind as Attachment, ref, title ?? (kind === "doctor_report" ? "Doctor report" : "Incident investigation"), getRbacUser(c).sub, connectionId);
+    const notebook = await notebooks.ensureNotebook(kind as Attachment, ref, title ?? "", getRbacUser(c).sub, connectionId);
     return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
   },
 );
