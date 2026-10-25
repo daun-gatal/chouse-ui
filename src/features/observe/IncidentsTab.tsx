@@ -80,14 +80,14 @@ function ChainView({ chain }: { chain: ChainStep[] }): ReactElement {
   return (
     <ol className="relative space-y-0">
       {chain.map((step, i) => (
-        <li key={`${step.layer}:${i}`} className="relative grid grid-cols-[96px_1fr] gap-4 pb-4 last:pb-0">
-          <div className="flex flex-col items-start">
+        <li key={`${step.layer}:${i}`} className="relative grid grid-cols-1 gap-2 pb-4 last:pb-0 sm:grid-cols-[96px_minmax(0,1fr)] sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-start sm:gap-0">
             <span className={cn("font-mono text-[10px] uppercase tracking-[0.14em]", step.isRoot ? "text-brand" : "text-paper-faint")}>
               {String(i + 1).padStart(2, "0")} · {LAYER_LABEL[step.layer]}
             </span>
-            {step.isRoot && <StatusPill tone="brand" dot={false} className="mt-1">Root cause</StatusPill>}
+            {step.isRoot && <StatusPill tone="brand" dot={false} className="sm:mt-1">Root cause</StatusPill>}
           </div>
-          <div className={cn("rounded-xs border p-3", step.isRoot ? "border-brand/50 bg-brand/[0.04]" : "border-ink-500 bg-ink-200/20")}>
+          <div className={cn("min-w-0 rounded-xs border p-3 wrap-anywhere", step.isRoot ? "border-brand/50 bg-brand/[0.04]" : "border-ink-500 bg-ink-200/20")}>
             <p className="text-[13px] font-medium text-paper">{step.summary}</p>
             <p className="mt-0.5 font-mono text-[10px] text-paper-muted">{step.label}{step.onsetAt ? ` · since ${new Date(step.onsetAt).toLocaleTimeString()}` : ""}</p>
             <pre className="mt-2 whitespace-pre-wrap rounded-xs bg-ink-300 p-2 font-mono text-[10px] text-paper-muted">{step.evidence.source}{step.evidence.detail ? `\n${step.evidence.detail}` : ""}</pre>
