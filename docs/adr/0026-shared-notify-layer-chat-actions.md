@@ -187,3 +187,14 @@ be turned off in Chobi settings.
   Email gets a review link to a page that needs sign-in.
 - **Telegram long polling.** Deferred: needs one replica holding the poll.
   Webhooks work on any number of replicas.
+
+## As shipped
+
+| Section | Commit | Notes |
+|---|---|---|
+| §1, §5 | Shared notify layer | Every feature moved, fleet and the root-cause report included; `sendChannelMessage`/`sendChannelTest` removed. Messages a channel cannot edit are closed when sent. Migration 1.74.0 (`channel_messages` also stores the rendered message, so an edit can start from it on any replica). |
+| §2 | Telegram, Slack and Google Chat App mode | Checks before the test message; a mode switch needs the new mode's secrets. |
+| §3, §4 | Act from chat | A click is routed to the channel that posted its message, even when several share a bot or a space. Telegram buttons only show once its webhook is registered. |
+| §6 | Need You alerts | Approved and running requests keep their message open until they land; an edit that changes nothing makes no platform call. |
+| §7, §8 | Alerting hub, AI and MCP reads | `GET /alerting/events/search`, `/overview`, `/sources`; *Firing now* counts only enabled fleet rules. |
+| §9 | Memory suggestions | Asked 45 s after a conversation goes quiet, or on demand; the model answer is cached per thread length and re-filtered against memory on every ask. |

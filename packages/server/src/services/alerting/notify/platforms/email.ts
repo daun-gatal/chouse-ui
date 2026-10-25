@@ -45,8 +45,9 @@ export function renderEmailHtml(message: NotifyMessage): string {
   for (const section of message.sections ?? []) {
     parts.push(`<div style="margin-top:12px;font-size:13px;color:#374151;line-height:1.5">${section.title ? `<strong style="color:#111827">${escapeHtml(section.title)}</strong><br>` : ""}${paragraphs(section.text)}</div>`);
   }
-  if (message.detail) {
-    parts.push(`<div style="margin-top:12px;padding:10px 12px;background:#f9fafb;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;word-break:break-all">${paragraphs(message.detail)}</div>`);
+  for (const detail of [message.detail, message.emailDetail]) {
+    if (!detail) continue;
+    parts.push(`<div style="margin-top:12px;padding:10px 12px;background:#f9fafb;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;word-break:break-all">${paragraphs(detail)}</div>`);
   }
   if (message.links?.length) {
     const links = message.links.map((l) => `<a href="${escapeHtml(l.url)}" style="color:#2563eb;margin-right:16px">${escapeHtml(l.label)}</a>`).join("");

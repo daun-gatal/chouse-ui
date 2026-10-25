@@ -236,7 +236,8 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "admin", title: "Admin overview", description: "Every Admin tab — users, roles, data access, connections, ClickHouse users and roles, audit, AI models, SSO, alerting — and who can open it." },
           { slug: "clickhouse-users-roles", title: "ClickHouse users & roles", description: "Create and manage real ClickHouse users and roles with native grants, from templates or by hand." },
           { slug: "ai-models", title: "AI models", description: "Connect AI providers, register provider models and publish deployments for Chouse AI — sixteen provider types, keys encrypted." },
-          { slug: "alerting", title: "Alerting", description: "Threshold rules on fleet samples with Slack and email channels, test sends, and automatic Doctor root-cause reports." },
+          { slug: "alerting", title: "Alerting", description: "Channels with health and what uses them, everything that sends alerts in one list, history with search, fleet threshold rules, and who can act from a channel." },
+          { slug: "chat-apps", title: "Chat apps", description: "Slack apps, Google Chat apps and Telegram bots: messages that update themselves and buttons to approve, acknowledge or snooze from chat." },
         ],
       },
       {

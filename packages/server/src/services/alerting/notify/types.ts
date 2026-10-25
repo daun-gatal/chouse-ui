@@ -61,6 +61,8 @@ export interface NotifyMessage {
   sections?: NotifySection[];
   /** A monospace block (a SQL snippet, an error). */
   detail?: string;
+  /** A monospace block only email shows: text that never went to chat before (a query's SQL). */
+  emailDetail?: string;
   links?: NotifyLink[];
   buttons?: NotifyButton[];
   /** Small print at the bottom. */

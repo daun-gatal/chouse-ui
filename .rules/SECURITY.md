@@ -139,6 +139,17 @@ see.
   must authenticate the request some other way — a signature (Slack), a signed
   one-time state cookie (SSO), or XML-DSig (SAML). Adding a path to either list
   needs a comment saying what protects it.
+- **Actions from chat** (`/api/integrations/*`, ADR 0026): verify the platform
+  first (Slack signing secret with a 5-minute window, Google's signed token
+  with issuer and audience, Telegram's `setWebhook` secret token, compared with
+  `timingSafeEqual`), then the button's message, chat and channel, then map the
+  clicker to an *active* CHouse user and apply the channel's allowlist. A
+  handler never writes on its own: it calls the route the UI uses, as that user,
+  with an access token minted for two minutes (`notify/actions.ts`), so every
+  permission, visibility and approval rule applies unchanged. An allowlist only
+  narrows; an edit that leaves it out keeps it. The Telegram link code is the
+  one token in a URL (Telegram's `/start` needs it): it is single-use, expires
+  in 10 minutes, works only in a private chat, and only its hash is stored.
 
 ## 6. Browser-facing controls
 
@@ -171,6 +182,9 @@ SSO issuers are all URLs the server will fetch.
 - Only users with the matching *manage/edit* permission may set them.
 - Pin callback URLs to their expected host where one exists (e.g. Slack
   `response_url` must start with `https://hooks.slack.com/`).
+- Chat app calls (bot tokens, service accounts) go only to the fixed platform
+  hosts in `notify/hosts.ts`; no channel setting can redirect them. Bot tokens
+  in URLs (Telegram) are masked out of every error.
 - Never return a fetched response body to the user verbatim — return status and
   a short, sanitized error.
 - Always set a timeout (`AbortSignal.timeout`).
@@ -360,6 +374,9 @@ areas above.
 - [ ] No secrets or PII in logs, responses or URLs; public endpoints return no
       raw errors
 - [ ] Security-relevant actions write an audit entry
+- [ ] Chat buttons: a new action is registered with `registerChatAction` and
+      calls an existing route; no AI tool writes channel settings, allowlists,
+      Chobi alert settings or chat identities (`notifyGuard.test.ts`)
 - [ ] New data-returning endpoints have size/row caps; bodies stay under the
       global limit
 - [ ] Helm/Docker changes keep non-root, read-only root FS, and secrets in

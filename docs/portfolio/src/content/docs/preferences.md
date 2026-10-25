@@ -14,6 +14,7 @@ screenshot: preferences
 | **Identity & access** | Your **roles**, your **data access** (the policies that apply to you) and your **functional access** (every permission you hold, grouped) |
 | **ClickHouse node** | The active connection's endpoint (copyable) and server version |
 | **Personal access tokens** | Create, rotate and revoke tokens for the CLI, MCP agents and scripts — see [Personal access tokens](/docs/personal-access-tokens/) |
+| **Linked chat accounts** | Who you are when you press a button in an alert: Slack and Google Chat match your email; **Link Telegram** links your Telegram account with a one-time code — see [Chat apps](/docs/chat-apps/#telegram) |
 
 Settings are saved on the server, so they follow you to other browsers.
 

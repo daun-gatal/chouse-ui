@@ -19,7 +19,7 @@ Open an incident from the list (filter by **Incident status**) or from the [Over
 5. **Notebook** — a shared investigation notebook (below).
 6. **Related** incidents and the **Timeline** of what happened.
 
-**Acknowledge** tells the team someone is on it; **Snooze 1h** silences it for an hour. Promise incidents need `data_health:edit`; pipeline and table incidents need `observe:edit`. Incidents are **open**, **acknowledged** or **recovered**; they move to *recovered* by themselves when the evidence says the problem is gone.
+**Acknowledge** tells the team someone is on it; **Snooze 1h** silences it for an hour. On a [chat app](/docs/chat-apps/) channel, a promise incident's alert carries both buttons too, and every message about the incident shows its state once someone acts, here or there. Promise incidents need `data_health:edit`; pipeline and table incidents need `observe:edit`. Incidents are **open**, **acknowledged** or **recovered**; they move to *recovered* by themselves when the evidence says the problem is gone.
 
 ## Fixes with approval
 
@@ -43,7 +43,7 @@ proposed ──approve──▶ approved ──runs──▶ executed ──veri
 ```
 
 1. **Propose** — **Propose a fix** on the incident (or **Review & propose** a Chouse AI draft): pick the action, its parameters and **Why this fix**. Needs `remediation:propose`. Agents can propose through the MCP `propose_remediation` tool once an administrator turns it on.
-2. **Approve or reject** — in the UI, in Slack, or with `chouse remediation approve <id>`. Approval rules are enforced on the server:
+2. **Approve or reject** — in the UI, from a chat app, or with `chouse remediation approve <id>`. Approval rules are enforced on the server, wherever the decision is made:
 
    | Rule | Detail |
    | --- | --- |
@@ -66,14 +66,11 @@ Fixes never use the connection's normal credentials. Give each connection a dedi
 
 Without a remediation credential, fixes can be proposed and approved but won't run on that connection.
 
-### Approve from Slack
+### Approve from chat
 
-To post approval requests to a Slack channel with **Approve** / **Reject** buttons:
+Proposals can be posted, with **Approve** and **Reject**, to any [chat app](/docs/chat-apps/) channel — Slack, Google Chat or Telegram: pick the channels in **Admin › Alerting › Rules › Remediation approvals**. The message shows the statements, the risk class and how the fix is verified, and is updated as approvals come in and when the fix runs. Each press runs as the CHouse user behind it, so their own permissions and the rules above decide; the platform grants nothing by itself. See [how a button press is checked](/docs/chat-apps/#how-a-button-press-is-checked).
 
-1. Create a Slack app with a bot token that can post to the channel, and enable *Interactivity* with the request URL `https://<your host>/api/integrations/slack/interactions`.
-2. Set `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REMEDIATION_SLACK_CHANNEL` and `PUBLIC_BASE_URL` (Helm: `slack.*` and `publicBaseUrl`). See [Environment variables](/docs/configuration-env/#remediation-slack).
-
-Each click is verified with the signing secret, and the Slack user is matched to a CHouse UI user by email. That user's own permissions decide — Slack grants nothing by itself.
+The Slack bot configured by environment variables still works as before: set `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REMEDIATION_SLACK_CHANNEL` and `PUBLIC_BASE_URL` (Helm: `slack.*` and `publicBaseUrl`), with *Interactivity* on and the request URL `https://<your host>/api/integrations/slack/interactions`. See [Environment variables](/docs/configuration-env/#remediation-slack).
 
 ## Investigation notebooks
 

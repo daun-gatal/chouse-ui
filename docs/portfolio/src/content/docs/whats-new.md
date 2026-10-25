@@ -38,6 +38,14 @@ It also gives CHouse a buddy: **Chobi**, the one place for AI, above every dialo
 
 **Budgets, fallbacks and evals** — Cap AI spend per feature and per user, per day or month, and stop or switch to a cheaper model when it runs out. Give an agent a fallback model, retries, call caps and prompt caching. Write test cases with expected tools and a judged rubric, run them against a draft, and require a passing score before it can be saved. A harness can give its agents an analysis sandbox that computes over query results without sending the rows to the model. → [Budgets](/docs/ai-usage/#budgets), [Editing agents](/docs/ai-agent-editor/#settings), [Agent evals](/docs/ai-evals/), [Harnesses](/docs/ai-harnesses/#editing-a-harness)
 
+**Act from chat** — Slack and Google Chat channels gain an **App** mode, and Telegram channels arrive. Their messages update themselves — an alert shows *resolved*, a request shows who decided it — and carry buttons: **Acknowledge** and **Snooze 1h** on Data Health alerts, **Approve** and **Reject** on fixes, **Approve** and **Decline** on AI requests. Each press runs as the CHouse user behind it, with the same checks as in CHouse, and each channel can say who may act from it. → [Chat apps](/docs/chat-apps/)
+
+**Need You alerts** — Changes waiting for a second approver, background proposals and held MCP calls can go to team channels after a delay, so nobody has to open CHouse to notice them. → [Need You alerts](/docs/chobi/#need-you-alerts)
+
+**Alerting you can look after** — Admin › Alerting becomes Overview, Channels, Rules and Activity: what fires and what failed to send, each channel's health and what uses it, everything that sends alerts in one list, and searchable history with filters. Every feature now sends through one alert format, so every channel type works for every alert. → [Alerting](/docs/alerting/)
+
+**Memory suggestions** — After a conversation goes quiet, Chobi suggests up to three notes worth keeping; save one to your memory or propose it to the team with a click. → [Chobi chat](/docs/chobi/#chat)
+
 ## Upgrading from 3.15
 
 Migrations run on start; nothing to run by hand. Check these:
@@ -61,5 +69,10 @@ Migrations run on start; nothing to run by hand. Check these:
 | Undoable AI changes no longer ask: they run and show Undo | Nothing to do. Users still need `ai:act` for any AI change; mark production connections (**Admin › Connections › Environment**) so changes there ask |
 | MCP tokens of users with `ai:act` get Data & Query write tools: undoable ones run, others wait for confirmation in CHouse | To keep a token read-only, open its wrench in **Preferences › Access tokens** and switch its toolkits off, or narrow **AI Governance › MCP › Write tools**. High-risk changes stay off over MCP until an administrator allows them |
 | Migration 1.73.0 adds a watch expiry to Data Health promises; the scheduler removes expired watches | Nothing to do: existing promises are permanent |
+| Migration 1.74.0 adds a log of every message sent to a channel and fills in where each past alert came from | Nothing to do |
+| Buttons in chat call back to CHouse at `PUBLIC_BASE_URL` | To use them, set `PUBLIC_BASE_URL` (Helm `publicBaseUrl`) to an https address the chat platform can reach, and let `/api/integrations/*` through your ingress. Without it, chat apps still post and update their messages |
+| The remediation Slack bot set by `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` and `REMEDIATION_SLACK_CHANNEL` | Nothing to do; it keeps working. To post proposals to other channels or platforms, pick them in **Admin › Alerting › Rules › Remediation approvals** |
+| Need You alerts start off; memory suggestions start on, one AI call per quiet conversation | Turn alerts on, or suggestions off, in **AI Governance › Assistant › Chobi**. A built-in *Memory Suggester* agent is installed on start |
+| Fleet alert emails use the shared alert layout, and Slack alert text is escaped | Nothing to do. Webhook JSON bodies are unchanged; mentions such as `<!channel>` inside alert text no longer ping |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).

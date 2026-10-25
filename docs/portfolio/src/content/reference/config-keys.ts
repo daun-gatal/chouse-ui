@@ -131,7 +131,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
 
   // Doctor
   { name: "DOCTOR_SCHEDULE_FILE", section: "Doctor", default: "/app/data/doctor-schedule.json", description: "Legacy doctor schedule file, imported into the database on upgrade." },
-  { name: "DOCTOR_AUTO_RCA_COOLDOWN_MINUTES", section: "Doctor", default: "60", description: "Minimum minutes between automatic root-cause runs for one server after an alert." },
+  { name: "DOCTOR_AUTO_RCA_COOLDOWN_MINUTES", section: "Doctor", default: "15", description: "Minimum minutes between automatic root-cause runs for one server after an alert." },
 
   // Scheduler / HA
   { name: "SCHEDULED_QUERIES_ENABLED", section: "Scheduled queries & HA", default: "true", description: "`false` stops this pod from running scheduled queries (for a dedicated scheduler deployment). Job leases make running it on every pod safe." },

@@ -140,6 +140,11 @@ describe("webhook contracts kept byte for byte", () => {
     const message = breachMessage({ node: "ch-1", metric: "node memory", summary: "92% memory", user: "bob", detail: "SELECT 1" }, at);
     expect(webhookBody(message)).toEqual({ kind: "fleet_alert", node: "ch-1", metric: "node memory", summary: "92% memory", user: "bob", detail: "SELECT 1", firedAt: "2026-10-25T10:00:00.000Z" });
     expect(message.fallback).toBe("🔴 ch-1 — node memory: 92% memory");
+    // The query's SQL reaches email only, as before.
+    expect(JSON.stringify(renderSlack(message, { actions: false, rowId: "r" }).payload)).not.toContain("SELECT 1");
+    expect(JSON.stringify(renderGoogleChat(message, { actions: false, rowId: "r" }).payload)).not.toContain("SELECT 1");
+    expect(renderTelegram(message, { actions: false, rowId: "r" }).payload.text).not.toContain("SELECT 1");
+    expect(renderEmailHtml(message)).toContain("SELECT 1");
     expect(message.emailSubject).toBe("🔴 ch-1 — Node memory alert");
     const resolved = resolvedBreachMessage(message, at.getTime(), new Date(at.getTime() + 14 * 60_000));
     expect(resolved.title).toBe("✅ ClickHouse fleet alert resolved");

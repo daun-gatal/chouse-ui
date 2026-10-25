@@ -68,6 +68,8 @@ An undoable change keeps a snapshot of the object before and after it ran. **Und
 
 A **second-approver** action needs someone other than the person it is for, who has `ai:act`, holds the tool's own permission (for example `roles:create`), and can reach the action's connection. It runs as that approver. The tab's badge counts what waits for you.
 
+With [Need You alerts](/docs/chobi/#need-you-alerts), waiting actions are also posted to team channels; on a [chat app](/docs/chat-apps/) channel they carry **Approve** and **Decline**, which run as the person who pressed them under the same rules as here.
+
 ## Reviewing an action
 
 Each row shows the action, who asked (*Alice, in chat*, *Background run as Alice*, *MCP agent*), its check, its status and when it expires. **Approve** runs it at once; **Reject** declines it; **Review** opens the arguments, the result or the error, where you can edit the arguments as JSON — **Approve with changes** validates and runs the edited version — and give a reason when rejecting. A held MCP call shows **Confirm** and **Decline** to its own person only; confirming records the decision, and the agent runs it.

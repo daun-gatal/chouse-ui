@@ -284,7 +284,8 @@ export function breachMessage(b: Breach, firedAt: Date = new Date()): NotifyMess
     title: "🔴 ClickHouse fleet alert",
     severity: "critical",
     facts,
-    detail: b.detail,
+    // The query's SQL went to email only before; chat apps keep it that way.
+    emailDetail: b.detail,
     links: linkTo("Open fleet", "/fleet"),
     footer: `chouse-fleet · ${firedAt.toUTCString()}`,
     fallback: `🔴 ${b.node} — ${b.metric}: ${b.summary}`,
