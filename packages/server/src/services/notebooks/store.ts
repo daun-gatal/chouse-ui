@@ -8,11 +8,15 @@ import { randomUUID } from "crypto";
 
 import { z } from "zod";
 
+import { headline } from "../../utils/text";
 import { all, json, num, one, run, sql, str, strOrNull, type Row } from "../observe/db";
 
 export const CELL_KINDS = ["ai_finding", "query", "note", "chart", "action"] as const;
 export type CellKind = (typeof CELL_KINDS)[number];
 export type AttachedKind = "incident_data_health" | "incident_observe" | "doctor_report" | "none";
+
+/** Longest stored notebook title; longer ones are shortened to a headline. */
+const MAX_TITLE = 200;
 
 export const cellContentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("note"), text: z.string().trim().min(1).max(20_000) }),
@@ -88,15 +92,16 @@ export async function findByAttachment(kind: AttachedKind, ref: string): Promise
   return row ? notebookRow(row) : null;
 }
 
-/** Get or create the notebook attached to an incident / report (idempotent). */
+/** Get or create the notebook attached to an incident / report (idempotent). A blank title gets a default name. */
 export async function ensureNotebook(kind: AttachedKind, ref: string, title: string, ownerId: string | null, connectionId: string | null): Promise<Notebook> {
   const existing = await findByAttachment(kind, ref);
   if (existing) return existing;
   const now = Date.now();
   const id = kind === "doctor_report" ? `nb-doctor-${ref}` : randomUUID();
+  const name = headline(title, MAX_TITLE) || (kind === "doctor_report" ? "Doctor report" : "Incident investigation");
   await run(sql`
     INSERT INTO notebooks (id, title, owner_id, attached_kind, attached_ref, connection_id, created_at, updated_at)
-    VALUES (${id}, ${title.slice(0, 200)}, ${ownerId}, ${kind}, ${ref}, ${connectionId}, ${now}, ${now})
+    VALUES (${id}, ${name}, ${ownerId}, ${kind}, ${ref}, ${connectionId}, ${now}, ${now})
     ON CONFLICT (attached_kind, attached_ref) DO NOTHING
   `);
   const created = await findByAttachment(kind, ref);

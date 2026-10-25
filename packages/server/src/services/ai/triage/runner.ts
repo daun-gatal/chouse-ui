@@ -137,7 +137,7 @@ export async function triageSubject(rule: TriageRule, subject: TriageSubject, no
     const actionIds = proposedActionIds(calls);
     let notebookId: string | null = null;
     if (subject.notebook) {
-      const notebook = await ensureNotebook(subject.notebook.kind, subject.notebook.ref, subject.title.slice(0, 200), null, subject.connectionId);
+      const notebook = await ensureNotebook(subject.notebook.kind, subject.notebook.ref, subject.title, null, subject.connectionId);
       await addCell(notebook.id, {
         kind: "ai_finding",
         summary: findingsText(findings, actionIds.length),
