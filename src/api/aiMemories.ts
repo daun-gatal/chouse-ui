@@ -95,3 +95,13 @@ export async function deleteMemory(id: string): Promise<void> {
 export async function reviewMemory(id: string, approve: boolean): Promise<AiMemory> {
   return api.post<AiMemory>(`/ai-memories/${id}/${approve ? "approve" : "reject"}`);
 }
+
+export interface MemorySuggestion {
+  note: string;
+  scope: MemoryScope;
+}
+
+/** Notes worth keeping from one of your conversations (ADR 0026); nothing is saved until you choose. */
+export async function suggestMemories(threadId: string): Promise<{ suggestions: MemorySuggestion[]; connectionId?: string | null; off?: boolean }> {
+  return api.post<{ suggestions: MemorySuggestion[]; connectionId?: string | null; off?: boolean }>("/ai-memories/suggest", { threadId });
+}

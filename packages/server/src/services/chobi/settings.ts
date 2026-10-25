@@ -46,13 +46,15 @@ const chobiSettingsSchema = z.object({
   /** Let Chobi point out new incidents, approvals and failures on its own (each user can still mute it). */
   nudges: z.boolean(),
   alerts: chobiAlertsSchema,
+  /** After a conversation, suggest notes worth keeping (one AI call per quiet thread). */
+  memorySuggestions: z.boolean(),
 });
 
 export type ChobiSettings = z.infer<typeof chobiSettingsSchema>;
 export const chobiSettingsUpdateSchema = chobiSettingsSchema.partial().strict();
 export type ChobiSettingsUpdate = z.infer<typeof chobiSettingsUpdateSchema>;
 
-export const DEFAULT_CHOBI_SETTINGS: ChobiSettings = { plainMode: false, nudges: true, alerts: DEFAULT_CHOBI_ALERTS };
+export const DEFAULT_CHOBI_SETTINGS: ChobiSettings = { plainMode: false, nudges: true, alerts: DEFAULT_CHOBI_ALERTS, memorySuggestions: true };
 
 export interface StoredChobiSettings extends ChobiSettings {
   updatedBy: string | null;
@@ -93,6 +95,7 @@ export async function saveChobiSettings(update: ChobiSettingsUpdate, actorId: st
     plainMode: update.plainMode ?? current.plainMode,
     nudges: update.nudges ?? current.nudges,
     alerts: update.alerts ?? current.alerts,
+    memorySuggestions: update.memorySuggestions ?? current.memorySuggestions,
   });
   const now = Date.now();
   const value = JSON.stringify(next);

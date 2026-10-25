@@ -62,6 +62,8 @@ import { ComposerChips, SkillSuggestions, type ComposerAttachment } from '@/comp
 import { ApprovalCard } from '@/components/common/ai-chat/ApprovalCard';
 import { MemoryNotes } from '@/components/common/ai-chat/MemoryNotes';
 import { ActionReceipts } from '@/components/common/ai-chat/ActionReceipts';
+import { useChobiSettings } from '../hooks';
+import { MemorySuggestions } from './MemorySuggestions';
 import { actionReceipts } from '@/lib/aiActionReceipts';
 import { savedMemories, type SavedMemoryNote } from '@/lib/aiMemories';
 import { toast } from 'sonner';
@@ -1439,6 +1441,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
         onUiStep: handleUiStep,
     });
     const isInvoking = activeThreadId !== null && activeThreadId in statusByThread;
+    const chobiSettings = useChobiSettings(true);
     const toolStatus = activeThreadId ? statusByThread[activeThreadId] ?? null : null;
     const busyThreadIds = useMemo(() => new Set(Object.keys(statusByThread)), [statusByThread]);
     const setChobiBusy = useChobiStore((state) => state.setBusy);
@@ -2155,6 +2158,12 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                     {/* Composer */}
                     {activeThreadId && (
                         <div className={`relative z-10 flex-shrink-0 border-t border-ink-500 px-3 pt-2 ${isMobile ? 'pb-5' : 'pb-2'}`}>
+                            <MemorySuggestions
+                                threadId={activeThreadId}
+                                messageCount={messages.length}
+                                generating={isInvoking}
+                                enabled={chobiSettings.data?.memorySuggestions !== false}
+                            />
                             <ComposerChips
                                 attachments={attachments}
                                 skills={pinnedSkills}

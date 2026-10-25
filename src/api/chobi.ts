@@ -57,6 +57,8 @@ export interface ChobiSettings {
   /** Chobi may point out news on its own. */
   nudges: boolean;
   alerts: ChobiAlerts;
+  /** Suggest notes worth keeping after a conversation. */
+  memorySuggestions: boolean;
   /** Whether the server knows its public address (alerts need it for their review link). */
   publicBaseUrl: boolean;
   updatedAt: number | null;
@@ -70,6 +72,6 @@ export async function getChobiSettings(): Promise<ChobiSettings> {
   return api.get<ChobiSettings>("/chobi/settings");
 }
 
-export async function updateChobiSettings(update: Partial<Pick<ChobiSettings, "plainMode" | "nudges" | "alerts">>): Promise<ChobiSettings> {
+export async function updateChobiSettings(update: Partial<Pick<ChobiSettings, "plainMode" | "nudges" | "alerts" | "memorySuggestions">>): Promise<ChobiSettings> {
   return api.put<ChobiSettings>("/chobi/settings", update);
 }

@@ -17,6 +17,7 @@ const settings = (over: Partial<ChobiSettings> = {}): ChobiSettings => ({
   plainMode: false,
   nudges: true,
   alerts: { enabled: false, events: { secondApprover: true, background: true, heldMcp: false }, delayMinutes: 5, channels: [] },
+  memorySuggestions: true,
   publicBaseUrl: true,
   updatedAt: null,
   ...over,

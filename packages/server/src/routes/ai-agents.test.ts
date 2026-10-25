@@ -88,7 +88,7 @@ describe("registry", () => {
       builtinTools: Array<{ name: string }>;
       problems: unknown[];
     }>(await call("GET", "/ai-agents/registry", VIEW));
-    expect(data.features).toHaveLength(29);
+    expect(data.features).toHaveLength(30);
     expect(data.features.find((f) => f.id === "optimize-query")?.agentId).toBe("builtin-agent-sql-optimizer");
     expect(data.features.find((f) => f.id === "optimize-query")?.variables).toHaveProperty("query");
     expect(data.agents.find((a) => a.id === "builtin-agent-sql-optimizer")?.usedBy).toEqual(["feature 'Optimize query'"]);

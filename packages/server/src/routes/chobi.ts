@@ -42,8 +42,8 @@ export function resetBriefingCache(): void {
   briefings.clear();
 }
 
-function settingsView(settings: StoredChobiSettings): Pick<StoredChobiSettings, "plainMode" | "nudges" | "alerts" | "updatedAt"> & { publicBaseUrl: boolean } {
-  return { plainMode: settings.plainMode, nudges: settings.nudges, alerts: settings.alerts, updatedAt: settings.updatedAt, publicBaseUrl: publicBaseUrl() !== null };
+function settingsView(settings: StoredChobiSettings): Pick<StoredChobiSettings, "plainMode" | "nudges" | "alerts" | "memorySuggestions" | "updatedAt"> & { publicBaseUrl: boolean } {
+  return { plainMode: settings.plainMode, nudges: settings.nudges, alerts: settings.alerts, memorySuggestions: settings.memorySuggestions, updatedAt: settings.updatedAt, publicBaseUrl: publicBaseUrl() !== null };
 }
 
 chobi.get("/briefing", requirePermission(PERMISSIONS.AI_CHAT), async (c) => {

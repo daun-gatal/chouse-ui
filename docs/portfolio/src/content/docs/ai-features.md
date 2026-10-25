@@ -18,6 +18,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | Feature | Where | Needs | Tools may use | Built-in agent |
 | --- | --- | --- | --- | --- |
 | [Chat](#chat) | Chat | `ai:chat` | ClickHouse session, Your CHouse access | [CHouse Assistant](#chouse-assistant) |
+| [Suggest memories](#suggest-memories) | Chat | `ai:chat` | Evidence only | [Memory Suggester](#memory-suggester) |
 | [Optimize query](#optimize-query) | SQL editor | `ai:optimize` | ClickHouse session | [SQL Optimizer](#sql-optimizer) |
 | [Debug query](#debug-query) | SQL editor | `ai:optimize` | ClickHouse session | [SQL Debugger](#sql-debugger) |
 | [Optimization pre-screen](#optimization-pre-screen) | SQL editor | `ai:optimize` | ClickHouse session | [Query Evaluator](#query-evaluator) |
@@ -58,6 +59,18 @@ The chat bubble. The bound agent answers when a thread has no agent picked; user
 **Tools may use:** ClickHouse session, Your CHouse access. **Built-in agent:** [CHouse Assistant](#chouse-assistant).
 
 No template variables — chat agents render without any.
+
+### Suggest memories
+
+ID `suggest-memories` · needs `ai:chat` · structured answer (JSON contract)
+
+Chobi › chat: after a conversation, suggests up to three notes worth keeping for the person or the team; a person chooses what is saved.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Memory Suggester](#memory-suggester).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The conversation, what memory already holds, and the rules (JSON). |
 
 ## SQL editor features
 
@@ -437,7 +450,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 33 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 34 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -604,6 +617,20 @@ Turns a goal into a guardrail draft for review (AI Governance › Guardrails).
 | Used by | [Draft a guardrail](#draft-a-guardrail) |
 | Harness | Focused |
 | Tuning | 3 steps · 3,000 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
+### Memory Suggester
+
+Suggests notes worth keeping after a Chobi conversation, for the person to save or dismiss.
+
+| Setting | Value |
+| --- | --- |
+| Slug | `memory-suggester` |
+| Kind | Feature agent |
+| Used by | [Suggest memories](#suggest-memories) |
+| Harness | Focused |
+| Tuning | 2 steps · 1,500 output tokens |
 | Tools | none |
 | Skills | all built-in skills on demand |
 

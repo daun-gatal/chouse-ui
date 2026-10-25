@@ -286,6 +286,9 @@ export const SEED_AGENTS: SeedAgent[] = [
   // --- Guardrails (ADR 0022) ---------------------------------------------------------------
   evidenceAgent("builtin-agent-guardrail-drafter", "guardrail-drafter", "Guardrail Drafter", "Turns a goal into a guardrail draft for review (AI Governance › Guardrails).", "draft-guardrail",
     { stepBudget: 3, maxOutputTokens: 3000 }),
+  // --- Memory (ADR 0026) ------------------------------------------------------------------
+  evidenceAgent("builtin-agent-memory-suggester", "memory-suggester", "Memory Suggester", "Suggests notes worth keeping after a Chobi conversation, for the person to save or dismiss.", "suggest-memories",
+    { stepBudget: 2, maxOutputTokens: 1500 }),
   // --- DataOps ----------------------------------------------------------------------------
   evidenceAgent("builtin-agent-scheduled-query-drafter", "scheduled-query-drafter", "Scheduled Query Drafter", "Turns an operator's intent into an editable scheduled query draft.", "draft-scheduled-query",
     { stepBudget: 7, maxOutputTokens: 4500 }, ["list_databases", "list_tables", "get_table_schema", "get_table_ddl", "analyze_query"]),
@@ -399,6 +402,7 @@ export const SEED_BINDINGS: Record<string, string> = {
   "explain-spike": "spike-explainer",
   "draft-guardrail": "guardrail-drafter",
   "triage-incident": "incident-triager",
+  "suggest-memories": "memory-suggester",
 };
 
 // ============================================
