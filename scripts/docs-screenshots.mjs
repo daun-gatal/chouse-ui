@@ -28,9 +28,13 @@ const SEED_PASSWORD = "admin123!";
 // The first-run password must be replaced before setup completes. Generate a
 // fresh one per run (the stack is thrown away afterwards); the fixed prefix
 // satisfies the upper/lower/digit/symbol policy.
-const DEMO_PASSWORD = `Aa1!${randomBytes(12).toString("hex")}`;
+const DEMO_PASSWORD = process.env.SHOTS_DEMO_PASSWORD || `Aa1!${randomBytes(12).toString("hex")}`;
 const WAIT_SECONDS = Number(process.env.SHOTS_WAIT_SECONDS ?? 150);
 const OUT = "/out";
+// For iterating on captures against a stack that is already seeded (with the
+// same SHOTS_DEMO_PASSWORD): skip seeding, and capture only the named shots.
+const SKIP_SEED = process.env.SHOTS_SKIP_SEED === "1";
+const ONLY = new Set((process.env.SHOTS_ONLY ?? "").split(",").filter(Boolean));
 
 const log = (...args) => console.error("[shots]", ...args);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,7 +45,48 @@ const openTab = (name) => async (page) => {
 };
 
 /** Ids the seed step creates and some captures open. */
-const seeded = { dashboardId: null };
+const seeded = { dashboardId: null, connectionId: null };
+
+/** Open Chobi at a size (Bubble, Docked or Focus) on one of its tabs. */
+const openChobi = (tab, size = "Docked") => async (page) => {
+  const panel = page.getByTestId("chobi-panel");
+  if (!(await panel.isVisible().catch(() => false))) await page.getByTestId("chobi-launcher").click();
+  await panel.waitFor();
+  await panel.getByRole("group", { name: "Panel size" }).getByRole("button", { name: size }).click().catch(() => undefined);
+  await panel.getByRole("tab", { name: new RegExp(`^${tab}`) }).click();
+};
+
+/** Send a chat message to Chobi and wait until the reply settles (an answer, a receipt or an approval card). */
+const chobiAsk = (text, waitFor) => async (page) => {
+  await openChobi("Chat")(page);
+  const chat = page.getByTestId("chobi-chat");
+  const start = chat.getByRole("button", { name: /Start new chat/i });
+  if (await start.isVisible().catch(() => false)) await start.click();
+  const box = chat.locator("textarea").last();
+  await box.fill(text);
+  await box.press("Enter");
+  await chat.getByText(waitFor).last().waitFor({ timeout: 60000 });
+};
+
+// A small Grafana dashboard for the import preview: a graph and a stat that
+// convert, a table panel with a transform that changes, and a plugin panel
+// that is skipped.
+const GRAFANA_DASHBOARD = {
+  title: "Shop orders (Grafana)",
+  schemaVersion: 39,
+  time: { from: "now-6h", to: "now" },
+  templating: { list: [{ name: "country", type: "custom", query: "ID,SG,MY,TH,VN,PH", multi: true, current: { text: ["ID", "SG"], value: ["ID", "SG"] } }] },
+  panels: [
+    { id: 1, type: "timeseries", title: "Orders per minute", gridPos: { x: 0, y: 0, w: 12, h: 8 }, datasource: { type: "grafana-clickhouse-datasource" },
+      targets: [{ rawSql: "SELECT $__timeInterval(created_at) AS time, count() AS orders FROM shop.orders WHERE $__timeFilter(created_at) GROUP BY time ORDER BY time" }] },
+    { id: 2, type: "stat", title: "Paid GMV", gridPos: { x: 12, y: 0, w: 6, h: 8 }, datasource: { type: "grafana-clickhouse-datasource" },
+      targets: [{ rawSql: "SELECT sumIf(amount, status = 'paid') AS paid_gmv FROM shop.orders WHERE $__timeFilter(created_at)" }] },
+    { id: 3, type: "table", title: "Top countries", gridPos: { x: 0, y: 8, w: 12, h: 8 }, datasource: { type: "grafana-clickhouse-datasource" },
+      transformations: [{ id: "organize" }],
+      targets: [{ rawSql: "SELECT country, count() AS orders FROM shop.orders WHERE country IN ($country) GROUP BY country ORDER BY orders DESC" }] },
+    { id: 4, type: "grafana-worldmap-panel", title: "Orders on a map", gridPos: { x: 12, y: 8, w: 12, h: 8 } },
+  ],
+};
 
 /**
  * [file name, app route (or a function of `seeded`), optional action run
@@ -79,6 +124,54 @@ const SHOTS = [
     await page.getByRole("button", { name: "Ask AI", exact: true }).click();
     await page.getByLabel("What should the dashboard show?").fill("Add a panel with orders and paid GMV per country over time");
   }],
+  ["dashboards-list", "/dashboards"],
+  ["dashboards-canvas", (s) => `/dashboards/${s.dashboardId}?range=1h`, async (page) => {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByText("Tidy up").first().waitFor();
+  }],
+  ["dashboards-annotations", (s) => `/dashboards/${s.dashboardId}?range=1h`, async (page) => {
+    // Click the newest marker on the first chart (the seeded note) so its card shows.
+    const hits = page.getByTestId("chart-marker-hit");
+    await hits.first().waitFor({ state: "attached", timeout: 15000 });
+    const boxes = await hits.evaluateAll((els) => els.map((el, i) => { const r = el.getBoundingClientRect(); return { i, x: r.x, y: r.y }; }));
+    const top = Math.min(...boxes.map((b) => b.y));
+    const target = boxes.filter((b) => Math.abs(b.y - top) < 50).sort((a, b) => b.x - a.x)[0];
+    await hits.nth(target.i).dispatchEvent("click");
+    await page.getByRole("dialog").waitFor();
+  }],
+  ["dashboards-history", (s) => `/dashboards/${s.dashboardId}?range=1h`, async (page) => {
+    // Save a Tidy up first, so the history has two versions to compare.
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("button", { name: /Tidy up/i }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Edit", exact: true }).waitFor();
+    await page.getByRole("button", { name: "More actions" }).first().click();
+    await page.getByRole("menuitem", { name: /Version history/ }).click();
+    await page.getByRole("dialog").waitFor();
+  }],
+  ["dashboards-grafana-import", "/dashboards", async (page) => {
+    const json = Buffer.from(JSON.stringify(GRAFANA_DASHBOARD));
+    await page.locator('input[type="file"]').first().setInputFiles({ name: "shop-orders.json", mimeType: "application/json", buffer: json });
+    await page.getByRole("button", { name: /Preview the conversion/i }).click();
+    await page.getByText("Orders on a map").first().waitFor({ timeout: 15000 });
+  }],
+  ["chobi-chat", "/overview", chobiAsk("Which countries drove paid GMV in the last hour?", "Want me to put this")],
+  ["chobi-undo", "/overview", chobiAsk("Keep an eye on shop.orders until tomorrow", /Undo/)],
+  ["chobi-approval", "/overview", chobiAsk("Create a table shop.refunds for refund events", /Approve/)],
+  ["chobi-activity", "/overview", openChobi("Activity")],
+  ["chobi-now", "/overview", openChobi("Now")],
+  ["ai-approvals", "/ai/approvals"],
+  ["ai-memories", "/ai/memories"],
+  ["ai-triage", "/ai/triage"],
+  ["ai-evals", "/ai/assistant", async (page) => {
+    await openTab("Agents")(page);
+    await page.getByRole("button", { name: "CHouse Assistant", exact: true }).first().click();
+    await page.getByRole("tab", { name: /^evals/i }).click();
+  }],
+  ["ai-chobi-settings", "/ai/assistant", openTab("Chobi")],
+  ["agents-mcp-write-tools", "/ai/mcp", async (page) => {
+    await page.getByText("Write tools", { exact: true }).first().scrollIntoViewIfNeeded();
+  }],
   ["doctor", "/doctor"],
   ["agents-sessions", "/ai/sessions"],
   ["agents-policies", "/ai/policies"],
@@ -114,7 +207,28 @@ const SHOTS = [
   ["admin-sso", "/admin/sso"],
   ["admin-audit", "/admin/audit"],
   ["admin-alerting", "/admin/alerting"],
+  ["admin-alerting-channels", "/admin/alerting?view=channels"],
+  ["admin-alerting-add-channel", "/admin/alerting?view=channels", async (page) => {
+    await page.getByRole("button", { name: "Add channel" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("radio", { name: /^Slack/ }).click();
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await dialog.getByLabel("Name").fill("#data-oncall");
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: /^App/ }).click();
+  }],
+  ["admin-alerting-rules", "/admin/alerting?view=rules"],
+  ["admin-alerting-activity", "/admin/alerting?view=activity"],
+  ["admin-connection-environment", "/admin/connections", async (page) => {
+    await page.locator("button:has(svg.lucide-pencil)").first().click();
+    const env = page.getByRole("dialog").getByLabel("Environment");
+    await env.scrollIntoViewIfNeeded();
+    await env.click();
+  }],
   ["preferences", "/preferences"],
+  ["preferences-chat-accounts", "/preferences", async (page) => {
+    await page.getByText("Linked chat accounts").first().scrollIntoViewIfNeeded();
+  }],
 ];
 
 async function api(method, path, { token, body, headers } = {}) {
@@ -169,6 +283,102 @@ const OPTIMIZATION = {
   suggestions: ["Keep time filters in PREWHERE", "Add a projection by country if this runs every minute"],
 };
 
+const textOf = (content) => (typeof content === "string" ? content : Array.isArray(content) ? content.map((p) => p?.text ?? "").join("") : "");
+
+/** A chat title request: no tools, asked for a short title. */
+function titleRequest(messages, tools) {
+  return tools.length === 0 && messages.some((m) => /\btitle\b/i.test(textOf(m.content)));
+}
+
+const toolCall = (n, name, args) => ({ role: "assistant", content: null, tool_calls: [{ id: `call_${n}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
+
+/** Rows with a `country` key anywhere in a tool result. */
+function countryRows(text) {
+  const find = (value) => {
+    if (Array.isArray(value)) {
+      if (value.length && value.every((r) => r && typeof r === "object" && "country" in r)) return value;
+      for (const v of value) {
+        const found = find(v);
+        if (found) return found;
+      }
+    } else if (value && typeof value === "object") {
+      for (const v of Object.values(value)) {
+        const found = find(v);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  try {
+    return find(JSON.parse(text)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+const GMV_SQL = "SELECT country, round(sumIf(amount, status = 'paid')) AS paid_gmv, count() AS orders FROM shop.orders WHERE created_at > now() - INTERVAL 1 HOUR GROUP BY country ORDER BY paid_gmv DESC";
+
+/**
+ * CHouse Assistant in the chat: three scripted conversations, picked by the
+ * user's last message — a read with a table answer, a watch (undoable, so it
+ * runs with Undo) and a new table (asks once, so the reply pauses for approval).
+ */
+function chatReply(messages, tools, n) {
+  let last = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "user") last = i;
+  });
+  const ask = textOf(messages[last]?.content);
+  const after = messages.slice(last + 1);
+  const called = after.flatMap((m) => (m.tool_calls ?? []).map((c) => c.function?.name));
+  const has = (name) => tools.some((t) => t?.function?.name === name);
+  const load = (toolkit) => {
+    const params = tools.find((t) => t.function.name === "load_toolkit").function.parameters?.properties ?? {};
+    const key = Object.keys(params)[0] ?? "toolkit";
+    return toolCall(n, "load_toolkit", { [key]: toolkit });
+  };
+  const resultOf = (name) => {
+    const at = after.findIndex((m) => (m.tool_calls ?? []).some((c) => c.function?.name === name));
+    return at >= 0 ? textOf(after.slice(at + 1).find((m) => m.role === "tool")?.content) : "";
+  };
+
+  if (/keep an eye|watch/i.test(ask)) {
+    if (!has("watch_table")) return called.includes("load_toolkit") ? { role: "assistant", content: "I could not load the Data Health toolkit." } : load("health");
+    if (!called.includes("watch_table")) return toolCall(n, "watch_table", { database: "shop", table: "orders", eventTimeColumn: "created_at", maxAgeMinutes: 30 });
+    return { role: "assistant", content: "Done — I'm watching **shop.orders** until 09:00 tomorrow. It's checked every 15 minutes, and you'll hear from me if no new orders arrive for 30 minutes. The watch removes itself when it ends; press **Undo** to stop it now." };
+  }
+  if (/refunds/i.test(ask)) {
+    if (!called.includes("create_table")) {
+      return toolCall(n, "create_table", {
+        database: "shop",
+        name: "refunds",
+        columns: [
+          { name: "refund_id", type: "UInt64" },
+          { name: "order_id", type: "UInt64" },
+          { name: "amount", type: "Decimal(12, 2)" },
+          { name: "reason", type: "LowCardinality(String)" },
+          { name: "created_at", type: "DateTime" },
+        ],
+        engine: "MergeTree()",
+        orderBy: "(created_at, refund_id)",
+        partitionBy: "toYYYYMM(created_at)",
+      });
+    }
+    return { role: "assistant", content: "Created **shop.refunds**, partitioned by month and sorted by `(created_at, refund_id)` like `shop.orders`, so joins on time ranges stay cheap." };
+  }
+  if (!called.includes("run_select_query") && has("run_select_query")) return toolCall(n, "run_select_query", { sql: GMV_SQL });
+  const rows = countryRows(resultOf("run_select_query"));
+  const table = rows.length
+    ? `\n\n| Country | Paid GMV | Orders |\n| --- | ---: | ---: |\n${rows.map((r) => `| ${r.country} | ${Number(r.paid_gmv).toLocaleString("en-US")} | ${Number(r.orders).toLocaleString("en-US")} |`).join("\n")}`
+    : "";
+  const total = rows.reduce((sum, r) => sum + Number(r.paid_gmv), 0);
+  const lead = rows[0] && total > 0 ? ` **${rows[0].country}** leads with ${Math.round((Number(rows[0].paid_gmv) / total) * 100)}% of the total.` : "";
+  return {
+    role: "assistant",
+    content: `**Paid GMV in the last hour**, by country from \`shop.orders\`:${table}\n\n${lead} Want me to put this on a dashboard, or keep an eye on the table?`.replace("\n\n ", "\n\n"),
+  };
+}
+
 /**
  * Fake OpenAI-compatible chat completions: an agent that has a SQL tool calls
  * it once with EVIDENCE_SQL, then every answer is the OPTIMIZATION JSON
@@ -180,6 +390,12 @@ function startFakeLlm() {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
     req.on("end", () => {
+      if (req.url?.startsWith("/hook")) {
+        // The demo alert channel's webhook.
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("ok");
+        return;
+      }
       let body = {};
       try {
         body = JSON.parse(raw || "{}");
@@ -196,13 +412,14 @@ function startFakeLlm() {
       });
       const sqlTool = sqlTools.find((t) => t.function.name === "run_select_query") ?? sqlTools[0];
       const calledTool = messages.some((m) => m.role === "tool");
+      const chat = tools.some((t) => t?.function?.name === "load_toolkit") ? chatReply(messages, tools, n) : null;
       const usage = { prompt_tokens: 1800 + (n % 7) * 230, completion_tokens: 240 + (n % 5) * 60, total_tokens: 0 };
       usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
-      const message = sqlTool && !calledTool
-        ? { role: "assistant", content: null, tool_calls: [{ id: `call_${n}`, type: "function", function: { name: sqlTool.function.name, arguments: JSON.stringify({ sql: EVIDENCE_SQL }) } }] }
-        : { role: "assistant", content: JSON.stringify(OPTIMIZATION) };
+      const message = chat ?? (titleRequest(messages, tools) ? { role: "assistant", content: "Paid GMV by country" } : null) ?? (sqlTool && !calledTool
+        ?{ role: "assistant", content: null, tool_calls: [{ id: `call_${n}`, type: "function", function: { name: sqlTool.function.name, arguments: JSON.stringify({ sql: EVIDENCE_SQL }) } }] }
+        : { role: "assistant", content: JSON.stringify(OPTIMIZATION) });
       const finish = message.tool_calls ? "tool_calls" : "stop";
-      log(`fake-llm #${n}: ${tools.length} tools, ${message.tool_calls ? `calls ${sqlTool.function.name}` : "answers"}`);
+      log(`fake-llm #${n}: ${tools.length} tools, ${message.tool_calls ? `calls ${message.tool_calls[0].function.name}` : "answers"}${chat ? " (chat)" : ""}`);
       if (body.stream) {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         const delta = message.tool_calls
@@ -266,6 +483,49 @@ async function seedDashboards(token, connectionId) {
   await api("POST", "/api/dashboards/templates/query-latency/instantiate", { token, headers, body: scope });
   seeded.dashboardId = overview.data.dashboard.id;
   await api("POST", `/api/dashboards/${seeded.dashboardId}/pin`, { token, headers }).catch((e) => log("pin:", e.message));
+  await api("POST", `/api/dashboards/${seeded.dashboardId}/notes`, {
+    token,
+    headers,
+    // After the seed's DDL, so it is the newest marker on the charts.
+    body: { at: Date.now() - 60 * 1000, text: "Backfill of last week's orders started" },
+  }).catch((e) => log("note:", e.message));
+}
+
+/** A nightly job whose source table is gone, so Chobi's Now has a failed job to show. */
+async function seedFailingJob(token, connectionId) {
+  log("adding a failing scheduled job");
+  const job = await api("POST", "/api/scheduled-queries", {
+    token,
+    headers: { "X-Connection-Id": connectionId },
+    body: { connectionId, name: "Nightly refunds rollup", query: "SELECT count() FROM shop.refunds_staging", frequency: "daily", hour: 2, timezone: "UTC", outputMode: "none" },
+  }).catch((e) => log("job:", e.message));
+  const id = job?.data?.id ?? job?.data?.job?.id;
+  if (id) await api("POST", `/api/scheduled-queries/${id}/run`, { token, headers: { "X-Connection-Id": connectionId } }).catch((e) => log("job run:", e.message));
+}
+
+async function seedAlerting(token) {
+  log("adding alert channels");
+  const channels = [
+    { name: "data-oncall", type: "webhook", config: { url: `http://fake-llm:${FAKE_LLM_PORT}/hook` } },
+    { name: "#ops-alerts", type: "slack", config: { mode: "webhook", webhookUrl: `http://fake-llm:${FAKE_LLM_PORT}/hook/slack` } },
+  ];
+  for (const channel of channels) {
+    const created = await api("POST", "/api/alerting/channels", { token, body: channel }).catch((e) => log("channel:", e.message));
+    if (created?.data?.id) await api("POST", `/api/alerting/channels/${created.data.id}/test`, { token }).catch((e) => log("channel test:", e.message));
+  }
+}
+
+/** Look up what an earlier run seeded (SHOTS_SKIP_SEED). */
+async function findSeeded() {
+  const token = await login("admin@localhost", DEMO_PASSWORD);
+  const conns = await api("GET", "/api/rbac/connections", { token });
+  const list = Array.isArray(conns.data) ? conns.data : conns.data?.connections ?? [];
+  seeded.connectionId = list[0]?.id ?? null;
+  const dashboards = await api("GET", "/api/dashboards?limit=50", { token, headers: { "X-Connection-Id": seeded.connectionId } });
+  const rows = Array.isArray(dashboards.data) ? dashboards.data : dashboards.data?.dashboards ?? dashboards.data?.items ?? [];
+  seeded.dashboardId = rows.find((d) => /overview/i.test(d.name ?? d.title ?? ""))?.id ?? rows[0]?.id ?? null;
+  log("found seeded", JSON.stringify(seeded));
+  if (process.env.SHOTS_RESEED_JOB === "1") await seedFailingJob(token, seeded.connectionId);
 }
 
 async function login(identifier, password) {
@@ -358,7 +618,10 @@ async function seedApp() {
     body: { welcomeSeen: true, bootstrapComplete: true },
   });
   const pat = await api("POST", "/api/rbac/pats", { token, body: { name: "ci-nightly-report" } }).catch((e) => log("PAT:", e.message));
+  seeded.connectionId = conn.data.id;
   await seedDashboards(token, conn.data.id);
+  await seedAlerting(token);
+  await seedFailingJob(token, conn.data.id);
   await seedAi(token, conn.data.id, pat?.data?.rawToken);
 }
 
@@ -406,6 +669,7 @@ async function capture() {
   }
 
   for (const [name, to, action] of SHOTS) {
+    if (ONLY.size && !ONLY.has(name)) continue;
     const route = typeof to === "function" ? to(seeded) : to;
     try {
       await page.goto(`${APP}${route}`, { waitUntil: "networkidle", timeout: 45000 });
@@ -430,10 +694,14 @@ async function capture() {
 const fakeLlm = startFakeLlm();
 await waitFor("CHouse UI", async () => (await fetch(`${APP}/api/health`)).ok);
 await waitFor("ClickHouse", async () => (await fetch(`${CH}/ping`)).ok);
-await seedClickHouse();
-await seedApp();
-log(`waiting ${WAIT_SECONDS}s for the collector to learn the workload`);
-await keepBusy(WAIT_SECONDS);
+if (SKIP_SEED) {
+  await findSeeded();
+} else {
+  await seedClickHouse();
+  await seedApp();
+  log(`waiting ${WAIT_SECONDS}s for the collector to learn the workload`);
+  await keepBusy(WAIT_SECONDS);
+}
 await capture();
 fakeLlm.close();
 log("done");
