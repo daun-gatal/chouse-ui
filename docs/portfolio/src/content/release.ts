@@ -30,13 +30,13 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.16",
   kind: "minor",
-  summary: "Meet Chobi, the CHouse buddy: AI that acts across CHouse, checked by tier with Undo — and dashboards that show what changed and why it spiked.",
+  summary: "Meet Chobi, the CHouse buddy: AI that acts across CHouse, checked by tier with Undo and approved right from Slack, Google Chat or Telegram — and dashboards that show what changed and why it spiked.",
   highlights: [
     { label: "Meet Chobi", href: "/docs/chobi/" },
     { label: "AI changes with Undo", href: "/docs/ai-approvals/#tiers" },
+    { label: "Approve from chat", href: "/docs/chat-apps/" },
     { label: "Dashboard canvas", href: "/docs/dashboards/#the-canvas" },
     { label: "Explain this spike", href: "/docs/dashboards/#annotations-and-notes" },
-    { label: "Auto-triage", href: "/docs/ai-triage/" },
   ],
 };
 
