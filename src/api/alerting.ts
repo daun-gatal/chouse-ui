@@ -284,7 +284,7 @@ export const CHANNEL_FIELD_SPECS: Record<ChannelType, ChannelFieldSpec[]> = {
   [ChannelType.GoogleChat]: [
     { key: "mode", label: "Mode", kind: "select", options: MODE_OPTIONS, hint: "App mode posts as a Chat app, lets people press buttons, and updates messages when things change." },
     { key: "webhookUrl", label: "Webhook URL", kind: "url", secret: true, required: true, placeholder: "https://chat.googleapis.com/v1/spaces/…", showWhen: { key: "mode", equals: "webhook" } },
-    { key: "serviceAccountJson", label: "Service account key (JSON)", kind: "textarea", secret: true, required: true, placeholder: '{ "type": "service_account", … }', showWhen: { key: "mode", equals: "app" } },
+    { key: "serviceAccountJson", label: "Service account key (JSON)", kind: "textarea", secret: true, required: true, placeholder: "Paste the JSON key file", showWhen: { key: "mode", equals: "app" } },
     { key: "space", label: "Space", kind: "text", required: true, placeholder: "spaces/AAAA…", hint: "From the space's URL. Add the app to the space.", showWhen: { key: "mode", equals: "app" } },
     { key: "audience", label: "Audience (optional)", kind: "text", placeholder: "Cloud project number", hint: "How Google signs button clicks: the project number, or the events URL.", showWhen: { key: "mode", equals: "app" } },
   ],

@@ -46,7 +46,7 @@ beforeAll(async () => {
   process.env.CHOUSE_ALLOW_TEST_OVERRIDES = "1";
   process.env.CHOUSE_INTEGRATIONS_TEST_HOSTS = JSON.stringify({ slack: `http://127.0.0.1:${platform.port}/slack` });
   resetPlatformHosts();
-  slack = await createChannel({ name: "ops-slack", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-1", signingSecret: "0123456789abcdef0123456789abcdef", channelId: "C0TEST123" }, enabled: true });
+  slack = await createChannel({ name: "ops-slack", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-1", signingSecret: "testSigningSecretOne", channelId: "C0TEST123" }, enabled: true });
   hook = await createChannel({ name: "ops-hook", type: ChannelType.Webhook, config: { url: `http://127.0.0.1:${platform.port}/hook` }, enabled: true });
 }, 60_000);
 

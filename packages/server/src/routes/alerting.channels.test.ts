@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import { ChannelType } from "../services/alerting/types";
 import { cleanChannelConfig } from "./alerting";
 
-const SIGNING = "abcdef0123456789abcdef0123456789";
+const SIGNING = "testSigningSecretOne";
 const TG = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123";
 const SA = JSON.stringify({ client_email: "a@b.iam.gserviceaccount.com", private_key: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n" });
 

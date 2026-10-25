@@ -310,7 +310,7 @@ describe("bot channels (App mode, Telegram)", () => {
   const alert: NotifyMessage = { title: "Disk <full>", text: "ch-1", buttons: [{ action: "data_health.ack", label: "Acknowledge", value: "inc-1" }], links: [{ label: "Open", url: "http://localhost:5521/x" }] };
 
   it("Slack App mode posts with the bot, carries buttons, and edits in place", async () => {
-    const id = await createChannel({ name: "slack-app", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-good", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" }, enabled: true });
+    const id = await createChannel({ name: "slack-app", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-good", signingSecret: "testSigningSecretOne", channelId: "C0TEST123" }, enabled: true });
     const row = (await getChannel(id))!;
     expect(capabilitiesOf(row)).toEqual({ edit: true, actions: true });
     expect(isDeliverable(row)).toBe(true);
@@ -331,7 +331,7 @@ describe("bot channels (App mode, Telegram)", () => {
   });
 
   it("a bad bot token fails the check with Slack's reason, never the token", async () => {
-    const id = await createChannel({ name: "slack-bad", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-bad", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" }, enabled: true });
+    const id = await createChannel({ name: "slack-bad", type: ChannelType.Slack, config: { mode: "app", botToken: "xoxb-bad", signingSecret: "testSigningSecretOne", channelId: "C0TEST123" }, enabled: true });
     await expect(checkChannel((await getChannel(id))!)).rejects.toThrow("Slack auth.test: invalid_auth");
   });
 
@@ -391,7 +391,7 @@ describe("bot channels (App mode, Telegram)", () => {
 
   it("keeps only the secrets a channel's mode uses", async () => {
     const id = await createChannel({ name: "switch", type: ChannelType.Slack, config: { webhookUrl: "https://hooks.slack.com/services/x" }, enabled: true });
-    await updateChannel(id, { name: "switch", type: ChannelType.Slack, enabled: true, config: { mode: "app", botToken: "xoxb-good", signingSecret: "abcdef0123456789abcdef0123456789", channelId: "C0TEST123" } });
+    await updateChannel(id, { name: "switch", type: ChannelType.Slack, enabled: true, config: { mode: "app", botToken: "xoxb-good", signingSecret: "testSigningSecretOne", channelId: "C0TEST123" } });
     const stored = JSON.parse((await getChannel(id))!.config) as Record<string, unknown>;
     expect(stored.webhookUrl).toBeUndefined();
     expect(String(stored.botToken)).not.toContain("xoxb");

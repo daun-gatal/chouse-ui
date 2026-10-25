@@ -26,8 +26,8 @@ import { resetPlatformHosts } from "../services/alerting/notify/hosts";
 import { telegramSecretToken } from "../services/alerting/notify/telegramWebhook";
 import integrations from "./integrations";
 
-const SIGNING = "0123456789abcdef0123456789abcdef";
-const OTHER_SIGNING = "fedcba9876543210fedcba9876543210";
+const SIGNING = "testSigningSecretOne";
+const OTHER_SIGNING = "testSigningSecretTwo";
 const TG = "555555:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123";
 const PROJECT = "123456789012";
 
