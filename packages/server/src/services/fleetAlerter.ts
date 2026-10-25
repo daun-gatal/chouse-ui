@@ -4,8 +4,9 @@
  * The fleet poller calls processTick() after each snapshot tick. We evaluate
  * the same rules the client bell uses against the fresh metrics and, on a NEW
  * breach (edge-triggered, mirroring the client's latch + hysteresis), deliver
- * to the configured channels — Slack (incoming webhook) and/or email (SMTP,
- * e.g. Gmail). This runs server-side so alerts fire even with no browser open.
+ * to the rule's channels through the shared notify layer (ADR 0026), and when
+ * the breach clears, edit the alert where the channel can. This runs
+ * server-side so alerts fire even with no browser open.
  *
  * Config lives in the shared RBAC DB (single-row fleet_alert_config), loaded
  * via fleetAlertConfig. It's re-read every tick so it can be edited live, and
@@ -29,8 +30,10 @@ import {
   persistLatches,
   setLastAutoRcaAt,
 } from "./fleetAlertLatchStore";
-import { listRules, getRuleChannelsDecrypted, recordEvent } from "./alerting/store";
+import { listRules, getRuleChannelIds, getChannel, recordEvent } from "./alerting/store";
 import { ChannelType, AlertSourceType, AlertSeverity } from "./alerting/types";
+import { editSubject, isDeliverable, notifyChannelIds, type NotifyMessage } from "./alerting/notify";
+import { linkTo } from "./alerting/notify/links";
 import type { DoctorReport } from "./ai/capabilities/fleetScan";
 /** Node-memory re-arms only once it drops this far below threshold (anti-flap). */
 const HYSTERESIS = 5;
@@ -48,32 +51,11 @@ interface AlertRules {
 }
 /** A diverging table re-arms only once its projected ETA climbs this far past the limit (anti-flap). */
 const PARTS_ETA_CLEAR_RATIO = 1.25;
-interface SlackConfig {
-  webhookUrl: string;
-}
-interface GoogleChatConfig {
-  webhookUrl: string;
-}
-interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string;
-  password: string;
-  to: string;
-  from: string;
-}
-interface WebhookConfig {
-  url: string;
-  secret?: string;
-}
 /** A resolved delivery destination — one of a rule's linked, enabled channels. */
 interface DeliveryTarget {
   id: string;
   type: ChannelType;
   name: string;
-  /** Decrypted, type-specific config. */
-  config: Record<string, unknown>;
 }
 /** One enabled fleet-threshold rule with its thresholds + delivery channels. */
 interface RuleConfig {
@@ -87,18 +69,6 @@ interface RuleConfig {
   aiRcaOnBreach: boolean;
   /** AI config id for the auto-RCA scan (undefined = use the default model). */
   aiRcaModelId?: string;
-}
-
-function asEmailConfig(c: Record<string, unknown>): EmailConfig {
-  return {
-    host: String(c.host ?? "smtp.gmail.com"),
-    port: num(c.port) || 465,
-    secure: c.secure !== undefined ? Boolean(c.secure) : true,
-    user: String(c.user ?? ""),
-    password: String(c.password ?? ""),
-    to: String(c.to ?? ""),
-    from: String(c.from ?? c.user ?? ""),
-  };
 }
 
 interface SnapshotInput {
@@ -136,27 +106,19 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Resolve a rule's enabled, deliverable channels (secrets decrypted). */
+/** Resolve a rule's enabled, deliverable channels. */
 async function resolveRuleChannels(ruleId: string): Promise<DeliveryTarget[]> {
-  const linked = await getRuleChannelsDecrypted(ruleId);
   const channels: DeliveryTarget[] = [];
-  for (const { row, config } of linked) {
-    if (row.type === ChannelType.Slack || row.type === ChannelType.GoogleChat) {
-      if (config.webhookUrl) channels.push({ id: row.id, type: row.type, name: row.name, config });
-    } else if (row.type === ChannelType.Webhook) {
-      if (config.url) channels.push({ id: row.id, type: row.type, name: row.name, config });
-    } else if (row.type === ChannelType.Email) {
-      if (config.user && config.password && config.to) {
-        channels.push({ id: row.id, type: row.type, name: row.name, config });
-      }
-    }
+  for (const id of await getRuleChannelIds(ruleId)) {
+    const row = await getChannel(id);
+    if (row && row.enabled && isDeliverable(row)) channels.push({ id: row.id, type: row.type, name: row.name });
   }
   return channels;
 }
 
 /**
  * Load every enabled fleet-threshold rule with its thresholds + delivery
- * channels (any type, secrets decrypted). A rule with no deliverable channel is
+ * channels (any type). A rule with no deliverable channel is
  * dropped. Returns [] when nothing is configured/enabled — the "delivery off"
  * contract callers expect.
  */
@@ -310,175 +272,77 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-async function deliverSlack(b: Breach, slack: SlackConfig): Promise<void> {
-  const fields: { type: "mrkdwn"; text: string }[] = [
-    { type: "mrkdwn", text: `*Node*\n${b.node}` },
-    { type: "mrkdwn", text: `*Issue*\n${capitalize(b.metric)}` },
-    { type: "mrkdwn", text: `*Detail*\n${b.summary}` },
+/** The alert for one breach, on every platform; the webhook body is the `fleet_alert` contract. */
+export function breachMessage(b: Breach, firedAt: Date = new Date()): NotifyMessage {
+  const facts = [
+    { label: "Node", value: b.node },
+    { label: "Issue", value: capitalize(b.metric) },
+    { label: "Detail", value: b.summary },
+    ...(b.user ? [{ label: "User", value: b.user }] : []),
   ];
-  if (b.user) fields.push({ type: "mrkdwn", text: `*User*\n${b.user}` });
-
-  const payload = {
-    text: `🔴 ${b.node} — ${b.metric}: ${b.summary}`, // notification fallback
-    attachments: [
-      {
-        color: "#dc2626",
-        blocks: [
-          {
-            type: "header",
-            text: { type: "plain_text", text: "🔴 ClickHouse fleet alert", emoji: true },
-          },
-          { type: "section", fields },
-          {
-            type: "context",
-            elements: [
-              { type: "mrkdwn", text: `chouse-fleet · ${new Date().toUTCString()}` },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-
-  const res = await fetch(slack.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(`Slack webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-}
-
-async function deliverGoogleChat(b: Breach, gchat: GoogleChatConfig): Promise<void> {
-  const widgets: unknown[] = [
-    { decoratedText: { topLabel: "Node", text: b.node } },
-    { decoratedText: { topLabel: "Issue", text: capitalize(b.metric) } },
-    { decoratedText: { topLabel: "Detail", text: b.summary } },
-  ];
-  if (b.user) widgets.push({ decoratedText: { topLabel: "User", text: b.user } });
-  widgets.push({
-    textParagraph: { text: `<font color="#9ca3af">chouse-fleet · ${new Date().toUTCString()}</font>` },
-  });
-
-  const payload = {
-    // Plain text drives the notification preview; the card carries the detail.
-    text: `🔴 ${b.node} — ${b.metric}: ${b.summary}`,
-    cardsV2: [
-      {
-        cardId: "fleet-alert",
-        card: {
-          header: { title: "🔴 ClickHouse fleet alert", subtitle: `${b.node} · ${capitalize(b.metric)}` },
-          sections: [{ widgets }],
-        },
-      },
-    ],
-  };
-
-  const res = await fetch(gchat.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(`Google Chat webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-}
-
-async function deliverEmail(b: Breach, email: EmailConfig): Promise<void> {
-  // Lazy import — the server shouldn't hard-depend on nodemailer at startup
-  // (email is optional; the package may not be installed yet).
-  const nodemailer = (await import("nodemailer")).default;
-  const transport = nodemailer.createTransport({
-    host: email.host,
-    port: email.port,
-    secure: email.secure,
-    auth: { user: email.user, pass: email.password },
-  });
-
-  const detail = b.detail
-    ? `<div style="margin-top:12px;padding:10px 12px;background:#f9fafb;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;word-break:break-all">${escapeHtml(b.detail)}</div>`
-    : "";
-  const user = b.user
-    ? `<div style="margin-top:4px;color:#6b7280;font-size:13px">by ${escapeHtml(b.user)}</div>`
-    : "";
-
-  const html = `
-  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:460px;margin:0 auto;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff">
-    <div style="background:#dc2626;color:#fff;padding:14px 18px;font-weight:600;font-size:15px">🔴 ClickHouse fleet alert</div>
-    <div style="padding:18px">
-      <div style="font-size:16px;font-weight:600;color:#111827">${escapeHtml(b.node)}</div>
-      <div style="margin-top:6px;color:#374151;font-size:14px">${capitalize(b.metric)} · <strong>${escapeHtml(b.summary)}</strong></div>
-      ${user}
-      ${detail}
-      <div style="margin-top:16px;color:#9ca3af;font-size:11px">chouse-fleet · ${new Date().toUTCString()}</div>
-    </div>
-  </div>`;
-
-  await transport.sendMail({
-    from: email.from,
-    to: email.to,
-    subject: `🔴 ${b.node} — ${capitalize(b.metric)} alert`,
-    text: `${b.node} — ${b.metric}: ${b.summary}${b.user ? ` (${b.user})` : ""}`,
-    html,
-  });
-}
-
-async function deliverWebhook(b: Breach, webhook: WebhookConfig): Promise<void> {
-  const res = await fetch(webhook.url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(webhook.secret ? { Authorization: `Bearer ${webhook.secret}` } : {}),
-    },
-    body: JSON.stringify({
+  return {
+    title: "🔴 ClickHouse fleet alert",
+    severity: "critical",
+    facts,
+    detail: b.detail,
+    links: linkTo("Open fleet", "/fleet"),
+    footer: `chouse-fleet · ${firedAt.toUTCString()}`,
+    fallback: `🔴 ${b.node} — ${b.metric}: ${b.summary}`,
+    emailSubject: `🔴 ${b.node} — ${capitalize(b.metric)} alert`,
+    webhook: {
       kind: "fleet_alert",
       node: b.node,
       metric: b.metric,
       summary: b.summary,
       user: b.user,
       detail: b.detail,
-      firedAt: new Date().toISOString(),
-    }),
+      firedAt: firedAt.toISOString(),
+    },
+  };
+}
+
+/** The alert as posted, once its breach cleared (only edits it where the channel can). */
+export function resolvedBreachMessage(posted: NotifyMessage, firedAt: number, resolvedAt: Date): NotifyMessage {
+  const minutes = Math.max(0, Math.round((resolvedAt.getTime() - firedAt) / 60_000));
+  return {
+    ...posted,
+    title: "✅ ClickHouse fleet alert resolved",
+    severity: "success",
+    text: `Resolved at ${resolvedAt.toUTCString()} · lasted ${minutes} min`,
+  };
+}
+
+interface Fired {
+  breach: Breach;
+  latchKey: string;
+  firedAt: Date;
+}
+
+async function deliver(fired: Fired, config: RuleConfig): Promise<void> {
+  const b = fired.breach;
+  const result = await notifyChannelIds(config.channels.map((ch) => ch.id), breachMessage(b, fired.firedAt), {
+    feature: "fleet_alert",
+    subjectId: fired.latchKey,
+    kind: `fire:${fired.firedAt.getTime()}`,
   });
-  if (!res.ok) throw new Error(`Webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-}
-
-/** Dispatch a single breach to one channel by type. */
-function deliverToChannel(b: Breach, ch: DeliveryTarget): Promise<void> {
-  switch (ch.type) {
-    case ChannelType.Slack:
-      return deliverSlack(b, { webhookUrl: String(ch.config.webhookUrl) });
-    case ChannelType.GoogleChat:
-      return deliverGoogleChat(b, { webhookUrl: String(ch.config.webhookUrl) });
-    case ChannelType.Email:
-      return deliverEmail(b, asEmailConfig(ch.config));
-    case ChannelType.Webhook:
-      return deliverWebhook(b, { url: String(ch.config.url), secret: ch.config.secret ? String(ch.config.secret) : undefined });
-    default:
-      return Promise.resolve();
-  }
-}
-
-async function deliver(b: Breach, channels: DeliveryTarget[]): Promise<void> {
-  const tasks = channels.map((ch) =>
-    deliverToChannel(b, ch).catch((err) =>
-      logger.error(
-        { module: "FleetAlerter", channel: ch.type, name: ch.name, err: String(err) },
-        "Channel delivery failed",
-      ),
-    ),
-  );
-  await Promise.allSettled(tasks);
+  await recordEvent({
+    ruleId: config.ruleId,
+    severity: config.severity,
+    payload: `${b.node} — ${b.metric}: ${b.summary}${b.user ? ` (${b.user})` : ""}`,
+    deliveredTo: result.deliveredTo,
+    source: "fleet_alert",
+    channelIds: result.channelIds,
+    deliveryFailed: result.failed.length > 0,
+  }).catch((err) => logger.error({ module: "FleetAlerter", err: String(err) }, "Failed to record alert event"));
   logger.info({ module: "FleetAlerter", node: b.node, metric: b.metric, summary: b.summary }, "Alert fired");
+}
+
+/**
+ * A breach cleared: mark its alert resolved wherever the channel can edit it.
+ * Read from the message log, so it works whichever replica holds the poller.
+ */
+async function resolve(latchKey: string, now: Date): Promise<void> {
+  await editSubject("fleet_alert", latchKey, (posted, postedAt) => resolvedBreachMessage(posted, postedAt, now), { close: true });
 }
 
 // ============================================
@@ -486,7 +350,6 @@ async function deliver(b: Breach, channels: DeliveryTarget[]): Promise<void> {
 // ============================================
 
 const STATUS_EMOJI: Record<string, string> = { healthy: "🟢", warning: "🟠", critical: "🔴" };
-const STATUS_COLOR: Record<string, string> = { healthy: "#16a34a", warning: "#d97706", critical: "#dc2626" };
 const STATUS_RANK: Record<string, number> = { critical: 0, warning: 1, healthy: 2 };
 
 function rcaStatus(report: DoctorReport): string {
@@ -513,7 +376,10 @@ function rcaSummary(report: DoctorReport): string {
   );
 }
 
-async function deliverRcaSlack(report: DoctorReport, triggers: string[], slack: SlackConfig): Promise<void> {
+const RCA_SEVERITY: Record<string, NotifyMessage["severity"]> = { healthy: "success", warning: "warning", critical: "critical" };
+
+/** The root-cause report on every platform; the webhook body is the `fleet_rca` contract. */
+export function rcaMessage(report: DoctorReport, triggers: string[], at: Date = new Date()): NotifyMessage {
   const status = rcaStatus(report);
   const emoji = STATUS_EMOJI[status] ?? "🟠";
   const summary = rcaSummary(report);
@@ -522,193 +388,46 @@ async function deliverRcaSlack(report: DoctorReport, triggers: string[], slack: 
     .filter((n) => n.status !== "healthy")
     .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))
     .slice(0, 3);
-
-  const blocks: unknown[] = [
-    { type: "header", text: { type: "plain_text", text: `${emoji} Chouse AI — root-cause analysis`, emoji: true } },
-    { type: "context", elements: [{ type: "mrkdwn", text: `*Triggered by:* ${triggers.join(" · ").slice(0, 280)}` }] },
-    { type: "section", text: { type: "mrkdwn", text: `*Verdict:* ${summary}` } },
-  ];
-  for (const n of nodes) {
-    const ne = STATUS_EMOJI[n.status] ?? "🟠";
-    const detail = n.details.slice(0, 2).map((d) => `• ${d}`).join("\n").slice(0, 600);
-    blocks.push({ type: "section", text: { type: "mrkdwn", text: `${ne} *${n.name}*\n${detail}` } });
-  }
-  if (recs.length) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: `*Recommendations*\n${recs.map((r) => `• ${r}`).join("\n")}`.slice(0, 1000) },
-    });
-  }
-  blocks.push({
-    type: "section",
-    text: { type: "mrkdwn", text: "🔎 *Please log in to the platform to check the details.*" },
-  });
-  blocks.push({
-    type: "context",
-    elements: [{ type: "mrkdwn", text: `chouse-fleet · Chouse AI · ${report.model} · ${new Date().toUTCString()}` }],
-  });
-
-  const payload = {
-    text: `${emoji} Chouse AI RCA — ${summary}`.slice(0, 200),
-    attachments: [{ color: STATUS_COLOR[status] ?? "#d97706", blocks }],
-  };
-  const res = await fetch(slack.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Slack webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-}
-
-async function deliverRcaGoogleChat(report: DoctorReport, triggers: string[], gchat: GoogleChatConfig): Promise<void> {
-  const status = rcaStatus(report);
-  const emoji = STATUS_EMOJI[status] ?? "🟠";
-  const summary = rcaSummary(report);
-  const recs = report.analysis?.recommendations?.slice(0, 3) ?? [];
-  const nodes = [...(report.analysis?.nodes ?? [])]
-    .filter((n) => n.status !== "healthy")
-    .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))
-    .slice(0, 3);
-
-  const widgets: unknown[] = [
-    { decoratedText: { topLabel: "Triggered by", text: triggers.join(" · ").slice(0, 280) } },
-    { textParagraph: { text: `<b>Verdict:</b> ${summary}` } },
-  ];
-  for (const n of nodes) {
-    const ne = STATUS_EMOJI[n.status] ?? "🟠";
-    const detail = n.details.slice(0, 2).map((d) => `• ${d}`).join("<br>").slice(0, 600);
-    widgets.push({ textParagraph: { text: `${ne} <b>${n.name}</b><br>${detail}` } });
-  }
-  if (recs.length) {
-    widgets.push({
-      textParagraph: { text: `<b>Recommendations</b><br>${recs.map((r) => `• ${r}`).join("<br>")}`.slice(0, 1000) },
-    });
-  }
-  widgets.push({ textParagraph: { text: "🔎 <b>Please log in to the platform to check the details.</b>" } });
-  widgets.push({
-    textParagraph: {
-      text: `<font color="#9ca3af">chouse-fleet · Chouse AI · ${report.model} · ${new Date().toUTCString()}</font>`,
-    },
-  });
-
-  const payload = {
-    text: `${emoji} Chouse AI RCA — ${summary}`.slice(0, 200),
-    cardsV2: [
-      {
-        cardId: "fleet-rca",
-        card: {
-          header: { title: `${emoji} Chouse AI — root-cause analysis`, subtitle: status.toUpperCase() },
-          sections: [{ widgets }],
-        },
-      },
-    ],
-  };
-  const res = await fetch(gchat.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Google Chat webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-}
-
-async function deliverRcaEmail(report: DoctorReport, triggers: string[], email: EmailConfig): Promise<void> {
-  const nodemailer = (await import("nodemailer")).default;
-  const transport = nodemailer.createTransport({
-    host: email.host,
-    port: email.port,
-    secure: email.secure,
-    auth: { user: email.user, pass: email.password },
-  });
-  const status = rcaStatus(report);
-  const color = STATUS_COLOR[status] ?? "#d97706";
-  const summary = rcaSummary(report);
-  const recs = report.analysis?.recommendations?.slice(0, 4) ?? [];
-  const nodes = [...(report.analysis?.nodes ?? [])].filter((n) => n.status !== "healthy").slice(0, 4);
-
-  const nodeHtml = nodes
-    .map(
-      (n) => `
-      <div style="margin-top:10px"><strong style="color:#111827">${escapeHtml(n.name)}</strong> <span style="color:#6b7280">(${escapeHtml(n.status)})</span>
-        <ul style="margin:4px 0 0;padding-left:18px;color:#374151;font-size:13px">${n.details
-          .slice(0, 3)
-          .map((d) => `<li>${escapeHtml(d)}</li>`)
-          .join("")}</ul>
-      </div>`,
-    )
-    .join("");
-  const recHtml = recs.length
-    ? `<div style="margin-top:14px"><div style="font-weight:600;color:#111827">Recommendations</div><ul style="margin:4px 0 0;padding-left:18px;color:#374151;font-size:13px">${recs
-        .map((r) => `<li>${escapeHtml(r)}</li>`)
-        .join("")}</ul></div>`
-    : "";
-
-  const html = `
-  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff">
-    <div style="background:${color};color:#fff;padding:14px 18px;font-weight:600;font-size:15px">🩺 Chouse AI — root-cause analysis</div>
-    <div style="padding:18px">
-      <div style="color:#6b7280;font-size:12px">Triggered by: ${escapeHtml(triggers.join(" · ").slice(0, 300))}</div>
-      <div style="margin-top:8px;font-size:15px;color:#111827"><strong>Verdict:</strong> ${escapeHtml(summary)}</div>
-      ${nodeHtml}
-      ${recHtml}
-      <div style="margin-top:16px;padding:10px 12px;background:#f9fafb;border-radius:6px;color:#374151;font-size:13px">🔎 <strong>Please log in to the platform to check the details.</strong></div>
-      <div style="margin-top:12px;color:#9ca3af;font-size:11px">chouse-fleet · Chouse AI · ${escapeHtml(report.model)} · ${new Date().toUTCString()}</div>
-    </div>
-  </div>`;
-  await transport.sendMail({
-    from: email.from,
-    to: email.to,
-    subject: `🩺 Chouse AI RCA — ${status.toUpperCase()}`,
-    text: `Chouse AI RCA: ${summary}`,
-    html,
-  });
-}
-
-async function deliverRcaWebhook(report: DoctorReport, triggers: string[], webhook: WebhookConfig): Promise<void> {
-  const res = await fetch(webhook.url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(webhook.secret ? { Authorization: `Bearer ${webhook.secret}` } : {}),
-    },
-    body: JSON.stringify({
+  const sections = nodes.map((n) => ({
+    title: `${STATUS_EMOJI[n.status] ?? "🟠"} ${n.name}`,
+    text: n.details.slice(0, 2).map((d) => `• ${d}`).join("\n").slice(0, 600),
+  }));
+  if (recs.length) sections.push({ title: "Recommendations", text: recs.map((r) => `• ${r}`).join("\n").slice(0, 1000) });
+  const links = linkTo("Open the report", `/doctor/${encodeURIComponent(report.id)}`);
+  if (links.length === 0) sections.push({ title: "", text: "🔎 Please log in to the platform to check the details." });
+  return {
+    title: `${emoji} Chouse AI — root-cause analysis`,
+    severity: RCA_SEVERITY[status] ?? "warning",
+    facts: [{ label: "Triggered by", value: triggers.join(" · ").slice(0, 280) }],
+    text: `Verdict: ${summary}`,
+    sections: sections.map((section) => (section.title ? section : { text: section.text })),
+    links,
+    footer: `chouse-fleet · Chouse AI · ${report.model} · ${at.toUTCString()}`,
+    fallback: `${emoji} Chouse AI RCA — ${summary}`.slice(0, 200),
+    emailSubject: `🩺 Chouse AI RCA — ${status.toUpperCase()}`,
+    webhook: {
       kind: "fleet_rca",
-      status: rcaStatus(report),
-      summary: rcaSummary(report),
+      status,
+      summary,
       triggers,
       model: report.model,
       reportId: report.id,
-      firedAt: new Date().toISOString(),
-    }),
-  });
-  if (!res.ok) throw new Error(`Webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
-}
-
-/** Dispatch an RCA report to one channel by type. */
-function deliverRcaToChannel(report: DoctorReport, triggers: string[], ch: DeliveryTarget): Promise<void> {
-  switch (ch.type) {
-    case ChannelType.Slack:
-      return deliverRcaSlack(report, triggers, { webhookUrl: String(ch.config.webhookUrl) });
-    case ChannelType.GoogleChat:
-      return deliverRcaGoogleChat(report, triggers, { webhookUrl: String(ch.config.webhookUrl) });
-    case ChannelType.Email:
-      return deliverRcaEmail(report, triggers, asEmailConfig(ch.config));
-    case ChannelType.Webhook:
-      return deliverRcaWebhook(report, triggers, { url: String(ch.config.url), secret: ch.config.secret ? String(ch.config.secret) : undefined });
-    default:
-      return Promise.resolve();
-  }
+      firedAt: at.toISOString(),
+    },
+  };
 }
 
 async function deliverRca(report: DoctorReport, triggers: string[], channels: DeliveryTarget[]): Promise<void> {
-  const tasks = channels.map((ch) =>
-    deliverRcaToChannel(report, triggers, ch).catch((err) =>
-      logger.error(
-        { module: "FleetAlerter", channel: ch.type, name: ch.name, err: String(err) },
-        "RCA delivery failed",
-      ),
-    ),
-  );
-  await Promise.allSettled(tasks);
+  const result = await notifyChannelIds(channels.map((ch) => ch.id), rcaMessage(report, triggers), { feature: "fleet_rca", subjectId: report.id });
+  await recordEvent({
+    ruleId: null,
+    severity: RCA_SEVERITY[rcaStatus(report)] === "critical" ? AlertSeverity.Critical : AlertSeverity.Warning,
+    payload: JSON.stringify({ source: "fleet_rca", title: `Chouse AI RCA — ${rcaStatus(report)}`, text: rcaSummary(report), reportId: report.id, failed: result.failed }),
+    deliveredTo: result.deliveredTo,
+    source: "fleet_rca",
+    channelIds: result.channelIds,
+    deliveryFailed: result.failed.length > 0,
+  }).catch((err) => logger.error({ module: "FleetAlerter", err: String(err) }, "Failed to record RCA event"));
 }
 
 /**
@@ -773,16 +492,14 @@ export async function sendTestAlert(): Promise<{
   if (channels.length === 0) {
     throw new Error("No alert config (missing, disabled, or no channel set)");
   }
-  await deliver(
-    {
-      node: "clickhouse-bi.paysera.net",
-      metric: "query memory",
-      summary: "57.4 GB query",
-      user: "r_redash",
-      detail: "r_redash · SELECT toInt32OrNull(customer_id) AS UserId, count() AS c FROM events …",
-    },
-    channels,
-  );
+  const sample: Breach = {
+    node: "clickhouse-bi.paysera.net",
+    metric: "query memory",
+    summary: "57.4 GB query",
+    user: "r_redash",
+    detail: "r_redash · SELECT toInt32OrNull(customer_id) AS UserId, count() AS c FROM events …",
+  };
+  await notifyChannelIds(channels.map((ch) => ch.id), breachMessage(sample), { feature: "test" });
   const has = (t: ChannelType): boolean => channels.some((ch) => ch.type === t);
   return {
     slack: has(ChannelType.Slack),
@@ -833,8 +550,9 @@ export async function processTick(
 
     // Evaluate every enabled rule against the snapshots; deliver each rule's
     // breaches to that rule's own channels, and fire per-rule auto-RCA.
+    const now = new Date();
     for (const config of configs) {
-      const fires: Breach[] = [];
+      const fires: Fired[] = [];
       for (const [connId, metrics] of byConn) {
         const node = nameById.get(connId) ?? connId;
         for (const r of evaluateNode(metrics, config.rules)) {
@@ -846,25 +564,20 @@ export async function processTick(
           if (r.breaching && !wasArmed) {
             armed.set(key, true);
             latchChanges.set(key, true);
-            fires.push({ node, metric: r.metric, summary: r.summary, user: r.user, detail: r.detail });
+            fires.push({ breach: { node, metric: r.metric, summary: r.summary, user: r.user, detail: r.detail }, latchKey: key, firedAt: now });
           } else if (r.clearing && wasArmed) {
             armed.set(key, false);
             latchChanges.set(key, false);
+            void resolve(key, now);
           }
         }
       }
 
       // Deliver after the latch is settled (so a delivery failure can't double-fire),
       // and record each fire so the "recent alerts" feed reflects what happened.
-      for (const b of fires) {
-        void deliver(b, config.channels);
-        void recordEvent({
-          ruleId: config.ruleId,
-          severity: config.severity,
-          payload: `${b.node} — ${b.metric}: ${b.summary}${b.user ? ` (${b.user})` : ""}`,
-          deliveredTo: config.channels.map((ch) => ch.name),
-        }).catch((err) =>
-          logger.error({ module: "FleetAlerter", err: String(err) }, "Failed to record alert event"),
+      for (const fired of fires) {
+        void deliver(fired, config).catch((err) =>
+          logger.error({ module: "FleetAlerter", err: String(err) }, "Alert delivery failed"),
         );
       }
 
@@ -875,7 +588,7 @@ export async function processTick(
       const lastAutoRcaAt = await getLastAutoRcaAt();
       if (config.aiRcaOnBreach && fires.length > 0 && Date.now() - lastAutoRcaAt >= AUTO_RCA_COOLDOWN_MS) {
         await setLastAutoRcaAt(Date.now());
-        const triggers = fires.map((b) => `${b.node} — ${b.metric}: ${b.summary}`);
+        const triggers = fires.map(({ breach: b }) => `${b.node} — ${b.metric}: ${b.summary}`);
         void runAutoRca(config.channels, config.aiRcaModelId, triggers);
       }
     }
@@ -887,6 +600,7 @@ export async function processTick(
         armed.delete(k);
         latchChanges.delete(k);
         latchRemovals.add(k);
+        void resolve(k, now);
       }
     }
 

@@ -44,8 +44,8 @@ Compatibility rules:
   `{title, text, test: true}`). The message carries its webhook body.
 - Every message a feature sends today is still sent. Edits are additive: when
   an alert resolves, an App-mode channel also edits the original message.
-- `sendChannelMessage` and `sendChannelTest` keep their signatures and become
-  thin wrappers.
+- `sendChannelMessage` and `sendChannelTest` (`alerting/deliver.ts`) are
+  removed: every caller moves to the notify layer in the same change.
 
 ### 2. Channel modes and Telegram
 

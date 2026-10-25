@@ -18,12 +18,10 @@ mock.module("../scheduledQueries/chClient", () => ({
 }));
 
 const sentMessages: Array<{ title: string; text: string }> = [];
-mock.module("../alerting/deliver", () => ({
-  sendChannelMessage: async (_type: string, _config: Record<string, unknown>, message: { title: string; text: string }) => {
-    sentMessages.push(message);
-    return true;
+mock.module("../alerting/notify/platforms/webhook", () => ({
+  postWebhook: async (_config: Record<string, unknown>, message: { title: string; text?: string }) => {
+    sentMessages.push({ title: message.title, text: message.text ?? "" });
   },
-  sendChannelTest: async () => true,
 }));
 
 const { closeDatabase } = await import("../../rbac/db");

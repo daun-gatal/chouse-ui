@@ -27,7 +27,7 @@ import {
 import * as store from "../services/alerting/store";
 import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
-import { sendChannelMessage, sendChannelTest } from "../services/alerting/deliver";
+import { sendToChannel, TEST_MESSAGE } from "../services/alerting/notify";
 
 const alerting = new Hono();
 
@@ -201,10 +201,8 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
   const id = requireParam(c, "id");
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
-  const stored = JSON.parse(ch.config) as Record<string, unknown>;
-  const decrypted = store.decryptChannelConfig(ch.type, stored);
   try {
-    await sendChannelTest(ch.type, decrypted);
+    await sendToChannel(ch, TEST_MESSAGE, { feature: "test" });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_TEST, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
@@ -242,11 +240,9 @@ alerting.post("/channels/:id/message", requirePermission(PERMISSIONS.ALERTING_ED
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
   if (!ch.enabled) return c.json({ success: false, error: "This channel is turned off" }, 409);
-  const stored = JSON.parse(ch.config) as Record<string, unknown>;
-  const decrypted = store.decryptChannelConfig(ch.type, stored);
   const audit = { resourceType: "notification_channel", resourceId: id, details: { type: ch.type, title, length: text.length } };
   try {
-    await sendChannelMessage(ch.type, decrypted, { title, text });
+    await sendToChannel(ch, { title, text }, { feature: "handoff" });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_MESSAGE, userId(c), { ...audit, status: "success" });
     return c.json({ success: true, data: { sent: true, channel: ch.name } });
   } catch (err) {

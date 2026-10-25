@@ -15,9 +15,10 @@
 import { randomUUID } from "crypto";
 import { hostname } from "os";
 
-import { decryptChannelConfig, getChannel, recordEvent } from "../alerting/store";
-import { sendChannelMessage } from "../alerting/deliver";
+import { recordEvent } from "../alerting/store";
 import { AlertSeverity } from "../alerting/types";
+import { editSubject, notifyChannelIds, type NotifyMessage } from "../alerting/notify";
+import { linkTo } from "../alerting/notify/links";
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { getUserById } from "../../rbac/services/rbac";
 import { AppError } from "../../types";
@@ -219,21 +220,27 @@ export function noticeMessage(alert: PanelAlert, notice: Notice, evaluated: Eval
   }
 }
 
+const NOTICE_SEVERITY: Record<Notice, NotifyMessage["severity"]> = { firing: "warning", resolved: "success", error: "warning", recovered: "success" };
+
+/**
+ * Send a notice to the alert's channels. A firing notice is the alert's open
+ * message: when it resolves, channels that can edit mark it resolved too (the
+ * resolved notice is still sent, as before).
+ */
 async function deliver(alert: PanelAlert, notice: Notice, evaluated: Evaluated, status: AlertStatus): Promise<void> {
   const message = noticeMessage(alert, notice, evaluated, status);
-  const delivered: string[] = [];
-  const failed: Array<{ channelId: string; error: string }> = [];
-  for (const channelId of alert.channelIds) {
-    const row = await getChannel(channelId);
-    if (!row) { failed.push({ channelId, error: "channel no longer exists" }); continue; }
-    if (!row.enabled) { failed.push({ channelId, error: "channel is disabled" }); continue; }
-    try {
-      await sendChannelMessage(row.type, decryptChannelConfig(row.type, JSON.parse(row.config) as Record<string, unknown>), message);
-      delivered.push(row.name);
-    } catch (error) {
-      failed.push({ channelId, error: error instanceof Error ? error.message : String(error) });
-    }
+  const messageSeverity = notice === "firing" && alert.severity === "critical" ? "critical" : NOTICE_SEVERITY[notice];
+  const now = Date.now();
+  if (notice === "resolved") {
+    await editSubject("dashboard_alert", alert.id, (posted) => ({ ...posted, title: message.title, text: message.text, severity: "success" }), { close: true });
   }
+  const result = await notifyChannelIds(
+    alert.channelIds,
+    { ...message, severity: messageSeverity, links: linkTo("Open dashboard", `/dashboards/${encodeURIComponent(alert.dashboardId)}`) },
+    notice === "firing" ? { feature: "dashboard_alert", subjectId: alert.id, kind: `firing:${now}` } : { feature: "dashboard_alert", subjectId: `${alert.id}:notice`, kind: `${notice}:${now}` },
+  );
+  const delivered = result.deliveredTo;
+  const failed = result.failed.map((f) => ({ channelId: f.channelId, error: f.error }));
   if (failed.length > 0) logger.warn({ module: "DashboardAlerts", alertId: alert.id, failed }, "Panel alert delivery failed on some channels");
   const severity = notice === "firing" ? (alert.severity === "critical" ? AlertSeverity.Critical : AlertSeverity.Warning) : notice === "error" ? AlertSeverity.Warning : AlertSeverity.Info;
   await recordEvent({
@@ -252,6 +259,9 @@ async function deliver(alert: PanelAlert, notice: Notice, evaluated: Evaluated, 
       failed,
     }),
     deliveredTo: delivered,
+    source: "dashboard_alert",
+    channelIds: result.channelIds,
+    deliveryFailed: failed.length > 0,
   });
 }
 

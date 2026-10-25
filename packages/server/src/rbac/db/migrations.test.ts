@@ -26,6 +26,7 @@ import { DASHBOARD_V2_INDEX_NAMES, DASHBOARD_V2_TABLE_NAMES } from "./dashboards
 import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_EVAL_INDEX_NAMES, AI_EVAL_TABLE_NAMES, AI_MEMORY_INDEX_NAMES, AI_MEMORY_TABLE_NAMES, AI_RUNTIME_INDEX_NAMES, AI_RUNTIME_TABLE_NAMES, AI_TRIAGE_INDEX_NAMES, AI_TRIAGE_TABLE_NAMES } from "./aiPlatformSchema";
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 import { AI_ACTION_GRANT_INDEX_NAMES, AI_ACTION_GRANT_TABLE_NAMES, AI_ACTION_TIER_COLUMNS, MCP_TOKEN_POLICY_TABLE_NAMES } from "./aiAssistantSchema";
+import { ALERT_EVENT_COLUMNS, NOTIFY_INDEX_NAMES, NOTIFY_TABLE_NAMES } from "./notifySchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -524,6 +525,18 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.indexExists("dh_promises_expires_idx")).toBe(true);
     const expiring = await h.rawAll(sql`SELECT COUNT(*) AS n FROM data_health_promises WHERE expires_at IS NOT NULL`);
     expect(Number(expiring[0]?.n ?? 0)).toBe(0);
+  },
+  "1.74.0": async () => {
+    // ADR 0026: the notify message log, linked chat accounts and filterable alert history.
+    expect(NOTIFY_TABLE_NAMES).toEqual(["channel_messages", "chat_identities", "chat_link_codes"]);
+    for (const t of NOTIFY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of NOTIFY_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["channel_id", "feature", "subject_id", "kind", "state", "platform_ref", "buttons", "message", "error", "closed_at"]) expect(await h.columnExists("channel_messages", c)).toBe(true);
+    for (const c of ["user_id", "platform", "external_id", "display_name"]) expect(await h.columnExists("chat_identities", c)).toBe(true);
+    for (const c of ["code_hash", "user_id", "platform", "expires_at", "used_at"]) expect(await h.columnExists("chat_link_codes", c)).toBe(true);
+    for (const c of ALERT_EVENT_COLUMNS) expect(await h.columnExists("alert_events", c.name)).toBe(true);
+    const unfilled = await h.rawAll(sql`SELECT COUNT(*) AS n FROM alert_events WHERE source IS NULL`);
+    expect(Number(unfilled[0]?.n ?? 0)).toBe(0);
   },
 };
 
@@ -1397,6 +1410,57 @@ for (const dialect of DIALECTS) {
         WHERE r.name = 'admin' AND p.name = 'ai_guardrails:manage'`);
       expect(Number(grants[0].c)).toBe(1);
       expect((await runMigrations()).migrationsApplied).toEqual([]);
+    });
+  });
+
+  // ADR 0026: alert history recorded before 1.74.0 gets its source and
+  // delivery outcome filled in; re-running changes nothing.
+  describe(`migrations · ADR 0026 alert event sources [${dialect}]`, () => {
+    const NOW = 1_760_000_000_000;
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.73.0" });
+      for (const c of ALERT_EVENT_COLUMNS) expect(await h.columnExists("alert_events", c.name)).toBe(false);
+      await h.rawRun(sql`INSERT INTO alert_rules (id, name, source_type, config, severity, enabled, ai_rca_enabled, created_at, updated_at)
+        VALUES ('fleet-default', 'Fleet thresholds', 'fleet_threshold', '{}', 'warning', 1, 0, ${NOW}, ${NOW})`);
+      const events: Array<[string, string | null, string | null]> = [
+        ["e-fleet", "fleet-default", "node-1 — node memory: 92% memory"],
+        ["e-panel", "panel-1", JSON.stringify({ source: "dashboard_panel_alert", notice: "firing", failed: [] })],
+        ["e-panel-failed", "panel-1", JSON.stringify({ source: "dashboard_panel_alert", notice: "firing", failed: [{ channelId: "c1", error: "HTTP 500" }] })],
+        ["e-report", "report-1", JSON.stringify({ source: "dashboard_report", status: "sent", failed: [] })],
+        ["e-unknown", null, "not json"],
+        ["e-empty", "gone-rule", null],
+      ];
+      let i = 0;
+      for (const [id, ruleId, payload] of events) {
+        await h.rawRun(sql`INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to, resolved_at)
+          VALUES (${id}, ${ruleId}, 'warning', ${NOW + i++}, ${payload}, '[]', NULL)`);
+      }
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("fills in each event's source and delivery outcome", async () => {
+      const rows = await h.rawAll(sql`SELECT id, source, delivery_failed, channel_ids FROM alert_events ORDER BY fired_at`);
+      expect(rows.map((r) => [String(r.id), String(r.source), Number(r.delivery_failed), r.channel_ids ?? null])).toEqual([
+        ["e-fleet", "fleet_alert", 0, null],
+        ["e-panel", "dashboard_alert", 0, null],
+        ["e-panel-failed", "dashboard_alert", 1, null],
+        ["e-report", "dashboard_report", 0, null],
+        ["e-unknown", "other", 0, null],
+        ["e-empty", "other", 0, null],
+      ]);
+      for (const t of NOTIFY_TABLE_NAMES) expect(await h.rowCount(t)).toBe(0);
+    });
+
+    it("is idempotent when re-run", async () => {
+      await h.rawRun(sql`UPDATE alert_events SET source = 'scheduled_query' WHERE id = 'e-unknown'`);
+      const migration = MIGRATIONS.find((m) => m.version === "1.74.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      const row = await h.rawAll(sql`SELECT source FROM alert_events WHERE id = 'e-unknown'`);
+      expect(String(row[0].source)).toBe("scheduled_query");
+      expect(await h.rowCount("alert_events")).toBe(6);
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
     });
   });
 

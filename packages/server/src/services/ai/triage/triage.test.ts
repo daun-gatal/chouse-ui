@@ -33,10 +33,9 @@ mock.module("../engine", () => ({
 }));
 
 const sent: Array<{ type: string; title: string; text: string }> = [];
-mock.module("../../alerting/deliver", () => ({
-  sendChannelMessage: async (type: string, _config: unknown, message: { title: string; text: string }) => {
-    sent.push({ type, ...message });
-    return true;
+mock.module("../../alerting/notify/platforms/webhook", () => ({
+  postWebhook: async (_config: unknown, message: { title: string; text?: string }) => {
+    sent.push({ type: "webhook", title: message.title, text: message.text ?? "" });
   },
 }));
 

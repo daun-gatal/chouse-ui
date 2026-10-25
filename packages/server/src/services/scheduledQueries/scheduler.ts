@@ -7,9 +7,10 @@
  * D11).
  */
 
-import { getChannel, decryptChannelConfig } from "../alerting/store";
-import { isChannelType } from "../alerting/types";
-import { sendChannelMessage } from "../alerting/deliver";
+import { recordEvent } from "../alerting/store";
+import { AlertSeverity } from "../alerting/types";
+import { notifyChannelIds, type NotifyMessage } from "../alerting/notify";
+import type { ScheduledQueryOutboxRow } from "./types";
 import { logger } from "../../utils/logger";
 import { clientForConnection } from "./chClient";
 import * as store from "./store";
@@ -182,8 +183,7 @@ export class ScheduledQueryScheduler {
       const claimed = await store.claimOutboxRow(row.id, runner.RUNNER_ID, Date.now());
       if (!claimed) continue;
       try {
-        const payload = JSON.parse(row.payload) as { title: string; text: string; channelIds: string[] };
-        await this.deliverToChannels(payload.channelIds, payload.title, payload.text);
+        await this.deliverOutboxRow(row);
         await store.markOutboxSent(row.id, Date.now());
       } catch (err) {
         logger.warn(
@@ -195,13 +195,30 @@ export class ScheduledQueryScheduler {
     }
   }
 
-  private async deliverToChannels(channelIds: string[], title: string, text: string): Promise<void> {
-    for (const channelId of channelIds) {
-      const channel = await getChannel(channelId);
-      if (!channel || !channel.enabled || !isChannelType(channel.type)) continue;
-      const stored = JSON.parse(channel.config) as Record<string, unknown>;
-      const config = decryptChannelConfig(channel.type, stored);
-      await sendChannelMessage(channel.type, config, { title, text });
+  /**
+   * Send one outbox row through the notify layer. The row id is the message's
+   * subject, so a retry only reaches the channels that did not get it yet.
+   * Throws when a channel failed to deliver (the row is retried); a missing or
+   * disabled channel is skipped.
+   */
+  private async deliverOutboxRow(row: ScheduledQueryOutboxRow): Promise<void> {
+    const payload = JSON.parse(row.payload) as { title: string; text: string; channelIds: string[] };
+    const source = row.dedupKey.startsWith("data-health:") ? "data_health" : "scheduled_query";
+    const message: NotifyMessage = { title: payload.title, text: payload.text };
+    const result = await notifyChannelIds(payload.channelIds ?? [], message, { feature: source, subjectId: row.id });
+    const errors = result.failed.filter((f) => f.reason === "error");
+    const lastAttempt = row.attempts + 1 >= OUTBOX_MAX_ATTEMPTS;
+    if (errors.length === 0 || lastAttempt) {
+      await recordEvent({
+        ruleId: row.queryId,
+        severity: row.kind === "recovery" ? AlertSeverity.Info : AlertSeverity.Warning,
+        payload: JSON.stringify({ source, title: payload.title, text: payload.text, failed: result.failed.map((f) => ({ channelId: f.channelId, error: f.error })) }),
+        deliveredTo: result.deliveredTo,
+        source,
+        channelIds: result.channelIds,
+        deliveryFailed: result.failed.length > 0,
+      }).catch((err) => logger.error({ module: "ScheduledQueries", err: String(err) }, "Failed to record alert event"));
     }
+    if (errors.length > 0) throw new Error(errors.map((f) => `${f.name ?? f.channelId}: ${f.error}`).join("; "));
   }
 }

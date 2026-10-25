@@ -10,8 +10,10 @@ import { randomUUID } from "crypto";
 
 import { getUserPermissions, getUserRoles } from "../../../rbac/services/rbac";
 import { logger } from "../../../utils/logger";
-import { decryptChannelConfig, getChannel } from "../../alerting/store";
-import { sendChannelMessage } from "../../alerting/deliver";
+import { recordEvent } from "../../alerting/store";
+import { AlertSeverity } from "../../alerting/types";
+import { notifyChannelIds } from "../../alerting/notify";
+import { linkTo } from "../../alerting/notify/links";
 import { addCell, ensureNotebook } from "../../notebooks/store";
 import { acquireLease } from "../../observe/lease";
 import { runStructuredCapability } from "../engine";
@@ -69,15 +71,21 @@ async function notify(rule: TriageRule, subject: TriageSubject, findings: Triage
     `Likely cause: ${findings.likelyCause}`,
     ...(actionCount > 0 ? [`${actionCount} proposed action(s) wait for approval in AI Governance › Approvals.`] : []),
   ].join("\n");
-  for (const channelId of rule.channelIds) {
-    try {
-      const channel = await getChannel(channelId);
-      if (!channel || !channel.enabled) continue;
-      await sendChannelMessage(channel.type, decryptChannelConfig(channel.type, JSON.parse(channel.config) as Record<string, unknown>), { title, text });
-    } catch (error) {
-      logger.warn({ module: "AiTriage", channelId, err: error instanceof Error ? error.message : String(error) }, "Could not deliver the triage notice");
-    }
-  }
+  if (rule.channelIds.length === 0) return;
+  const result = await notifyChannelIds(
+    rule.channelIds,
+    { title, text, severity: findings.severity === "high" ? "critical" : "warning", links: linkTo("Open in CHouse", subject.link) },
+    { feature: "triage", subjectId: `${subject.trigger}:${subject.id}` },
+  );
+  await recordEvent({
+    ruleId: `triage:${rule.trigger}`,
+    severity: findings.severity === "high" ? AlertSeverity.Critical : AlertSeverity.Warning,
+    payload: JSON.stringify({ source: "triage", title, text, trigger: subject.trigger, subjectId: subject.id, failed: result.failed.map((f) => ({ channelId: f.channelId, error: f.error })) }),
+    deliveredTo: result.deliveredTo,
+    source: "triage",
+    channelIds: result.channelIds,
+    deliveryFailed: result.failed.length > 0,
+  }).catch((error) => logger.warn({ module: "AiTriage", err: error instanceof Error ? error.message : String(error) }, "Could not record the triage notice"));
 }
 
 /** Action ids the agent proposed, from its tool results (ToolMessages or JSON). */

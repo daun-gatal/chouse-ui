@@ -338,21 +338,6 @@ export async function setRuleChannels(ruleId: string, channelIds: string[]): Pro
   }
 }
 
-/** Channels linked to a rule, with secrets decrypted (for delivery). */
-export async function getRuleChannelsDecrypted(
-  ruleId: string,
-): Promise<Array<{ row: NotificationChannelRow; config: Record<string, unknown> }>> {
-  const ids = await getRuleChannelIds(ruleId);
-  const out: Array<{ row: NotificationChannelRow; config: Record<string, unknown> }> = [];
-  for (const id of ids) {
-    const row = await getChannel(id);
-    if (!row || !row.enabled) continue;
-    const stored = JSON.parse(row.config) as Record<string, unknown>;
-    out.push({ row, config: decryptChannelConfig(row.type, stored) });
-  }
-  return out;
-}
-
 // --- events -----------------------------------------------------------------
 
 export interface AlertEventInput {
@@ -360,13 +345,20 @@ export interface AlertEventInput {
   severity: AlertSeverity;
   payload: string;
   deliveredTo: string[];
+  /** Which feature fired it (ADR 0026): what Admin › Alerting filters history by. */
+  source?: string;
+  /** Ids of the channels it reached. */
+  channelIds?: string[];
+  /** Whether any channel failed to receive it. */
+  deliveryFailed?: boolean;
 }
 
 export async function recordEvent(input: AlertEventInput): Promise<void> {
   const id = randomUUID();
   await run(sql`
-    INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to, resolved_at)
-    VALUES (${id}, ${input.ruleId}, ${input.severity}, ${Date.now()}, ${input.payload}, ${JSON.stringify(input.deliveredTo)}, NULL)
+    INSERT INTO alert_events (id, rule_id, severity, fired_at, payload, delivered_to, resolved_at, source, channel_ids, delivery_failed)
+    VALUES (${id}, ${input.ruleId}, ${input.severity}, ${Date.now()}, ${input.payload}, ${JSON.stringify(input.deliveredTo)}, NULL,
+      ${input.source ?? "other"}, ${input.channelIds ? JSON.stringify(input.channelIds) : null}, ${input.deliveryFailed ? 1 : 0})
   `);
 }
 
