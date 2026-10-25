@@ -80,10 +80,13 @@ export async function claimMessage(key: MessageKey, now: number = Date.now()): P
   return retried ? str(retried.id) : null;
 }
 
+/** Record a delivery. A message the channel cannot edit (no platform reference) is closed at once. */
 export async function markSent(id: string, ref: PlatformRef | null, buttons: StoredButton[], message: NotifyMessage): Promise<void> {
+  const now = Date.now();
   await run(sql`
     UPDATE channel_messages SET state = 'sent', platform_ref = ${ref ? JSON.stringify(ref) : null},
-      buttons = ${buttons.length > 0 ? JSON.stringify(buttons) : null}, message = ${JSON.stringify(message)}, error = NULL, updated_at = ${Date.now()}
+      buttons = ${buttons.length > 0 ? JSON.stringify(buttons) : null}, message = ${JSON.stringify(message)}, error = NULL, updated_at = ${now},
+      closed_at = ${ref ? null : now}
     WHERE id = ${id}`);
 }
 

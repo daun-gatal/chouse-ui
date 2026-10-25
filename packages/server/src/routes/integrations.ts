@@ -28,6 +28,10 @@ import { slackApi } from "../services/alerting/notify/platforms/slack";
 import { telegramApi } from "../services/alerting/notify/platforms/telegram";
 import { channelsForBot, telegramSecretToken } from "../services/alerting/notify/telegramWebhook";
 import { handleInteraction, slackConfigured, verifySlackSignature } from "../services/remediation/slack";
+// The features whose buttons this endpoint answers register their actions when loaded.
+import "../services/dataHealth/notify";
+import "../services/remediation/notify";
+import "../services/chobi/needYou";
 import { logger } from "../utils/logger";
 
 const integrations = new Hono();

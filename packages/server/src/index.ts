@@ -388,6 +388,9 @@ initializeRbac().then(async () => {
     // Scheduled dashboard reports (ADR 0023 §13), claimed per report with a row lease the same way.
     const { DashboardReportScheduler } = await import("./services/dashboards/reports");
     DashboardReportScheduler.getInstance().start();
+    // Chobi Need You alerts (ADR 0026 §6), one replica at a time under a lease.
+    const { NeedYouSweeper } = await import("./services/chobi/needYou");
+    NeedYouSweeper.getInstance().start();
   }
   // Warm the SSO config so the provider summary (or a config error) is logged
   // at boot rather than lazily on the first login request. Isolated so an SSO
@@ -480,6 +483,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
       DashboardReportScheduler.getInstance().stop();
     } catch (error) {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Dashboard report scheduler stop failed");
+    }
+
+    try {
+      const { NeedYouSweeper } = await import("./services/chobi/needYou");
+      NeedYouSweeper.getInstance().stop();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Need You sweeper stop failed");
     }
 
     try {

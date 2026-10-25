@@ -12,18 +12,47 @@ import { logger } from "../../utils/logger";
 const CHOBI_SETTINGS_KEY = "chobi_settings";
 const CACHE_TTL_MS = 5_000;
 
+/** Need You alerts (ADR 0026 §6): requests waiting on a person, sent to team channels. */
+export const chobiAlertsSchema = z.object({
+  enabled: z.boolean(),
+  events: z.object({
+    /** T3 changes waiting for a second person. */
+    secondApprover: z.boolean(),
+    /** Proposals from runs with no person in the loop (auto-triage). */
+    background: z.boolean(),
+    /** MCP and CLI calls held for their own user's confirmation. */
+    heldMcp: z.boolean(),
+  }).strict(),
+  /** Only alert once a request has waited this long (0 = at once). */
+  delayMinutes: z.number().int().min(0).max(1440),
+  channels: z.array(z.object({
+    channelId: z.string().min(1),
+    /** Put Approve and Decline on the message, where the channel can carry buttons. */
+    approveFromChat: z.boolean(),
+  }).strict()).max(10),
+}).strict();
+export type ChobiAlerts = z.infer<typeof chobiAlertsSchema>;
+
+export const DEFAULT_CHOBI_ALERTS: ChobiAlerts = {
+  enabled: false,
+  events: { secondApprover: true, background: true, heldMcp: false },
+  delayMinutes: 5,
+  channels: [],
+};
+
 const chobiSettingsSchema = z.object({
   /** Show the CHouse logo instead of the character, for organizations that want a plainer UI. */
   plainMode: z.boolean(),
   /** Let Chobi point out new incidents, approvals and failures on its own (each user can still mute it). */
   nudges: z.boolean(),
+  alerts: chobiAlertsSchema,
 });
 
 export type ChobiSettings = z.infer<typeof chobiSettingsSchema>;
 export const chobiSettingsUpdateSchema = chobiSettingsSchema.partial().strict();
 export type ChobiSettingsUpdate = z.infer<typeof chobiSettingsUpdateSchema>;
 
-export const DEFAULT_CHOBI_SETTINGS: ChobiSettings = { plainMode: false, nudges: true };
+export const DEFAULT_CHOBI_SETTINGS: ChobiSettings = { plainMode: false, nudges: true, alerts: DEFAULT_CHOBI_ALERTS };
 
 export interface StoredChobiSettings extends ChobiSettings {
   updatedBy: string | null;
@@ -39,6 +68,7 @@ export function resetChobiSettingsCache(): void {
 function parseStored(raw: string): ChobiSettings {
   try {
     const parsed = chobiSettingsSchema.partial().safeParse(JSON.parse(raw));
+    // Settings saved before Need You alerts have no `alerts`: they stay off.
     if (parsed.success) return { ...DEFAULT_CHOBI_SETTINGS, ...parsed.data };
   } catch {
     // Fall through to the defaults.
@@ -62,6 +92,7 @@ export async function saveChobiSettings(update: ChobiSettingsUpdate, actorId: st
   const next = chobiSettingsSchema.parse({
     plainMode: update.plainMode ?? current.plainMode,
     nudges: update.nudges ?? current.nudges,
+    alerts: update.alerts ?? current.alerts,
   });
   const now = Date.now();
   const value = JSON.stringify(next);

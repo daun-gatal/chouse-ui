@@ -1,7 +1,7 @@
 /**
  * AI Governance › Assistant › Chobi (ADR 0025 §6): the organization's choices
- * for Chobi — the character or the plain logo, and whether Chobi may point
- * out news on its own. Each user can still mute nudges for themselves.
+ * for Chobi — the character or the plain logo, whether Chobi may point out
+ * news on its own (each user can still mute nudges), and Need You alerts.
  */
 
 import type { ReactElement } from "react";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Mascot } from "@/features/buddy/Mascot";
 import { chobiKeys, useChobiSettings } from "@/features/buddy/hooks";
 import { ErrorState, LoadingGrid, Panel } from "@/features/observe/ui";
+import { ChobiAlertsSection } from "./ChobiAlertsSection";
 import { errorMessage } from "./shared";
 
 export function ChobiSettingsView({ canManage }: { canManage: boolean }): ReactElement {
@@ -53,6 +54,9 @@ export function ChobiSettingsView({ canManage }: { canManage: boolean }): ReactE
             <Switch checked={nudges} disabled={!canManage || save.isPending} onCheckedChange={(value) => save.mutate({ nudges: value })} aria-label="Nudges" />
           </label>
         </Row>
+        <div className="border-t border-ink-500 pt-4">
+          <ChobiAlertsSection settings={settings.data} canManage={canManage} />
+        </div>
       </div>
     </Panel>
   );

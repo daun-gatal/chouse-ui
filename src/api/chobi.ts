@@ -42,11 +42,23 @@ export interface Briefing {
   unavailable: string[];
 }
 
+/** Need You alerts (ADR 0026): requests waiting on a person, sent to team channels. */
+export interface ChobiAlerts {
+  enabled: boolean;
+  events: { secondApprover: boolean; background: boolean; heldMcp: boolean };
+  /** Only alert once a request has waited this long. */
+  delayMinutes: number;
+  channels: Array<{ channelId: string; approveFromChat: boolean }>;
+}
+
 export interface ChobiSettings {
   /** The CHouse logo instead of the character. */
   plainMode: boolean;
   /** Chobi may point out news on its own. */
   nudges: boolean;
+  alerts: ChobiAlerts;
+  /** Whether the server knows its public address (alerts need it for their review link). */
+  publicBaseUrl: boolean;
   updatedAt: number | null;
 }
 
@@ -58,6 +70,6 @@ export async function getChobiSettings(): Promise<ChobiSettings> {
   return api.get<ChobiSettings>("/chobi/settings");
 }
 
-export async function updateChobiSettings(update: Partial<Pick<ChobiSettings, "plainMode" | "nudges">>): Promise<ChobiSettings> {
+export async function updateChobiSettings(update: Partial<Pick<ChobiSettings, "plainMode" | "nudges" | "alerts">>): Promise<ChobiSettings> {
   return api.put<ChobiSettings>("/chobi/settings", update);
 }

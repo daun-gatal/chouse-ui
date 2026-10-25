@@ -273,6 +273,11 @@ export async function editSubject(feature: NotifyFeature, subjectId: string, edi
         continue;
       }
       const message = typeof edit === "function" ? edit(posted.message, posted.createdAt) : edit;
+      // Nothing changed: no call to the platform (a sweep may ask again and again).
+      if (JSON.stringify(message) === JSON.stringify(posted.message)) {
+        if (options.close) await markEdited(posted.id, posted.buttons, null, true);
+        continue;
+      }
       const config = decryptChannelConfig(row.type, parseConfig(row));
       const buttons = await update(row, config, posted.ref, message, posted.id);
       await markEdited(posted.id, buttons, message, options.close);

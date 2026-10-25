@@ -188,7 +188,13 @@ export async function decideAction(id: string, decision: "approved" | "rejected"
     UPDATE ai_actions SET status = ${decision}, decided_by = ${decidedBy}, decided_at = ${now}, updated_at = ${now}
       ${args ? sql`, args = ${JSON.stringify(args)}` : sql``}
     WHERE id = ${id} AND status = 'pending' AND expires_at > ${now} RETURNING id`);
+  if (claimed) settleAlerts(id);
   return claimed ? getAction(id) : null;
+}
+
+/** A decided or finished action updates its Need You alerts at once (the sweep would within seconds). */
+function settleAlerts(id: string): void {
+  void import("../../chobi/needYou").then((m) => m.refreshActionMessages(id)).catch(() => undefined);
 }
 
 /** Record what an approved action did, with its undo when it can be undone. */
@@ -201,6 +207,7 @@ export async function finishAction(id: string, outcome: { result?: unknown; erro
       error = ${outcome.error ?? null}, undo = ${undo ? JSON.stringify(undo) : null}, undo_expires_at = ${undo ? now + UNDO_TTL_MS : null},
       updated_at = ${now}
     WHERE id = ${id}`);
+  settleAlerts(id);
 }
 
 /**

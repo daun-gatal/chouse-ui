@@ -174,7 +174,9 @@ describe("sending", () => {
     expect(received[0].body).toHaveProperty("attachments");
     expect(received[1].body).toHaveProperty("cardsV2");
     expect(received[2]).toEqual({ path: "/hook", body: { title: "T", text: "body" }, auth: "Bearer s3cret" });
-    const log = await rawAll(sql`SELECT channel_id, feature, subject_id, kind, state, message FROM channel_messages ORDER BY created_at`);
+    const log = await rawAll(sql`SELECT channel_id, feature, subject_id, kind, state, message, closed_at FROM channel_messages ORDER BY created_at`);
+    // A webhook cannot edit what it sent, so its messages are closed at once.
+    expect(log.every((r) => r.closed_at !== null)).toBe(true);
     expect(log.map((r) => [String(r.feature), String(r.subject_id), String(r.kind), String(r.state)])).toEqual([
       ["scheduled_query", "out-1", "post", "sent"],
       ["scheduled_query", "out-1", "post", "sent"],
