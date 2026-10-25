@@ -219,6 +219,20 @@ export interface PanelOverlays {
     onMarkerClick?: (id: string) => void;
 }
 
+/**
+ * An annotation marker's line. The visible stroke is 1px and dashed, so a
+ * wide transparent stroke on top catches the pointer; hovering thickens it.
+ */
+function MarkerLine(props: React.SVGProps<SVGLineElement>): React.ReactElement<SVGElement> {
+    const { x1, y1, x2, y2, stroke, strokeDasharray, clipPath, onClick, style } = props;
+    return (
+        <g className="group/marker" data-chart-marker="" clipPath={clipPath} onClick={onClick} style={style}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeDasharray={strokeDasharray} className="transition-[stroke-width] duration-150 group-hover/marker:[stroke-width:2.5]" pointerEvents="none" />
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={14} pointerEvents="stroke" data-testid="chart-marker-hit" />
+        </g>
+    );
+}
+
 const CARD_OPTIONS: ChartViewOptions = { variant: 'card' };
 
 /** Draws an already-resolved chart spec (no repair, unlike AiChartRenderer). */
@@ -465,7 +479,13 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
         return Number.isInteger(index) ? { x: String(state.activeLabel), index } : null;
     };
     const overlayHandlers = overlays && (overlays.onSelect || overlays.onPointClick) ? {
-        onMouseDown: (state: Parameters<typeof label>[0]) => { const at = label(state); setDragFrom(at); setDragTo(at ? at.x : null); },
+        onMouseDown: (state: Parameters<typeof label>[0], event?: React.SyntheticEvent) => {
+            // A press on a marker is the marker's click, not a point click or the start of a range.
+            if (event?.target instanceof Element && event.target.closest('[data-chart-marker]')) return;
+            const at = label(state);
+            setDragFrom(at);
+            setDragTo(at ? at.x : null);
+        },
         onMouseMove: (state: Parameters<typeof label>[0]) => { if (dragFrom) { const at = label(state); if (at) setDragTo(at.x); } },
         onMouseUp: (state: Parameters<typeof label>[0]) => {
             const at = label(state);
@@ -510,6 +530,7 @@ function ChartRendererContent({ spec, options = CARD_OPTIONS }: { spec: ChartSpe
                     strokeDasharray="3 3"
                     ifOverflow="extendDomain"
                     label={{ value: '◆', position: 'top', fill: m.color, fontSize: 10 }}
+                    shape={MarkerLine}
                     onClick={() => overlays.onMarkerClick?.(m.id)}
                     style={{ cursor: overlays.onMarkerClick ? 'pointer' : undefined }}
                 />

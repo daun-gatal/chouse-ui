@@ -991,7 +991,7 @@ const UserManagement: React.FC = () => {
             <AlertDialogCancel disabled={isTogglingActive}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleToggleActive}
-              className={selectedUser?.isActive ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}
+              className={selectedUser?.isActive ? "bg-red-600 text-white hover:bg-red-500" : undefined}
               disabled={isTogglingActive}
             >
               {isTogglingActive ? (
