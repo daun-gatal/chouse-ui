@@ -73,3 +73,22 @@ describe("Email", () => {
     expect(cleanChannelConfig(ChannelType.Email, { user: "a", to: "b" }, { config: {}, configured: { password: true } })).toEqual({ host: "smtp.gmail.com", port: 465, secure: true, user: "a", to: "b", from: "a" });
   });
 });
+
+describe("who can act from a channel", () => {
+  const app = { mode: "app", botToken: "xoxb-1-2", signingSecret: SIGNING, channelId: "C0123ABCD" };
+  it("stores a list for bot channels only, and 'anyone' as no list", () => {
+    expect(cleanChannelConfig(ChannelType.Slack, { ...app, actors: { mode: "only", platformGroups: ["S0123ABCD"], roles: ["dba"] } }, null)).toMatchObject({ actors: { mode: "only", platformUsers: [], platformGroups: ["S0123ABCD"], domains: [], users: [], roles: ["dba"] } });
+    expect(cleanChannelConfig(ChannelType.Slack, { ...app, actors: { mode: "any" } }, null)).not.toHaveProperty("actors");
+    expect(cleanChannelConfig(ChannelType.Slack, { webhookUrl: "https://hooks.slack.com/x", actors: { mode: "only", roles: ["dba"] } }, null)).not.toHaveProperty("actors");
+    expect(fail(ChannelType.Slack, { ...app, actors: { mode: "only", platformGroups: ["general"] } })).toBe("A Slack user group ID looks like S0123ABCD");
+    expect(fail(ChannelType.GoogleChat, { mode: "app", serviceAccountJson: SA, space: "AAAA", actors: { mode: "only", domains: ["not a domain"] } })).toBe("A domain looks like example.com");
+  });
+
+  it("an edit that leaves the list out keeps it; a mode switch does not carry it over", () => {
+    const stored = { mode: "only", platformUsers: ["U1"], platformGroups: [], domains: [], users: [], roles: [] };
+    const prev = { config: { mode: "app", channelId: "C0123ABCD", actors: stored }, configured: { botToken: true, signingSecret: true } };
+    expect(cleanChannelConfig(ChannelType.Slack, { mode: "app", channelId: "C0123ABCD" }, prev)).toMatchObject({ actors: stored });
+    expect(cleanChannelConfig(ChannelType.Slack, { mode: "app", channelId: "C0123ABCD", actors: { mode: "any" } }, prev)).not.toHaveProperty("actors");
+    expect(cleanChannelConfig(ChannelType.Telegram, { botToken: TG, chatId: "-1" }, { config: { chatId: "-1", actors: { mode: "only", platformUsers: ["42"] } }, configured: { botToken: true } })).toMatchObject({ actors: { mode: "only", platformUsers: ["42"] } });
+  });
+});

@@ -31,6 +31,7 @@ import aiMemories from "./ai-memories";
 import aiTriage from "./ai-triage";
 import aiEvals from "./ai-evals";
 import integrations from "./integrations";
+import chatIdentities from "./chat-identities";
 import dashboards from "./dashboards";
 import { requestCallerMiddleware } from "../services/ai/usage/origin";
 
@@ -63,8 +64,10 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
     "/api/rbac/auth/refresh",
     "/api/rbac/auth/sso",
     "/api/rbac/health",
-    // Signed by Slack, verified in the handler (ADR 0016 §8).
+    // Signed by the platform, verified in the handler (ADR 0016 §8, ADR 0026 §3).
     "/api/integrations/slack/interactions",
+    "/api/integrations/google-chat/events",
+    "/api/integrations/telegram",
   ];
   if (publicPaths.some(p => path === p || path.startsWith(p + "/"))) {
     await next();
@@ -134,6 +137,7 @@ api.route("/ai-memories", aiMemories);
 api.route("/ai-triage", aiTriage);
 api.route("/ai-evals", aiEvals);
 api.route("/integrations", integrations);
+api.route("/chat-identities", chatIdentities);
 
 // Custom dashboards (ADR 0021)
 api.route("/dashboards", dashboards);

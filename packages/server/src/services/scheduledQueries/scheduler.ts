@@ -9,7 +9,8 @@
 
 import { recordEvent } from "../alerting/store";
 import { AlertSeverity } from "../alerting/types";
-import { notifyChannelIds, type NotifyMessage } from "../alerting/notify";
+import { notifyChannelIds, type NotifyFeature, type NotifyMessage } from "../alerting/notify";
+import type { NotifyButton, NotifyLink, NotifySeverity } from "../alerting/notify/types";
 import type { ScheduledQueryOutboxRow } from "./types";
 import { logger } from "../../utils/logger";
 import { clientForConnection } from "./chClient";
@@ -23,6 +24,14 @@ const MAX_CONCURRENCY = 4;
 const OUTBOX_BATCH = 20;
 const OUTBOX_LEASE_TTL_MS = 5 * 60 * 1000;
 const OUTBOX_MAX_ATTEMPTS = 5;
+
+/** Optional extras an outbox row carries for the notify layer (Data Health alerts). */
+interface OutboxNotify {
+  subjectId?: string;
+  severity?: NotifySeverity;
+  buttons?: NotifyButton[];
+  links?: NotifyLink[];
+}
 
 export class ScheduledQueryScheduler {
   private static instance: ScheduledQueryScheduler | null = null;
@@ -202,10 +211,13 @@ export class ScheduledQueryScheduler {
    * disabled channel is skipped.
    */
   private async deliverOutboxRow(row: ScheduledQueryOutboxRow): Promise<void> {
-    const payload = JSON.parse(row.payload) as { title: string; text: string; channelIds: string[] };
-    const source = row.dedupKey.startsWith("data-health:") ? "data_health" : "scheduled_query";
-    const message: NotifyMessage = { title: payload.title, text: payload.text };
-    const result = await notifyChannelIds(payload.channelIds ?? [], message, { feature: source, subjectId: row.id });
+    const payload = JSON.parse(row.payload) as { title: string; text: string; channelIds: string[]; notify?: OutboxNotify };
+    const source: NotifyFeature = row.dedupKey.startsWith("data-health:") ? "data_health" : "scheduled_query";
+    const extra = payload.notify ?? {};
+    const message: NotifyMessage = { title: payload.title, text: payload.text, severity: extra.severity, buttons: extra.buttons, links: extra.links };
+    // A message about a subject (a Data Health incident) is keyed by it, so it can be updated when the incident changes.
+    const key = extra.subjectId ? { feature: source, subjectId: extra.subjectId, kind: row.id } : { feature: source, subjectId: row.id };
+    const result = await notifyChannelIds(payload.channelIds ?? [], message, key);
     const errors = result.failed.filter((f) => f.reason === "error");
     const lastAttempt = row.attempts + 1 >= OUTBOX_MAX_ATTEMPTS;
     if (errors.length === 0 || lastAttempt) {

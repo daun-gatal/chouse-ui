@@ -8,8 +8,23 @@ import * as scheduledStore from "../scheduledQueries/store";
 import { buildExecutableQuery } from "../scheduledQueries/validation";
 import { compileDataHealthQuery, eventTimeTypeFromSchema } from "./compiler";
 import { evaluateDataHealth } from "./evaluator";
+import { linkTo } from "../alerting/notify/links";
+import { incidentButtons, incidentPath, refreshIncidentMessages } from "./notify";
 import * as store from "./store";
-import type { DataHealthCheckDefinition, DataHealthMetricEvaluation } from "./types";
+import type { DataHealthCheckDefinition, DataHealthIncidentRow, DataHealthMetricEvaluation } from "./types";
+
+/**
+ * What the notify layer needs beyond `{title, text}`: the incident the
+ * message is about (so it can be updated later), its buttons and a link.
+ */
+function incidentNotify(incident: Pick<DataHealthIncidentRow, "id" | "status">, opening: boolean): Record<string, unknown> {
+  return {
+    subjectId: incident.id,
+    severity: opening ? "critical" : "success",
+    buttons: opening ? incidentButtons(incident) : [],
+    links: linkTo("Open incident", incidentPath(incident.id)),
+  };
+}
 
 type SchemaContractCheck = Extract<DataHealthCheckDefinition, { type: "schema_contract" }>;
 
@@ -139,12 +154,16 @@ export async function processDataHealthSuccess(
             title: `${isRecovery ? "🟢" : "🔴"} Data Health ${transition.type} — ${promise.name}`,
             text: `${summary}\nOwner: ${promise.ownerId ?? "Unassigned"}\nIncident: /dataops/data-health/incidents/${transition.incident.id}`,
             channelIds,
+            notify: incidentNotify(transition.incident, !isRecovery),
           }),
         });
         notified = true;
       }
     }
   }
+  // A recovered incident's alerts show it, wherever they can be edited.
+  if (transition.incident && transition.type === "recovered") void refreshIncidentMessages(transition.incident.id);
+  if (executionRecovery.incident && executionRecovery.type === "recovered") void refreshIncidentMessages(executionRecovery.incident.id);
   if (executionRecovery.incident && executionRecovery.type === "recovered") {
     const channelIds = await scheduledStore.getJobChannelIds(job.id);
     if (channelIds.length > 0) {
@@ -157,6 +176,7 @@ export async function processDataHealthSuccess(
           title: `🟢 Data Health monitor recovered — ${promise.name}`,
           text: `${promise.name} can evaluate data again.\nIncident: /dataops/data-health/incidents/${executionRecovery.incident.id}`,
           channelIds,
+          notify: incidentNotify(executionRecovery.incident, false),
         }),
       });
       notified = true;
@@ -195,6 +215,7 @@ export async function processUpstreamFailure(upstreamJob: ScheduledQueryRow, run
         title: `🔴 Data Health upstream failed — ${promise.name}`,
         text: `${summary}\nThis is a delivery failure; data health is unknown until the pipeline recovers.\nIncident: /dataops/data-health/incidents/${transition.incident.id}`,
         channelIds,
+        notify: incidentNotify(transition.incident, true),
       }),
     });
   }
@@ -218,6 +239,7 @@ export async function processDataHealthError(job: ScheduledQueryRow, runId: stri
       title: `🔴 Data Health monitor failed — ${promise.name}`,
       text: `${summary}\nThis is a monitoring failure; data health is unknown.\nIncident: /dataops/data-health/incidents/${transition.incident.id}`,
       channelIds,
+      notify: incidentNotify(transition.incident, true),
     }),
   });
   return true;

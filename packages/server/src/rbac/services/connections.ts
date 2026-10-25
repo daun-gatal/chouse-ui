@@ -6,7 +6,7 @@
 
 import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
-import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { ClientManager } from '../../services/clientManager';
@@ -127,6 +127,15 @@ function getEncryptionKey(): Buffer {
 
   // Use PBKDF2 with SHA-256 for key derivation (more secure than scrypt for this use case)
   return pbkdf2Sync(secret, salt, PBKDF2_ITERATIONS, KEY_LENGTH, 'sha256');
+}
+
+/**
+ * A stable secret for one purpose (e.g. a webhook's verification token),
+ * derived from the server's encryption key so it needs no storage and changes
+ * if the key does. Hex, 64 characters.
+ */
+export function deriveServerSecret(purpose: string): string {
+  return createHmac('sha256', getEncryptionKey()).update(purpose).digest('hex');
 }
 
 export function encryptPassword(password: string): string {

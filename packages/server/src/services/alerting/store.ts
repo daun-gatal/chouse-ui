@@ -227,6 +227,17 @@ export async function upsertChannel(id: string, input: ChannelInput): Promise<vo
   `);
 }
 
+/** Merge non-secret settings into a channel's stored config (e.g. a bot's registration state). */
+export async function patchChannelConfig(id: string, patch: Record<string, unknown>): Promise<void> {
+  const existing = await getChannel(id);
+  if (!existing) return;
+  const merged = { ...(JSON.parse(existing.config) as Record<string, unknown>), ...patch };
+  for (const key of SECRET_KEYS[existing.type]) {
+    if (key in patch) throw new Error(`patchChannelConfig cannot change the secret ${key}`);
+  }
+  await run(sql`UPDATE notification_channels SET config = ${JSON.stringify(merged)}, updated_at = ${Date.now()} WHERE id = ${id}`);
+}
+
 export async function setChannelEnabled(id: string, enabled: boolean): Promise<void> {
   await run(sql`UPDATE notification_channels SET enabled = ${enabled ? 1 : 0}, updated_at = ${Date.now()} WHERE id = ${id}`);
 }

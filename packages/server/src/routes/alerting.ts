@@ -29,6 +29,9 @@ import { countAlertsUsingChannel } from "../services/dashboards/alertStore";
 import { countReportsUsingChannel } from "../services/dashboards/reports";
 import { checkChannel, sendToChannel, TEST_MESSAGE, type ChannelCheck } from "../services/alerting/notify";
 import { parseServiceAccount } from "../services/alerting/notify/platforms/googleChat";
+import { channelActorsSchema } from "../services/alerting/notify/actors";
+import { registerTelegramWebhook } from "../services/alerting/notify/telegramWebhook";
+import { getRemediationNotify, remediationNotifySchema, saveRemediationNotify } from "../services/remediation/notify";
 
 const alerting = new Hono();
 
@@ -52,6 +55,24 @@ function userId(c: Context): string | undefined {
  * Returns the cleaned config or throws a message for the route to surface as 400.
  */
 export function cleanChannelConfig(
+  type: ChannelType,
+  raw: Record<string, unknown>,
+  prev: { config: Record<string, unknown>; configured: Record<string, boolean> } | null,
+): Record<string, unknown> {
+  const config = cleanTypeConfig(type, raw, prev);
+  // Only channels that carry buttons have a "who can act from this channel" list.
+  const bot = type === ChannelType.Telegram || ((type === ChannelType.Slack || type === ChannelType.GoogleChat) && config.mode === "app");
+  if (!bot) return config;
+  // Leaving the list out keeps the stored one: an edit must never widen who can act by omission.
+  const sameMode = prev !== null && (prev.config.mode ?? "webhook") === (config.mode ?? "webhook");
+  const given = raw.actors === undefined || raw.actors === null ? (sameMode ? prev?.config.actors : undefined) : raw.actors;
+  if (given === undefined || given === null) return config;
+  const actors = channelActorsSchema.safeParse(given);
+  if (!actors.success) throw new Error(actors.error.issues[0]?.message ?? "The list of people who can act is not valid");
+  return actors.data.mode === "any" ? config : { ...config, actors: actors.data };
+}
+
+function cleanTypeConfig(
   type: ChannelType,
   raw: Record<string, unknown>,
   prev: { config: Record<string, unknown>; configured: Record<string, boolean> } | null,
@@ -185,6 +206,7 @@ alerting.post(
       { name: body.name, type: body.type, enabled: body.enabled, config },
       userId(c),
     );
+    if (body.type === ChannelType.Telegram) await registerTelegramWebhook(id);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_CREATE, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
@@ -218,6 +240,7 @@ alerting.put(
       config,
     });
     if (!ok) return c.json({ success: false, error: "Channel not found" }, 404);
+    if (body.type === ChannelType.Telegram) await registerTelegramWebhook(id);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_UPDATE, userId(c), {
       resourceType: "notification_channel",
       resourceId: id,
@@ -262,6 +285,10 @@ alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT)
   const checks: ChannelCheck[] = [];
   try {
     checks.push(...(await checkChannel(ch)));
+    if (ch.type === ChannelType.Telegram) {
+      const registration = await registerTelegramWebhook(id);
+      checks.push({ label: registration.registered ? "Button presses reach CHouse" : `Buttons are off: ${registration.error ?? "the webhook is not registered"}`, ok: registration.registered });
+    }
     await sendToChannel(ch, TEST_MESSAGE, { feature: "test" });
     checks.push({ label: "Test message sent", ok: true });
     await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_CHANNEL_TEST, userId(c), {
@@ -487,6 +514,27 @@ alerting.delete(
     return c.json({ success: true });
   },
 );
+
+// --- settings -----------------------------------------------------------------
+
+/** Where remediation approvals are posted (ADR 0026 §6), besides the Slack bot set by environment variables. */
+alerting.get("/settings/remediation", requirePermission(PERMISSIONS.ALERTING_VIEW), async (c) => {
+  return c.json({ success: true, data: { ...(await getRemediationNotify()), envSlack: Boolean(process.env.SLACK_BOT_TOKEN && process.env.SLACK_SIGNING_SECRET && process.env.REMEDIATION_SLACK_CHANNEL) } });
+});
+
+alerting.put("/settings/remediation", requirePermission(PERMISSIONS.ALERTING_EDIT), zValidator("json", remediationNotifySchema), async (c) => {
+  const body = c.req.valid("json");
+  for (const channelId of body.channelIds) {
+    if (!(await store.getChannel(channelId))) return c.json({ success: false, error: `Channel ${channelId} not found` }, 400);
+  }
+  const saved = await saveRemediationNotify(body, userId(c) ?? null);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.ALERTING_SETTINGS_UPDATE, userId(c), {
+    resourceType: "alerting_settings",
+    resourceId: "remediation",
+    details: { channels: saved.channelIds.length },
+  });
+  return c.json({ success: true, data: saved });
+});
 
 // --- meta -------------------------------------------------------------------
 

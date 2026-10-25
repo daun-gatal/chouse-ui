@@ -242,6 +242,13 @@ app.use('/api/rbac/auth/sso/callback', rateLimiter({
   store: new DbRateLimitStore('sso-cb:', LOGIN_WINDOW_MS),
 }));
 
+// Chat-platform callbacks are public (each is verified by its platform): 300 per minute per address.
+app.use('/api/integrations/*', rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 300,
+  keyGenerator: rateLimitClientKey,
+}));
+
 // Query execution: 300 queries per minute per user
 // Applies to all query operations (select, insert, etc.)
 app.use('/api/query/*', rateLimiter({

@@ -135,6 +135,7 @@ export function ChannelDialog({ open, channel, onClose }: ChannelDialogProps) {
         if (s.kind === "number" && !s.required && (v === "" || v === undefined || v === null)) continue;
         cleaned[s.key] = s.kind === "number" ? Number(v) || 0 : v;
       }
+      if (config.actors !== undefined) cleaned.actors = config.actors;
       const input: ChannelInput = { name: name.trim(), type, enabled, config: cleaned };
       if (isEdit && channel) await updateChannel(channel.id, input);
       else await createChannel(input);

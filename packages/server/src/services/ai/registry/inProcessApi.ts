@@ -50,11 +50,15 @@ function errorMessage(status: number, body: string): string {
   return status === 403 ? "Permission denied" : `Request failed (${status})`;
 }
 
+/** Requests made for a button pressed in a chat app (ADR 0026): a person's decision, not an AI's. */
+export const CHAT_ACTION_USER_AGENT = "chouse-chat-action/1";
+
 export class InProcessApiClient {
   constructor(
     private readonly bearerToken: string,
     private readonly connectionId?: string,
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
+    private readonly userAgent = ASSISTANT_USER_AGENT,
   ) {}
 
   /** GET a route and unwrap the standard `{ success, data }` envelope. */
@@ -91,7 +95,7 @@ export class InProcessApiClient {
     }
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.bearerToken}`,
-      "User-Agent": ASSISTANT_USER_AGENT,
+      "User-Agent": this.userAgent,
       // The API protection middleware admits browser-originated calls only.
       "X-Requested-With": "XMLHttpRequest",
     };

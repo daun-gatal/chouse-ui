@@ -8,3 +8,4 @@ export { RbacRolesTable } from './RbacRolesTable';
 export { RbacAuditLogs } from './RbacAuditLogs';
 export { RoleFormDialog } from './RoleFormDialog';
 export { PersonalAccessTokensCard } from './PersonalAccessTokensCard';
+export { LinkedChatAccountsCard } from './LinkedChatAccountsCard';
