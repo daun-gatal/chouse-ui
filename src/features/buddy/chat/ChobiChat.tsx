@@ -385,7 +385,7 @@ function SidebarThreadButton({
                     onLoad(thread.id);
                 }
             }}
-            className={`group flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors
+            className={`group flex w-full cursor-pointer items-center justify-between rounded-xs px-2.5 py-1.5 text-left text-[12px] transition-colors
                       ${activeId === thread.id
                     ? 'bg-brand/10 text-paper'
                     : 'text-paper-muted hover:bg-ink-200 hover:text-paper'
@@ -436,7 +436,7 @@ function SidebarThreadButton({
                             onStartEdit(thread.id, e);
                             setEditValue(thread.title || '');
                         }}
-                        className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
+                        className="rounded-xs p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
                         title="Rename"
                         aria-label="Rename thread"
                     >
@@ -447,7 +447,7 @@ function SidebarThreadButton({
                             e.stopPropagation();
                             onDelete(thread.id, e);
                         }}
-                        className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-red-950/40 hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
+                        className="rounded-xs p-1 text-paper-dim opacity-0 transition-colors hover:bg-red-950/40 hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
                         title="Delete chat"
                         aria-label="Delete chat"
                     >
@@ -680,7 +680,7 @@ const markdownComponents = {
                     <button
                         type="button"
                         onClick={() => copyToClipboard(codeStr, 'Code')}
-                        className="absolute top-2 right-2 p-1.5 rounded-sm opacity-0 group-hover/code:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
+                        className="absolute top-2 right-2 p-1.5 rounded-xs opacity-0 group-hover/code:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
                         title="Copy code"
                         aria-label="Copy code"
                     >
@@ -2117,7 +2117,7 @@ export function ChobiChat({ open: isOpen, visible, width: logicalWidth, plain = 
                                                                         <button
                                                                             onClick={() => handleRetry(msg.retryPrompt!)}
                                                                             disabled={isInvoking}
-                                                                            className="flex items-center gap-1.5 self-start rounded-sm px-2 py-1 text-[11px] font-medium text-red-300 transition-colors hover:bg-red-950/40 hover:text-red-200 disabled:opacity-40"
+                                                                            className="flex items-center gap-1.5 self-start rounded-xs px-2 py-1 text-[11px] font-medium text-red-300 transition-colors hover:bg-red-950/40 hover:text-red-200 disabled:opacity-40"
                                                                             aria-label="Retry"
                                                                         >
                                                                             <RefreshCw className="h-3 w-3" />
@@ -2371,7 +2371,7 @@ function MessageMeta({ createdAt, content }: { createdAt: string; content: strin
             <button
                 type="button"
                 onClick={() => copyToClipboard(content, 'Message')}
-                className="rounded-sm p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
+                className="rounded-xs p-1 text-paper-dim opacity-0 transition-colors hover:bg-ink-300 hover:text-paper focus-visible:opacity-100 group-hover:opacity-100"
                 title="Copy message"
                 aria-label="Copy message"
             >

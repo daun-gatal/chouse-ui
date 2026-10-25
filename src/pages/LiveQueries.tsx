@@ -311,7 +311,7 @@ function QueryRow({ query, onKill, canKill, isKilling }: QueryRowProps) {
                                             e.stopPropagation();
                                             copyQueryId();
                                         }}
-                                        className="p-1 hover:bg-ink-300 rounded transition-colors"
+                                        className="p-1 hover:bg-ink-300 rounded-xs transition-colors"
                                     >
                                         {copied ? (
                                             <Check className="w-3 h-3 text-emerald-500" />

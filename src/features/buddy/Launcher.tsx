@@ -174,7 +174,7 @@ export function Launcher({ mood, plain, open, side, y, mobile, pendingApprovals,
         onBlur={() => setHover(false)}
         className={cn(
           // No disc behind Chobi: a drop shadow keeps it readable on any background.
-          "relative grid touch-none select-none place-items-center rounded-2xl transition-[translate,scale,filter] duration-200 ease-out",
+          "relative grid touch-none select-none place-items-center rounded-xs transition-[translate,scale,filter] duration-200 ease-out",
           "drop-shadow-[0_4px_8px_rgba(0,0,0,0.45)] hover:-translate-y-1 hover:scale-110 hover:drop-shadow-[0_0_12px_rgba(255,204,1,0.55)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
           drag ? "cursor-grabbing scale-110" : "cursor-pointer",

@@ -75,7 +75,7 @@ export function AskAiPanelList({ panels, filter, onFilter, selectedId, onSelect,
             onClick={() => onFilter(f.key)}
             aria-pressed={filter === f.key}
             className={cn(
-              "min-h-8 rounded-full border px-2.5 font-mono text-[10px] uppercase tracking-[0.12em]",
+              "min-h-8 rounded-xs border px-2.5 font-mono text-[10px] uppercase tracking-[0.12em]",
               filter === f.key ? "border-paper-dim bg-ink-200 text-paper" : "border-ink-500 text-paper-dim hover:text-paper",
             )}
           >

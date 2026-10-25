@@ -59,7 +59,7 @@ const HomeTab = () => {
             <Button
               type="button"
               onClick={handleNewQuery}
-              className="group inline-flex h-10 items-center gap-2 rounded-xs bg-brand px-4 text-sm font-semibold tracking-tight text-ink-50 hover:bg-brand-soft hover:-translate-y-px transition-[transform,background-color] duration-200"
+              className="group inline-flex h-10 items-center gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft hover:-translate-y-px transition-[translate,background-color] duration-200"
             >
               <FilePlus className="h-4 w-4" />
               New query

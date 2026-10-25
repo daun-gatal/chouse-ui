@@ -121,7 +121,7 @@ export function NowTab({ briefing, loading, error, onOpenActivity, onNavigated }
       )}
 
       {briefing.ai.changedToday > 0 && (
-        <button type="button" onClick={onOpenActivity} className="mx-3 mt-2 flex items-center gap-2 rounded-sm px-1.5 py-1 text-left text-[11px] text-paper-muted hover:bg-ink-200/60 hover:text-paper">
+        <button type="button" onClick={onOpenActivity} className="mx-3 mt-2 flex items-center gap-2 rounded-xs px-1.5 py-1 text-left text-[11px] text-paper-muted hover:bg-ink-200/60 hover:text-paper">
           <Sparkles className="h-3 w-3 text-brand" />
           AI changed {briefing.ai.changedToday} {briefing.ai.changedToday === 1 ? "thing" : "things"} for you today
           {briefing.ai.undoable > 0 ? ` · ${briefing.ai.undoable} can be undone` : ""}
@@ -174,7 +174,7 @@ function Item({ item, onOpen, onAsk }: { item: BriefingItem; onOpen: (item: Brie
         type="button"
         disabled={!actionable}
         onClick={() => onOpen(item)}
-        className="group flex w-full items-start gap-2 rounded-sm px-1.5 py-1.5 text-left hover:bg-ink-200/60 disabled:cursor-default disabled:hover:bg-transparent"
+        className="group flex w-full items-start gap-2 rounded-xs px-1.5 py-1.5 text-left hover:bg-ink-200/60 disabled:cursor-default disabled:hover:bg-transparent"
       >
         <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", SEVERITY_TONE[item.severity])} aria-hidden />
         <span className="sr-only">{SEVERITY_LABEL[item.severity]}: </span>
