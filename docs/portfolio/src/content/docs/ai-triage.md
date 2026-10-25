@@ -2,6 +2,7 @@
 app: AI Governance › Triage
 route: /ai/triage
 permissions: ai_agents:view, ai_agents:manage
+screenshot: ai-triage
 ---
 # Auto-triage
 

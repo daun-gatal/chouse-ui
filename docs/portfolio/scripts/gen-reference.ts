@@ -803,13 +803,24 @@ function upcomingFeatureVersion(): string | null {
 }
 
 function checkReleaseNotes(): string[] {
+  const problems: string[] = [];
+  // Pages link to What's new without a version; a hard-coded one goes stale
+  // with the next release.
+  for (const file of readdirSync(DOCS).filter((f) => f.endsWith(".md") && f !== "whats-new.md")) {
+    for (const match of readFileSync(join(DOCS, file), "utf8").matchAll(/What's new in (\d+\.\d+)/g)) {
+      if (match[1] !== RELEASE.version) {
+        problems.push(`${file} says "What's new in ${match[1]}" but the site announces ${RELEASE.version} — link to /docs/whats-new/ without a version`);
+      }
+    }
+  }
   const upcoming = upcomingFeatureVersion();
-  if (!upcoming || upcoming === RELEASE.version) return [];
+  if (!upcoming || upcoming === RELEASE.version) return problems;
   const kind = upcoming.endsWith(".0") ? "major" : "minor";
-  return [
+  problems.push(
     `Unreleased changelog fragments make the next release ${upcoming} (${kind}), but the site still announces ${RELEASE.version} — ` +
       `update src/content/release.ts and src/content/docs/whats-new.md for ${upcoming} (see .rules/RELEASE_NOTES.md)`,
-  ];
+  );
+  return problems;
 }
 
 // ---------------------------------------------------------------------------

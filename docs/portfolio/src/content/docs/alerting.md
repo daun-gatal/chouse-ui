@@ -25,6 +25,8 @@ A channel whose latest delivery failed shows a banner with the platform's error 
 
 ## Channels
 
+![Alert channels](/docs/img/app/admin-alerting-channels.jpg "Channels: mode, delivery health and what uses each channel")
+
 Each channel shows its type and mode, its health (**Last sent …**, **N failed · 24h** with the error, or nothing sent yet), what uses it, and who can act from it. Search by name or target; filter by platform, mode, health, and whether anything uses it.
 
 **Add channel** walks four steps:
@@ -67,6 +69,8 @@ The confirmation says what still uses the channel. Fleet rules, dashboard panel 
 
 ## Rules
 
+![Alerting rules](/docs/img/app/admin-alerting-rules.jpg "Rules: every feature that sends alerts, in one list")
+
 Everything that sends alerts, in one list: fleet rules, dashboard alerts, Data Health promises, scheduled queries with channels, auto-triage triggers and remediation approvals — each only as far as your permissions show it (a list you can't see is named instead). Search by name or dashboard; filter by source, state (*firing*, *error*, *OK*, *off*, *pending*, *no channel*), severity and channel.
 
 Fleet rules are created and edited here (**Fleet rule**). Everything else opens where it is managed, except **Remediation approvals**, whose channels you pick here with **Change channels**. The Slack bot set by `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` and `REMEDIATION_SLACK_CHANNEL` keeps posting proposals too.
@@ -97,6 +101,8 @@ Fleet rules are checked on every fleet sample (`OBSERVE_FLEET_INTERVAL`, default
 Every message is logged once per channel, so a retry or a second replica never sends it twice, and the log is where channel health comes from.
 
 ## Activity
+
+![Alerting activity](/docs/img/app/admin-alerting-activity.jpg "Activity: where each alert went and whether it got there")
 
 What fired, where it went and whether it got there. Search the alert text (`%` and `_` match themselves); filter by source, channel, severity, delivery (*sent everywhere* or *some failed*) and time (last hour, 24 hours, 7 or 30 days). **Load more** pages back through history. **Clear** removes entries older than 24 hours, 7 days or 30 days, or all of them.
 

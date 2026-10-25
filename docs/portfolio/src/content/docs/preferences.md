@@ -16,6 +16,8 @@ screenshot: preferences
 | **Personal access tokens** | Create, rotate and revoke tokens for the CLI, MCP agents and scripts — see [Personal access tokens](/docs/personal-access-tokens/) |
 | **Linked chat accounts** | Who you are when you press a button in an alert: Slack and Google Chat match your email; **Link Telegram** links your Telegram account with a one-time code — see [Chat apps](/docs/chat-apps/#telegram) |
 
+![Linked chat accounts](/docs/img/app/preferences-chat-accounts.jpg "Linked chat accounts: who you are when you press a button in an alert")
+
 Settings are saved on the server, so they follow you to other browsers.
 
 The access sections are the quickest way to answer *"why can't I see X?"*: if the permission or policy isn't listed here, ask an administrator for a role that has it. Changing your password isn't done here — see [Users & roles](/docs/rbac-roles/#edit-reset-and-deactivate).

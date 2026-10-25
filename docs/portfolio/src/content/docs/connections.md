@@ -24,6 +24,8 @@ A **connection** is a ClickHouse server CHouse UI talks to. You can register man
 
 ## Environment
 
+![The Environment setting](/docs/img/app/admin-connection-environment.jpg "Mark a connection Production, Staging or Development")
+
 **Environment** (*Not set*, *Production*, *Staging*, *Development*) labels what the connection is. A **Production** connection shows a badge in the list, and makes every AI change on it [one tier stricter](/docs/ai-approvals/#tiers): undoable changes ask once, and changes that ask once need a second approver. Leave it *Not set* for no effect.
 
 ## Who can use it

@@ -143,6 +143,8 @@ The server also offers **resources** — `chouse://connection/{id}`, `chouse://d
 
 ## Write tools
 
+![MCP write tools](/docs/img/app/agents-mcp-write-tools.jpg "AI Governance › MCP › Write tools: the most any token may get")
+
 Besides its hand-written tools, MCP offers CHouse's [write tools](/docs/ai-approvals/#the-write-tools) — the same 74 the chat uses, checked the same way by [tier](/docs/ai-approvals/#tiers). Only a token whose user has `ai:act` (or is an administrator) gets any. Which ones it gets is decided twice:
 
 - **The ceiling** — **AI Governance › MCP › Write tools**, for every token: which toolkits MCP may expose, the **highest change allowed** (*only undoable changes*, *up to changes that ask once* — the default — or *also high-risk changes*), and how long a held call waits for confirmation (300 seconds by default, up to 900).

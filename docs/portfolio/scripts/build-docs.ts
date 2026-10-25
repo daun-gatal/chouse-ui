@@ -117,10 +117,20 @@ function loadPermissions(): PermissionIndex {
 
 /** Screenshots come from scripts/docs-screenshots.sh; a page may only reference one that was captured. */
 function checkScreenshots(pages: LoadedPage[]): void {
-  const errors = pages
-    .filter((page) => page.facts.screenshot)
-    .filter((page) => !existsSync(join(ROOT, "public", "docs", "img", "app", `${page.facts.screenshot}.jpg`)))
-    .map((page) => `${page.entry.page.slug}.md: public/docs/img/app/${page.facts.screenshot}.jpg does not exist — run scripts/docs-screenshots.sh`);
+  const missing = (name: string): boolean => !existsSync(join(ROOT, "public", "docs", "img", "app", `${name}.jpg`));
+  const errors = pages.flatMap((page) => {
+    // The frontmatter capture, and captures shown inline as ![alt](/docs/img/app/<name>.jpg).
+    const names = [
+      ...(page.facts.screenshot ? [page.facts.screenshot] : []),
+      ...[...page.markdown.matchAll(/!\[[^\]]*\]\(\/docs\/img\/app\/([\w-]+)\.jpg[\s)]/g)].map((m) => m[1]),
+    ];
+    return names.filter(missing).map((name) => `${page.entry.page.slug}.md: public/docs/img/app/${name}.jpg does not exist — run scripts/docs-screenshots.sh`);
+  });
+  // The landing page's release showcase.
+  const showcase = readFileSync(join(ROOT, "src", "components", "WhatsNew.tsx"), "utf8");
+  for (const match of showcase.matchAll(/\bshot: "([\w-]+)"/g)) {
+    if (missing(match[1])) errors.push(`WhatsNew.tsx: public/docs/img/app/${match[1]}.jpg does not exist — run scripts/docs-screenshots.sh`);
+  }
   if (errors.length) throw new Error(`Missing screenshots:\n  - ${errors.join("\n  - ")}`);
 }
 
@@ -149,6 +159,8 @@ function checkLinks(pages: LoadedPage[]): void {
   const errors: string[] = [];
 
   const check = (source: string, href: string): void => {
+    // Screenshots are files, not pages; checkScreenshots covers them.
+    if (href.startsWith("/docs/img/")) return;
     const match = /^\/docs\/(?:([a-z0-9-]+)\/)?(?:#([a-z0-9_-]+))?$/.exec(href);
     if (!match) {
       errors.push(`${source}: malformed docs link "${href}" (expected /docs/<slug>/ or /docs/<slug>/#anchor)`);

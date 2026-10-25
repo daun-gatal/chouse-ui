@@ -2,6 +2,7 @@
 app: AI Governance › Assistant › Evals
 route: /ai/assistant
 permissions: ai_agents:view, ai_agents:manage
+screenshot: ai-evals
 ---
 # Agent evals
 
