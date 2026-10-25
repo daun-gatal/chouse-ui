@@ -72,6 +72,26 @@ mock.module("../services/jwt", () => ({
 import connectionsRoutes from "./connections";
 import { errorHandler } from "../../middleware/error";
 
+const PRIVILEGES_OK = { ok: true, username: "default", database: "default", missingCount: 0, features: [], grantScript: "" };
+const PASSING_TEST = { success: true, version: "26.5", databases: ["default"], latencyMs: 5, privileges: PRIVILEGES_OK };
+const PRIVILEGES_MISSING = {
+    ok: false,
+    username: "reader",
+    database: "analytics",
+    missingCount: 1,
+    features: [{ id: "query_control", name: "Query control", description: "Kill running queries", status: "missing", missing: ["KILL QUERY ON *.*"], unavailable: [], errors: [], grants: ["GRANT KILL QUERY ON *.* TO reader;"] }],
+    grantScript: "GRANT KILL QUERY ON *.* TO reader;",
+};
+const SAVED_PUBLIC = {
+    id: "c1", name: "prod", host: "ch.internal", port: 8443, username: "reader",
+    database: "analytics", sslEnabled: true, isActive: true, isDefault: false,
+};
+const SAVED = { ...SAVED_PUBLIC, password: "s3cret" };
+
+function jsonRequest(method: string, body: unknown): RequestInit {
+    return { method, headers: { "Content-Type": "application/json", "Authorization": "Bearer token" }, body: JSON.stringify(body) };
+}
+
 describe("RBAC Connections Routes", () => {
     let app: Hono;
 
@@ -87,7 +107,8 @@ describe("RBAC Connections Routes", () => {
         mockUpdateConnection.mockClear();
         mockDeleteConnection.mockClear();
         mockGetUserConnections.mockClear();
-        mockGetConnectionWithPassword.mockClear();
+        mockGetConnectionWithPassword.mockReset();
+        mockGetConnectionById.mockReset();
         mockCreateAuditLog.mockClear();
         mockCHInstance.ping.mockClear();
         mockCHInstance.close.mockClear();
@@ -95,6 +116,8 @@ describe("RBAC Connections Routes", () => {
         mockUserHasPermission.mockClear();
         mockUserHasAnyPermission.mockClear();
         mockUserHasAllPermissions.mockClear();
+        mockTestConnection.mockReset();
+        mockTestConnection.mockResolvedValue(PASSING_TEST);
 
         // Default: Super Admin
         mockTokenPayload = {
@@ -179,6 +202,224 @@ describe("RBAC Connections Routes", () => {
 
             expect(res.status).toBe(403);
             expect(mockCreateConnection).not.toHaveBeenCalled();
+        });
+
+        it("checks the connection before saving it", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
+            mockCreateConnection.mockResolvedValue({ id: "c1", name: "test", host: "localhost" });
+
+            const res = await app.request("/connections", jsonRequest("POST", { name: "test", host: "localhost", username: "default", password: "pw", database: "analytics" }));
+
+            expect(res.status).toBe(201);
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ host: "localhost", username: "default", password: "pw", database: "analytics" }));
+        });
+
+        it("refuses to save a connection whose login fails", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
+            mockTestConnection.mockResolvedValue({ success: false, error: "Authentication failed" });
+
+            const res = await app.request("/connections", jsonRequest("POST", { name: "test", host: "localhost", username: "default" }));
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.error).toEqual({ code: "CONNECTION_TEST_FAILED", message: "Authentication failed" });
+            expect(mockCreateConnection).not.toHaveBeenCalled();
+        });
+
+        it("refuses to save a connection whose user lacks privileges, returning the report", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
+            mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_MISSING });
+
+            const res = await app.request("/connections", jsonRequest("POST", { name: "test", host: "localhost", username: "reader" }));
+
+            expect(res.status).toBe(422);
+            const body = await res.json();
+            expect(body.error.code).toBe("PRIVILEGES_MISSING");
+            expect(body.error.message).toBe("reader is missing 1 privilege across 1 feature. Run as an admin, then save again:\nGRANT KILL QUERY ON *.* TO reader;");
+            expect(body.error.details.privileges).toEqual(PRIVILEGES_MISSING);
+            expect(mockCreateConnection).not.toHaveBeenCalled();
+            expect(mockCreateAuditLog).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("PATCH /connections/:id", () => {
+        beforeEach(() => {
+            mockTokenPayload.permissions = ['connections:edit'];
+            mockGetConnectionById.mockResolvedValue(SAVED_PUBLIC);
+            mockGetConnectionWithPassword.mockResolvedValue({ ...SAVED });
+            mockUpdateConnection.mockResolvedValue(SAVED_PUBLIC);
+        });
+
+        it("saves a rename or an unchanged form without re-checking", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", {
+                name: "renamed", host: SAVED.host, port: SAVED.port, username: SAVED.username, database: SAVED.database, sslEnabled: true,
+            }));
+
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).not.toHaveBeenCalled();
+            expect(mockGetConnectionWithPassword).not.toHaveBeenCalled();
+            expect(mockUpdateConnection).toHaveBeenCalled();
+        });
+
+        it("still renames a connection whose saved password can't be decrypted", async () => {
+            mockGetConnectionWithPassword.mockRejectedValue(new Error("Failed to decrypt password"));
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { name: "renamed" }));
+            expect(res.status).toBe(200);
+        });
+
+        it("asks for the password again when the saved one can't be decrypted", async () => {
+            mockGetConnectionWithPassword.mockRejectedValue(new Error("Failed to decrypt password"));
+
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "writer" }));
+
+            expect(res.status).toBe(400);
+            expect((await res.json()).error.code).toBe("PASSWORD_REQUIRED");
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+
+            const retyped = await app.request("/connections/c1", jsonRequest("PATCH", { password: "typed-again" }));
+            expect(retyped.status).toBe(200);
+            expect(mockTestConnection).toHaveBeenLastCalledWith(expect.objectContaining({ password: "typed-again" }));
+        });
+
+        it("never sends the saved password to another host, port or over plain HTTP", async () => {
+            for (const change of [{ host: "other.internal" }, { port: 9440 }, { sslEnabled: false }]) {
+                const res = await app.request("/connections/c1", jsonRequest("PATCH", change));
+                expect(res.status).toBe(400);
+                expect((await res.json()).error).toEqual({
+                    code: "PASSWORD_REQUIRED",
+                    message: "Enter the password again to use it with a different host, port or protocol.",
+                });
+            }
+            expect(mockTestConnection).not.toHaveBeenCalled();
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+
+        it("moves a connection to another host once the password is given", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { host: "other.internal", password: "s3cret" }));
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ host: "other.internal", password: "s3cret" }));
+        });
+
+        it("moves a connection without a saved password without asking for one", async () => {
+            mockGetConnectionWithPassword.mockResolvedValue({ ...SAVED, password: null });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { host: "other.internal" }));
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ host: "other.internal", password: undefined }));
+        });
+
+        it("doesn't check when only toggling active", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { isActive: false }));
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).not.toHaveBeenCalled();
+        });
+
+        it("re-checks a changed username with the saved password", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "writer" }));
+
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({
+                host: SAVED.host, port: SAVED.port, username: "writer", password: "s3cret", database: "analytics", sslEnabled: true,
+            }));
+        });
+
+        it("re-checks with a new password, and treats an empty one as clearing it", async () => {
+            await app.request("/connections/c1", jsonRequest("PATCH", { password: "n3w" }));
+            expect(mockTestConnection).toHaveBeenLastCalledWith(expect.objectContaining({ password: "n3w" }));
+
+            await app.request("/connections/c1", jsonRequest("PATCH", { password: "" }));
+            expect(mockTestConnection).toHaveBeenLastCalledWith(expect.objectContaining({ password: "" }));
+        });
+
+        it("re-checks when the default database changes, including clearing it", async () => {
+            await app.request("/connections/c1", jsonRequest("PATCH", { database: null }));
+            expect(mockTestConnection).toHaveBeenLastCalledWith(expect.objectContaining({ database: null }));
+        });
+
+        it("keeps the saved connection when the new settings lack privileges", async () => {
+            mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_MISSING });
+
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "reader2" }));
+
+            expect(res.status).toBe(422);
+            expect((await res.json()).error.code).toBe("PRIVILEGES_MISSING");
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+
+        it("returns 404 for an unknown connection", async () => {
+            mockGetConnectionById.mockResolvedValue(null);
+            const res = await app.request("/connections/nope", jsonRequest("PATCH", { name: "x" }));
+            expect(res.status).toBe(404);
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("POST /connections/test", () => {
+        const form = { host: SAVED.host, port: SAVED.port, username: "reader", sslEnabled: true, database: "analytics" };
+
+        it("passes a typed password straight through", async () => {
+            const res = await app.request("/connections/test", jsonRequest("POST", { ...form, password: "typed", connectionId: "c1" }));
+
+            expect(res.status).toBe(200);
+            expect(mockGetConnectionWithPassword).not.toHaveBeenCalled();
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ password: "typed" }));
+            expect((await res.json()).data.privileges).toEqual(PRIVILEGES_OK);
+        });
+
+        beforeEach(() => {
+            mockGetConnectionById.mockResolvedValue(SAVED_PUBLIC);
+            mockGetConnectionWithPassword.mockResolvedValue({ ...SAVED });
+        });
+
+        it("uses the saved password for an editor testing the same host", async () => {
+            mockTokenPayload.permissions = ['settings:view', 'connections:edit'];
+
+            const res = await app.request("/connections/test", jsonRequest("POST", { ...form, password: "", connectionId: "c1" }));
+
+            expect(res.status).toBe(200);
+            expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ password: "s3cret" }));
+            expect(mockTestConnection.mock.calls[0][0]).not.toHaveProperty("connectionId");
+        });
+
+        it("never sends the saved password to a different host, port or over plain HTTP", async () => {
+            mockTokenPayload.permissions = ['settings:view', 'connections:edit'];
+
+            const otherHost = await app.request("/connections/test", jsonRequest("POST", { ...form, host: "evil.example", connectionId: "c1" }));
+            const otherPort = await app.request("/connections/test", jsonRequest("POST", { ...form, port: 9999, connectionId: "c1" }));
+            const plainHttp = await app.request("/connections/test", jsonRequest("POST", { ...form, sslEnabled: false, connectionId: "c1" }));
+
+            expect(otherHost.status).toBe(400);
+            expect((await otherHost.json()).error.code).toBe("PASSWORD_REQUIRED");
+            expect(otherPort.status).toBe(400);
+            expect(plainHttp.status).toBe(400);
+            expect(mockTestConnection).not.toHaveBeenCalled();
+        });
+
+        it("asks for the password when the saved one can't be decrypted", async () => {
+            mockTokenPayload.permissions = ['settings:view', 'connections:edit'];
+            mockGetConnectionWithPassword.mockRejectedValue(new Error("Failed to decrypt password"));
+
+            const res = await app.request("/connections/test", jsonRequest("POST", { ...form, connectionId: "c1" }));
+
+            expect(res.status).toBe(400);
+            expect((await res.json()).error.message).toBe("The saved password can't be read any more. Enter it again.");
+        });
+
+        it("hides saved connections from someone who can't edit them", async () => {
+            mockTokenPayload.roles = ['user'];
+            mockTokenPayload.permissions = ['settings:view'];
+
+            const res = await app.request("/connections/test", jsonRequest("POST", { ...form, connectionId: "c1" }));
+
+            expect(res.status).toBe(404);
+            expect(mockGetConnectionWithPassword).not.toHaveBeenCalled();
+            expect(mockTestConnection).not.toHaveBeenCalled();
+        });
+
+        it("returns 404 for an unknown connection id", async () => {
+            mockTokenPayload.permissions = ['settings:view', 'connections:edit'];
+            mockGetConnectionById.mockResolvedValue(null);
+            const res = await app.request("/connections/test", jsonRequest("POST", { ...form, connectionId: "nope" }));
+            expect(res.status).toBe(404);
         });
     });
 

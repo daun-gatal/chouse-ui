@@ -26,7 +26,7 @@ Work through this before exposing CHouse UI beyond localhost.
 ## Runtime
 
 - [ ] Set `NODE_ENV=production` and `LOG_LEVEL=info` (or `warn`)
-- [ ] Run **Check privileges** on each connection (**Admin › Connections › Edit**) so the [collector](/docs/data-observability/#grant-the-collector-what-it-needs) can read the system tables it needs
+- [ ] Run **Test connection** on each connection (**Admin › Connections › Edit**) so its user has [every privilege](/docs/connection-privileges/) CHouse UI needs, including the system tables the [collector](/docs/data-observability/#grant-the-collector-what-it-needs) reads
 - [ ] To use [fixes](/docs/data-incidents/#set-up-fixes-for-a-connection), give each connection a remediation credential with only the grants the fixes need
 - [ ] Set `PUBLIC_BASE_URL` to the address people use
 - [ ] Leave MCP off (AI Governance › MCP) unless agents need access; turn on only the tools they need, and set [agent budgets](/docs/agents/)

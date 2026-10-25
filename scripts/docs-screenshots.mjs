@@ -225,6 +225,20 @@ const SHOTS = [
     await env.scrollIntoViewIfNeeded();
     await env.click();
   }],
+  ["admin-connection-privileges", "/admin/connections", async (page) => {
+    // A user that can read everything but lacks the other grants, so the save is refused.
+    await ch("CREATE USER IF NOT EXISTS docs_reader IDENTIFIED BY 'docs-reader-pw'");
+    await ch("GRANT SELECT ON *.* TO docs_reader");
+    await page.getByRole("button", { name: "Add connection" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByPlaceholder("Production cluster").fill("Analytics (read-only)");
+    await dialog.getByPlaceholder("localhost").fill("clickhouse.");
+    await dialog.getByPlaceholder("default").first().fill("docs_reader");
+    await dialog.getByPlaceholder("••••••••").fill("docs-reader-pw");
+    await dialog.getByRole("button", { name: "Create" }).click();
+    await dialog.getByRole("alert").waitFor({ timeout: 30000 });
+    await dialog.getByRole("alert").scrollIntoViewIfNeeded();
+  }],
   ["preferences", "/preferences"],
   ["preferences-chat-accounts", "/preferences", async (page) => {
     await page.getByText("Linked chat accounts").first().scrollIntoViewIfNeeded();

@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { server } from "@/test/mocks/server";
 import {
   acknowledgeObserveIncident,
-  checkPrivileges,
   dismissSuggestion,
   getCapacity,
   getCollectorSchedule,
@@ -113,7 +112,6 @@ describe("observe API", () => {
     await startCodecTrial({ database: "shop", table: "orders", column: "payload", candidateCodec: "ZSTD(3)" });
     await preflightDdl("ALTER TABLE shop.orders DROP COLUMN c");
     await explainFingerprint("ab12", "c9");
-    await checkPrivileges();
     expect(seen.map((s) => [s.method, s.path, s.body])).toEqual([
       ["PUT", "/api/observe/datasets/shop/orders/criticality", { criticality: "critical" }],
       ["POST", "/api/observe/suggestions/dismiss", { key: "freshness:shop.orders" }],
@@ -121,7 +119,6 @@ describe("observe API", () => {
       ["POST", "/api/observe/codec-trials", { database: "shop", table: "orders", column: "payload", candidateCodec: "ZSTD(3)" }],
       ["POST", "/api/observe/preflight", { sql: "ALTER TABLE shop.orders DROP COLUMN c" }],
       ["POST", "/api/observe/performance/explain", { fingerprint: "ab12", compareConnectionId: "c9" }],
-      ["POST", "/api/observe/privileges/check", undefined],
     ]);
   });
 

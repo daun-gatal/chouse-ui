@@ -29,7 +29,7 @@ Find the symptom, check the cause, apply the fix. Server logs are JSON (Pino) on
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | A Monitoring tab or Data tab is missing | Permission not granted | Check [Preferences › Identity & access](/docs/preferences/) and the [permission catalog](/docs/permissions/) |
-| Data shows "No tables observed yet" or *unsupported* features | The collector's first pass hasn't finished, or the connection user lacks system-table grants | **Admin › Connections › Edit › Check privileges** and run the listed `GRANT`s |
+| Data shows "No tables observed yet" or *unsupported* features | The collector's first pass hasn't finished, or the connection user lacks system-table grants | **Admin › Connections › Edit › Test connection** and run the listed `GRANT`s — see [ClickHouse privileges](/docs/connection-privileges/) |
 | Empty query logs | `query_log` disabled or not flushed yet, or no grant on `system.query_log` | Enable query logging; wait for the first flush; grant read access |
 | Fleet shows **Snapshot worker stalled** | No fresh samples | Check server logs for collector errors and the connection's grants — see [Fleet](/docs/fleet/) |
 | Fixes approved but never run | No remediation credential on the connection, outside the maintenance window, or the target changed since approval | Add the credential; wait for the window; re-propose — see [fixes](/docs/data-incidents/#set-up-fixes-for-a-connection) |

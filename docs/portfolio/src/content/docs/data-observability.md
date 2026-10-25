@@ -49,7 +49,7 @@ A table written by a [scheduled query](/docs/scheduled-queries/) or a refreshabl
 
 ## Grant the collector what it needs
 
-The connection's ClickHouse user must be able to read the system tables above. Saving a connection never fails because of a missing grant; instead, **Admin › Connections › Edit › Check privileges** lists what is missing and the exact `GRANT` statements to run. A missing grant shows up as *unsupported* or missing evidence for the features that need it.
+The connection's ClickHouse user must be able to read the system tables above. A connection is only saved once its user can, and **Admin › Connections › Edit › Test connection** lists anything missing with the exact `GRANT` statements to run — see [ClickHouse privileges](/docs/connection-privileges/). If a grant is revoked later, it shows up as *unsupported* or missing evidence for the features that need it.
 
 Collector health is shown as a chip on the Data page header. Settings that tune it (`OBSERVE_*`) are on [Environment variables](/docs/configuration-env/#data-observability).
 

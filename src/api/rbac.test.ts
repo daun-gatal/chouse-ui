@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { ssoApi, authConfigApi, rbacAiBaseModelsApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi, rbacUserPreferencesApi } from './rbac';
+import { ssoApi, authConfigApi, rbacAiBaseModelsApi, rbacConnectionsApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi, rbacUserPreferencesApi, privilegeReportFromError } from './rbac';
+import { ApiError } from './client';
 import { RBAC_ACCESS_TOKEN_KEY, RBAC_REFRESH_TOKEN_KEY } from './client';
 import { server } from '../test/mocks/server';
 import { http, HttpResponse } from 'msw';
@@ -684,5 +685,61 @@ describe('rbacUserPreferencesApi onboarding', () => {
       fetchSpy.mockRestore();
       vi.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacConnectionsApi privilege check
+// ---------------------------------------------------------------------------
+
+describe('rbacConnectionsApi privilege check', () => {
+  const REPORT = {
+    ok: false,
+    username: 'reader',
+    database: 'analytics',
+    missingCount: 1,
+    features: [{ id: 'query_control', name: 'Query control', description: 'Kill running queries', status: 'missing', missing: ['KILL QUERY ON *.*'], unavailable: [], errors: [], grants: ['GRANT KILL QUERY ON *.* TO reader;'] }],
+    grantScript: 'GRANT KILL QUERY ON *.* TO reader;',
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, 'access-token');
+    localStorage.removeItem(RBAC_REFRESH_TOKEN_KEY);
+  });
+
+  it('sends the connection id so an edit can test with the saved password', async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.post('/api/rbac/connections/test', async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ success: true, data: { success: true, version: '26.5', privileges: REPORT } });
+      })
+    );
+
+    const result = await rbacConnectionsApi.test({ host: 'ch', username: 'reader', password: '', connectionId: 'c1' });
+    expect(capturedBody).toEqual({ host: 'ch', username: 'reader', password: '', connectionId: 'c1' });
+    expect(result.privileges).toEqual(REPORT);
+  });
+
+  it('keeps the privilege report of a refused save on the error', async () => {
+    server.use(
+      http.post('/api/rbac/connections', () =>
+        HttpResponse.json(
+          { success: false, error: { code: 'PRIVILEGES_MISSING', message: 'reader is missing 1 privilege', details: { privileges: REPORT } } },
+          { status: 422 }
+        )
+      )
+    );
+
+    const error = await rbacConnectionsApi.create({ name: 'n', host: 'ch', username: 'reader' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(privilegeReportFromError(error)).toEqual(REPORT);
+  });
+
+  it('finds no report on other errors or malformed details', () => {
+    expect(privilegeReportFromError(new Error('boom'))).toBeNull();
+    expect(privilegeReportFromError(new ApiError('x', 400, 'CONNECTION_TEST_FAILED'))).toBeNull();
+    expect(privilegeReportFromError(new ApiError('x', 422, 'PRIVILEGES_MISSING', 'unknown', { privileges: { ok: 'yes' } }))).toBeNull();
+    expect(privilegeReportFromError(new ApiError('x', 422, 'PRIVILEGES_MISSING'))).toBeNull();
   });
 });

@@ -445,10 +445,6 @@ export function getPrivileges(connectionId?: string): Promise<{ missingGrants: s
   return api.get("/observe/privileges", scope(connectionId));
 }
 
-export function checkPrivileges(connectionId?: string): Promise<{ serverVersion: string | null; missing: string[]; grants: string[] }> {
-  return api.post("/observe/privileges/check", undefined, scope(connectionId));
-}
-
 export function getOverview(connectionId?: string): Promise<Overview> {
   return api.get<Overview>("/observe/overview", scope(connectionId));
 }

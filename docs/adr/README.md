@@ -40,7 +40,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017) |
 | [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted (amended by 0017) |
 | [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
-| [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted |
+| [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted (amended by 0027) |
 | [0017](0017-mcp-managed-in-the-ui.md) | MCP Served on the Web Port and Managed in the UI | Accepted |
 | [0018](0018-cli-1-0.md) | CLI 1.0: One Tool for People and Scripts | Accepted |
 | [0019](0019-deepagents-managed-in-the-ui.md) | DeepAgents Managed in the UI: Agent Registry for Every AI Feature, Multi-Agent Chat, Read-Only CHouse Management Agent | Accepted |
@@ -51,6 +51,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Accepted |
 | [0025](0025-ai-write-tiers-assistant-v3-chobi.md) | AI Write Tiers, CHouse Assistant v3 and Chobi | Accepted |
 | [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
+| [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted |
 
 ## Conventions
 
