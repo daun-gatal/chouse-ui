@@ -4,7 +4,7 @@
  * Manages ClickHouse server connections with CRUD operations.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -69,17 +69,21 @@ import {
 import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 import { toast } from 'sonner';
 import {
+  privilegeReportFromError,
   rbacConnectionsApi,
   type ClickHouseConnection,
+  type ConnectionPrivilegeReport,
   type CreateConnectionInput,
   type TestConnectionResult,
 } from '@/api/rbac';
+import { ApiError } from '@/api/client';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 import { SkeletonRows } from '@/components/common/Skeletons';
 import { ConnectionObservability } from '@/features/observe/ConnectionObservability';
 import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PrivilegeReport, privilegeSummary } from './PrivilegeReport';
 
 // ============================================
 // Validation Schema
@@ -125,6 +129,19 @@ function metadataWithEnvironment(metadata: Record<string, unknown> | null | unde
 // Connection Form Dialog
 // ============================================
 
+/** Fields the ClickHouse login and the privilege check depend on; editing one makes a shown report stale. */
+const CREDENTIAL_FIELDS: ReadonlySet<string> = new Set(['host', 'port', 'username', 'password', 'database', 'sslEnabled']);
+
+interface PrivilegeView {
+  report: ConnectionPrivilegeReport;
+  /** The server refused the save because of this report. */
+  blocked: boolean;
+  version?: string;
+  latencyMs?: number;
+  /** Remounts the report (and its open rows) on every new check. */
+  run: number;
+}
+
 interface ConnectionFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -141,7 +158,11 @@ function ConnectionFormDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
+  /** The server asked for the password again rather than failing to connect. */
+  const [passwordNeeded, setPasswordNeeded] = useState(false);
+  const [privilegeView, setPrivilegeView] = useState<PrivilegeView | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const reportRef = useRef<HTMLDivElement | null>(null);
 
   const isEditing = !!connection;
 
@@ -173,13 +194,43 @@ function ConnectionFormDialog({
         environment: connectionEnvironment(connection),
       });
       setTestResult(null);
+      setPrivilegeView(null);
     }
   }, [isOpen, connection, form]);
+
+  // A report for other credentials than the ones in the form would mislead.
+  useEffect(() => {
+    const subscription = form.watch((_values, { name }) => {
+      if (name && CREDENTIAL_FIELDS.has(name)) {
+        setTestResult(null);
+        setPrivilegeView(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Bring a refused save's report into view; the dialog body scrolls.
+  useEffect(() => {
+    if (privilegeView?.blocked) reportRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [privilegeView]);
+
+  const showPrivileges = (report: ConnectionPrivilegeReport, blocked: boolean, result?: TestConnectionResult): void => {
+    setPrivilegeView((previous) => ({
+      report,
+      blocked,
+      version: result?.version,
+      latencyMs: result?.latencyMs,
+      run: (previous?.run ?? 0) + 1,
+    }));
+  };
 
   const handleTest = async () => {
     const values = form.getValues();
     setIsTesting(true);
     setTestResult(null);
+    // Checking again after a refused save keeps the "can't save yet" banner until everything passes.
+    const wasBlocked = privilegeView?.blocked ?? false;
+    setPasswordNeeded(false);
 
     try {
       const result = await rbacConnectionsApi.test({
@@ -189,20 +240,30 @@ function ConnectionFormDialog({
         password: values.password,
         database: values.database,
         sslEnabled: values.sslEnabled,
+        ...(isEditing ? { connectionId: connection.id } : {}),
       });
-      setTestResult(result);
 
-      if (result.success) {
-        toast.success('Connection successful!', {
-          description: `Version: ${result.version}`,
-        });
+      if (result.success && result.privileges) {
+        setTestResult(null);
+        showPrivileges(result.privileges, wasBlocked && !result.privileges.ok, result);
+        if (result.privileges.ok) {
+          toast.success('Connection successful', { description: 'Every feature is available.' });
+        } else {
+          toast.warning('Connected, but privileges are missing', { description: privilegeSummary(result.privileges) });
+        }
       } else {
-        toast.error('Connection failed', {
-          description: result.error,
-        });
+        setPrivilegeView(null);
+        setTestResult(result);
+        if (result.success) {
+          toast.success('Connection successful', { description: `Version: ${result.version}` });
+        } else {
+          toast.error('Connection failed', { description: result.error });
+        }
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Test failed';
+      setPrivilegeView(null);
+      setPasswordNeeded(error instanceof ApiError && error.code === 'PASSWORD_REQUIRED');
       setTestResult({ success: false, error: errorMsg });
       toast.error('Connection test failed', { description: errorMsg });
     } finally {
@@ -238,7 +299,21 @@ function ConnectionFormDialog({
       onSuccess();
       onClose();
     } catch (error) {
+      const report = privilegeReportFromError(error);
+      if (report) {
+        setTestResult(null);
+        showPrivileges(report, true);
+        toast.error(isEditing ? "Can't save these changes yet" : "Can't create this connection yet", {
+          description: privilegeSummary(report),
+        });
+        return;
+      }
       const errorMsg = error instanceof Error ? error.message : 'Operation failed';
+      if (error instanceof ApiError && (error.code === 'CONNECTION_TEST_FAILED' || error.code === 'PASSWORD_REQUIRED')) {
+        setPrivilegeView(null);
+        setPasswordNeeded(error.code === 'PASSWORD_REQUIRED');
+        setTestResult({ success: false, error: errorMsg });
+      }
       toast.error(isEditing ? 'Failed to update connection' : 'Failed to create connection', {
         description: errorMsg,
       });
@@ -246,6 +321,8 @@ function ConnectionFormDialog({
       setIsSubmitting(false);
     }
   };
+
+  const privilegesFailing = privilegeView !== null && !privilegeView.report.ok;
 
   const LABEL_CLASS = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
   const INPUT_CLASS =
@@ -277,7 +354,7 @@ function ConnectionFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4 px-5 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-w-0 flex-col gap-4 px-5 py-4">
             <FormField
               control={form.control}
               name="name"
@@ -339,7 +416,12 @@ function ConnectionFormDialog({
                   <FormItem className="space-y-1.5">
                     <FormLabel className={LABEL_CLASS}>Username</FormLabel>
                     <FormControl>
-                      <Input placeholder="default" className={INPUT_CLASS} {...field} />
+                      <Input
+                        placeholder="default"
+                        className={cn(INPUT_CLASS, privilegesFailing && "border-red-500 dark:border-red-400")}
+                        aria-invalid={privilegesFailing || undefined}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage className="text-[11px] text-red-300" />
                   </FormItem>
@@ -458,6 +540,19 @@ function ConnectionFormDialog({
               )}
             />
 
+            {privilegeView && (
+              <div ref={reportRef}>
+                <PrivilegeReport
+                  key={privilegeView.run}
+                  report={privilegeView.report}
+                  blocked={privilegeView.blocked}
+                  isEditing={isEditing}
+                  version={privilegeView.version}
+                  latencyMs={privilegeView.latencyMs}
+                />
+              </div>
+            )}
+
             {testResult && (
               <div
                 className={cn(
@@ -481,7 +576,7 @@ function ConnectionFormDialog({
                         : "text-red-800 dark:text-red-200"
                     )}
                   >
-                    {testResult.success ? "Connection successful" : "Connection failed"}
+                    {testResult.success ? "Connection successful" : passwordNeeded ? "Password needed" : "Connection failed"}
                   </span>
                 </div>
                 {testResult.success && testResult.version && (
@@ -503,7 +598,7 @@ function ConnectionFormDialog({
 
             {isEditing && <ConnectionObservability connectionId={connection.id} />}
 
-            <DialogFooter className="gap-2 border-t border-ink-500 pt-4 sm:gap-2">
+            <DialogFooter className="sticky bottom-0 -mx-5 -mb-4 gap-2 border-t border-ink-500 bg-ink-100 px-5 py-4 sm:gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -513,10 +608,12 @@ function ConnectionFormDialog({
               >
                 {isTesting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : privilegesFailing ? (
+                  <RefreshCw className="h-3.5 w-3.5" />
                 ) : (
                   <Play className="h-3.5 w-3.5" />
                 )}
-                Test connection
+                {privilegesFailing ? "Check again" : "Test connection"}
               </Button>
               <Button
                 type="submit"
@@ -609,7 +706,11 @@ export default function ConnectionManagement() {
     setTestingConnectionId(connection.id);
     try {
       const result = await rbacConnectionsApi.testSaved(connection.id);
-      if (result.success) {
+      if (result.success && result.privileges && !result.privileges.ok) {
+        toast.warning(`"${connection.name}" is reachable, but privileges are missing`, {
+          description: `${privilegeSummary(result.privileges)} Open Edit and test it to see the grants.`,
+        });
+      } else if (result.success) {
         toast.success(`"${connection.name}" is reachable`, {
           description: `Version: ${result.version}, Latency: ${result.latencyMs}ms`,
         });

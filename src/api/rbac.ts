@@ -411,7 +411,9 @@ async function rbacFetch<T>(
     throw new ApiError(
       errorData?.error?.message || 'Request failed',
       response.status,
-      errorData?.error?.code
+      errorData?.error?.code,
+      errorData?.error?.category,
+      errorData?.error?.details,
     );
   }
 
@@ -985,6 +987,31 @@ export interface TestConnectionInput {
   password?: string;
   database?: string;
   sslEnabled?: boolean;
+  /** When editing: test with the saved password if `password` is empty. */
+  connectionId?: string;
+}
+
+export type PrivilegeFeatureId = 'core' | 'monitoring' | 'observability' | 'query_control' | 'data_editing' | 'access_admin';
+
+export interface PrivilegeFeatureReport {
+  id: PrivilegeFeatureId;
+  name: string;
+  description: string;
+  status: 'granted' | 'missing';
+  missing: string[];
+  unavailable: string[];
+  errors: string[];
+  grants: string[];
+}
+
+/** What a connection's ClickHouse user is missing for each CHouse UI feature. */
+export interface ConnectionPrivilegeReport {
+  ok: boolean;
+  username: string;
+  database: string;
+  missingCount: number;
+  features: PrivilegeFeatureReport[];
+  grantScript: string;
 }
 
 export interface TestConnectionResult {
@@ -993,6 +1020,24 @@ export interface TestConnectionResult {
   databases?: string[];
   error?: string;
   latencyMs?: number;
+  privileges?: ConnectionPrivilegeReport;
+}
+
+function isPrivilegeReport(value: unknown): value is ConnectionPrivilegeReport {
+  if (typeof value !== 'object' || value === null) return false;
+  return (
+    'ok' in value && typeof value.ok === 'boolean' &&
+    'features' in value && Array.isArray(value.features) &&
+    'grantScript' in value && typeof value.grantScript === 'string'
+  );
+}
+
+/** The privilege report a refused connection save carries (`PRIVILEGES_MISSING`), if this error is one. */
+export function privilegeReportFromError(error: unknown): ConnectionPrivilegeReport | null {
+  if (!(error instanceof ApiError) || error.code !== 'PRIVILEGES_MISSING') return null;
+  const details = error.details;
+  if (typeof details !== 'object' || details === null || !('privileges' in details)) return null;
+  return isPrivilegeReport(details.privileges) ? details.privileges : null;
 }
 
 export interface ConnectResult {

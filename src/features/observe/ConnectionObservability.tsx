@@ -1,16 +1,14 @@
 /**
- * Connection edit › Observability (ADR 0016 §1, §8): which system tables the
- * connection's user cannot read (collectors degrade, they never fail the
- * connection — missing grants only warn), the separate remediation
- * credential approved fixes run with, and this connection's collection
- * schedule (issue #380).
+ * Connection edit › Observability (ADR 0016 §1, §8): the separate
+ * remediation credential approved fixes run with, and this connection's
+ * collection schedule (issue #380). What the connection's own user can read
+ * is part of Test connection (PrivilegeReport).
  */
 
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 import { toast } from "sonner";
-import { KeyRound, Loader2, ShieldCheck, Timer, Trash2 } from "lucide-react";
+import { KeyRound, Timer, Trash2 } from "lucide-react";
 
-import { checkPrivileges } from "@/api/observe";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -72,21 +70,8 @@ export function ConnectionObservability({ connectionId }: { connectionId: string
   const save = useSaveRemediationCredential();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [report, setReport] = useState<{ serverVersion: string | null; missing: string[]; grants: string[] } | null>(null);
 
   if (!canView) return null;
-
-  const runCheck = async (): Promise<void> => {
-    setChecking(true);
-    try {
-      setReport(await checkPrivileges(connectionId));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Privilege check failed");
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const store = async (): Promise<void> => {
     try {
@@ -100,25 +85,6 @@ export function ConnectionObservability({ connectionId }: { connectionId: string
 
   return (
     <section className="space-y-3 rounded-xs border border-ink-500 p-3" aria-label="Observability">
-      <div>
-        <p className={LABEL}>Observability grants</p>
-        <p className="mt-1 text-[11px] text-paper-faint">Collectors read system tables with this connection's user. Missing grants only switch the affected collector off.</p>
-        {canEdit && (
-          <Button type="button" variant="outline" className="mt-2 h-8 rounded-xs text-[11px]" disabled={checking} onClick={() => void runCheck()}>
-            {checking ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1.5 h-3 w-3" />}Check privileges
-          </Button>
-        )}
-        {report && (
-          report.missing.length === 0 ? (
-            <p className="mt-2 text-[11px] text-emerald-500">Every observed system table is readable{report.serverVersion ? ` on ${report.serverVersion}` : ""}.</p>
-          ) : (
-            <div className="mt-2 rounded-xs border border-amber-500/40 bg-amber-500/10 p-2">
-              <p className="text-[11px] text-amber-500">Missing: {report.missing.join(", ")}. Grant these for full coverage:</p>
-              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-paper">{report.grants.join(";\n")}</pre>
-            </div>
-          )
-        )}
-      </div>
       <ScheduleSummaryLine connectionId={connectionId} canEdit={canEdit} />
       <div>
         <p className={LABEL}>Remediation credential</p>

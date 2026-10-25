@@ -10,6 +10,7 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync }
 import { getDatabase, getSchema } from '../db';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { ClientManager } from '../../services/clientManager';
+import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,6 +60,8 @@ export interface TestConnectionResult {
   databases?: string[];
   error?: string;
   latencyMs?: number;
+  /** What the user is missing for every CHouse UI feature (set whenever the login worked). */
+  privileges?: PrivilegeReport;
 }
 
 // ============================================
@@ -591,12 +594,9 @@ const createEphemeralClient = (input: ConnectionInput) => {
 export async function testConnection(input: ConnectionInput): Promise<TestConnectionResult> {
   const startTime = Date.now();
 
+  // Bypass ClientManager so a cached client in a bad state or with old config can't mask the result.
+  const client = createEphemeralClient(input);
   try {
-    // Strategy: Bypass ClientManager to ensure a fresh connection test
-    // This avoids using cached clients that might be in a bad state or have old config
-    const client = createEphemeralClient(input);
-
-    // Test query
     const versionResult = await client.query({
       query: 'SELECT version() as version',
       format: 'JSONEachRow',
@@ -604,7 +604,6 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
     const versionData = await versionResult.json() as { version: string }[];
     const version = versionData[0]?.version;
 
-    // Get database list
     const dbResult = await client.query({
       query: 'SHOW DATABASES',
       format: 'JSONEachRow',
@@ -612,7 +611,18 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
     const dbData = await dbResult.json() as { name: string }[];
     const databases = dbData.map((d: { name: string }) => d.name);
 
-    await client.close();
+    let privileges: PrivilegeReport;
+    try {
+      privileges = await checkConnectionPrivileges(client, { username: input.username, database: input.database });
+    } catch (error) {
+      return {
+        success: false,
+        version,
+        databases,
+        error: `Connected, but couldn't check this user's privileges: ${error instanceof Error ? error.message : String(error)}`,
+        latencyMs: Date.now() - startTime,
+      };
+    }
 
     const latencyMs = Date.now() - startTime;
 
@@ -621,6 +631,7 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       version,
       databases,
       latencyMs,
+      privileges,
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Connection failed';
@@ -672,6 +683,8 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       error: errorMsg,
       latencyMs,
     };
+  } finally {
+    await client.close().catch(() => undefined);
   }
 }
 

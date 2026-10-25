@@ -20,10 +20,13 @@ import {
   testSavedConnection,
   getDefaultConnection,
   getUserConnections,
+  type ConnectionInput,
+  type ConnectionResponse,
 } from '../services/connections';
+import { privilegeReportMessage, type PrivilegeReport } from '../../services/connectionPrivileges';
 import { requestLogger } from '../../utils/logger';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLogWithContext } from '../services/rbac';
+import { createAuditLogWithContext, userHasPermission } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService } from '../../services/clickhouse';
 import { getConnectionId } from './clickhouseShared';
@@ -70,6 +73,8 @@ const testConnectionSchema = z.object({
   password: z.string().optional(),
   database: z.string().max(255).optional(),
   sslEnabled: z.boolean().default(false),
+  /** Editing a saved connection: an empty password means "use the saved one". */
+  connectionId: z.string().min(1).max(255).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -78,6 +83,81 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+// ============================================
+// Save-time verification
+// ============================================
+
+type SaveCheckFailure = {
+  status: 400 | 422;
+  body: { success: false; error: { code: string; message: string; details?: { privileges: PrivilegeReport } } };
+};
+
+/**
+ * A connection is only saved once its user can log in and holds every
+ * privilege CHouse UI's features need. Returns the error response to send,
+ * or null when the connection may be saved.
+ */
+async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheckFailure | null> {
+  const result = await testConnection(input);
+  if (!result.success) {
+    return {
+      status: 400,
+      body: { success: false, error: { code: 'CONNECTION_TEST_FAILED', message: result.error || 'Could not connect to ClickHouse' } },
+    };
+  }
+  if (result.privileges && !result.privileges.ok) {
+    return {
+      status: 422,
+      body: {
+        success: false,
+        error: { code: 'PRIVILEGES_MISSING', message: privilegeReportMessage(result.privileges), details: { privileges: result.privileges } },
+      },
+    };
+  }
+  return null;
+}
+
+/** Whether an update changes anything the ClickHouse login or the privilege check depends on. */
+function changesCredentials(existing: ConnectionResponse, input: z.infer<typeof updateConnectionSchema>): boolean {
+  return (
+    (input.host !== undefined && input.host !== existing.host) ||
+    (input.port !== undefined && input.port !== existing.port) ||
+    (input.username !== undefined && input.username !== existing.username) ||
+    (input.sslEnabled !== undefined && input.sslEnabled !== existing.sslEnabled) ||
+    (input.database !== undefined && (input.database || null) !== (existing.database || null)) ||
+    input.password !== undefined
+  );
+}
+
+/**
+ * Whether the saved password may be sent with these settings: only to the
+ * server it was saved for, and never over plain HTTP when it was saved for
+ * HTTPS. Anything else could hand it to another server.
+ */
+function sameServer(existing: ConnectionResponse, target: { host?: string; port?: number; sslEnabled?: boolean }): boolean {
+  return (
+    (target.host === undefined || target.host === existing.host) &&
+    (target.port === undefined || target.port === existing.port) &&
+    !(existing.sslEnabled && target.sslEnabled === false)
+  );
+}
+
+/** The saved password, or `unreadable` when it can't be decrypted (the encryption key changed). */
+async function readSavedPassword(id: string): Promise<string | null | 'unreadable'> {
+  try {
+    return (await getConnectionWithPassword(id))?.password ?? null;
+  } catch {
+    return 'unreadable';
+  }
+}
+
+function passwordRequired(message: string): SaveCheckFailure {
+  return { status: 400, body: { success: false, error: { code: 'PASSWORD_REQUIRED', message } } };
+}
+
+const PASSWORD_UNREADABLE = "The saved password can't be read any more. Enter it again.";
+const PASSWORD_FOR_NEW_SERVER = 'Enter the password again to use it with a different host, port or protocol.';
 
 // ============================================
 // Routes
@@ -242,6 +322,9 @@ connectionsRoutes.post(
       const user = getRbacUser(c);
       const input = c.req.valid('json');
 
+      const failure = await verifyBeforeSave(input);
+      if (failure) return c.json(failure.body, failure.status);
+
       const connection = await createConnection(input, user.sub);
 
       // Log audit event
@@ -284,6 +367,43 @@ connectionsRoutes.patch(
       const user = getRbacUser(c);
       const id = requireParam(c, 'id');
       const input = c.req.valid('json');
+
+      const existing = await getConnectionById(id);
+      if (!existing) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Connection not found',
+          },
+        }, 404);
+      }
+
+      if (changesCredentials(existing, input)) {
+        let password = input.password;
+        if (password === undefined) {
+          const saved = await readSavedPassword(id);
+          if (saved === 'unreadable') {
+            const failure = passwordRequired(PASSWORD_UNREADABLE);
+            return c.json(failure.body, failure.status);
+          }
+          if (saved && !sameServer(existing, input)) {
+            const failure = passwordRequired(PASSWORD_FOR_NEW_SERVER);
+            return c.json(failure.body, failure.status);
+          }
+          password = saved ?? undefined;
+        }
+        const failure = await verifyBeforeSave({
+          name: input.name ?? existing.name,
+          host: input.host ?? existing.host,
+          port: input.port ?? existing.port,
+          username: input.username ?? existing.username,
+          password,
+          database: input.database !== undefined ? input.database : existing.database,
+          sslEnabled: input.sslEnabled ?? existing.sslEnabled,
+        });
+        if (failure) return c.json(failure.body, failure.status);
+      }
 
       const connection = await updateConnection(id, input);
 
@@ -397,10 +517,30 @@ connectionsRoutes.post(
   zValidator('json', testConnectionSchema),
   async (c) => {
     try {
-      const input = c.req.valid('json');
+      const { connectionId, ...input } = c.req.valid('json');
+      let password = input.password;
+      if (connectionId && !password) {
+        // Only for someone who could edit that connection anyway.
+        const existing = await getConnectionById(connectionId);
+        const canEdit = await userHasPermission(getRbacUser(c).sub, PERMISSIONS.CONNECTIONS_EDIT);
+        if (!existing || !canEdit) {
+          return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Connection not found' } }, 404);
+        }
+        const saved = await readSavedPassword(connectionId);
+        if (saved === 'unreadable') {
+          const failure = passwordRequired(PASSWORD_UNREADABLE);
+          return c.json(failure.body, failure.status);
+        }
+        if (saved && !sameServer(existing, input)) {
+          const failure = passwordRequired(PASSWORD_FOR_NEW_SERVER);
+          return c.json(failure.body, failure.status);
+        }
+        password = saved ?? undefined;
+      }
       const result = await testConnection({
         name: 'test',
         ...input,
+        password,
       });
 
       return c.json({

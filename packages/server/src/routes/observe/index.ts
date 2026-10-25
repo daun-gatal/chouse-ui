@@ -24,7 +24,8 @@ import { rbacAuthMiddleware, requireAnyPermission, requirePermission, getRbacUse
 import { AUDIT_ACTIONS, PERMISSIONS } from "../../rbac/schema/base";
 import { getConnectionWithPassword, getUserConnections, listConnections } from "../../rbac/services/connections";
 import { createAuditLogWithContext } from "../../rbac/services/rbac";
-import { checkPrivileges, probeCapabilities } from "../../services/observe/capabilities";
+import { probeCapabilities } from "../../services/observe/capabilities";
+import { checkConnectionPrivileges } from "../../services/connectionPrivileges";
 import { observeClient, selectRows } from "../../services/observe/clickhouse";
 import { setCostRates, startCodecTrial } from "../../services/observe/codecTrials";
 import { saveSchedules, scheduleMapSchema, scheduleProblems } from "../../services/observe/collectorSettings";
@@ -79,7 +80,13 @@ observe.post("/privileges/check", requirePermission(PERMISSIONS.CONNECTIONS_EDIT
   if (!conn) throw AppError.notFound("Connection not found");
   const client = await observeClient(connectionId, "privileges");
   const caps = await probeCapabilities(connectionId, client, true);
-  return ok(c, { serverVersion: caps.serverVersion, ...(await checkPrivileges(client, caps, conn.username)) });
+  const report = await checkConnectionPrivileges(client, { username: conn.username, database: conn.database });
+  const observability = report.features.find((f) => f.id === "observability");
+  return ok(c, {
+    serverVersion: caps.serverVersion,
+    missing: (observability?.missing ?? []).map((m) => m.replace(/^SELECT ON system\./, "")),
+    grants: (observability?.grants ?? []).map((g) => g.replace(/;$/, "")),
+  });
 });
 
 // --- collection schedule (issue #380) -------------------------------------------------
