@@ -9,6 +9,7 @@ Terms used across CHouse UI and these docs.
 | **Baseline** | What CHouse UI learned is normal for a table — write cadence and hourly volume — or for a query shape's latency |
 | **Blast radius** | Everything downstream of an incident's root cause: tables, promises, jobs, saved queries and agents |
 | **Canary** | A connection on a newer ClickHouse version used to replay your workload before [upgrading](/docs/monitoring-upgrades/) |
+| **Chobi** | The CHouse buddy on the screen edge: what needs a look, the chat with CHouse Assistant, and what AI changed for you. The name is CHouse UI + *chibi*, Japanese for small and cute. See [Chobi](/docs/chobi/) |
 | **Collector** | The server component that reads ClickHouse metadata on a schedule and stores the evidence. See [How data is watched](/docs/data-observability/) |
 | **Connection** | A ClickHouse server CHouse UI talks to, with encrypted credentials. See [Connections](/docs/connections/) |
 | **Coverage** | How many tables are protected by promises, by criticality. See [Coverage](/docs/data-coverage/) |

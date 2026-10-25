@@ -30,7 +30,7 @@ const SHOWCASES: Showcase[] = [
     icon: Smile,
     label: "Meet Chobi",
     title: "One place for AI, on the edge of every screen",
-    pitch: "Chobi shows what needs a look across every connection you can reach, chats with CHouse Assistant, and lists what AI changed for you — and stays usable above any dialog.",
+    pitch: "Chobi — CHouse UI + chibi, Japanese for small and cute — shows what needs a look across every connection you can reach, chats with CHouse Assistant, and lists what AI changed for you — and stays usable above any dialog.",
     steps: [
       "Click Chobi on the right edge, or press Ctrl/⌘ J from anywhere",
       "Now lists open incidents, failed jobs, unreachable clusters and what waits for you",
