@@ -267,3 +267,12 @@ export function parseRedirectHosts(text: string): { hosts: string[]; invalid: st
 
 /** How long an agent's access may last at most (ADR 0028). */
 export const OAUTH_MAX_DAY_OPTIONS = [7, 30, 90, 180, 365] as const;
+
+/** How agents may connect to MCP, from the sign-in settings (ADR 0028). */
+export type McpConnectMode = "tokens" | "both" | "sign-in";
+
+/** Tokens only while sign-in is off or has no usable address; otherwise what "How agents connect" says. */
+export function mcpConnectMode(settings: { oauthEnabled: boolean; oauthPatsAllowed: boolean }, issuer: string | null): McpConnectMode {
+  if (!settings.oauthEnabled || !issuer) return "tokens";
+  return settings.oauthPatsAllowed ? "both" : "sign-in";
+}

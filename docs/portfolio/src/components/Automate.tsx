@@ -88,7 +88,9 @@ const STEPS: Step[] = [
         A Model Context Protocol endpoint at <code>/mcp</code> on your own
         address, turned on tool by tool in AI Governance › MCP — reads on, everything
         else off — with budgets, health notices and a pause switch for every
-        agent. Try it on the hosted lab below, or your own deployment.
+        agent. Agents that support MCP sign-in connect with the URL alone and
+        ask you to approve them in the browser; the rest use the token. Try it
+        on the hosted lab below, or your own deployment.
       </>
     ),
     body: (

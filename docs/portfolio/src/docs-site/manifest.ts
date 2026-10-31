@@ -107,7 +107,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "data-access-rules", title: "Data access rules", description: "Per-user and per-role database/table rules with wildcards, regex patterns, deny precedence and priority ordering." },
           { slug: "permissions", title: "Permission catalog", description: "Every permission, what it allows and which built-in roles hold it — generated from the server." },
           { slug: "sso", title: "Single sign-on (SSO)", description: "Delegate authentication to OIDC, OAuth2 or SAML identity providers with role mapping, JIT provisioning and config-file/env layering." },
-          { slug: "personal-access-tokens", title: "Personal access tokens", description: "Mint ch_pat_… tokens in Preferences to authenticate the CLI, MCP agents and CI — scoped, revocable, verified live." },
+          { slug: "personal-access-tokens", title: "Personal access tokens", description: "Mint ch_pat_… tokens in Preferences to authenticate the CLI, MCP agents and CI — scoped, revocable, verified live — and manage the agents you connected by signing in." },
           { slug: "sessions-jwt", title: "Sessions & JWT", description: "Short-lived access tokens, long-lived refresh tokens, session expiry recovery and issuer/audience overrides." },
           { slug: "audit-log", title: "Audit logging", description: "Every user action and query recorded with actor, connection and timestamp; filter, export and retention behavior." },
           { slug: "audit-events", title: "Audit event catalog", description: "Every action the audit log records, by area — generated from the server." },
@@ -267,7 +267,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "guide-first-promise", title: "Set up your first promise", description: "A freshness promise with an alert, from choosing the table to validating the generated SQL." },
           { slug: "guide-customize-an-ai-feature", title: "Customize an AI feature", description: "Teach Optimize your team's SQL conventions with a skill and a copied agent, test it, switch over and roll back." },
           { slug: "guide-build-a-chat-agent", title: "Build a chat agent", description: "A team chat agent with its own data skill and tools, gated by permission, optionally routed to by Auto." },
-          { slug: "guide-connect-an-agent", title: "Connect an AI agent", description: "Turn MCP on, give Claude Code a narrow token, and watch and limit what it does." },
+          { slug: "guide-connect-an-agent", title: "Connect an AI agent", description: "Turn MCP on, give Claude Code a narrow token or let an agent sign in, and watch and limit what it does." },
           { slug: "guide-cli-in-ci", title: "Use the CLI in CI", description: "A scoped token, JSON output and exit codes for reports and data checks in a pipeline." },
           { slug: "guide-plan-an-upgrade", title: "Plan a ClickHouse upgrade", description: "Readiness against your workload, a canary replay, rollout gates and watching for regressions." },
           { slug: "guide-least-privilege-role", title: "Give a team least-privilege access", description: "A data access policy and a custom role that let a team read one database and nothing else." },
@@ -283,7 +283,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         id: "automation",
         pages: [
-          { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — turned on and tool-by-tool in AI Governance › MCP, read-only by default." },
+          { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — with a token or by signing in with OAuth, turned on and tool-by-tool in AI Governance › MCP, read-only by default." },
           { slug: "mcp-tools", title: "MCP tool catalog", description: "Every MCP tool with its access level, default state, required permissions and parameters — generated from the server." },
           { slug: "cli", title: "CLI", description: "The chouse command line: query, explore, monitor, run the doctor and manage schedules from scripts and CI." },
           { slug: "cli-reference", title: "CLI command reference", description: "Every chouse command, subcommand and flag — generated from the CLI itself." },

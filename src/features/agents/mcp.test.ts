@@ -12,6 +12,7 @@ import {
   parseOrigins,
   parsePublicUrl,
   parseRedirectHosts,
+  mcpConnectMode,
 } from "./mcp";
 
 function tool(overrides: Partial<McpTool>): McpTool {
@@ -155,6 +156,18 @@ describe("parseRedirectHosts", () => {
   it("flags URLs, ports and odd patterns", () => {
     expect(parseRedirectHosts("https://agent.example.com example.com:443 *example.com a..b").invalid).toEqual(["https://agent.example.com", "example.com:443", "*example.com", "a..b"]);
     expect(parseRedirectHosts("   ")).toEqual({ hosts: [], invalid: [] });
+  });
+});
+
+describe("mcpConnectMode", () => {
+  it("is tokens only until sign-in is on with a usable address", () => {
+    expect(mcpConnectMode({ oauthEnabled: false, oauthPatsAllowed: false }, "https://chouse.corp")).toBe("tokens");
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: true }, null)).toBe("tokens");
+  });
+
+  it("follows How agents connect once sign-in is on", () => {
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: true }, "https://chouse.corp")).toBe("both");
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: false }, "https://chouse.corp")).toBe("sign-in");
   });
 });
 

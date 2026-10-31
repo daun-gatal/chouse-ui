@@ -61,7 +61,7 @@ Agents find everything from the `401` they get without a token, which carries `W
 
 ## Connect a client
 
-**AI Governance › MCP** has copy-ready setup for each client with your endpoint filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
+**AI Governance › MCP › Connect an agent** follows [How agents connect](#sign-in-with-oauth): with sign-in off it shows token setup only; with **Sign-in and tokens** it leads with an **Any agent · sign-in** tab (just the URL) and keeps the token setup for agents without sign-in; with **Sign-in only** it shows only the URL. The token setup is copy-ready for each client with your endpoint filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
 
 :::tabs
 @tab Claude Code

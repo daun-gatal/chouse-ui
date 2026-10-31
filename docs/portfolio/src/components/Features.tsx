@@ -118,7 +118,7 @@ const GROUPS: FeatureGroup[] = [
     icon: Bot,
     docs: "/docs/automation/",
     items: [
-      { icon: Bot, title: "MCP at /mcp", desc: "On the UI's own address, turned on and tool-by-tool in AI Governance › MCP — and write tools checked by tier, held while you confirm in CHouse" },
+      { icon: Bot, title: "MCP at /mcp", desc: "On the UI's own address, turned on and tool-by-tool in AI Governance › MCP; agents sign in with OAuth or use a token, and write tools are checked by tier, held while you confirm in CHouse" },
       { icon: Gauge, title: "Agent governance", desc: "Every agent session recorded, budgets checked with EXPLAIN ESTIMATE before queries run, health notices in results, a pause switch" },
       { icon: Terminal, title: "chouse CLI 1.0", desc: "Tables in a terminal, JSON when piped, profiles, exit codes, and --yes / --dry-run on anything that changes data" },
       { icon: KeyRound, title: "Personal access tokens", desc: "Scoped, expiring, rotatable ch_pat_ tokens that carry their owner's live permissions" },
