@@ -60,8 +60,8 @@ export default function Sso() {
           }
         />
 
-        <div className="mt-16 grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-start">
-          <div className="flex flex-col gap-5">
+        <div className="mt-16 grid grid-cols-1 gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-start">
+          <div className="flex min-w-0 flex-col gap-5">
             {CAPABILITIES.map((cap) => {
               const Icon = cap.icon;
               return (
@@ -95,11 +95,11 @@ export default function Sso() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             <CodeBlock language="yaml" filename="config.yaml" code={OIDC_SNIPPET} maxHeight="440px" />
             <p className="text-sm leading-relaxed text-paper-muted">
               Register{" "}
-              <span className="font-mono text-paper">&lt;base_url&gt;/auth/sso/callback</span>{" "}
+              <span className="break-all font-mono text-paper">&lt;base_url&gt;/auth/sso/callback</span>{" "}
               as the redirect URI at your IdP. The{" "}
               <SecondaryAction
                 href={SSO_REFERENCE_URL}
