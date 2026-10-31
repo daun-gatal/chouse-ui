@@ -32,7 +32,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function Segmented<T extends string>({ value, options, onChange, disabled, label }: { value: T; options: Array<{ value: T; label: string }>; onChange: (value: T) => void; disabled: boolean; label: string }): ReactElement {
   return (
-    <div role="radiogroup" aria-label={label} className="mt-1 inline-flex flex-wrap overflow-hidden rounded-xs border border-ink-500">
+    <div role="radiogroup" aria-label={label} className="mt-1 flex w-fit max-w-full flex-wrap overflow-hidden rounded-xs border border-ink-500">
       {options.map((option) => (
         <button
           key={option.value}
@@ -162,7 +162,7 @@ export function OAuthSettingsPanel({ overview, canManage, save, saving }: { over
               rows={4}
               value={hostsText}
               disabled={!canManage}
-              placeholder={"agent.example.com\n*.example.com"}
+              placeholder="Any https address, localhost and app links"
               onChange={(e) => setHostsText(e.target.value)}
               className="mt-1 rounded-xs font-mono text-[11px]"
             />
@@ -198,6 +198,11 @@ const STATUS_LABEL = { allowed: "Allowed", pending: "Waiting for approval", bloc
 
 function formatDay(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** "1 person connected", "3 people connected". */
+export function connectedLabel(count: number): string {
+  return `${count} ${count === 1 ? "person" : "people"} connected`;
 }
 
 function personName(grant: McpOAuthGrantSummary): string {
@@ -238,7 +243,7 @@ export function OAuthAgentsPanel({ canManage, oauthEnabled }: { canManage: boole
   };
 
   return (
-    <Panel title="Agents" meta={`${clients.length} registered · ${new Set(grants.map((g) => g.user.id)).size} people connected`}>
+    <Panel title="Agents" meta={`${clients.length} registered · ${connectedLabel(new Set(grants.map((g) => g.user.id)).size)}`}>
       {clients.length === 0 ? (
         <EmptyState icon={Bot} title="No agents yet" body="Agents appear here the first time someone connects one to the MCP URL." />
       ) : (
