@@ -255,6 +255,8 @@ export const apiKeys = sqliteTable('rbac_api_keys', {
   lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  kind: text('kind').notNull().default('pat'),
+  oauthClientId: text('oauth_client_id'),
 }, (table) => ({
   userIdx: index('api_keys_user_idx').on(table.userId),
   keyHashIdx: uniqueIndex('api_keys_hash_idx').on(table.keyHash),
