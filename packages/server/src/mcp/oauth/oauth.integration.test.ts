@@ -27,6 +27,7 @@ import { createMcpApp } from "../index";
 import { buildMcpDeps, MCP_PATH } from "../server";
 import { resetMcpSettingsCache, saveMcpSettings } from "../settings";
 import { createOAuthRoutes } from "./routes";
+import { getClient, purgeExpired, UNUSED_CLIENT_TTL_MS } from "./store";
 
 const ISSUER = "https://chouse.test";
 const ALICE = "oauth-alice";
@@ -515,3 +516,19 @@ describe("administrator switches", () => {
     expect((await whoami(issued.access_token)).status).toBe(200);
   });
 });
+
+describe("housekeeping", () => {
+  it("forgets registrations nobody signed in with, but keeps used, granted and blocked agents", async () => {
+    const unused = await registerClient();
+    const blocked = await registerClient();
+    await apiCall("PUT", `/api/agents/mcp/oauth/clients/${blocked}`, await session(ADMIN), { status: "blocked" });
+    const granted = await registerClient();
+    await exchange(granted, await signIn(granted, ALICE));
+    const later = Date.now() + UNUSED_CLIENT_TTL_MS + 60_000;
+    await purgeExpired(later);
+    expect(await getClient(unused)).toBeNull();
+    expect(await getClient(blocked)).not.toBeNull();
+    expect(await getClient(granted)).not.toBeNull();
+  });
+});
+

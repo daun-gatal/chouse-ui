@@ -455,11 +455,23 @@ async function touchGrant(grantId: string, clientId: string, now: number): Promi
   await touchClient(clientId, now);
 }
 
-/** Drop sign-ins and tokens that can no longer be used. Best effort; runs as new ones are made. */
+/** An agent that registered but never signed anyone in is forgotten after this long. */
+export const UNUSED_CLIENT_TTL_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * Drop sign-ins and tokens that can no longer be used, and registrations no
+ * one ever finished signing in with (registration is open to anyone, so they
+ * would otherwise pile up). Blocked agents are kept: their status is the block.
+ * Best effort; runs as new ones are made.
+ */
 export async function purgeExpired(now = Date.now()): Promise<void> {
   try {
     await run(sql`DELETE FROM oauth_tokens WHERE expires_at <= ${now}`);
     await run(sql`DELETE FROM oauth_requests WHERE expires_at <= ${now - REQUEST_TTL_MS} AND (code_expires_at IS NULL OR code_expires_at <= ${now - REQUEST_TTL_MS})`);
+    await run(sql`
+      DELETE FROM oauth_clients
+      WHERE last_used_at IS NULL AND status <> 'blocked' AND created_at <= ${now - UNUSED_CLIENT_TTL_MS}
+        AND NOT EXISTS (SELECT 1 FROM rbac_api_keys k WHERE k.oauth_client_id = oauth_clients.id)`);
   } catch (error) {
     logger.warn({ module: "McpOAuth", err: error instanceof Error ? error.message : String(error) }, "Could not purge expired OAuth rows");
   }
