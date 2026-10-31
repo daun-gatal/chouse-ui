@@ -192,6 +192,73 @@ export function mcpClientSnippets(url: string): McpClientSnippet[] {
   ];
 }
 
+export interface McpSignInSnippet {
+  /** Where the snippet goes. */
+  target: string;
+  language: "bash" | "json";
+  code: string;
+  /** What to do after adding it, so the client opens the browser to sign in. */
+  then: string;
+}
+
+/**
+ * Setup for each client when agents sign in with OAuth (ADR 0028): the same
+ * server entry without a token; the client opens CHouse in the browser to
+ * sign in. curl has no browser, so it gets a check of what agents discover.
+ */
+export function mcpSignInSnippets(url: string): Record<McpClientId, McpSignInSnippet> {
+  const metadata = (() => {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.origin}/.well-known/oauth-protected-resource${parsed.pathname}`;
+    } catch {
+      return `${url}/.well-known/oauth-protected-resource`;
+    }
+  })();
+  return {
+    "claude-code": {
+      target: "Terminal (add --scope user for every project)",
+      language: "bash",
+      code: `claude mcp add --transport http chouse ${url}`,
+      then: "Then run /mcp in Claude Code, pick chouse and choose Authenticate.",
+    },
+    codex: {
+      target: "Terminal",
+      language: "bash",
+      code: `codex mcp add chouse --url ${url}
+codex mcp login chouse`,
+      then: "The login command opens the browser to sign in.",
+    },
+    cursor: {
+      target: ".cursor/mcp.json",
+      language: "json",
+      code: JSON.stringify({ mcpServers: { chouse: { url } } }, null, 2),
+      then: "Then open Cursor Settings › MCP and choose Connect (or Needs login) next to chouse.",
+    },
+    vscode: {
+      target: ".vscode/mcp.json",
+      language: "json",
+      code: JSON.stringify({ servers: { chouse: { type: "http", url } } }, null, 2),
+      then: "Then start the chouse server from the file or the MCP view; VS Code asks to sign in.",
+    },
+    opencode: {
+      target: "opencode.json",
+      language: "json",
+      code: JSON.stringify({ $schema: "https://opencode.ai/config.json", mcp: { chouse: { type: "remote", url, enabled: true, timeout: 60000 } } }, null, 2),
+      then: "Then run opencode mcp auth chouse, or use the server and OpenCode opens the browser itself.",
+    },
+    curl: {
+      target: "Check what agents discover (curl can't sign in: use a token for scripts)",
+      language: "bash",
+      code: [
+        `curl -si ${url} -X POST -H "Content-Type: application/json" -d '{}' | grep -i www-authenticate`,
+        `curl -s ${metadata}`,
+      ].join("\n"),
+      then: "The first line should name the resource metadata; the second shows where agents sign in.",
+    },
+  };
+}
+
 export interface McpToolFilter {
   search: string;
   access: McpToolAccess | "all";

@@ -35,6 +35,7 @@ import {
   filterMcpTools,
   groupMcpTools,
   mcpClientSnippets,
+  mcpSignInSnippets,
   mcpConnectMode,
   mcpEndpointUrl,
   parseOrigins,
@@ -261,15 +262,29 @@ function WriteToolsPanel({ overview, canManage, save, saving }: { overview: McpO
 
 const SIGN_IN_TAB = "sign-in";
 
+function SnippetBlock({ target, code, copyLabel, note }: { target: string; code: string; copyLabel: string; note?: string }): ReactElement {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-paper-muted">{target}</span>
+        <CopyButton text={code} label={copyLabel} />
+      </div>
+      <pre className="mt-1 max-h-72 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{code}</pre>
+      {note && <p className="mt-1.5 text-[11px] text-paper-faint">{note}</p>}
+    </div>
+  );
+}
+
 function ConnectPanel({ url, mode }: { url: string; mode: McpConnectMode }): ReactElement {
   const navigate = useNavigate();
   const snippets = useMemo(() => mcpClientSnippets(url), [url]);
+  const signInSnippets = useMemo(() => mcpSignInSnippets(url), [url]);
   const signIn = mode !== "tokens";
   const tokens = mode !== "sign-in";
   const meta = mode === "sign-in"
-    ? <>Agents connect by signing in with the address below. Personal access tokens are turned off for MCP.</>
+    ? <>Agents connect by signing in: add the server without a token and the agent opens CHouse in your browser. Personal access tokens are turned off for MCP.</>
     : mode === "both"
-      ? <>Agents that support sign-in need only the address. Agents without it, CI and scripts use a personal access token exported as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>
+      ? <>Add the server without a token and the agent opens CHouse in your browser to sign in. Agents without sign-in, CI and scripts use a personal access token exported as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>
       : <>Mint a personal access token, then export it as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>;
   return (
     <Panel
@@ -277,30 +292,25 @@ function ConnectPanel({ url, mode }: { url: string; mode: McpConnectMode }): Rea
       meta={meta}
       actions={tokens ? <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate("/preferences")}><KeyRound className="mr-1 h-3 w-3" /> Personal access tokens</Button> : undefined}
     >
-      <Tabs key={mode} defaultValue={signIn ? SIGN_IN_TAB : snippets[0].id}>
+      <Tabs key={mode} defaultValue={snippets[0].id}>
         <TabsList className="h-9 flex-wrap rounded-xs border border-ink-500 bg-ink-200 p-0.5">
-          {signIn && <TabsTrigger value={SIGN_IN_TAB} className={TAB_CLASS}>Any agent · sign-in</TabsTrigger>}
-          {tokens && snippets.map((s) => <TabsTrigger key={s.id} value={s.id} className={TAB_CLASS}>{s.label}</TabsTrigger>)}
+          {snippets.map((s) => <TabsTrigger key={s.id} value={s.id} className={TAB_CLASS}>{s.label}</TabsTrigger>)}
+          {signIn && <TabsTrigger value={SIGN_IN_TAB} className={TAB_CLASS}>Other agents</TabsTrigger>}
         </TabsList>
+        {snippets.map((s) => {
+          const viaSignIn = signInSnippets[s.id];
+          return (
+            <TabsContent key={s.id} value={s.id} className="mt-3 space-y-4">
+              {signIn && <SnippetBlock target={`Sign in · ${viaSignIn.target}`} code={viaSignIn.code} copyLabel={`Copy the ${s.label} sign-in setup`} note={viaSignIn.then} />}
+              {tokens && <SnippetBlock target={signIn ? `Or with a personal access token · ${s.target}` : s.target} code={s.code} copyLabel={`Copy the ${s.label} setup`} />}
+            </TabsContent>
+          );
+        })}
         {signIn && (
           <TabsContent value={SIGN_IN_TAB} className="mt-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-paper-muted">Paste this as the server URL in any agent that supports MCP sign-in</span>
-              <CopyButton text={url} label="Copy the MCP URL for sign-in" />
-            </div>
-            <pre className="mt-1 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{url}</pre>
-            <p className="mt-2 text-[11px] text-paper-faint">The agent opens CHouse in your browser to sign in and choose what it may do. No token to copy.</p>
+            <SnippetBlock target="Paste this as the server URL in any agent that supports MCP sign-in" code={url} copyLabel="Copy the MCP URL for sign-in" note="The agent opens CHouse in your browser to sign in and choose what it may do. No token to copy." />
           </TabsContent>
         )}
-        {tokens && snippets.map((s) => (
-          <TabsContent key={s.id} value={s.id} className="mt-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-paper-muted">{s.target}</span>
-              <CopyButton text={s.code} label={`Copy the ${s.label} setup`} />
-            </div>
-            <pre className="mt-1 max-h-72 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{s.code}</pre>
-          </TabsContent>
-        ))}
       </Tabs>
       <p className="mt-3 text-[11px] text-paper-faint">
         {tokens

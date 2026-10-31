@@ -61,7 +61,75 @@ Agents find everything from the `401` they get without a token, which carries `W
 
 ## Connect a client
 
-**AI Governance › MCP › Connect an agent** follows [How agents connect](#sign-in-with-oauth): with sign-in off it shows token setup only; with **Sign-in and tokens** it leads with an **Any agent · sign-in** tab (just the URL) and keeps the token setup for agents without sign-in; with **Sign-in only** it shows only the URL. The token setup is copy-ready for each client with your endpoint filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
+**AI Governance › MCP › Connect an agent** has copy-ready setup for each client with your endpoint filled in, and follows [How agents connect](#sign-in-with-oauth): with sign-in off each client shows its token setup; with **Sign-in and tokens** it shows the sign-in setup first and the token setup under it; with **Sign-in only**, the sign-in setup alone. An **Other agents** tab has just the URL for any agent that supports MCP sign-in.
+
+**With sign-in** (once an administrator turns it on), add the server without a token; the client opens CHouse in your browser to sign in:
+
+:::tabs
+@tab Claude Code
+```bash
+claude mcp add --transport http chouse https://chouse.corp/mcp
+```
+
+Then run `/mcp` in Claude Code, pick **chouse** and choose **Authenticate**.
+@tab Codex CLI
+```bash
+codex mcp add chouse --url https://chouse.corp/mcp
+codex mcp login chouse
+```
+
+The login command opens the browser to sign in.
+@tab Cursor
+`.cursor/mcp.json`, then **Cursor Settings › MCP › Connect** (or **Needs login**) next to chouse:
+
+```json
+{
+  "mcpServers": {
+    "chouse": {
+      "url": "https://chouse.corp/mcp"
+    }
+  }
+}
+```
+@tab VS Code
+`.vscode/mcp.json`, then start the server; VS Code asks to sign in:
+
+```json
+{
+  "servers": {
+    "chouse": {
+      "type": "http",
+      "url": "https://chouse.corp/mcp"
+    }
+  }
+}
+```
+@tab OpenCode
+`opencode.json`, then `opencode mcp auth chouse` (or just use the server; OpenCode opens the browser itself):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chouse": {
+      "type": "remote",
+      "url": "https://chouse.corp/mcp",
+      "enabled": true,
+      "timeout": 60000
+    }
+  }
+}
+```
+@tab curl
+curl can't sign in (use a token for scripts), but it can show what agents discover:
+
+```bash
+curl -si https://chouse.corp/mcp -X POST -H "Content-Type: application/json" -d '{}' | grep -i www-authenticate
+curl -s https://chouse.corp/.well-known/oauth-protected-resource/mcp
+```
+:::
+
+**With a personal access token** — for agents without sign-in, CI and scripts. `chouse mcp config <claude-code|codex|cursor|vscode|opencode>` prints the same for your CLI profile. The token always comes from `CH_HOUSE_PAT` or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
 
 :::tabs
 @tab Claude Code
