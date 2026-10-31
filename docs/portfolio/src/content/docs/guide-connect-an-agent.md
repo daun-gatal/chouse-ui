@@ -32,6 +32,14 @@ export CH_HOUSE_PAT=ch_pat_…
 claude mcp add --transport http chouse https://chouse.corp/mcp \
   --header "Authorization: Bearer $CH_HOUSE_PAT"
 ```
+@tab Claude Code · sign-in
+With sign-in on, skip the token:
+
+```bash
+claude mcp add --transport http chouse https://chouse.corp/mcp
+```
+
+Then run `/mcp` in Claude Code, pick **chouse** and choose **Authenticate**.
 @tab Any client (via the CLI)
 ```bash
 chouse mcp config claude-code    # or codex, cursor, vscode, opencode

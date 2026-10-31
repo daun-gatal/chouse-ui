@@ -31,6 +31,14 @@ const MCP_CLAUDE = `claude mcp add --transport http chouse \\
 const MCP_CODEX = `codex mcp add chouse --url https://lab.chouse-ui.com/mcp \\
   --bearer-token-env-var CH_HOUSE_PAT`;
 
+// Sign-in is off until an administrator turns it on, so these point at your own deployment, not the lab.
+const MCP_CLAUDE_SIGN_IN = `claude mcp add --transport http chouse \\
+  https://chouse.your-company.com/mcp
+# then run /mcp in Claude Code › chouse › Authenticate`;
+
+const MCP_CODEX_SIGN_IN = `codex mcp add chouse --url https://chouse.your-company.com/mcp
+codex mcp login chouse   # opens the browser to sign in`;
+
 interface Step {
   icon: LucideIcon;
   title: string;
@@ -95,8 +103,14 @@ const STEPS: Step[] = [
     ),
     body: (
       <div className="flex flex-col gap-3">
-        <CodeBlock language="bash" filename="Claude Code" code={MCP_CLAUDE} />
-        <CodeBlock language="bash" filename="Codex CLI" code={MCP_CODEX} />
+        <CodeBlock language="bash" filename="Claude Code · token" code={MCP_CLAUDE} />
+        <CodeBlock language="bash" filename="Codex CLI · token" code={MCP_CODEX} />
+        <p className="mt-1 text-[12.5px] text-paper-muted">
+          Or, once an administrator turns on sign-in on your deployment, add
+          the server without a token and approve the agent in the browser:
+        </p>
+        <CodeBlock language="bash" filename="Claude Code · sign-in" code={MCP_CLAUDE_SIGN_IN} />
+        <CodeBlock language="bash" filename="Codex CLI · sign-in" code={MCP_CODEX_SIGN_IN} />
         <McpLabCard />
       </div>
     ),
@@ -195,7 +209,7 @@ export default function Automate() {
           eyebrow="Programmatic access"
           eyebrowIndex={5}
           title="Take CHouse UI beyond the browser."
-          description="One credential, three surfaces. Mint a personal access token and the same cluster works from scripts, CI pipelines, and AI agents — with the same RBAC, audit trail, and safe-by-default gates as the UI."
+          description="One credential, three surfaces. Mint a personal access token — or let AI agents sign in — and the same cluster works from scripts, CI pipelines, and AI agents, with the same RBAC, audit trail, and safe-by-default gates as the UI."
         />
 
         <ol className="mt-16 flex flex-col">
