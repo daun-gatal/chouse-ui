@@ -19,6 +19,9 @@ import { createAuditLogWithContext } from "../rbac/services/rbac";
 import * as agents from "../services/agents/store";
 import { listToolDefinitions, MCP_PATH, toolCatalog } from "../mcp/server";
 import { getMcpSettings, mcpSettingsUpdateSchema, saveMcpSettings, type StoredMcpSettings } from "../mcp/settings";
+import { resolveIssuer, resourceMetadataUrl } from "../mcp/oauth/issuer";
+import { redirectLabel } from "../mcp/oauth/redirects";
+import { listClients, listGrants, revokeGrant, setClientStatus } from "../mcp/oauth/store";
 import { AppError, requireParam } from "../types";
 import { canSeeAllQueryText } from "./observe/access";
 import { principalLabels } from "../services/observe/principals";
@@ -193,6 +196,14 @@ function mcpEndpoint(settings: StoredMcpSettings): { path: string; url: string |
   return { path: MCP_PATH, url: null, source: null };
 }
 
+/** Where agents sign in (ADR 0028), or why they can't yet. */
+function oauthView(settings: StoredMcpSettings): { issuer: string | null; metadataUrl: string | null; problem: string | null } {
+  const issuer = resolveIssuer(settings);
+  return issuer.ok
+    ? { issuer: issuer.value.issuer, metadataUrl: resourceMetadataUrl(issuer.value), problem: null }
+    : { issuer: null, metadataUrl: null, problem: issuer.reason };
+}
+
 function mcpView(settings: StoredMcpSettings): Record<string, unknown> {
   return {
     settings: {
@@ -203,10 +214,16 @@ function mcpView(settings: StoredMcpSettings): Record<string, unknown> {
       actionToolkits: settings.actionToolkits,
       actionMaxTier: settings.actionMaxTier,
       approvalWaitSeconds: settings.approvalWaitSeconds,
+      oauthEnabled: settings.oauthEnabled,
+      oauthPatsAllowed: settings.oauthPatsAllowed,
+      oauthRegistration: settings.oauthRegistration,
+      oauthRedirectHosts: settings.oauthRedirectHosts,
+      oauthMaxGrantDays: settings.oauthMaxGrantDays,
       updatedBy: settings.updatedBy,
       updatedAt: settings.updatedAt,
     },
     endpoint: mcpEndpoint(settings),
+    oauth: oauthView(settings),
     tools: toolCatalog(listToolDefinitions(), settings),
   };
 }
@@ -219,6 +236,12 @@ agentsRoute.put("/mcp", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator
   const unknown = Object.keys(update.toolOverrides ?? {}).filter((name) => !known.has(name));
   if (unknown.length > 0) throw AppError.badRequest(`Unknown MCP tool(s): ${unknown.join(", ")}`);
   const before = await getMcpSettings(0);
+  // OAuth signs agents in at the public address, so it can't be on without a usable one (ADR 0028 §1).
+  const oauthOn = update.oauthEnabled ?? before.oauthEnabled;
+  if (oauthOn) {
+    const issuer = resolveIssuer({ publicUrl: update.publicUrl === undefined ? before.publicUrl : update.publicUrl });
+    if (!issuer.ok) throw AppError.badRequest(issuer.reason);
+  }
   const settings = await saveMcpSettings(update, getRbacUser(c).sub);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_MCP_UPDATE, getRbacUser(c).sub, {
     resourceType: "mcp_settings",
@@ -231,9 +254,71 @@ agentsRoute.put("/mcp", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator
       ...(update.actionToolkits ? { actionToolkits: update.actionToolkits } : {}),
       ...(update.actionMaxTier ? { actionMaxTier: update.actionMaxTier } : {}),
       ...(update.approvalWaitSeconds !== undefined ? { approvalWaitSeconds: update.approvalWaitSeconds } : {}),
+      ...(update.oauthEnabled !== undefined && update.oauthEnabled !== before.oauthEnabled ? { oauthEnabled: update.oauthEnabled } : {}),
+      ...(update.oauthPatsAllowed !== undefined ? { oauthPatsAllowed: update.oauthPatsAllowed } : {}),
+      ...(update.oauthRegistration ? { oauthRegistration: update.oauthRegistration } : {}),
+      ...(update.oauthRedirectHosts ? { oauthRedirectHosts: update.oauthRedirectHosts } : {}),
+      ...(update.oauthMaxGrantDays !== undefined ? { oauthMaxGrantDays: update.oauthMaxGrantDays } : {}),
     },
   });
   return ok(c, mcpView(settings));
+});
+
+// --- MCP sign-in with OAuth (ADR 0028 §5) -----------------------------------
+
+agentsRoute.get("/mcp/oauth", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => {
+  const [clients, grants] = await Promise.all([listClients(), listGrants()]);
+  return ok(c, {
+    clients: clients.map((client) => ({
+      id: client.id,
+      name: client.name,
+      status: client.status,
+      returnsTo: [...new Set(client.redirectUris.map(redirectLabel))],
+      clientUri: client.clientUri,
+      people: client.people,
+      createdAt: client.createdAt,
+      lastUsedAt: client.lastUsedAt,
+    })),
+    grants: grants.map((grant) => ({
+      id: grant.id,
+      clientId: grant.clientId,
+      clientName: grant.clientName,
+      user: grant.user ? { id: grant.userId, email: grant.user.email, username: grant.user.username, displayName: grant.user.displayName } : { id: grant.userId, email: null, username: null, displayName: null },
+      createdAt: grant.createdAt,
+      expiresAt: grant.expiresAt,
+      lastUsedAt: grant.lastUsedAt,
+    })),
+  });
+});
+
+agentsRoute.put(
+  "/mcp/oauth/clients/:id",
+  requirePermission(PERMISSIONS.AGENTS_MANAGE),
+  zValidator("json", z.object({ status: z.enum(["allowed", "blocked"]) })),
+  async (c) => {
+    const id = requireParam(c, "id");
+    const { status } = c.req.valid("json");
+    const actor = getRbacUser(c).sub;
+    const client = await setClientStatus(id, status, actor);
+    if (!client) throw AppError.notFound("Agent not found");
+    await createAuditLogWithContext(c, status === "allowed" ? AUDIT_ACTIONS.OAUTH_CLIENT_APPROVE : AUDIT_ACTIONS.OAUTH_CLIENT_BLOCK, actor, {
+      resourceType: "oauth_client",
+      resourceId: id,
+      details: { name: client.name },
+    });
+    return ok(c, { id: client.id, status: client.status });
+  },
+);
+
+agentsRoute.delete("/mcp/oauth/grants/:id", requirePermission(PERMISSIONS.AGENTS_MANAGE), async (c) => {
+  const id = requireParam(c, "id");
+  if (!(await revokeGrant(id))) throw AppError.notFound("Connected app not found");
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.OAUTH_GRANT_REVOKE, getRbacUser(c).sub, {
+    resourceType: "oauth_grant",
+    resourceId: id,
+    details: { by: "admin" },
+  });
+  return ok(c, { id });
 });
 
 export default agentsRoute;

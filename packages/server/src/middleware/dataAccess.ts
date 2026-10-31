@@ -25,6 +25,7 @@ import {
 } from './sqlParser';
 import { PERMISSIONS } from '../rbac/schema/base';
 import { logger } from '../utils/logger';
+import { isMcpSubrequestFor } from '../mcp/inProcess';
 
 // ============================================
 // Context Extension
@@ -147,7 +148,7 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
 
   if (token) {
     try {
-      const identity = await verifyBearer(token);
+      const identity = await verifyBearer(token, { allowOAuth: isMcpSubrequestFor(token) });
       c.set('rbacUserId', identity.userId);
       c.set('rbacRoles', identity.roles);
       c.set('rbacPermissions', identity.permissions);

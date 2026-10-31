@@ -114,4 +114,36 @@ describe("CORS Middleware", () => {
         expect(mockNext).not.toHaveBeenCalled();
         expect(mockContext.json.mock.calls[0][1]).toBe(403);
     });
+
+    describe("public paths (ADR 0028)", () => {
+        it("answers any origin with * and no credentials", async () => {
+            mockContext.req.path = "/oauth/token";
+            mockContext.req.header = mock((name: string) => name === "Origin" ? "https://evil.example" : null);
+            const middleware = corsMiddleware({ origin: ["https://app.example"], credentials: true, strictMode: true });
+            await middleware(mockContext, mockNext);
+            expect(mockContext.header).toHaveBeenCalledWith("Access-Control-Allow-Origin", "*");
+            expect(mockContext.header).not.toHaveBeenCalledWith("Access-Control-Allow-Credentials", "true");
+            expect(mockContext.json).not.toHaveBeenCalled();
+            expect(mockNext).toHaveBeenCalled();
+        });
+
+        it("answers a preflight for the metadata itself", async () => {
+            mockContext.req.path = "/.well-known/oauth-protected-resource/mcp";
+            mockContext.req.method = "OPTIONS";
+            const middleware = corsMiddleware({ origin: ["https://app.example"], strictMode: true });
+            await middleware(mockContext, mockNext);
+            expect(mockContext.body).toHaveBeenCalledWith(null, 204);
+            expect(mockNext).not.toHaveBeenCalled();
+        });
+
+        it("doesn't open look-alike paths", async () => {
+            mockContext.req.path = "/oauth/tokenizer";
+            mockContext.req.header = mock((name: string) => name === "Origin" ? "https://evil.example" : null);
+            const middleware = corsMiddleware({ origin: ["https://app.example"], strictMode: true });
+            await middleware(mockContext, mockNext);
+            expect(mockContext.json).toHaveBeenCalled();
+            expect(mockNext).not.toHaveBeenCalled();
+        });
+    });
 });
+

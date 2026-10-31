@@ -21,6 +21,10 @@ const MCP_TIMEOUT_MAX_SECONDS = 600;
 const CACHE_TTL_MS = 5_000;
 const MCP_DEFAULT_APPROVAL_WAIT_SECONDS = 300;
 const MCP_APPROVAL_WAIT_MAX_SECONDS = 900;
+export const OAUTH_REGISTRATION_MODES = ["open", "approval"] as const;
+export const OAUTH_MAX_GRANT_DAYS_LIMIT = 365;
+/** A host name, optionally behind `*.`; no scheme, port or path. */
+const OAUTH_HOST_PATTERN = /^(\*\.)?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
 
 const mcpSettingsSchema = z.object({
   /** Off by default: the endpoint answers 404 until an administrator turns it on. */
@@ -56,6 +60,16 @@ const mcpSettingsSchema = z.object({
   actionMaxTier: z.enum(TIERS),
   /** How long a write held for its user's confirmation waits in the MCP call before returning a pending action id. */
   approvalWaitSeconds: z.number().int().min(0).max(MCP_APPROVAL_WAIT_MAX_SECONDS),
+  /** ADR 0028: agents may sign in with OAuth. Off by default: the endpoints answer 404 until an administrator turns it on. */
+  oauthEnabled: z.boolean(),
+  /** ADR 0028: whether pasted personal access tokens still work on /mcp while OAuth is on (the CLI is unaffected). */
+  oauthPatsAllowed: z.boolean(),
+  /** ADR 0028: new agents can use OAuth at once, or wait for an administrator to approve them. */
+  oauthRegistration: z.enum(OAUTH_REGISTRATION_MODES),
+  /** ADR 0028: hosts an agent's redirect URI may point at (`example.com`, `*.example.com`); empty = any https host or loopback. */
+  oauthRedirectHosts: z.array(z.string().trim().toLowerCase().regex(OAUTH_HOST_PATTERN, "Use a host name such as agent.example.com or *.example.com")).max(50),
+  /** ADR 0028: the longest an agent's access may last, in days. */
+  oauthMaxGrantDays: z.number().int().min(1).max(OAUTH_MAX_GRANT_DAYS_LIMIT),
 });
 
 export type McpSettings = z.infer<typeof mcpSettingsSchema>;
@@ -72,6 +86,11 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   actionToolkits: [...TOOLKITS],
   actionMaxTier: "t2",
   approvalWaitSeconds: MCP_DEFAULT_APPROVAL_WAIT_SECONDS,
+  oauthEnabled: false,
+  oauthPatsAllowed: true,
+  oauthRegistration: "open",
+  oauthRedirectHosts: [],
+  oauthMaxGrantDays: 90,
 };
 
 export interface StoredMcpSettings extends McpSettings {
@@ -118,6 +137,11 @@ export async function saveMcpSettings(update: McpSettingsUpdate, actorId: string
     actionToolkits: update.actionToolkits ?? current.actionToolkits,
     actionMaxTier: update.actionMaxTier ?? current.actionMaxTier,
     approvalWaitSeconds: update.approvalWaitSeconds ?? current.approvalWaitSeconds,
+    oauthEnabled: update.oauthEnabled ?? current.oauthEnabled,
+    oauthPatsAllowed: update.oauthPatsAllowed ?? current.oauthPatsAllowed,
+    oauthRegistration: update.oauthRegistration ?? current.oauthRegistration,
+    oauthRedirectHosts: update.oauthRedirectHosts ?? current.oauthRedirectHosts,
+    oauthMaxGrantDays: update.oauthMaxGrantDays ?? current.oauthMaxGrantDays,
   });
   const now = Date.now();
   const value = JSON.stringify(next);

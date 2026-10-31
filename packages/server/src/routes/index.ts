@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { Context, Next } from "hono";
 import { PAT_PREFIX } from "../rbac/services/personalAccessTokens";
+import { OAUTH_ACCESS_PREFIX } from "../mcp/oauth/secrets";
+import { isMcpSubrequestFor } from "../mcp/inProcess";
 import query from "./query";
 import explorer from "./explorer";
 import metrics from "./metrics";
@@ -32,6 +34,7 @@ import aiTriage from "./ai-triage";
 import aiEvals from "./ai-evals";
 import integrations from "./integrations";
 import chatIdentities from "./chat-identities";
+import oauthRoutes from "./oauth";
 import dashboards from "./dashboards";
 import { requestCallerMiddleware } from "../services/ai/usage/origin";
 
@@ -82,10 +85,12 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
   // no DB I/O in this layer; validity is enforced by auth middleware.
   const authHeader = c.req.header("Authorization") || "";
   const bearerToken = authHeader.split(" ");
-  const isPatRequest =
-    bearerToken.length === 2 &&
-    bearerToken[0].toLowerCase() === "bearer" &&
-    bearerToken[1].startsWith(PAT_PREFIX);
+  const isBearer = bearerToken.length === 2 && bearerToken[0].toLowerCase() === "bearer";
+  // An agent's OAuth token only reaches the API through an MCP tool's own subrequest (ADR 0028 §3).
+  const isPatRequest = isBearer && (
+    bearerToken[1].startsWith(PAT_PREFIX) ||
+    (bearerToken[1].startsWith(OAUTH_ACCESS_PREFIX) && isMcpSubrequestFor(bearerToken[1]))
+  );
 
   if (requestedWith !== "XMLHttpRequest" && !isPatRequest) {
     return c.json({
@@ -138,6 +143,7 @@ api.route("/ai-triage", aiTriage);
 api.route("/ai-evals", aiEvals);
 api.route("/integrations", integrations);
 api.route("/chat-identities", chatIdentities);
+api.route("/oauth", oauthRoutes);
 
 // Custom dashboards (ADR 0021)
 api.route("/dashboards", dashboards);

@@ -22,6 +22,7 @@ import {
 } from '../services/rbac';
 import { AUDIT_ACTIONS, type Permission } from '../schema/base';
 import { AppError } from '../../types';
+import { isMcpSubrequestFor } from '../../mcp/inProcess';
 
 // ============================================
 // Context Types
@@ -60,7 +61,7 @@ export async function rbacAuthMiddleware(c: Context, next: Next) {
   }
 
   try {
-    const identity = await verifyBearer(token);
+    const identity = await verifyBearer(token, { allowOAuth: isMcpSubrequestFor(token) });
 
     // Attach user info to context
     c.set('rbacUser', toTokenPayload(identity));
@@ -101,7 +102,7 @@ export async function optionalRbacAuthMiddleware(c: Context, next: Next) {
 
   if (token) {
     try {
-      const identity = await verifyBearer(token);
+      const identity = await verifyBearer(token, { allowOAuth: isMcpSubrequestFor(token) });
       c.set('rbacUser', toTokenPayload(identity));
       c.set('rbacUserId', identity.userId);
       c.set('rbacRoles', identity.roles);
