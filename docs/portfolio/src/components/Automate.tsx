@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   KeyRound,
@@ -6,8 +7,11 @@ import {
   ArrowUpRight,
   ShieldCheck,
   RotateCcw,
+  Check,
+  Copy,
   type LucideIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Section, Container, SectionHeader, CodeBlock, SecondaryAction, Tag } from "./Section";
 
 /**
@@ -38,6 +42,72 @@ const MCP_CLAUDE_SIGN_IN = `claude mcp add --transport http chouse \\
 
 const MCP_CODEX_SIGN_IN = `codex mcp add chouse --url https://chouse.your-company.com/mcp
 codex mcp login chouse   # opens the browser to sign in`;
+
+const SIGN_IN_NOTE = "On your own deployment, once an administrator turns on sign-in: no token — you approve the agent in the browser.";
+
+interface CodeTab {
+  id: string;
+  label: string;
+  code: string;
+  note?: string;
+}
+
+/** A code block with a tab per way to connect, in the Docker section's tab style. */
+function TabbedCode({ title, tabs }: { title: string; tabs: CodeTab[] }) {
+  const [active, setActive] = useState(tabs[0].id);
+  const [copied, setCopied] = useState(false);
+  const current = tabs.find((t) => t.id === active) ?? tabs[0];
+
+  const copy = () => {
+    navigator.clipboard.writeText(current.code).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-ink-500 bg-ink-200 px-4">
+        <span className="py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted">{title}</span>
+        <div className="flex items-center gap-1">
+          <div role="tablist" aria-label={`${title} setup`} className="flex">
+            {tabs.map((t) => {
+              const isActive = t.id === active;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActive(t.id)}
+                  className={cn(
+                    "relative whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    isActive ? "text-paper" : "text-paper-dim hover:text-paper",
+                  )}
+                >
+                  {t.label}
+                  {isActive && <span className="absolute inset-x-0 -bottom-px h-px bg-accent" aria-hidden />}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={copy}
+            className="inline-flex items-center gap-1.5 rounded-xs px-2 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
+            aria-label={`Copy the ${title} ${current.label} setup`}
+          >
+            {copied ? <><Check className="h-3 w-3 text-accent" /> <span className="hidden sm:inline">Copied</span></> : <><Copy className="h-3 w-3" /> <span className="hidden sm:inline">Copy</span></>}
+          </button>
+        </div>
+      </div>
+      <pre role="tabpanel" className="m-0 overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-relaxed text-paper-muted">
+        <code>{current.code}</code>
+      </pre>
+      {current.note && <p className="border-t border-ink-500 px-5 py-2.5 text-[12px] text-paper-faint">{current.note}</p>}
+    </div>
+  );
+}
 
 interface Step {
   icon: LucideIcon;
@@ -103,14 +173,20 @@ const STEPS: Step[] = [
     ),
     body: (
       <div className="flex flex-col gap-3">
-        <CodeBlock language="bash" filename="Claude Code · token" code={MCP_CLAUDE} />
-        <CodeBlock language="bash" filename="Codex CLI · token" code={MCP_CODEX} />
-        <p className="mt-1 text-[12.5px] text-paper-muted">
-          Or, once an administrator turns on sign-in on your deployment, add
-          the server without a token and approve the agent in the browser:
-        </p>
-        <CodeBlock language="bash" filename="Claude Code · sign-in" code={MCP_CLAUDE_SIGN_IN} />
-        <CodeBlock language="bash" filename="Codex CLI · sign-in" code={MCP_CODEX_SIGN_IN} />
+        <TabbedCode
+          title="Claude Code"
+          tabs={[
+            { id: "token", label: "Token · lab", code: MCP_CLAUDE },
+            { id: "sign-in", label: "Sign-in", code: MCP_CLAUDE_SIGN_IN, note: SIGN_IN_NOTE },
+          ]}
+        />
+        <TabbedCode
+          title="Codex CLI"
+          tabs={[
+            { id: "token", label: "Token · lab", code: MCP_CODEX },
+            { id: "sign-in", label: "Sign-in", code: MCP_CODEX_SIGN_IN, note: SIGN_IN_NOTE },
+          ]}
+        />
         <McpLabCard />
       </div>
     ),
@@ -160,7 +236,7 @@ function McpLabCard() {
                 </span>
                 {!isLast && <span className="w-px flex-1 bg-ink-500" aria-hidden />}
               </div>
-              <div className="flex flex-col gap-1 pt-0.5">
+              <div className="flex min-w-0 flex-col gap-1 pt-0.5">
                 <span className="text-[14px] font-semibold text-paper">
                   {step.link ? (
                     <a
@@ -233,7 +309,7 @@ export default function Automate() {
                   </span>
                   {!isLast && <span className="w-px flex-1 bg-ink-500" aria-hidden />}
                 </div>
-                <div className="flex flex-col gap-5 pb-2">
+                <div className="flex min-w-0 flex-col gap-5 pb-2">
                   <div className="flex flex-col gap-1">
                     <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
                       {step.kicker}
