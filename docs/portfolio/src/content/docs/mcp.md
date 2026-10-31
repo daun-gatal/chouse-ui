@@ -6,7 +6,7 @@ screenshot: agents-mcp
 ---
 # MCP server
 
-AI agents — Claude Code, Codex, Cursor, VS Code Copilot, OpenCode, CI pipelines — can operate CHouse UI over the **Model Context Protocol** at **`/mcp` on the same address as the UI**, so there is no extra port, Service or Ingress. The transport is Streamable HTTP; authentication is a [personal access token](/docs/personal-access-tokens/) (`Authorization: Bearer ch_pat_…`), checked live on every call.
+AI agents — Claude Code, Codex, Cursor, VS Code Copilot, OpenCode, CI pipelines — can operate CHouse UI over the **Model Context Protocol** at **`/mcp` on the same address as the UI**, so there is no extra port, Service or Ingress. The transport is Streamable HTTP. Agents authenticate with a [personal access token](/docs/personal-access-tokens/) (`Authorization: Bearer ch_pat_…`) or, once an administrator turns it on, by [signing in with OAuth](#sign-in-with-oauth) with only the URL; either is checked live on every call.
 
 Safe by default: the endpoint is **off** until an administrator turns it on, only **read** tools are on until an administrator turns on more, and destructive tools are approved by a person in the agent's own client before they run.
 
@@ -32,7 +32,32 @@ Changes reach every replica within a few seconds, without a restart, and are aud
 
 ## Mint a token
 
-**Preferences › Personal access tokens** → create one token per agent and export it as `CH_HOUSE_PAT`. A token can be **scoped**: one with only `table:select, metrics:view` caps the agent whichever tools are on, and `tools/list` only shows the tools the token's permissions allow. Every call re-checks your live roles against the token's scopes, so revoking the token, removing a role or deactivating the user takes effect on the next call.
+For agents without sign-in, CI and scripts: **Preferences › Personal access tokens** → create one token per agent and export it as `CH_HOUSE_PAT`. A token can be **scoped**: one with only `table:select, metrics:view` caps the agent whichever tools are on, and `tools/list` only shows the tools the token's permissions allow. Every call re-checks your live roles against the token's scopes, so revoking the token, removing a role or deactivating the user takes effect on the next call.
+
+## Sign in with OAuth
+
+Agents that support MCP sign-in, including hosted agents that have nowhere to paste a token, connect with the URL alone: they open CHouse in your browser, you sign in and choose what they may do, and they get a token that only works on `/mcp`.
+
+**Turn it on** (`agents:manage`): **AI Governance › MCP › Sign-in for agents**. It needs an https public address (above, or `PUBLIC_BASE_URL`; plain http only for `localhost`), because agents sign in at that address and tokens are tied to it. Hosted agents call CHouse from the internet, so they need it reachable from there; agents on your machine don't. Settings:
+
+| Setting | What it does |
+| --- | --- |
+| How agents connect | **Sign-in and tokens** (default), or **Sign-in only**, which turns pasted personal access tokens off for MCP. The CLI keeps working either way |
+| New agents | **Anyone can register** (default), or **Only ones I approve**: a new agent waits in the **Agents** list until you approve it |
+| Allowed return addresses | Hosts an agent may send the browser back to (`agent.example.com`, `*.example.com`). Empty allows any https host, `localhost` and app links (`cursor://…`) |
+| Longest access | The most a person can grant, 7 to 365 days (default 90) |
+
+**Connect an agent:** paste `https://chouse.corp/mcp` as the server URL. The agent registers itself, then opens the browser:
+
+1. Sign in to CHouse if you aren't already (password or SSO).
+2. The consent page (`/preferences/connect`) shows the agent's name — marked **unverified**, since agents name themselves — and the host it returns to, which is the part to check.
+3. Pick its [write tools](#write-tools) (bounded by the administrator's ceiling; without `ai:act` it only reads) and how long access lasts, then **Allow**, or **Deny**.
+
+What it gets is an access token for an hour, renewed with a refresh token that works once; a copied refresh token used twice revokes the whole grant. Every call runs as you, with your live roles and data access, exactly like a token. The token is refused anywhere but `/mcp`.
+
+**Revoke:** your agents are under **Preferences › Personal access tokens › Connected apps**, with their write tools and **Revoke**. Administrators see every agent in **AI Governance › MCP › Agents**: **Block** one to cut off everyone connected through it, or revoke one person's access. Turning sign-in off stops every agent token at once.
+
+Agents find everything from the `401` they get without a token, which carries `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`. CHouse follows the MCP authorization specification: OAuth 2.1 authorization code with PKCE (S256), dynamic client registration for public clients, resource indicators and token revocation. Registration, consent, refresh-token reuse and revocation are audited as `oauth.*`.
 
 ## Connect a client
 
@@ -206,6 +231,7 @@ approval_mode = "prompt"
 | --- | --- |
 | Off by default | The endpoint, and every write, destructive and LLM-spending tool, stay off until an administrator turns them on; an agent can't opt in |
 | Live authorization | Every call checks the token against the user's current roles and the token's scopes; data access policies and rate limits apply as in the UI |
+| Sign-in tokens | An OAuth access token only works on `/mcp`; the API refuses it. Grants follow the user, the agent's approval and the sign-in switch on every call |
 | SQL classification | `query` accepts one `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, checked with the same parser that guards the API; anything else fails closed |
 | Human approval | Write tools ask in CHouse by their [tier](/docs/ai-approvals/#tiers) (above); hand-written destructive tools are approved in the client |
 | Result limits | 100 rows, 200 KB and 2 KB per cell, with tokens and password-like fields redacted before anything reaches the model |

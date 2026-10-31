@@ -130,3 +130,12 @@ as new ones are made.
 - **Dropping personal access tokens on MCP.** Rejected: agents without a browser
   (CI, schedulers) and clients without OAuth still need them. Administrators can
   turn them off for MCP.
+
+## As shipped
+
+| Section | Commit | Notes |
+|---|---|---|
+| §2 storage | Migration 1.75.0 | `oauth_clients`, `oauth_requests` (pending sign-ins and their one-time codes), `oauth_tokens`; `rbac_api_keys.kind` and `oauth_client_id`. Tested on SQLite and PostgreSQL. |
+| §1–§3, §5–§6 server | Sign agents in to MCP with OAuth | `mcp/oauth/*`, `routes/oauth.ts`, admin routes under `/api/agents/mcp/oauth`. The in-process scope is `mcp/inProcess.ts`. Authorize requires `redirect_uri`; loopback redirects match on any port (RFC 8252 §7.3). |
+| §4–§5 UI | Consent page, connected apps and sign-in settings | `/preferences/connect`; the write-policy controls are shared with the token dialog. |
+| Docs | Docs and release notes | MCP › Sign in with OAuth, Connected apps, What's new in 3.17. |

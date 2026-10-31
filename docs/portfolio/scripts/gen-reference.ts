@@ -161,6 +161,7 @@ ${sections.join("\n\n")}
 const AUDIT_AREAS: Record<string, string> = {
   auth: "Sign-in",
   pat: "Personal access tokens",
+  oauth: "MCP sign-in (OAuth)",
   mcp: "MCP",
   user: "Users",
   sso: "Single sign-on",
