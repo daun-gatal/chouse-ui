@@ -71,6 +71,7 @@ const agentKeys = {
   policies: () => [...agentKeys.all, "policies"] as const,
   policyScopes: () => [...agentKeys.all, "policy-scopes"] as const,
   mcp: () => [...agentKeys.all, "mcp"] as const,
+  mcpOAuth: () => [...agentKeys.all, "mcp", "oauth"] as const,
 };
 
 function useConnection(): string | null {
@@ -367,6 +368,27 @@ export function useAgentMutations() {
 
 export function useMcpOverview(enabled = true): UseQueryResult<agents.McpOverview> {
   return useQuery({ queryKey: agentKeys.mcp(), queryFn: agents.getMcpOverview, enabled });
+}
+
+/** Agents that registered to sign people in, and everyone's connected agents (ADR 0028). */
+export function useMcpOAuth(enabled = true): UseQueryResult<agents.McpOAuthOverview> {
+  return useQuery({ queryKey: agentKeys.mcpOAuth(), queryFn: agents.getMcpOAuth, enabled });
+}
+
+export function useSetMcpOAuthClientStatus(): UseMutationResult<unknown, Error, { id: string; status: "allowed" | "blocked" }> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "allowed" | "blocked" }) => agents.setMcpOAuthClientStatus(id, status),
+    onSuccess: () => void client.invalidateQueries({ queryKey: agentKeys.mcpOAuth() }),
+  });
+}
+
+export function useRevokeMcpOAuthGrant(): UseMutationResult<unknown, Error, string> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => agents.revokeMcpOAuthGrant(id),
+    onSuccess: () => void client.invalidateQueries({ queryKey: agentKeys.mcpOAuth() }),
+  });
 }
 
 export function useUpdateMcpSettings(): UseMutationResult<agents.McpOverview, Error, agents.McpSettingsUpdate> {

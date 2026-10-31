@@ -21,6 +21,7 @@ import Admin from "@/pages/Admin";
 import Login from "@/pages/Login";
 import SsoCallback from "@/pages/SsoCallback";
 import SsoComplete from "@/pages/SsoComplete";
+import OAuthConnect from "@/pages/OAuthConnect";
 import ExplorerPage from "@/pages/Explorer";
 import ExplainPopout from "@/pages/ExplainPopout";
 import { AdminRoute } from "@/features/admin/routes/adminRoute";
@@ -171,6 +172,8 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/auth/sso/callback" element={<SsoCallback />} />
             <Route path="/login/sso-complete" element={<SsoComplete />} />
+            {/* Consent step when an agent signs in to MCP (ADR 0028); signs you in first when needed */}
+            <Route path="/preferences/connect" element={<OAuthConnect />} />
             <Route path="/explain-popout" element={<ExplainPopout />} />
 
             {/* Authenticated Application Routes */}

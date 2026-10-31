@@ -11,6 +11,7 @@ import {
   mcpEndpointUrl,
   parseOrigins,
   parsePublicUrl,
+  parseRedirectHosts,
 } from "./mcp";
 
 function tool(overrides: Partial<McpTool>): McpTool {
@@ -145,3 +146,15 @@ describe("parseOrigins", () => {
     expect(parseOrigins("  \n ")).toEqual({ origins: [], invalid: [] });
   });
 });
+
+describe("parseRedirectHosts", () => {
+  it("keeps hosts and wildcard subdomains, lowercased and deduplicated", () => {
+    expect(parseRedirectHosts("Agent.example.com\n*.trusted.example, agent.example.com localhost")).toEqual({ hosts: ["agent.example.com", "*.trusted.example", "localhost"], invalid: [] });
+  });
+
+  it("flags URLs, ports and odd patterns", () => {
+    expect(parseRedirectHosts("https://agent.example.com example.com:443 *example.com a..b").invalid).toEqual(["https://agent.example.com", "example.com:443", "*example.com", "a..b"]);
+    expect(parseRedirectHosts("   ")).toEqual({ hosts: [], invalid: [] });
+  });
+});
+

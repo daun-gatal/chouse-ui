@@ -5,6 +5,7 @@ import { getPageTitle } from "./PageTitleUpdater";
 describe("getPageTitle", () => {
   it.each([
     ["/preferences", "Preferences"],
+    ["/preferences/connect", "Connect an agent"],
     ["/ai", "AI Governance"],
     ["/ai/assistant/abc", "AI Governance"],
     ["/fleet", "Fleet"],

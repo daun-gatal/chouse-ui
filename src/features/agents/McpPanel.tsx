@@ -41,6 +41,7 @@ import {
   type McpToolFilter,
   type ResolvedMcpEndpoint,
 } from "./mcp";
+import { OAuthAgentsPanel, OAuthSettingsPanel } from "./McpOAuthPanels";
 
 const ACCESS_TONE = { read: "ok", write: "warn", destructive: "bad" } as const;
 const SWITCH_CLASS = "data-[state=checked]:bg-brand data-[state=unchecked]:bg-ink-500";
@@ -117,7 +118,7 @@ function ServerPanel({ overview, endpoint, canManage, save, saving }: { overview
               <CopyButton text={endpoint.url} label="Copy the endpoint URL" />
             </div>
             <p className="mt-1 text-[11px] text-paper-faint">
-              {MCP_ENDPOINT_SOURCE_LABELS[endpoint.source]}. Served on the web port, so agents use the same Ingress and TLS as the UI; personal access tokens only.
+              {MCP_ENDPOINT_SOURCE_LABELS[endpoint.source]}. Served on the web port, so agents use the same Ingress and TLS as the UI; {settings.oauthEnabled ? (settings.oauthPatsAllowed ? "agents sign in, or use a personal access token" : "agents sign in; personal access tokens are off") : "personal access tokens only"}.
               {!settings.enabled && " Answers 404 until it is turned on."}
             </p>
             {endpoint.local && (
@@ -256,19 +257,34 @@ function WriteToolsPanel({ overview, canManage, save, saving }: { overview: McpO
   );
 }
 
-function ConnectPanel({ url }: { url: string }): ReactElement {
+const SIGN_IN_TAB = "sign-in";
+
+function ConnectPanel({ url, signIn }: { url: string; signIn: boolean }): ReactElement {
   const navigate = useNavigate();
   const snippets = useMemo(() => mcpClientSnippets(url), [url]);
   return (
     <Panel
       title="Connect an agent"
-      meta={<>Mint a personal access token, then export it as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>}
+      meta={signIn
+        ? <>Agents with sign-in need only the address. For the others, mint a personal access token and export it as <Mono>{MCP_TOKEN_ENV}</Mono>.</>
+        : <>Mint a personal access token, then export it as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>}
       actions={<Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate("/preferences")}><KeyRound className="mr-1 h-3 w-3" /> Personal access tokens</Button>}
     >
-      <Tabs defaultValue={snippets[0].id}>
+      <Tabs key={signIn ? "with-sign-in" : "tokens"} defaultValue={signIn ? SIGN_IN_TAB : snippets[0].id}>
         <TabsList className="h-9 flex-wrap rounded-xs border border-ink-500 bg-ink-200 p-0.5">
+          {signIn && <TabsTrigger value={SIGN_IN_TAB} className={TAB_CLASS}>Any agent · sign-in</TabsTrigger>}
           {snippets.map((s) => <TabsTrigger key={s.id} value={s.id} className={TAB_CLASS}>{s.label}</TabsTrigger>)}
         </TabsList>
+        {signIn && (
+          <TabsContent value={SIGN_IN_TAB} className="mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-paper-muted">Paste this as the server URL in any agent that supports MCP sign-in</span>
+              <CopyButton text={url} label="Copy the MCP URL for sign-in" />
+            </div>
+            <pre className="mt-1 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{url}</pre>
+            <p className="mt-2 text-[11px] text-paper-faint">The agent opens CHouse in your browser to sign in and choose what it may do. No token to copy.</p>
+          </TabsContent>
+        )}
         {snippets.map((s) => (
           <TabsContent key={s.id} value={s.id} className="mt-3">
             <div className="flex items-center justify-between gap-2">
@@ -492,7 +508,9 @@ export function McpPanel(): ReactElement {
         </div>
       )}
       <ServerPanel overview={overview.data} endpoint={endpoint} canManage={canManage} save={save} saving={update.isPending} />
-      <ConnectPanel url={endpoint.url} />
+      <OAuthSettingsPanel overview={overview.data} canManage={canManage} save={save} saving={update.isPending} />
+      <OAuthAgentsPanel canManage={canManage} oauthEnabled={overview.data.settings.oauthEnabled} />
+      <ConnectPanel url={endpoint.url} signIn={overview.data.settings.oauthEnabled && overview.data.oauth.issuer !== null} />
       <WriteToolsPanel overview={overview.data} canManage={canManage} save={save} saving={update.isPending} />
       <ToolsPanel tools={overview.data.tools} canManage={canManage} save={save} saving={update.isPending} />
     </div>

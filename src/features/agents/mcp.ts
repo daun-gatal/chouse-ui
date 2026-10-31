@@ -247,3 +247,23 @@ export function parseOrigins(text: string): { origins: string[]; invalid: string
   }
   return { origins, invalid };
 }
+
+/** A host an agent may return to after sign-in: `example.com` or `*.example.com` (ADR 0028). */
+const REDIRECT_HOST = /^(\*\.)?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+/** Split the allowed-hosts box into hosts (lowercased, deduplicated) and entries that aren't hosts. */
+export function parseRedirectHosts(text: string): { hosts: string[]; invalid: string[] } {
+  const hosts: string[] = [];
+  const invalid: string[] = [];
+  for (const entry of text.split(/[\s,]+/).map((part) => part.trim().toLowerCase()).filter(Boolean)) {
+    if (REDIRECT_HOST.test(entry)) {
+      if (!hosts.includes(entry)) hosts.push(entry);
+    } else {
+      invalid.push(entry);
+    }
+  }
+  return { hosts, invalid };
+}
+
+/** How long an agent's access may last at most (ADR 0028). */
+export const OAUTH_MAX_DAY_OPTIONS = [7, 30, 90, 180, 365] as const;

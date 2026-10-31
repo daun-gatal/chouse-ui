@@ -30,6 +30,7 @@ import { useRbacStore } from "@/stores";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import { TokenWritePolicyDialog } from "./TokenWritePolicyDialog";
+import { ConnectedAppsSection } from "./ConnectedAppsSection";
 
 const PAT_QUERY_KEY = ["pat-tokens"];
 
@@ -423,6 +424,7 @@ export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ cla
       onboardingId="preferences-pat"
     >
       <div className="flex h-full flex-col gap-3">
+        <ConnectedAppsSection />
         <div className="flex items-center justify-between">
           <p className={MONO_FAINT}>Tokens inherit your live permissions</p>
           <Button

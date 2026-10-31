@@ -176,9 +176,21 @@ export interface McpSettings {
   actionMaxTier: AiActionTier;
   /** How long a write held for its user's confirmation waits in the MCP call. */
   approvalWaitSeconds: number;
+  /** ADR 0028: agents may sign in with OAuth. */
+  oauthEnabled: boolean;
+  /** ADR 0028: pasted personal access tokens still work on MCP while OAuth is on. */
+  oauthPatsAllowed: boolean;
+  /** ADR 0028: new agents work at once ("open") or wait for an administrator ("approval"). */
+  oauthRegistration: McpOAuthRegistration;
+  /** ADR 0028: hosts an agent may return to; empty = any https host, localhost or app link. */
+  oauthRedirectHosts: string[];
+  /** ADR 0028: the longest an agent's access may last, in days. */
+  oauthMaxGrantDays: number;
   updatedBy: string | null;
   updatedAt: number | null;
 }
+
+export type McpOAuthRegistration = "open" | "approval";
 
 export interface McpOverview {
   settings: McpSettings;
@@ -188,6 +200,8 @@ export interface McpOverview {
    * (`source: "env"`). Otherwise the UI uses its own origin.
    */
   endpoint: { path: string; url: string | null; source: "settings" | "env" | null };
+  /** Where agents sign in (ADR 0028), or why they can't yet. */
+  oauth: { issuer: string | null; metadataUrl: string | null; problem: string | null };
   tools: McpTool[];
 }
 
@@ -202,6 +216,11 @@ export interface McpSettingsUpdate {
   actionToolkits?: AiToolkit[];
   actionMaxTier?: AiActionTier;
   approvalWaitSeconds?: number;
+  oauthEnabled?: boolean;
+  oauthPatsAllowed?: boolean;
+  oauthRegistration?: McpOAuthRegistration;
+  oauthRedirectHosts?: string[];
+  oauthMaxGrantDays?: number;
 }
 
 export function getMcpOverview(): Promise<McpOverview> {
@@ -210,4 +229,50 @@ export function getMcpOverview(): Promise<McpOverview> {
 
 export function updateMcpSettings(update: McpSettingsUpdate): Promise<McpOverview> {
   return api.put<McpOverview>("/agents/mcp", update);
+}
+
+// --- MCP sign-in with OAuth (ADR 0028 §5) -----------------------------------
+
+export type McpOAuthClientStatus = "allowed" | "pending" | "blocked";
+
+/** An agent that registered itself to sign people in. Its name is its own claim. */
+export interface McpOAuthClient {
+  id: string;
+  name: string;
+  status: McpOAuthClientStatus;
+  /** Hosts (or app links) it returns to after sign-in. */
+  returnsTo: string[];
+  clientUri: string | null;
+  /** People with live access through it. */
+  people: number;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface McpOAuthGrantSummary {
+  id: string;
+  clientId: string;
+  clientName: string;
+  user: { id: string; email: string | null; username: string | null; displayName: string | null };
+  createdAt: number | null;
+  expiresAt: number | null;
+  lastUsedAt: number | null;
+}
+
+export interface McpOAuthOverview {
+  clients: McpOAuthClient[];
+  grants: McpOAuthGrantSummary[];
+}
+
+export function getMcpOAuth(): Promise<McpOAuthOverview> {
+  return api.get<McpOAuthOverview>("/agents/mcp/oauth");
+}
+
+/** Approve a waiting agent, or block one (which revokes everyone's access through it). */
+export function setMcpOAuthClientStatus(id: string, status: Exclude<McpOAuthClientStatus, "pending">): Promise<{ id: string; status: McpOAuthClientStatus }> {
+  return api.put<{ id: string; status: McpOAuthClientStatus }>(`/agents/mcp/oauth/clients/${encodeURIComponent(id)}`, { status });
+}
+
+export function revokeMcpOAuthGrant(id: string): Promise<{ id: string }> {
+  return api.delete<{ id: string }>(`/agents/mcp/oauth/grants/${encodeURIComponent(id)}`);
 }
