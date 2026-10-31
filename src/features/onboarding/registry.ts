@@ -32,6 +32,8 @@ export const NON_GUIDED_ROUTE_INVENTORY = [
   "/login",
   "/auth/sso/callback",
   "/login/sso-complete",
+  // The consent step of an agent signing in to MCP (ADR 0028): part of a sign-in, never toured.
+  "/preferences/connect",
   "/explain-popout",
   "/logs",
   "/metrics",

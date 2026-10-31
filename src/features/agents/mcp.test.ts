@@ -11,6 +11,9 @@ import {
   mcpEndpointUrl,
   parseOrigins,
   parsePublicUrl,
+  parseRedirectHosts,
+  mcpConnectMode,
+  mcpSignInSnippets,
 } from "./mcp";
 
 function tool(overrides: Partial<McpTool>): McpTool {
@@ -145,3 +148,52 @@ describe("parseOrigins", () => {
     expect(parseOrigins("  \n ")).toEqual({ origins: [], invalid: [] });
   });
 });
+
+describe("parseRedirectHosts", () => {
+  it("keeps hosts and wildcard subdomains, lowercased and deduplicated", () => {
+    expect(parseRedirectHosts("Agent.example.com\n*.trusted.example, agent.example.com localhost")).toEqual({ hosts: ["agent.example.com", "*.trusted.example", "localhost"], invalid: [] });
+  });
+
+  it("flags URLs, ports and odd patterns", () => {
+    expect(parseRedirectHosts("https://agent.example.com example.com:443 *example.com a..b").invalid).toEqual(["https://agent.example.com", "example.com:443", "*example.com", "a..b"]);
+    expect(parseRedirectHosts("   ")).toEqual({ hosts: [], invalid: [] });
+  });
+});
+
+describe("mcpConnectMode", () => {
+  it("is tokens only until sign-in is on with a usable address", () => {
+    expect(mcpConnectMode({ oauthEnabled: false, oauthPatsAllowed: false }, "https://chouse.corp")).toBe("tokens");
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: true }, null)).toBe("tokens");
+  });
+
+  it("follows How agents connect once sign-in is on", () => {
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: true }, "https://chouse.corp")).toBe("both");
+    expect(mcpConnectMode({ oauthEnabled: true, oauthPatsAllowed: false }, "https://chouse.corp")).toBe("sign-in");
+  });
+});
+
+describe("mcpSignInSnippets", () => {
+  const signIn = mcpSignInSnippets("https://chouse.corp/mcp");
+
+  it("has sign-in setup for every client that never carries a token", () => {
+    expect(Object.keys(signIn).sort()).toEqual(mcpClientSnippets("https://chouse.corp/mcp").map((s) => s.id).sort());
+    for (const snippet of Object.values(signIn)) {
+      expect(snippet.code).not.toMatch(/Authorization|Bearer|CH_HOUSE_PAT|headers/);
+      expect(snippet.then.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("adds each client the way it signs in", () => {
+    expect(signIn["claude-code"].code).toBe("claude mcp add --transport http chouse https://chouse.corp/mcp");
+    expect(signIn.codex.code).toBe("codex mcp add chouse --url https://chouse.corp/mcp\ncodex mcp login chouse");
+    expect(JSON.parse(signIn.cursor.code)).toEqual({ mcpServers: { chouse: { url: "https://chouse.corp/mcp" } } });
+    expect(JSON.parse(signIn.vscode.code)).toEqual({ servers: { chouse: { type: "http", url: "https://chouse.corp/mcp" } } });
+    expect(JSON.parse(signIn.opencode.code).mcp.chouse).toEqual({ type: "remote", url: "https://chouse.corp/mcp", enabled: true, timeout: 60000 });
+  });
+
+  it("points curl at the discovery metadata, keeping a base path", () => {
+    expect(signIn.curl.code).toContain("https://chouse.corp/.well-known/oauth-protected-resource/mcp");
+    expect(mcpSignInSnippets("https://corp.example/chouse/mcp").curl.code).toContain("https://corp.example/.well-known/oauth-protected-resource/chouse/mcp");
+  });
+});
+

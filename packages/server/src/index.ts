@@ -15,6 +15,7 @@ import { requestId } from "./middleware/requestId";
 import { logger, requestLogger } from "./utils/logger";
 import { createMcpApp } from "./mcp";
 import { buildMcpDeps, MCP_PATH } from "./mcp/server";
+import { createOAuthRoutes } from "./mcp/oauth/routes";
 import { registerInProcessApi } from "./services/ai/registry/inProcessApi";
 import { flushUsageWrites, pruneAiUsage } from "./services/ai/usage";
 import { legacyMcpEnvKeys } from "./mcp/settings";
@@ -264,6 +265,28 @@ app.use('/api/ai/*', rateLimiter({
   keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
 }));
 
+// MCP OAuth (ADR 0028): agents register and exchange tokens without signing in,
+// so these are limited per address. Registration counts in the database so the
+// limit holds across replicas.
+app.use('/oauth/register', rateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  keyGenerator: rateLimitClientKey,
+  store: new DbRateLimitStore('oauth-register:', 60 * 60 * 1000),
+}));
+app.use('/oauth/*', rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  keyGenerator: rateLimitClientKey,
+}));
+app.use('/.well-known/*', rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 300,
+  keyGenerator: rateLimitClientKey,
+}));
+
 // General API endpoints: 1000 requests per minute per user/IP
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute
@@ -283,6 +306,9 @@ app.route("/api", api);
 // in-process with the caller's PAT, so they inherit the same authn/authz as
 // the UI and CLI.
 app.route(MCP_PATH, createMcpApp(buildMcpDeps(app)).app);
+// Agents sign in to MCP with OAuth (ADR 0028): discovery under /.well-known and
+// the authorization server under /oauth. Everything answers 404 until OAuth is on.
+app.route("/", createOAuthRoutes());
 // The assistant's CHouse management tools call the API in-process as the
 // chatting user (ADR 0019), the same way MCP tools do with a PAT.
 registerInProcessApi(app);

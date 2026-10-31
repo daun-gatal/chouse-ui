@@ -1,12 +1,13 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 169 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 176 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
 | Sign-in | `auth.login`, `auth.logout`, `auth.login_failed`, `auth.password_change`, `auth.sso_login`, `auth.sso_login_failed` |
 | Personal access tokens | `pat.create`, `pat.revoke`, `pat.rotate`, `pat.write_policy_update` |
+| MCP sign-in (OAuth) | `oauth.client_register`, `oauth.client_approve`, `oauth.client_block`, `oauth.grant_create`, `oauth.grant_deny`, `oauth.grant_revoke`, `oauth.token_reuse` |
 | MCP | `mcp.tool_call` |
 | Users | `user.create`, `user.update`, `user.delete`, `user.role_assign`, `user.role_revoke`, `user.sso_identity_unlink` |
 | Single sign-on | `sso.settings_update`, `sso.provider_create`, `sso.provider_update`, `sso.provider_delete`, `sso.provider_test`, `sso.user_provision`, `sso.identity_link` |

@@ -170,3 +170,15 @@ describe("middleware PAT wiring", () => {
     expect(() => requireJwtSession(legacyContext as any)).not.toThrow();
   });
 });
+
+describe("verifyBearer and OAuth access tokens (ADR 0028)", () => {
+  it("refuses one unless the caller allows OAuth, without looking it up", async () => {
+    await expect(verifyBearer("ch_oat_anything")).rejects.toThrow("only work on the MCP endpoint");
+    await expect(verifyBearer("ch_oat_anything", { allowOAuth: false })).rejects.toThrow("only work on the MCP endpoint");
+  });
+
+  it("fails closed on an unknown one even where OAuth is allowed", async () => {
+    await expect(verifyBearer("ch_oat_unknown", { allowOAuth: true })).rejects.toThrow("Invalid OAuth access token");
+  });
+});
+

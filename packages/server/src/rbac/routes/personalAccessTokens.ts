@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   createPat,
   listPats,
+  ownsLiveKey,
   revokePat,
   rotatePat,
 } from "../services/personalAccessTokens";
@@ -194,9 +195,9 @@ patRoutes.post("/:id/rotate", async (c) => {
   );
 });
 
-/** The caller's own, live token (the same owner scope as revoke and rotate), or 404. */
+/** The caller's own, live token or agent grant (ADR 0028), or 404. */
 async function ownToken(userId: string, id: string): Promise<void> {
-  if (!(await listPats(userId)).some((token) => token.id === id)) throw AppError.notFound("Token not found");
+  if (!(await ownsLiveKey(userId, id))) throw AppError.notFound("Token not found");
 }
 
 /**

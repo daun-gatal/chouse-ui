@@ -27,6 +27,7 @@ import { AI_ACTION_INDEX_NAMES, AI_ACTION_TABLE_NAMES, AI_EVAL_INDEX_NAMES, AI_E
 import { parseDashboardDocument } from "../../services/dashboards/legacy";
 import { AI_ACTION_GRANT_INDEX_NAMES, AI_ACTION_GRANT_TABLE_NAMES, AI_ACTION_TIER_COLUMNS, MCP_TOKEN_POLICY_TABLE_NAMES } from "./aiAssistantSchema";
 import { ALERT_EVENT_COLUMNS, NOTIFY_INDEX_NAMES, NOTIFY_TABLE_NAMES } from "./notifySchema";
+import { API_KEY_OAUTH_COLUMNS, MCP_OAUTH_INDEX_NAMES, MCP_OAUTH_TABLE_NAMES } from "./mcpOAuthSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -537,6 +538,18 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const c of ALERT_EVENT_COLUMNS) expect(await h.columnExists("alert_events", c.name)).toBe(true);
     const unfilled = await h.rawAll(sql`SELECT COUNT(*) AS n FROM alert_events WHERE source IS NULL`);
     expect(Number(unfilled[0]?.n ?? 0)).toBe(0);
+  },
+  "1.75.0": async () => {
+    // ADR 0028: MCP OAuth — registered agents, sign-ins in progress, hashed tokens; every token row is a PAT or an OAuth grant.
+    expect(MCP_OAUTH_TABLE_NAMES).toEqual(["oauth_clients", "oauth_requests", "oauth_tokens"]);
+    for (const t of MCP_OAUTH_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of MCP_OAUTH_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["name", "redirect_uris", "status", "client_uri", "software_id", "last_used_at", "decided_by", "decided_at"]) expect(await h.columnExists("oauth_clients", c)).toBe(true);
+    for (const c of ["client_id", "redirect_uri", "state", "code_challenge", "resource", "user_id", "grant_id", "code_hash", "code_expires_at", "code_used_at", "decision", "expires_at"]) expect(await h.columnExists("oauth_requests", c)).toBe(true);
+    for (const c of ["token_hash", "grant_id", "kind", "expires_at", "used_at"]) expect(await h.columnExists("oauth_tokens", c)).toBe(true);
+    for (const c of API_KEY_OAUTH_COLUMNS) expect(await h.columnExists("rbac_api_keys", c.name)).toBe(true);
+    const unkinded = await h.rawAll(sql`SELECT COUNT(*) AS n FROM rbac_api_keys WHERE kind IS NULL OR kind NOT IN ('pat', 'oauth')`);
+    expect(Number(unkinded[0]?.n ?? 0)).toBe(0);
   },
 };
 
@@ -1460,6 +1473,54 @@ for (const dialect of DIALECTS) {
       const row = await h.rawAll(sql`SELECT source FROM alert_events WHERE id = 'e-unknown'`);
       expect(String(row[0].source)).toBe("scheduled_query");
       expect(await h.rowCount("alert_events")).toBe(6);
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
+    });
+  });
+
+  // ADR 0028: personal access tokens made before 1.75.0 stay personal access
+  // tokens (kind 'pat', no agent), new rows default the same way, and grants
+  // and their tokens go when the grant is deleted; re-running changes nothing.
+  describe(`migrations · ADR 0028 MCP OAuth [${dialect}]`, () => {
+    const PAT_ID = "pat-before-oauth";
+    let userId = "";
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.74.0" });
+      for (const c of API_KEY_OAUTH_COLUMNS) expect(await h.columnExists("rbac_api_keys", c.name)).toBe(false);
+      userId = await insertUser("oauth-upgrade");
+      await h.rawRun(sql`INSERT INTO rbac_api_keys (id, user_id, name, key_hash, key_prefix, scopes)
+        VALUES (${PAT_ID}, ${userId}, 'ci', 'hash-before-oauth', 'abcd1234', '[]')`);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("keeps existing tokens as personal access tokens", async () => {
+      const rows = await h.rawAll(sql`SELECT kind, oauth_client_id FROM rbac_api_keys WHERE id = ${PAT_ID}`);
+      expect(rows.length).toBe(1);
+      expect(String(rows[0].kind)).toBe("pat");
+      expect(rows[0].oauth_client_id ?? null).toBeNull();
+      for (const t of MCP_OAUTH_TABLE_NAMES) expect(await h.rowCount(t)).toBe(0);
+    });
+
+    it("defaults new rows to a personal access token and cascades a grant's tokens", async () => {
+      await h.rawRun(sql`INSERT INTO rbac_api_keys (id, user_id, name, key_hash, key_prefix, scopes)
+        VALUES ('pat-after-oauth', ${userId}, 'later', 'hash-after-oauth', 'efgh5678', '[]')`);
+      const later = await h.rawAll(sql`SELECT kind FROM rbac_api_keys WHERE id = 'pat-after-oauth'`);
+      expect(String(later[0].kind)).toBe("pat");
+      await h.rawRun(sql`INSERT INTO oauth_clients (id, name, redirect_uris, status, created_at) VALUES ('client-1', 'Agent', '["https://agent.example/cb"]', 'allowed', 1)`);
+      await h.rawRun(sql`INSERT INTO rbac_api_keys (id, user_id, name, key_hash, key_prefix, scopes, kind, oauth_client_id)
+        VALUES ('grant-1', ${userId}, 'Agent', 'hash-grant-1', 'oauth', '[]', 'oauth', 'client-1')`);
+      await h.rawRun(sql`INSERT INTO oauth_tokens (token_hash, grant_id, kind, expires_at, created_at) VALUES ('t-access', 'grant-1', 'access', 9, 1), ('t-refresh', 'grant-1', 'refresh', 9, 1)`);
+      expect(await h.rowCount("oauth_tokens")).toBe(2);
+      await h.rawRun(sql`DELETE FROM rbac_api_keys WHERE id = 'grant-1'`);
+      expect(await h.rowCount("oauth_tokens")).toBe(0);
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.75.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      const rows = await h.rawAll(sql`SELECT kind FROM rbac_api_keys WHERE id = ${PAT_ID}`);
+      expect(String(rows[0].kind)).toBe("pat");
       expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
     });
   });

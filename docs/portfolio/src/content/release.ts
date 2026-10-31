@@ -28,15 +28,13 @@ export interface Release {
 }
 
 export const RELEASE: Release = {
-  version: "3.16",
+  version: "3.17",
   kind: "minor",
-  summary: "Meet Chobi, the CHouse buddy: AI that acts across CHouse, checked by tier with Undo and approved right from Slack, Google Chat or Telegram — and dashboards that show what changed and why it spiked.",
+  summary: "AI agents sign in to CHouse MCP with only the URL: you choose what they may do, and they run as you with your own access.",
   highlights: [
-    { label: "Meet Chobi", href: "/docs/chobi/" },
-    { label: "AI changes with Undo", href: "/docs/ai-approvals/#tiers" },
-    { label: "Approve from chat", href: "/docs/chat-apps/" },
-    { label: "Dashboard canvas", href: "/docs/dashboards/#the-canvas" },
-    { label: "Explain this spike", href: "/docs/dashboards/#annotations-and-notes" },
+    { label: "Sign in to MCP", href: "/docs/mcp/#sign-in-with-oauth" },
+    { label: "Connected apps", href: "/docs/personal-access-tokens/#connected-apps" },
+    { label: "Connect an agent", href: "/docs/guide-connect-an-agent/" },
   ],
 };
 

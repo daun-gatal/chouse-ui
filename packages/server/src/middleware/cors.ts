@@ -12,13 +12,28 @@ export interface CorsOptions {
   strictMode?: boolean;
   /** Paths that bypass origin check (e.g., health checks) */
   bypassPaths?: string[];
+  /**
+   * Paths any website may call without credentials: `Access-Control-Allow-Origin: *`
+   * and never `Allow-Credentials`. For endpoints that take no cookies, such as
+   * the MCP OAuth metadata, registration, token and revocation (ADR 0028).
+   */
+  publicPaths?: string[];
 }
+
+/** The MCP OAuth endpoints agents call from the browser (ADR 0028 §6). */
+export const OAUTH_PUBLIC_PATHS = [
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-authorization-server",
+  "/oauth/register",
+  "/oauth/token",
+  "/oauth/revoke",
+];
 
 const defaultOptions: CorsOptions = {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Session-ID", "X-Connection-Id"],
-  exposedHeaders: ["X-Session-ID"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Session-ID", "X-Connection-Id", "MCP-Protocol-Version"],
+  exposedHeaders: ["X-Session-ID", "WWW-Authenticate"],
   credentials: true,
   maxAge: 86400,
   strictMode: process.env.NODE_ENV === "production",
@@ -29,6 +44,7 @@ const defaultOptions: CorsOptions = {
   // The MCP endpoint applies its own Origin allowlist (AI Governance › MCP), which
   // must be the only one: CORS_ORIGIN lists the UI, not agent hosts.
   bypassPaths: ["/api/health", "/api/rbac/health", "/api/rbac/status", "/auth/sso/saml/acs", "/mcp"],
+  publicPaths: OAUTH_PUBLIC_PATHS,
 };
 
 /**
@@ -113,6 +129,18 @@ export function corsMiddleware(options: CorsOptions = {}) {
     const hasOrigin = !!origin;
 
     // Check if path bypasses origin check (health endpoints)
+    if (opts.publicPaths?.some((p) => path === p || path.startsWith(`${p}/`))) {
+      c.header("Access-Control-Allow-Origin", "*");
+      if (c.req.method === "OPTIONS") {
+        c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Protocol-Version");
+        c.header("Access-Control-Max-Age", "86400");
+        return c.body(null, 204);
+      }
+      await next();
+      return;
+    }
+
     const isBypassPath = opts.bypassPaths?.some(p => path.startsWith(p)) ?? false;
 
     // Determine if origin is allowed

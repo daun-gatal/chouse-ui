@@ -108,7 +108,7 @@ export default function QuickStart() {
                   </span>
                   {!isLast && <span className="w-px flex-1 bg-ink-500" aria-hidden />}
                 </div>
-                <div className="flex flex-col gap-5 pb-2">
+                <div className="flex min-w-0 flex-col gap-5 pb-2">
                   <div className="flex flex-col gap-1">
                     <h3 className="text-display-md font-semibold text-paper">{step.title}</h3>
                     <p className="text-sm text-paper-muted">{step.description}</p>

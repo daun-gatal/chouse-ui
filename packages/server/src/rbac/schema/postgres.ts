@@ -255,6 +255,8 @@ export const apiKeys = pgTable('rbac_api_keys', {
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  kind: text('kind').notNull().default('pat'),
+  oauthClientId: text('oauth_client_id'),
 }, (table) => ({
   userIdx: index('api_keys_user_idx').on(table.userId),
   keyHashIdx: uniqueIndex('api_keys_hash_idx').on(table.keyHash),

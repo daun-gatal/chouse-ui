@@ -27,12 +27,16 @@ From the token's menu: **Rotate token** issues a new secret for the same token (
 
 > **Tip:** Create one token per consumer — each CI pipeline, each agent — with the smallest scopes and a sensible expiry, so you can revoke one without breaking the others.
 
+## Connected apps
+
+Agents you connected by [signing in](/docs/mcp/#sign-in-with-oauth) are listed above your tokens. Each works on MCP only, with your live permissions, until it expires or you revoke it. The wrench sets its write tools, the bin revokes it at once (`oauth.grant_revoke`). Signing the same agent in again replaces its earlier access.
+
 ## Where tokens are used
 
 | Consumer | How |
 | --- | --- |
 | [CLI](/docs/cli/) | `chouse auth login` prompts for it (or `--token-stdin` in CI) |
-| [MCP agents](/docs/mcp/) | Read from the `CH_HOUSE_PAT` environment variable or a secret prompt in the client config |
+| [MCP agents](/docs/mcp/) | Read from the `CH_HOUSE_PAT` environment variable or a secret prompt in the client config — or skip the token and [sign in](/docs/mcp/#sign-in-with-oauth) |
 | Scripts | The same `/api/*` endpoints the UI uses, with the bearer header |
 
 Treat a token like a password: it can do whatever its scopes and your roles allow.

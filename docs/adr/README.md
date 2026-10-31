@@ -37,7 +37,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0010](0010-pod-local-state-and-multi-replica-correctness.md) | Pod-local State and Multi-Replica Correctness | Accepted |
 | [0011](0011-personal-access-tokens.md) | Personal Access Tokens for CLI and MCP Machine Auth | Accepted |
 | [0012](0012-chouse-cli.md) | CHouse CLI: Safe Browserless Operations with Go Binary Distribution | Accepted (amended by 0018) |
-| [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017) |
+| [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017, 0028) |
 | [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted (amended by 0017) |
 | [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
 | [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted (amended by 0027) |
@@ -52,6 +52,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0025](0025-ai-write-tiers-assistant-v3-chobi.md) | AI Write Tiers, CHouse Assistant v3 and Chobi | Accepted |
 | [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
 | [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted |
+| [0028](0028-mcp-oauth.md) | Sign In to MCP with OAuth | Accepted |
 
 ## Conventions
 

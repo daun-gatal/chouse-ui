@@ -497,6 +497,15 @@ export const AUDIT_ACTIONS = {
   PAT_ROTATE: 'pat.rotate',
   PAT_WRITE_POLICY_UPDATE: 'pat.write_policy_update',
 
+  // Signing in to MCP with OAuth (ADR 0028)
+  OAUTH_CLIENT_REGISTER: 'oauth.client_register',
+  OAUTH_CLIENT_APPROVE: 'oauth.client_approve',
+  OAUTH_CLIENT_BLOCK: 'oauth.client_block',
+  OAUTH_GRANT_CREATE: 'oauth.grant_create',
+  OAUTH_GRANT_DENY: 'oauth.grant_deny',
+  OAUTH_GRANT_REVOKE: 'oauth.grant_revoke',
+  OAUTH_TOKEN_REUSE: 'oauth.token_reuse',
+
   // MCP server (ADR 0013): one entry per agent-initiated tool call
   MCP_TOOL_CALL: 'mcp.tool_call',
 

@@ -12,6 +12,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Hono } from "hono";
 import { McpToolContext } from "./types";
 import { AGENT_CLIENT_HEADER, INTERNAL_MCP_USER_AGENT } from "../services/agents/clients";
+import { runAsMcpSubrequest } from "./inProcess";
 
 export const MCP_USER_AGENT = INTERNAL_MCP_USER_AGENT;
 
@@ -134,7 +135,8 @@ export class McpApiClient {
     const timeoutMs = options?.timeoutMs ?? this.timeoutMs;
     init.signal = AbortSignal.timeout(timeoutMs);
 
-    const response = await this.proxy.request(url.pathname + url.search, init);
+    // The scope lets an OAuth access token through the API's bearer check for this call only (ADR 0028 §3).
+    const response = await runAsMcpSubrequest(this.ctx.token, async () => this.proxy.request(url.pathname + url.search, init));
     const raw = await response.text();
     if (scope && response.headers.get(AGENT_RECORDED_HEADER) === "1") {
       scope.recorded = true;

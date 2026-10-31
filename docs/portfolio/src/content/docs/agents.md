@@ -6,7 +6,7 @@ screenshot: agents-sessions
 ---
 # AI Governance
 
-**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy. CHouse's own AI — the chat and the AI features — has its own tab, [AI activity](/docs/ai-usage/) (`/ai/usage`): tokens, cost and the data sent to LLM providers. [Guardrails](/docs/ai-guardrails/) (`/ai/guardrails`) control what passes through every AI run and MCP tool result. The model button in the header picks your AI model for the page's AI features, such as Draft with AI.
+**AI Governance** (`/ai`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) — with a [personal access token](/docs/personal-access-tokens/) or by [signing in](/docs/mcp/#sign-in-with-oauth) — or using a token directly: what it read, what it cost, and whether the data it answered from was healthy. CHouse's own AI — the chat and the AI features — has its own tab, [AI activity](/docs/ai-usage/) (`/ai/usage`): tokens, cost and the data sent to LLM providers. [Guardrails](/docs/ai-guardrails/) (`/ai/guardrails`) control what passes through every AI run and MCP tool result. The model button in the header picks your AI model for the page's AI features, such as Draft with AI.
 
 ## Sessions
 
@@ -43,7 +43,7 @@ The list shows one row per policy with everything it applies to. **Edit** reopen
 
 ### How a policy is chosen
 
-Every query an agent runs over MCP, or with a personal access token from the CLI or a script, is checked before it runs. The most specific policy wins:
+Every query an agent runs over MCP (with a token or a sign-in), or with a personal access token from the CLI or a script, is checked before it runs. The most specific policy wins:
 
 1. a policy on the **token** it used;
 2. otherwise the policies on the user's **roles** — when several roles have one, the strictest limit of each kind applies, and *block* beats *warn*;
@@ -56,7 +56,7 @@ A role or token has one policy at a time: picking one that already has a policy 
 
 ## MCP
 
-The **MCP** tab (`/ai/mcp`) turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
+The **MCP** tab (`/ai/mcp`) turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, turns [sign-in for agents](/docs/mcp/#sign-in-with-oauth) on and lists the agents that registered, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl, or just the URL for agents that sign in. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
 
 ## What agents get
 

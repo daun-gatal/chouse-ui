@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { assignAgentPolicy, deleteAgentPolicy, getAgentSession, getAgentSummary, getMcpOverview, listAgentPolicies, listAgentSessions, listPolicyScopes, saveAgentPolicy, setAgentsPaused, updateMcpSettings } from "./agents";
+import { assignAgentPolicy, deleteAgentPolicy, getAgentSession, getAgentSummary, getMcpOAuth, getMcpOverview, listAgentPolicies, listAgentSessions, listPolicyScopes, revokeMcpOAuthGrant, saveAgentPolicy, setAgentsPaused, setMcpOAuthClientStatus, updateMcpSettings } from "./agents";
 
 describe("agents API", () => {
   it("reads sessions and manages policies", async () => {
@@ -65,4 +65,28 @@ describe("agents API", () => {
       { method: "PUT", body: { enabled: true, toolOverrides: { kill_query: true } } },
     ]);
   });
+
+  it("looks after agents that sign people in to MCP", async () => {
+    const seen: Array<{ method: string; path: string; body: unknown }> = [];
+    const oauth = { clients: [{ id: "chc_1", name: "Atlas", status: "pending", returnsTo: ["agent.example"], clientUri: null, people: 0, createdAt: 1, lastUsedAt: null }], grants: [] };
+    server.use(
+      http.get("/api/agents/mcp/oauth", () => HttpResponse.json({ success: true, data: oauth })),
+      http.put("/api/agents/mcp/oauth/clients/chc_1", async ({ request }) => {
+        seen.push({ method: "PUT", path: new URL(request.url).pathname, body: await request.json() });
+        return HttpResponse.json({ success: true, data: { id: "chc_1", status: "allowed" } });
+      }),
+      http.delete("/api/agents/mcp/oauth/grants/g%2F1", ({ request }) => {
+        seen.push({ method: "DELETE", path: new URL(request.url).pathname, body: null });
+        return HttpResponse.json({ success: true, data: { id: "g/1" } });
+      }),
+    );
+    expect(await getMcpOAuth()).toEqual(oauth);
+    expect((await setMcpOAuthClientStatus("chc_1", "allowed")).status).toBe("allowed");
+    await revokeMcpOAuthGrant("g/1");
+    expect(seen).toEqual([
+      { method: "PUT", path: "/api/agents/mcp/oauth/clients/chc_1", body: { status: "allowed" } },
+      { method: "DELETE", path: "/api/agents/mcp/oauth/grants/g%2F1", body: null },
+    ]);
+  });
 });
+

@@ -76,6 +76,8 @@ describe("watch_table", () => {
       checks: [{ type: "freshness", config: { eventTimeColumn: "created_at", maxAgeSeconds: 1800 } }],
     });
     expect(typeof posts[0].body.expiresAt).toBe("number");
-    expect(tool?.describe({ database: "shop", table: "orders", eventTimeColumn: "created_at", until: "2026-10-27T18:00:00Z" })).toContain("until 2026-10-27T18:00:00Z");
+    // A fixed date stops being "in the future" one day, so the test picks one two days ahead.
+    const until = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 + 2 * 86_400_000).toISOString().replace(".000Z", "Z");
+    expect(tool?.describe({ database: "shop", table: "orders", eventTimeColumn: "created_at", until })).toContain(`until ${until}`);
   });
 });

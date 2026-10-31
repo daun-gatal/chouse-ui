@@ -34,8 +34,8 @@ export const MCP_IMPLEMENTATION = {
   version: "2.0.0",
 } as const;
 
-/** Path the endpoint is served on, on the main web port. */
-export const MCP_PATH = "/mcp";
+// Kept in its own module so the OAuth endpoints can name it without loading every tool.
+export { MCP_PATH } from "./path";
 
 export function buildMcpDeps(proxyApi: Hono): McpDeps {
   return {

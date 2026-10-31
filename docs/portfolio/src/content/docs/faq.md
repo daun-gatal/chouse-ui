@@ -65,10 +65,10 @@ Slack, Google Chat, email or any webhook. See [Alerting](/docs/alerting/).
 ## Automation
 
 **CLI or MCP?**
-The [CLI](/docs/cli/) for scripts and CI; [MCP](/docs/mcp/) for AI agents. Both use personal access tokens and the same server rules.
+The [CLI](/docs/cli/) for scripts and CI; [MCP](/docs/mcp/) for AI agents. The CLI uses a personal access token; agents use one too, or [sign in with OAuth](/docs/mcp/#sign-in-with-oauth) once an administrator turns it on. Both follow the same server rules.
 
 **Can agents change things?**
-Only with tools an administrator has switched on in **AI Governance › MCP** — reads are on by default, writes and destructive tools are off — and only within the token owner's permissions. Agent queries also pass [budget policies](/docs/agents/). Agents can propose fixes but there is no tool to approve one.
+Only with tools an administrator has switched on in **AI Governance › MCP** — reads are on by default, writes and destructive tools are off — and only within the permissions of the person whose token it uses or who approved its sign-in. Agent queries also pass [budget policies](/docs/agents/). Agents can propose fixes but there is no tool to approve one.
 
 ## Contributing
 

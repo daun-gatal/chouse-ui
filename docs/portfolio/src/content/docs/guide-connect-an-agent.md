@@ -8,6 +8,8 @@ This guide connects Claude Code (or any MCP client) to CHouse UI with a token th
 2. Check the endpoint shown, e.g. `https://chouse.corp/mcp`. If agents reach CHouse UI on another address, set **Public address**.
 3. Leave the tool defaults — read tools on, everything else off — for now.
 
+> **Agent supports MCP sign-in?** If the administrator also turns on **Sign-in for agents** on that page, skip steps 2 and 3: paste the endpoint into the agent, sign in when the browser opens, pick its write tools and how long it lasts, and **Allow**. → [Sign in with OAuth](/docs/mcp/#sign-in-with-oauth)
+
 ## 2. You: create a narrow token
 
 **Preferences › Personal access tokens › New token**:
@@ -30,6 +32,14 @@ export CH_HOUSE_PAT=ch_pat_…
 claude mcp add --transport http chouse https://chouse.corp/mcp \
   --header "Authorization: Bearer $CH_HOUSE_PAT"
 ```
+@tab Claude Code · sign-in
+With sign-in on, skip the token:
+
+```bash
+claude mcp add --transport http chouse https://chouse.corp/mcp
+```
+
+Then run `/mcp` in Claude Code, pick **chouse** and choose **Authenticate**.
 @tab Any client (via the CLI)
 ```bash
 chouse mcp config claude-code    # or codex, cursor, vscode, opencode

@@ -35,12 +35,16 @@ import {
   filterMcpTools,
   groupMcpTools,
   mcpClientSnippets,
+  mcpSignInSnippets,
+  mcpConnectMode,
   mcpEndpointUrl,
   parseOrigins,
   parsePublicUrl,
+  type McpConnectMode,
   type McpToolFilter,
   type ResolvedMcpEndpoint,
 } from "./mcp";
+import { OAuthAgentsPanel, OAuthSettingsPanel } from "./McpOAuthPanels";
 
 const ACCESS_TONE = { read: "ok", write: "warn", destructive: "bad" } as const;
 const SWITCH_CLASS = "data-[state=checked]:bg-brand data-[state=unchecked]:bg-ink-500";
@@ -117,7 +121,7 @@ function ServerPanel({ overview, endpoint, canManage, save, saving }: { overview
               <CopyButton text={endpoint.url} label="Copy the endpoint URL" />
             </div>
             <p className="mt-1 text-[11px] text-paper-faint">
-              {MCP_ENDPOINT_SOURCE_LABELS[endpoint.source]}. Served on the web port, so agents use the same Ingress and TLS as the UI; personal access tokens only.
+              {MCP_ENDPOINT_SOURCE_LABELS[endpoint.source]}. Served on the web port, so agents use the same Ingress and TLS as the UI; {settings.oauthEnabled ? (settings.oauthPatsAllowed ? "agents sign in, or use a personal access token" : "agents sign in; personal access tokens are off") : "personal access tokens only"}.
               {!settings.enabled && " Answers 404 until it is turned on."}
             </p>
             {endpoint.local && (
@@ -256,31 +260,62 @@ function WriteToolsPanel({ overview, canManage, save, saving }: { overview: McpO
   );
 }
 
-function ConnectPanel({ url }: { url: string }): ReactElement {
+const SIGN_IN_TAB = "sign-in";
+
+function SnippetBlock({ target, code, copyLabel, note }: { target: string; code: string; copyLabel: string; note?: string }): ReactElement {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-paper-muted">{target}</span>
+        <CopyButton text={code} label={copyLabel} />
+      </div>
+      <pre className="mt-1 max-h-72 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{code}</pre>
+      {note && <p className="mt-1.5 text-[11px] text-paper-faint">{note}</p>}
+    </div>
+  );
+}
+
+function ConnectPanel({ url, mode }: { url: string; mode: McpConnectMode }): ReactElement {
   const navigate = useNavigate();
   const snippets = useMemo(() => mcpClientSnippets(url), [url]);
+  const signInSnippets = useMemo(() => mcpSignInSnippets(url), [url]);
+  const signIn = mode !== "tokens";
+  const tokens = mode !== "sign-in";
+  const meta = mode === "sign-in"
+    ? <>Agents connect by signing in: add the server without a token and the agent opens CHouse in your browser. Personal access tokens are turned off for MCP.</>
+    : mode === "both"
+      ? <>Add the server without a token and the agent opens CHouse in your browser to sign in. Agents without sign-in, CI and scripts use a personal access token exported as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>
+      : <>Mint a personal access token, then export it as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>;
   return (
     <Panel
       title="Connect an agent"
-      meta={<>Mint a personal access token, then export it as <Mono>{MCP_TOKEN_ENV}</Mono> — tokens never go in config files.</>}
-      actions={<Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate("/preferences")}><KeyRound className="mr-1 h-3 w-3" /> Personal access tokens</Button>}
+      meta={meta}
+      actions={tokens ? <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => navigate("/preferences")}><KeyRound className="mr-1 h-3 w-3" /> Personal access tokens</Button> : undefined}
     >
-      <Tabs defaultValue={snippets[0].id}>
+      <Tabs key={mode} defaultValue={snippets[0].id}>
         <TabsList className="h-9 flex-wrap rounded-xs border border-ink-500 bg-ink-200 p-0.5">
           {snippets.map((s) => <TabsTrigger key={s.id} value={s.id} className={TAB_CLASS}>{s.label}</TabsTrigger>)}
+          {signIn && <TabsTrigger value={SIGN_IN_TAB} className={TAB_CLASS}>Other agents</TabsTrigger>}
         </TabsList>
-        {snippets.map((s) => (
-          <TabsContent key={s.id} value={s.id} className="mt-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-paper-muted">{s.target}</span>
-              <CopyButton text={s.code} label={`Copy the ${s.label} setup`} />
-            </div>
-            <pre className="mt-1 max-h-72 overflow-auto rounded-xs border border-ink-500 bg-ink-300 p-3 font-mono text-[11px] leading-relaxed text-paper">{s.code}</pre>
+        {snippets.map((s) => {
+          const viaSignIn = signInSnippets[s.id];
+          return (
+            <TabsContent key={s.id} value={s.id} className="mt-3 space-y-4">
+              {signIn && <SnippetBlock target={`Sign in · ${viaSignIn.target}`} code={viaSignIn.code} copyLabel={`Copy the ${s.label} sign-in setup`} note={viaSignIn.then} />}
+              {tokens && <SnippetBlock target={signIn ? `Or with a personal access token · ${s.target}` : s.target} code={s.code} copyLabel={`Copy the ${s.label} setup`} />}
+            </TabsContent>
+          );
+        })}
+        {signIn && (
+          <TabsContent value={SIGN_IN_TAB} className="mt-3">
+            <SnippetBlock target="Paste this as the server URL in any agent that supports MCP sign-in" code={url} copyLabel="Copy the MCP URL for sign-in" note="The agent opens CHouse in your browser to sign in and choose what it may do. No token to copy." />
           </TabsContent>
-        ))}
+        )}
       </Tabs>
       <p className="mt-3 text-[11px] text-paper-faint">
-        The CLI prints the same setup for your profile: <Mono>chouse mcp config claude-code</Mono>. Each token sees only the tools below that are on and that its permissions allow.
+        {tokens
+          ? <>The CLI prints the same token setup for your profile: <Mono>chouse mcp config claude-code</Mono>. Each agent sees only the tools below that are on and that its permissions allow.</>
+          : "Each agent sees only the tools below that are on and that the signed-in person's permissions allow."}
       </p>
     </Panel>
   );
@@ -492,7 +527,9 @@ export function McpPanel(): ReactElement {
         </div>
       )}
       <ServerPanel overview={overview.data} endpoint={endpoint} canManage={canManage} save={save} saving={update.isPending} />
-      <ConnectPanel url={endpoint.url} />
+      <OAuthSettingsPanel overview={overview.data} canManage={canManage} save={save} saving={update.isPending} />
+      <OAuthAgentsPanel canManage={canManage} oauthEnabled={overview.data.settings.oauthEnabled} />
+      <ConnectPanel url={endpoint.url} mode={mcpConnectMode(overview.data.settings, overview.data.oauth.issuer)} />
       <WriteToolsPanel overview={overview.data} canManage={canManage} save={save} saving={update.isPending} />
       <ToolsPanel tools={overview.data.tools} canManage={canManage} save={save} saving={update.isPending} />
     </div>

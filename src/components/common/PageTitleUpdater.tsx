@@ -17,6 +17,7 @@ const ROUTE_TITLES: Record<string, string> = {
     "/fleet": "Fleet",
     "/doctor": "Doctor",
     "/ai": "AI Governance",
+    "/preferences/connect": "Connect an agent",
     "/preferences": "Preferences",
     "/login": "Login",
 };

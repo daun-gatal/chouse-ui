@@ -43,6 +43,8 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
+  // An agent's sign-in to MCP (ADR 0028) passes through here on its way to the consent page.
+  const connectingAgent = redirectTo.startsWith("/preferences/connect");
   const ssoError = searchParams.get("ssoError");
 
   const { login, isLoading, error, isAuthenticated, clearError } = useRbacStore();
@@ -151,7 +153,9 @@ export default function Login() {
                   Welcome back.
                 </h1>
                 <p className="mt-1 text-sm text-paper-muted">
-                  Sign in to see every ClickHouse cluster you can reach.
+                  {connectingAgent
+                    ? "Sign in to connect an agent to CHouse. You'll choose what it can do next."
+                    : "Sign in to see every ClickHouse cluster you can reach."}
                 </p>
               </div>
             </div>

@@ -25,6 +25,9 @@ type AnyDb = any;
 /** Token prefix: greppable, secret-scanner friendly, distinct from JWTs. */
 export const PAT_PREFIX = "ch_pat_";
 
+/** `rbac_api_keys.kind` of a personal access token; agents' OAuth grants are 'oauth' (ADR 0028). */
+export const PAT_KIND = "pat";
+
 /** Display prefix length (first N chars of the encoded secret). */
 const PAT_DISPLAY_PREFIX_LENGTH = 8;
 
@@ -215,10 +218,26 @@ export async function listPats(userId: string): Promise<PatInfo[]> {
   const rows = await db
     .select()
     .from(schema.apiKeys)
-    .where(and(eq(schema.apiKeys.userId, userId), isNull(schema.apiKeys.revokedAt)))
+    .where(and(eq(schema.apiKeys.userId, userId), eq(schema.apiKeys.kind, PAT_KIND), isNull(schema.apiKeys.revokedAt)))
     .orderBy(desc(schema.apiKeys.createdAt));
 
   return rows.map(toPatInfo);
+}
+
+/**
+ * Whether `id` is one of the user's live credentials of either kind — a
+ * personal access token or an agent's OAuth grant (ADR 0028) — so a write
+ * policy can be read and set for both.
+ */
+export async function ownsLiveKey(userId: string, id: string): Promise<boolean> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  const rows = await db
+    .select({ id: schema.apiKeys.id })
+    .from(schema.apiKeys)
+    .where(and(eq(schema.apiKeys.id, id), eq(schema.apiKeys.userId, userId), isNull(schema.apiKeys.revokedAt)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**
@@ -232,7 +251,7 @@ export async function revokePat(userId: string, id: string): Promise<PatInfo | n
   const rows = await db
     .select()
     .from(schema.apiKeys)
-    .where(and(eq(schema.apiKeys.id, id), eq(schema.apiKeys.userId, userId)))
+    .where(and(eq(schema.apiKeys.id, id), eq(schema.apiKeys.userId, userId), eq(schema.apiKeys.kind, PAT_KIND)))
     .limit(1);
   if (rows.length === 0) return null;
 
@@ -260,7 +279,7 @@ export async function rotatePat(userId: string, id: string): Promise<CreatedPat 
   const rows = await db
     .select()
     .from(schema.apiKeys)
-    .where(and(eq(schema.apiKeys.id, id), eq(schema.apiKeys.userId, userId)))
+    .where(and(eq(schema.apiKeys.id, id), eq(schema.apiKeys.userId, userId), eq(schema.apiKeys.kind, PAT_KIND)))
     .limit(1);
   if (rows.length === 0) return null;
 
@@ -361,6 +380,7 @@ export async function verifyPatToken(rawToken: string): Promise<VerifiedPat> {
     id: string;
     userId: string;
     name: string;
+    kind: string;
     scopes: unknown;
     expiresAt: unknown;
     revokedAt: unknown;
@@ -371,6 +391,7 @@ export async function verifyPatToken(rawToken: string): Promise<VerifiedPat> {
         id: schema.apiKeys.id,
         userId: schema.apiKeys.userId,
         name: schema.apiKeys.name,
+        kind: schema.apiKeys.kind,
         scopes: schema.apiKeys.scopes,
         expiresAt: schema.apiKeys.expiresAt,
         revokedAt: schema.apiKeys.revokedAt,
@@ -388,18 +409,33 @@ export async function verifyPatToken(rawToken: string): Promise<VerifiedPat> {
   }
 
   const row = rows[0];
-  if (row.revokedAt !== null && row.revokedAt !== undefined) {
+  if (row.kind !== PAT_KIND) {
     throw AppError.unauthorized(PAT_INVALID_MESSAGE);
+  }
+  return resolveKeyIdentity(row, PAT_INVALID_MESSAGE);
+}
+
+/**
+ * The live identity behind a credential row (a PAT or an agent's OAuth grant):
+ * fails closed when it is revoked, expired, or its owner is gone or inactive,
+ * and intersects the owner's live permissions with the row's scopes.
+ */
+export async function resolveKeyIdentity(
+  row: { id: string; userId: string; name: string; scopes: unknown; expiresAt: unknown; revokedAt: unknown },
+  invalidMessage: string,
+): Promise<VerifiedPat> {
+  if (row.revokedAt !== null && row.revokedAt !== undefined) {
+    throw AppError.unauthorized(invalidMessage);
   }
 
   const expiresAt = toDateOrNull(row.expiresAt);
   if (expiresAt !== null && expiresAt.getTime() <= Date.now()) {
-    throw AppError.unauthorized(PAT_INVALID_MESSAGE);
+    throw AppError.unauthorized(invalidMessage);
   }
 
   const owner = await getUserById(row.userId);
   if (!owner || !owner.isActive) {
-    throw AppError.unauthorized(PAT_INVALID_MESSAGE);
+    throw AppError.unauthorized(invalidMessage);
   }
 
   const [roles, livePermissions] = await Promise.all([
