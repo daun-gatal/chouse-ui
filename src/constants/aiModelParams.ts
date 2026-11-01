@@ -311,7 +311,7 @@ export interface NumberParamField {
 
 /** Numeric fields rendered as clamped number inputs, in display order. */
 export const NUMBER_PARAM_FIELDS: NumberParamField[] = [
-  { key: 'temperature', label: 'Temperature', description: 'Sampling randomness. Empty keeps the default of 0.', group: 'Sampling', step: 0.1, min: 0, max: 2, placeholder: '0' },
+  { key: 'temperature', label: 'Temperature', description: 'Sampling randomness. Empty keeps the default of 0. Sampling settings are not sent to models that reject them (Claude after 4.6, OpenAI reasoning models).', group: 'Sampling', step: 0.1, min: 0, max: 2, placeholder: '0' },
   { key: 'topP', label: 'Top P', description: 'Nucleus sampling probability mass.', group: 'Sampling', step: 0.05, min: 0, max: 1, placeholder: 'provider default' },
   { key: 'topK', label: 'Top K', description: 'Sample from the K most likely tokens.', group: 'Sampling', step: 1, min: 1, max: 500, placeholder: 'provider default' },
   { key: 'frequencyPenalty', label: 'Frequency penalty', description: 'Penalize tokens by their frequency so far.', group: 'Sampling', step: 0.1, min: -2, max: 2, placeholder: '0' },
