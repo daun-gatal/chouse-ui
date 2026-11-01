@@ -24,6 +24,7 @@ import type { AiConfigWithKey } from "../rbac/services/aiModels";
 import { ProviderType, PROVIDER_TYPES, PROVIDER_REQUIREMENTS, isValidProviderType } from "../rbac/constants/aiProviders";
 import type { AiModelParams } from "../rbac/constants/aiModelParams";
 import { applyContextWindow, profileContextWindow } from "./ai/modelProfile";
+import { samplingFields } from "./ai/sampling";
 
 // ============================================
 // Types
@@ -208,15 +209,16 @@ function requireBaseUrl(config: { baseUrl?: string }, providerType: ProviderType
 
 function buildOpenAiModel(config: ProviderInitConfig, modelName: string): BaseChatModel {
     const p = config.params ?? {};
+    const s = samplingFields(p, modelName);
     return new ChatOpenAI({
         callbacks: config.callbacks,
         model: modelName,
         apiKey: config.apiKey || undefined,
         configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
-        temperature: p.temperature ?? 0,
-        topP: p.topP,
-        frequencyPenalty: p.frequencyPenalty,
-        presencePenalty: p.presencePenalty,
+        temperature: s.temperature,
+        topP: s.topP,
+        frequencyPenalty: s.frequencyPenalty,
+        presencePenalty: s.presencePenalty,
         maxTokens: p.maxTokens,
         stopSequences: p.stopSequences,
         verbosity: p.verbosity,
@@ -232,7 +234,8 @@ function buildOpenAiModel(config: ProviderInitConfig, modelName: string): BaseCh
  *
  * Maps provider types to their initialization functions. Each initializer
  * applies the per-model runtime params (rbac_ai_models.params); an absent
- * param keeps the pre-existing default (notably temperature 0).
+ * param keeps the pre-existing default (notably temperature 0), and models
+ * that reject sampling get none of it (see ai/sampling.ts).
  * To add a new provider:
  * 1. Add it to PROVIDER_TYPES in constants/aiProviders.ts
  * 2. Add initialization logic here
@@ -251,16 +254,17 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
         const thinking = p.thinkingBudgetTokens !== undefined
             ? { type: 'enabled' as const, budget_tokens: p.thinkingBudgetTokens }
             : undefined;
+        // Anthropic rejects temperature != 1 when extended thinking is on,
+        // so the temperature-0 default must not be sent alongside a budget.
+        const s = samplingFields(p, modelName, thinking ? null : 0);
         return new ChatAnthropic({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             clientOptions,
-            // Anthropic rejects temperature != 1 when extended thinking is on,
-            // so the temperature-0 default must not be sent alongside a budget.
-            temperature: thinking ? p.temperature : (p.temperature ?? 0),
-            topP: p.topP,
-            topK: p.topK,
+            temperature: s.temperature,
+            topP: s.topP,
+            topK: s.topK,
             maxTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             thinking,
@@ -273,15 +277,16 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'google': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatGoogleGenerativeAI({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseUrl: config.baseUrl || undefined,
             apiVersion: p.apiVersion,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
-            topK: p.topK,
+            temperature: s.temperature,
+            topP: s.topP,
+            topK: s.topK,
             maxOutputTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             // Stored as validated {category, threshold} string pairs; the Google
@@ -300,6 +305,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'azure-openai': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new AzureChatOpenAI({
             callbacks: config.callbacks,
             // The model ID doubles as the Azure deployment name.
@@ -308,10 +314,10 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
             azureOpenAIApiKey: config.apiKey || undefined,
             azureOpenAIEndpoint: requireBaseUrl(config, 'azure-openai'),
             azureOpenAIApiVersion: p.apiVersion ?? AZURE_OPENAI_DEFAULT_API_VERSION,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
-            frequencyPenalty: p.frequencyPenalty,
-            presencePenalty: p.presencePenalty,
+            temperature: s.temperature,
+            topP: s.topP,
+            frequencyPenalty: s.frequencyPenalty,
+            presencePenalty: s.presencePenalty,
             maxTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             verbosity: p.verbosity,
@@ -323,13 +329,14 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'groq': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatGroq({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseUrl: config.baseUrl || undefined,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
+            temperature: s.temperature,
+            topP: s.topP,
             maxTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             maxRetries: p.maxRetries,
@@ -338,36 +345,39 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'mistral': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatMistralAI({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             serverURL: config.baseUrl || undefined,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
+            temperature: s.temperature,
+            topP: s.topP,
             maxTokens: p.maxTokens,
             maxRetries: p.maxRetries,
         });
     },
     'cohere': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatCohere({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
-            temperature: p.temperature ?? 0,
+            temperature: s.temperature,
             maxRetries: p.maxRetries,
         });
     },
     'ollama': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatOllama({
             callbacks: config.callbacks,
             model: modelName,
             baseUrl: requireBaseUrl(config, 'ollama'),
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
-            topK: p.topK,
+            temperature: s.temperature,
+            topP: s.topP,
+            topK: s.topK,
             numPredict: p.maxTokens,
             stop: p.stopSequences,
             maxRetries: p.maxRetries,
@@ -375,12 +385,13 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'xai': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatXAI({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             baseURL: config.baseUrl || undefined,
-            temperature: p.temperature ?? 0,
+            temperature: s.temperature,
             maxTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             maxRetries: p.maxRetries,
@@ -388,15 +399,16 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'deepseek': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatDeepSeek({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
             configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
-            frequencyPenalty: p.frequencyPenalty,
-            presencePenalty: p.presencePenalty,
+            temperature: s.temperature,
+            topP: s.topP,
+            frequencyPenalty: s.frequencyPenalty,
+            presencePenalty: s.presencePenalty,
             maxTokens: p.maxTokens,
             stopSequences: p.stopSequences,
             maxRetries: p.maxRetries,
@@ -406,12 +418,13 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'cerebras': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         return new ChatCerebras({
             callbacks: config.callbacks,
             model: modelName,
             apiKey: config.apiKey || undefined,
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
+            temperature: s.temperature,
+            topP: s.topP,
             maxCompletionTokens: p.maxTokens,
             maxRetries: p.maxRetries,
             timeout: p.requestTimeoutMs,
@@ -419,6 +432,7 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     },
     'bedrock': (config, modelName) => {
         const p = config.params ?? {};
+        const s = samplingFields(p, modelName);
         const credentials = parseBedrockCredentials(config.apiKey);
         return new ChatBedrockConverse({
             callbacks: config.callbacks,
@@ -428,8 +442,8 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
                 accessKeyId: credentials.accessKeyId,
                 secretAccessKey: credentials.secretAccessKey,
             },
-            temperature: p.temperature ?? 0,
-            topP: p.topP,
+            temperature: s.temperature,
+            topP: s.topP,
             maxTokens: p.maxTokens,
             maxRetries: p.maxRetries,
         });

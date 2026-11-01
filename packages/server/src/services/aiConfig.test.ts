@@ -45,6 +45,7 @@ function fakeConfig(
   params: AiModelParams | null,
   baseUrl: string | null = null,
   apiKey: string | null = "test-key",
+  modelId?: string,
 ): AiConfigWithKey {
   const now = new Date();
   return {
@@ -60,7 +61,7 @@ function fakeConfig(
       id: "model-1",
       providerId: "provider-1",
       name: "Test model",
-      modelId: providerType === "anthropic" ? "claude-sonnet-5" : providerType === "google" ? "gemini-2.5-pro" : "gpt-4o",
+      modelId: modelId ?? (providerType === "anthropic" ? "claude-sonnet-5" : providerType === "google" ? "gemini-2.5-pro" : "gpt-4o"),
       // Several test model names are not in LangChain's profile table, so they
       // need a window to be buildable (ADR 0022 §6); it is not a constructor param.
       params: { contextWindow: 128_000, ...(params ?? {}) },
@@ -117,6 +118,19 @@ describe("initializeDeepAgentModel · openai", () => {
     expect(m.modelKwargs).toEqual({ seed: 42 });
   });
 
+  it("sends no sampling params to reasoning models", () => {
+    for (const modelId of ["gpt-5", "gpt-5.1", "o3-mini", "o4-mini"]) {
+      const model = initializeDeepAgentModel(
+        fakeConfig("openai", { temperature: 0.7, topP: 0.9, frequencyPenalty: 0.5, presencePenalty: 0.5 }, null, "test-key", modelId),
+      );
+      const m = model as ChatOpenAI;
+      expect(m.temperature).toBeUndefined();
+      expect(m.topP).toBeUndefined();
+      expect(m.frequencyPenalty).toBeUndefined();
+      expect(m.presencePenalty).toBeUndefined();
+    }
+  });
+
   it("keeps engine-only runtime params out of the provider client", () => {
     const model = initializeDeepAgentModel(
       fakeConfig("openai", {
@@ -149,11 +163,23 @@ describe("initializeDeepAgentModel · openai-compatible", () => {
 });
 
 describe("initializeDeepAgentModel · anthropic", () => {
-  it("keeps the temperature-0 default when params are unset (status quo)", () => {
-    const model = initializeDeepAgentModel(fakeConfig("anthropic", null));
+  it("keeps the temperature-0 default on models that accept sampling", () => {
+    const model = initializeDeepAgentModel(fakeConfig("anthropic", null, null, "test-key", "claude-sonnet-4-6"));
     expect(model).toBeInstanceOf(ChatAnthropic);
     const m = model as ChatAnthropic;
     expect(m.temperature).toBe(0);
+  });
+
+  it("sends no sampling params to models that reject them", () => {
+    for (const modelId of ["claude-sonnet-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-opus-4-7"]) {
+      const model = initializeDeepAgentModel(
+        fakeConfig("anthropic", { temperature: 0.2, topP: 0.8, topK: 40 }, null, "test-key", modelId),
+      );
+      const m = model as ChatAnthropic;
+      expect(m.temperature).toBeUndefined();
+      expect(m.topP).toBeUndefined();
+      expect(m.topK).toBeUndefined();
+    }
   });
 
   it("applies sampling, thinking, transport, and extra params", () => {
@@ -167,7 +193,7 @@ describe("initializeDeepAgentModel · anthropic", () => {
         maxRetries: 2,
         requestTimeoutMs: 90_000,
         extra: { metadata: { user_id: "u1" } },
-      }, "https://proxy.example.com"),
+      }, "https://proxy.example.com", "test-key", "claude-sonnet-4-6"),
     );
     const m = model as ChatAnthropic;
     expect(m.topP).toBe(0.8);
@@ -183,7 +209,7 @@ describe("initializeDeepAgentModel · anthropic", () => {
 
   it("omits the temperature-0 default when extended thinking is enabled", () => {
     const model = initializeDeepAgentModel(
-      fakeConfig("anthropic", { maxTokens: 16_000, thinkingBudgetTokens: 4096 }),
+      fakeConfig("anthropic", { maxTokens: 16_000, thinkingBudgetTokens: 4096 }, null, "test-key", "claude-sonnet-4-6"),
     );
     const m = model as ChatAnthropic;
     // Anthropic rejects temperature != 1 with thinking on; unset lets the API default apply.
@@ -384,6 +410,15 @@ describe("initializeDeepAgentModel · bedrock", () => {
     expect(m.maxTokens).toBe(2048);
   });
 
+  it("sends no sampling params to a Claude model that rejects them", () => {
+    const model = initializeDeepAgentModel(
+      fakeConfig("bedrock", { temperature: 0.3, topP: 0.9 }, null, BEDROCK_KEY_JSON, "us.anthropic.claude-opus-5-5"),
+    );
+    const m = model as ChatBedrockConverse;
+    expect(m.temperature).toBeUndefined();
+    expect(m.topP).toBeUndefined();
+  });
+
   it("rejects a missing or malformed credentials payload", () => {
     expect(() => initializeDeepAgentModel(fakeConfig("bedrock", null, null, null))).toThrow();
     expect(() => initializeDeepAgentModel(fakeConfig("bedrock", null, null, "not-json"))).toThrow();
@@ -417,6 +452,11 @@ describe("initializeDeepAgentModel · openai-compatible presets", () => {
       expect(openAiClientConfigOf(model).baseURL).toBe(DEFAULT_BASE_URLS[preset]);
     });
   }
+
+  it("openrouter: sends no sampling params to a Claude model that rejects them", () => {
+    const model = initializeDeepAgentModel(fakeConfig("openrouter", null, null, "test-key", "anthropic/claude-haiku-5-5"));
+    expect((model as ChatOpenAI).temperature).toBeUndefined();
+  });
 
   it("a stored base URL overrides the preset", () => {
     const model = initializeDeepAgentModel(fakeConfig("fireworks", null, "https://fireworks-proxy.example.com"));
