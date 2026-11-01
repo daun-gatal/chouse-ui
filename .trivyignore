@@ -18,3 +18,16 @@
 #   again and forces a re-review. On expiry, check whether braces, micromatch or
 #   deepagents shipped a fix, then remove this entry or renew with a new date.
 CVE-2026-93687 exp:2027-01-31
+
+# minimatch 3.1.4 - GHSA-g3hv-75wg-m249 / CVE-2026-118764 (Medium)
+#   Denial of service via globparts amplification.
+#   Why ignored: the only patched release is 11.0.1, which removes the callable
+#   CommonJS export. eslint 9, @eslint/eslintrc and eslint-plugin-react (all at
+#   their latest releases) depend on minimatch ^3.1.2 and call
+#   require("minimatch")(...), so overriding to 11 breaks `bun run lint`.
+#   Exposure: dev-only lint tooling. It is not installed in the production
+#   image (`bun install --production`), and it only evaluates glob patterns
+#   from our own eslint.config.js, never user input.
+#   Expiry: on expiry, check whether eslint / eslint-plugin-react moved to a
+#   patched minimatch, then remove this entry or renew with a new date.
+CVE-2026-118764 exp:2027-01-31

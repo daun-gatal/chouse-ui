@@ -17,3 +17,14 @@ ignore:
     package:
       name: braces
       type: npm
+  # minimatch 3.1.4 - Medium - DoS via globparts amplification. The only fix
+  # (11.0.1) breaks eslint's CommonJS callers. Dev-only lint dependency, not in
+  # the production image; patterns come from our own eslint.config.js.
+  - vulnerability: GHSA-g3hv-75wg-m249
+    package:
+      name: minimatch
+      type: npm
+  - vulnerability: CVE-2026-118764
+    package:
+      name: minimatch
+      type: npm
