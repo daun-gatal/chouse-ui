@@ -81,15 +81,16 @@ export function UpgradesView({ refreshKey }: { refreshKey?: number }): ReactElem
         <StatusCard status={s} />
         <div className="min-w-0 space-y-2">
           <p className={OBS_LABEL}>Where to go next</p>
-          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+          {/* Flex-wrap, not a fixed grid: there are 0–3 targets, and every row should fill its width. */}
+          <div className="flex flex-wrap items-stretch gap-2">
             {targets.map((t) => (
               <TargetCard key={`${t.kind}:${t.patch}`} target={t} all={targets} selected={target === t.patch} last={checks.find((a) => a.targetVersion === t.patch && a.status === "done")} onPick={() => setPicked(t.patch)} />
             ))}
-            <div className="flex min-w-0 flex-col gap-2 rounded-xs border border-ink-500 bg-ink-100 p-3">
+            <div className="flex min-w-0 flex-[1_1_12rem] flex-col gap-2 rounded-xs border border-dashed border-ink-500 bg-ink-100 p-3">
               <span className={OBS_LABEL}>Other version</span>
               <label htmlFor="upgrade-other" className="text-[11px] text-paper-muted">A specific line or patch</label>
-              <div className="flex gap-1.5">
-                <Input id="upgrade-other" value={other} onChange={(e) => setOther(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitOther()} placeholder="26.9.27.3" className="h-8 w-28 rounded-xs font-mono text-[12px]" />
+              <div className="flex max-w-xs gap-1.5">
+                <Input id="upgrade-other" value={other} onChange={(e) => setOther(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitOther()} placeholder="26.9.27.3" className="h-8 min-w-0 flex-1 rounded-xs font-mono text-[12px]" />
                 <Button variant="outline" className="h-8 rounded-xs text-[11px]" disabled={!VERSION_RE.test(other.trim())} onClick={submitOther}>Pick</Button>
               </div>
               {targets.length === 0 && <p className="text-[11px] text-paper-muted">{s.enabled ? "Nothing newer is supported right now." : "Release data is off on this server, so pick a version here."}</p>}
@@ -150,7 +151,7 @@ function TargetCard({ target: t, all, selected, last, onPick }: { target: Upgrad
       aria-pressed={selected}
       onClick={onPick}
       className={cn(
-        "flex min-w-0 flex-col gap-2 rounded-xs border bg-ink-100 p-3 text-left transition-colors hover:border-brand/50",
+        "flex min-w-0 flex-[1_1_14rem] flex-col gap-2 rounded-xs border bg-ink-100 p-3 text-left transition-colors hover:border-brand/50",
         selected ? "border-brand ring-1 ring-inset ring-brand" : "border-ink-500",
       )}
     >
@@ -170,7 +171,7 @@ function TargetCard({ target: t, all, selected, last, onPick }: { target: Upgrad
           </>
         ) : <span className="text-[11px] text-paper-faint">Not checked yet</span>}
       </span>
-      <span className="text-[11px] text-paper-muted">
+      <span className="mt-auto text-[11px] text-paper-muted">
         {t.releasedAt ? `Released ${formatDay(t.releasedAt)}${days !== null ? `, ${agoText(days)}` : ""}` : "Release date unknown"}
         <br />
         {supportWindowText(t)}
