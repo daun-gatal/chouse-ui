@@ -141,6 +141,7 @@ export interface Replay extends ReplaySummary {
 
 export interface FleetUpgradeNode {
   connectionId: string;
+  name: string;
   version: string | null;
   status: VersionStatus | null;
   lastCheck: { id: string; targetVersion: string; mode: string; counts: Record<Severity, number> | null; at: number } | null;

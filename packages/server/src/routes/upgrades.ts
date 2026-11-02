@@ -135,7 +135,7 @@ upgrades.get("/fleet", requirePermission(PERMISSIONS.UPGRADES_VIEW), async (c) =
   const checks = await latestChecks(connections.map((x) => x.id));
   const nodes = connections.map((conn) => {
     const version = versions.get(conn.id) ?? null;
-    return { connectionId: conn.id, version: version ? plainVersion(version) : null, status: release && version ? versionStatus(version, release) : null, lastCheck: checks[conn.id] ?? null };
+    return { connectionId: conn.id, name: conn.name, version: version ? plainVersion(version) : null, status: release && version ? versionStatus(version, release) : null, lastCheck: checks[conn.id] ?? null };
   });
   return ok(c, { enabled, nodes });
 });

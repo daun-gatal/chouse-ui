@@ -9,7 +9,7 @@ const status = (over: Partial<VersionStatus> = {}): VersionStatus => ({
   version: "25.8.33.6", line: "25.8", lts: true, supported: true, supportEnded: null, expectedEnd: { line: "26.8", month: "2026-08" },
   latestPatch: "25.8.33.6", latestDate: "2026-08-26", newerPatch: false, ...over,
 });
-const node = (over: Partial<FleetUpgradeNode> = {}): FleetUpgradeNode => ({ connectionId: "c1", version: "25.8.33.6", status: status(), lastCheck: null, ...over });
+const node = (over: Partial<FleetUpgradeNode> = {}): FleetUpgradeNode => ({ connectionId: "c1", name: "billing", version: "25.8.33.6", status: status(), lastCheck: null, ...over });
 
 function renderVersion(n: FleetUpgradeNode | undefined, onOpen = vi.fn()): ReturnType<typeof render> {
   return render(<TooltipProvider><FleetVersion version="25.8.33.6" node={n} onOpen={onOpen} /></TooltipProvider>);

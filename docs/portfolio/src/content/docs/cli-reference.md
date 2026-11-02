@@ -1388,30 +1388,46 @@ chouse scheduled runs 4d2e… --limit 5
 
 ### chouse upgrades
 
-Upgrade readiness, canary replays and rollout gates.
+ClickHouse version status, upgrade checks and canary replays.
 
-Upgrade readiness (Monitoring › Upgrades): assessments of a target
-version against your real workload, workload replays on a canary, and the
-rollout gates of every connection. Read-only; assessments and replays are
-started in the UI.
+Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version
+stands and the targets worth moving to, the upgrade checks run against your
+real workload (exact against a connection on the target line, or from the
+release notes), and workload replays on a canary. Read-only; checks and
+replays are started in the UI.
 
 ```bash
 chouse upgrades
 ```
 
 ```bash
+chouse upgrades status -c prod
+chouse upgrades fleet
 chouse upgrades list -c prod
 chouse upgrades get 3d1e… -o yaml
 chouse upgrades replay 7a90…
-chouse upgrades rollout
+```
+
+#### chouse upgrades fleet
+
+Every connection's version, support status and last upgrade check.
+
+```bash
+chouse upgrades fleet
+```
+
+Aliases: `rollout`
+
+```bash
+chouse upgrades fleet
 ```
 
 #### chouse upgrades get
 
-One assessment: every rule and its evidence.
+One upgrade check: its findings, their sources and evidence.
 
 ```bash
-chouse upgrades get <assessmentId>
+chouse upgrades get <checkId>
 ```
 
 ```bash
@@ -1420,7 +1436,7 @@ chouse upgrades get 3d1e… -o yaml
 
 #### chouse upgrades list
 
-Assessments and replays of the -c connection.
+Upgrade checks and replays of the -c connection.
 
 ```bash
 chouse upgrades list
@@ -1442,16 +1458,16 @@ chouse upgrades replay <replayId>
 chouse upgrades replay 7a90…
 ```
 
-#### chouse upgrades rollout
+#### chouse upgrades status
 
-Every connection's version and rollout gates.
+The -c connection's version, support status and upgrade targets.
 
 ```bash
-chouse upgrades rollout
+chouse upgrades status
 ```
 
 ```bash
-chouse upgrades rollout
+chouse upgrades status -c prod -o yaml
 ```
 
 ## Data observability
