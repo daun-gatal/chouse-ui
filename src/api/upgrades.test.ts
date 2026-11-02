@@ -20,8 +20,8 @@ describe("upgrades API", () => {
     await getFleetUpgrades();
     await listAssessments("c1");
     await getAssessment("a/1");
-    await startCheck("26.8.36.3", "c2", "c1");
-    await startCheck("26.8.36.3", null, "c1");
+    await startCheck("26.8.36.3", "c2", true, "c1");
+    await startCheck("26.8.36.3", null, false, "c1");
     await startReplay("c2", "a1");
     await getReplay("r1");
     expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
@@ -37,8 +37,8 @@ describe("upgrades API", () => {
     ]);
     expect(new URLSearchParams(seen[1].search).get("target")).toBe("26.8.36.3");
     expect(new URLSearchParams(seen[1].search).get("connectionId")).toBe("c1");
-    expect(seen[5].body).toEqual({ targetVersion: "26.8.36.3", referenceConnectionId: "c2" });
-    expect(seen[6].body).toEqual({ targetVersion: "26.8.36.3" });
+    expect(seen[5].body).toEqual({ targetVersion: "26.8.36.3", referenceConnectionId: "c2", tryQueries: true });
+    expect(seen[6].body).toEqual({ targetVersion: "26.8.36.3", tryQueries: false });
     expect(seen[7].body).toEqual({ canaryConnectionId: "c2", assessmentId: "a1" });
   });
 });

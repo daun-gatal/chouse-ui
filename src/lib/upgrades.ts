@@ -84,7 +84,7 @@ export interface CheckStep {
 }
 
 /** The steps a check goes through, in order, as the page shows them. */
-export function checkSteps(mode: "exact" | "notes", referenceName: string | null, withAi: boolean): CheckStep[] {
+export function checkSteps(mode: "exact" | "notes", referenceName: string | null, withAi: boolean, tryQueries = false, target = "the target"): CheckStep[] {
   const steps: CheckStep[] = [
     { key: "release", label: "Release data" },
     { key: "current", label: "This server: settings, functions, types, engines" },
@@ -92,12 +92,13 @@ export function checkSteps(mode: "exact" | "notes", referenceName: string | null
   if (mode === "exact") steps.push({ key: "target", label: `${referenceName ?? "The comparison server"}: the same system tables` });
   steps.push({ key: "notes", label: "Breaking-change notes for the version range" });
   steps.push({ key: "workload", label: "Your workload: schema, profiles and 30 days of query_log" });
+  if (tryQueries) steps.push({ key: "try", label: `Trying your top query shapes with ${target}'s settings on this server` });
   steps.push({ key: "matching", label: "Matching changes to what you use" });
   if (withAi) steps.push({ key: "ai", label: "Chouse AI: reading the notes against your workload" });
   return steps;
 }
 
-const STAGE_ORDER: Array<CheckStage | "ai"> = ["release", "current", "target", "notes", "workload", "matching", "ai", "done"];
+const STAGE_ORDER: Array<CheckStage | "ai"> = ["release", "current", "target", "notes", "workload", "try", "matching", "ai", "done"];
 
 /** -1 before, 0 current, 1 done, for a step against the stage a check is at. */
 export function stepState(step: CheckStep["key"], stage: CheckStage | "ai"): -1 | 0 | 1 {
@@ -146,6 +147,8 @@ export function checkMarkdown(a: Assessment, connectionName: string): string {
   if (s.coverage) {
     lines.push(`${s.coverage.notes.count} breaking-change notes${s.coverage.notes.lines.length ? ` from ${s.coverage.notes.lines[0]} to ${s.coverage.notes.lines[s.coverage.notes.lines.length - 1]}` : ""}; workload from ${s.coverage.workload.days} days of query_log (${s.coverage.workload.shapes} query shapes).`);
   }
+  const t = s.coverage?.tried;
+  if (t?.readable) lines.push(`Tried on this server: ${t.tried} read-only query shapes planned with ${s.target.version}'s settings (${t.skipped} skipped, failing today too); nothing was executed.`);
   const main = mainFindings(a.findings);
   lines.push("", "## Findings");
   if (!main.length) lines.push("- Nothing found that this workload uses.");

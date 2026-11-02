@@ -64,6 +64,8 @@ describe("check steps", () => {
     expect(checkSteps("notes", null, false).map((s) => s.key)).toEqual(["release", "current", "notes", "workload", "matching"]);
     expect(checkSteps("exact", "staging", true).map((s) => s.key)).toEqual(["release", "current", "target", "notes", "workload", "matching", "ai"]);
     expect(checkSteps("exact", "staging", false)[2].label).toContain("staging");
+    expect(checkSteps("notes", null, false, true, "26.10.3.7").map((s) => s.key)).toEqual(["release", "current", "notes", "workload", "try", "matching"]);
+    expect(checkSteps("notes", null, false, true, "26.10.3.7")[4].label).toContain("26.10.3.7's settings");
   });
 
   it("orders steps against the current stage", () => {
@@ -72,6 +74,8 @@ describe("check steps", () => {
     expect(stepState("workload", "notes")).toBe(-1);
     expect(stepState("matching", "done")).toBe(1);
     expect(stepState("ai", "ai")).toBe(0);
+    expect(stepState("workload", "try")).toBe(1);
+    expect(stepState("matching", "try")).toBe(-1);
   });
 });
 

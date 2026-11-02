@@ -4,7 +4,7 @@
  * behaviour. Collapsed to its title until opened.
  */
 
-import { useState, type ReactElement } from "react";
+import { Fragment, useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { ChevronRight, Copy, Sparkles } from "lucide-react";
 
@@ -84,9 +84,19 @@ export function UpgradeFinding({ finding, defaultOpen = false }: { finding: Find
                 <p className={OBS_LABEL}>Where your workload hits it</p>
                 <DataTable label={`Evidence for ${f.title}`} head={e.head}>
                   {e.rows.map((r, i) => (
-                    <tr key={`${f.id}-${i}`}>
-                      {r.cells.map((cell, j) => <td key={j} className={cn(j === 0 && "font-mono text-[11px] text-paper", "max-w-[280px] truncate")} title={cell}>{cell}</td>)}
-                    </tr>
+                    <Fragment key={`${f.id}-${i}`}>
+                      <tr>
+                        {r.cells.map((cell, j) => <td key={j} className={cn(j === 0 && "font-mono text-[11px] text-paper", "max-w-[280px] truncate")} title={cell}>{cell}</td>)}
+                      </tr>
+                      {(r.detail || r.query) && (
+                        <tr>
+                          <td colSpan={r.cells.length} className="!pt-0">
+                            {r.detail && <span className="block text-[11px] text-red-500">{r.detail}</span>}
+                            {r.query && <code className="mt-0.5 block max-w-full truncate font-mono text-[11px] text-paper-muted" title={r.query}>{r.query}</code>}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </DataTable>
               </>

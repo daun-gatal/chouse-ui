@@ -15,6 +15,7 @@ import { ArrowUpCircle, Check, Copy, Loader2, RefreshCw, Sparkles } from "lucide
 import { fetchAiModels, invokeAI } from "@/api/ai";
 import type { AssessmentSummary, UpgradeStatus, UpgradeTarget } from "@/api/upgrades";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DH_PRIMARY } from "@/features/data-health/lib";
@@ -189,6 +190,7 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
   const { check } = useUpgradeMutations();
   const [compare, setCompare] = useState<string | null>(null);
   const [checkId, setCheckId] = useState<string | null>(null);
+  const [tryQueries, setTryQueries] = useState(true);
   const aiTried = useRef(new Set<string>());
 
   const models = useQuery({ queryKey: ["ai-models"], queryFn: fetchAiModels, enabled: canAi && status.enabled, staleTime: 5 * 60_000, retry: false });
@@ -229,7 +231,7 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
   const start = async (): Promise<void> => {
     if (!chosen) return;
     try {
-      const res = await check.mutateAsync({ targetVersion: target, referenceConnectionId: chosen === NOTES_ONLY ? null : chosen });
+      const res = await check.mutateAsync({ targetVersion: target, referenceConnectionId: chosen === NOTES_ONLY ? null : chosen, tryQueries });
       setCheckId(res.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "The check could not start");
@@ -261,6 +263,16 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
 
   const title = `Impact · ${status.version ?? "?"} → ${target}`;
 
+  const option = canRun ? (
+    <label htmlFor="upgrade-try" className="mb-3 flex items-start gap-2 text-[12px] text-paper">
+      <Checkbox id="upgrade-try" checked={tryQueries} disabled={running} onCheckedChange={(v) => setTryQueries(v === true)} className="mt-0.5" />
+      <span>
+        Also try my top 200 read-only query shapes with {target}&apos;s settings on this server
+        <span className="block text-[11px] text-paper-muted">Plans only with EXPLAIN: nothing runs and no data is read. Finds the queries the new analyzer and changed defaults break.</span>
+      </span>
+    </label>
+  ) : null;
+
   if (!refs.length && !status.enabled && !references.isLoading) {
     return (
       <Panel title={title}>
@@ -270,12 +282,13 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
   }
 
   if (check.isPending) {
-    return <Panel title={title} actions={header}><Progress mode={mode} refName={refName} stage="release" withAi={aiAvailable} /></Panel>;
+    return <Panel title={title} actions={header}><Progress mode={mode} refName={refName} stage="release" withAi={aiAvailable} tryQueries={tryQueries} target={target} /></Panel>;
   }
 
   if (!a) {
     return (
       <Panel title={title} actions={header}>
+        {option}
         <EmptyState
             title="Not checked yet"
             body={canRun
@@ -287,12 +300,13 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
   }
 
   if (a.status === "running") {
-    return <Panel title={title} actions={header}><Progress mode={a.summary.mode} refName={a.summary.reference?.name ?? null} stage={a.summary.stage} withAi={aiAvailable} /></Panel>;
+    return <Panel title={title} actions={header}><Progress mode={a.summary.mode} refName={a.summary.reference?.name ?? null} stage={a.summary.stage} withAi={aiAvailable} tryQueries={a.summary.tryQueries !== false} target={target} /></Panel>;
   }
 
   if (a.status === "failed") {
     return (
       <Panel title={title} actions={header}>
+        {option}
         <div className="rounded-xs border border-red-500/40 bg-red-500/10 p-3 text-[12px] text-paper">
           <p className="font-medium">The check didn't finish</p>
           <p className="mt-1 text-paper-muted">{a.summary.error ?? "Something went wrong."}</p>
@@ -310,8 +324,9 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
 
   return (
     <Panel title={title} actions={header}>
+      {option}
       {aiRunning ? (
-        <Progress mode={a.summary.mode} refName={a.summary.reference?.name ?? null} stage="ai" withAi />
+        <Progress mode={a.summary.mode} refName={a.summary.reference?.name ?? null} stage="ai" withAi tryQueries={a.summary.tryQueries !== false} target={target} />
       ) : (
         <div className="space-y-4">
           <div className={cn("rounded-xs border p-3 text-[12px] text-paper", exact ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10")}>
@@ -328,6 +343,13 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
             {cov?.notes.skipped && <p className="mt-1 text-paper-muted">{cov.notes.skipped}</p>}
             {cov && cov.notes.missingLines.length > 0 && <p className="mt-1 text-paper-muted">Notes for {cov.notes.missingLines.join(", ")} couldn't be read, so this list may be short.</p>}
             {cov && !cov.workload.readable && <p className="mt-1 text-paper-muted">query_log couldn't be read, so only the schema and profiles were checked.</p>}
+            {cov?.tried && (cov.tried.readable ? (
+              <p className="mt-1 text-paper-muted">
+                Tried on this server: {formatCount(cov.tried.tried)} read-only query shapes planned with {a.summary.target.version}&apos;s settings{cov.tried.analyzerOnly ? " (the analyzer only: compare with a connection on the target line to also apply its changed defaults)" : ` (the analyzer and ${cov.tried.applied} changed defaults)`}. {cov.tried.skipped > 0 ? `${cov.tried.skipped} skipped because they fail today too. ` : ""}Nothing was executed.
+                {cov.tried.dropped.length > 0 ? ` This server doesn't accept ${cov.tried.dropped.length} of the new values (${cov.tried.dropped.slice(0, 3).join(", ")}${cov.tried.dropped.length > 3 ? "…" : ""}), so they weren't tried.` : ""}
+                {cov.tried.budgetExhausted ? " The time limit was reached before every shape was tried." : ""}
+              </p>
+            ) : <p className="mt-1 text-paper-muted">Your queries couldn&apos;t be tried on this server{cov.tried.error ? `: ${cov.tried.error}` : ""}.</p>)}
             {cov && cov.workload.readable && <p className="mt-1 text-paper-muted">Workload: {formatCount(cov.workload.shapes)} query shapes in query_log{cov.workload.from ? ` since ${new Date(cov.workload.from).toLocaleDateString()}` : ""}. Queries outside that window and client-side behaviour aren't seen.</p>}
           </div>
 
@@ -387,10 +409,10 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
   );
 }
 
-function Progress({ mode, refName, stage, withAi }: { mode: "exact" | "notes"; refName: string | null; stage: Parameters<typeof stepState>[1]; withAi: boolean }): ReactElement {
+function Progress({ mode, refName, stage, withAi, tryQueries, target }: { mode: "exact" | "notes"; refName: string | null; stage: Parameters<typeof stepState>[1]; withAi: boolean; tryQueries: boolean; target: string }): ReactElement {
   return (
     <ol className="space-y-1.5 rounded-xs border border-ink-500 bg-ink-100 p-3 text-[12px]" aria-label="Check progress">
-      {checkSteps(mode, refName, withAi).map((step) => {
+      {checkSteps(mode, refName, withAi, tryQueries, target).map((step) => {
         const st = stepState(step.key, stage);
         return (
           <li key={step.key} className={cn("flex items-center gap-2.5", st < 0 ? "text-paper-faint" : "text-paper")}>

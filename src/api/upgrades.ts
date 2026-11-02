@@ -7,7 +7,7 @@
 import { api } from "./client";
 
 export type Severity = "blocker" | "warning" | "info" | "note";
-export type CheckStage = "release" | "current" | "target" | "notes" | "workload" | "matching" | "done";
+export type CheckStage = "release" | "current" | "target" | "notes" | "workload" | "try" | "matching" | "done";
 
 export interface VersionStatus {
   version: string;
@@ -50,6 +50,11 @@ export interface Reference {
 export interface EvidenceRow {
   cells: string[];
   table?: string;
+  tables?: string[];
+  /** A short error for the row, without query text. */
+  detail?: string;
+  /** The query text, present only for readers who may see all query history. */
+  query?: string;
 }
 
 export interface FindingEvidence {
@@ -85,6 +90,7 @@ export interface CheckSummary {
   mode: "exact" | "notes";
   target: { version: string; line: string };
   reference: { connectionId: string; name: string; version: string } | null;
+  tryQueries?: boolean;
   coverage?: {
     diff: Record<"settings" | "mergeTree" | "functions" | "types" | "engines" | "formats" | "dbEngines", [number, number]> | null;
     removed: number;
@@ -94,6 +100,19 @@ export interface CheckSummary {
     notes: { count: number; lines: string[]; missingLines: string[]; errors: string[]; skipped: string | null };
     workload: { days: number; from: number | null; shapes: number; readable: boolean };
     generalNotes: number;
+    tried?: {
+      readable: boolean;
+      tried: number;
+      skipped: number;
+      failing: number;
+      planChanged: number;
+      compared: number;
+      applied: number;
+      dropped: string[];
+      analyzerOnly: boolean;
+      budgetExhausted: boolean;
+      error?: string;
+    };
   };
   counts?: Record<Severity, number>;
   ai?: { status: "done" | "failed"; model: string | null; at: number; dropped: number; error?: string };
@@ -169,8 +188,8 @@ export function getAssessment(id: string): Promise<Assessment> {
 }
 
 /** Starts a check; it runs in the background, so poll getAssessment until it is no longer running. */
-export function startCheck(targetVersion: string, referenceConnectionId: string | null, connectionId?: string): Promise<{ id: string; status: "running" }> {
-  return api.post("/upgrades/assessments", { targetVersion, ...(referenceConnectionId ? { referenceConnectionId } : {}) }, { params: { connectionId } });
+export function startCheck(targetVersion: string, referenceConnectionId: string | null, tryQueries = true, connectionId?: string): Promise<{ id: string; status: "running" }> {
+  return api.post("/upgrades/assessments", { targetVersion, ...(referenceConnectionId ? { referenceConnectionId } : {}), tryQueries }, { params: { connectionId } });
 }
 
 export function startReplay(canaryConnectionId: string, assessmentId: string | null, connectionId?: string): Promise<{ id: string }> {

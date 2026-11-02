@@ -349,7 +349,7 @@ export function useUpgradeMutations() {
   const client = useQueryClient();
   const invalidate = (): Promise<void> => client.invalidateQueries({ queryKey: upgradeKeys.all });
   return {
-    check: useMutation({ mutationFn: (input: { targetVersion: string; referenceConnectionId: string | null }) => upgrades.startCheck(input.targetVersion, input.referenceConnectionId, cid(c)), onSuccess: invalidate }),
+    check: useMutation({ mutationFn: (input: { targetVersion: string; referenceConnectionId: string | null; tryQueries: boolean }) => upgrades.startCheck(input.targetVersion, input.referenceConnectionId, input.tryQueries, cid(c)), onSuccess: invalidate }),
     replay: useMutation({ mutationFn: (input: { canaryConnectionId: string; assessmentId: string | null }) => upgrades.startReplay(input.canaryConnectionId, input.assessmentId, cid(c)), onSuccess: invalidate }),
   };
 }
