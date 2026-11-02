@@ -23,6 +23,10 @@ vi.mock("@tanstack/react-query", () => ({
   useQueries: () => [],
 }));
 
+vi.mock("@/features/observe/hooks", () => ({
+  useFleetUpgrades: () => ({ data: undefined }),
+}));
+
 vi.mock("@/hooks/useFleetMetrics", () => ({
   FLEET_STATUS_RANK: { loading: 0, down: 1, degraded: 2, healthy: 3 },
   computeFleetStatus: () => "loading",

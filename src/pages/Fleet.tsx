@@ -36,6 +36,8 @@ import FleetExceptionsFeed from "@/features/fleet/components/FleetExceptionsFeed
 import FleetInventoryStrip from "@/features/fleet/components/FleetInventoryStrip";
 import { LayoutGrid, Rows3 } from "lucide-react";
 import type { ClickHouseConnection } from "@/api/rbac";
+import { useFleetUpgrades } from "@/features/observe/hooks";
+import { RBAC_PERMISSIONS, useRbacStore } from "@/stores/rbac";
 import { cn } from "@/lib/utils";
 
 type FleetSort = "status" | "memory" | "name";
@@ -63,6 +65,13 @@ export default function FleetPage() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   const connectionsQuery = useFleetConnections();
+  // Version support colours (ADR 0029 §7): only for readers who may open Upgrades.
+  const canViewUpgrades = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.UPGRADES_VIEW));
+  const fleetUpgrades = useFleetUpgrades(canViewUpgrades);
+  const upgradesByConnection = useMemo(
+    () => new Map((fleetUpgrades.data?.nodes ?? []).map((n) => [n.connectionId, n])),
+    [fleetUpgrades.data],
+  );
   const connections = useMemo(
     () => (connectionsQuery.data ?? []).filter((c) => c.isActive),
     [connectionsQuery.data],
@@ -248,6 +257,7 @@ export default function FleetPage() {
                     snapshot={snapshotsByConnection.get(c.id)}
                     snapshotPollIntervalSeconds={pollIntervalSeconds}
                     memoryHistory={nodeSeries(historyByNode.get(c.id), "memory")}
+                    upgrade={upgradesByConnection.get(c.id)}
                   />
                 ))}
               </div>
