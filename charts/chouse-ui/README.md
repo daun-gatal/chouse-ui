@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 2.0.4](https://img.shields.io/badge/Version-2.0.4-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.16.0](https://img.shields.io/badge/AppVersion-3.16.0-informational?style=flat-square)
+![Version: 2.1.0](https://img.shields.io/badge/Version-2.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.16.0](https://img.shields.io/badge/AppVersion-3.16.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -232,6 +232,7 @@ Kubernetes: `>=1.25.0-0`
 | observability.maxFingerprints | string | `""` | Query shapes tracked per connection for regression detection (`OBSERVE_MAX_FINGERPRINTS`, app default 5000). |
 | observability.retentionDays | string | `""` | Days of lineage, pipeline and query-shape evidence to keep (`OBSERVE_RETENTION_DAYS`, app default 90). |
 | observability.scratchDatabase | string | `""` | ClickHouse database where codec trials copy samples (`OBSERVE_SCRATCH_DATABASE`, app default `chouse_scratch`). |
+| observability.upgradeCheckEnabled | bool | `false` | Let Monitoring › Upgrades fetch release data and release notes (`UPGRADE_CHECK_ENABLED`, app default false): release dates and support from GitHub (`raw.githubusercontent.com`), the newest patch per line from Docker Hub (`hub.docker.com`). Needs egress to both hosts. Off, the tab still compares with a connection already on the target line. |
 | pdb.enabled | bool | `false` | PodDisruptionBudget for the web pods. Only meaningful with more than one replica. |
 | pdb.maxUnavailable | string | `""` | Maximum pods that may be unavailable. Set `minAvailable` to "" when using this. |
 | pdb.minAvailable | int | `1` | Minimum pods that must stay available. Mutually exclusive with `maxUnavailable`. |

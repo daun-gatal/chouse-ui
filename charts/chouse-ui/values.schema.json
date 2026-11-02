@@ -138,7 +138,8 @@
         "fleetIntervalSeconds": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
         "retentionDays": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
         "maxFingerprints": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
-        "scratchDatabase": { "type": "string" }
+        "scratchDatabase": { "type": "string" },
+        "upgradeCheckEnabled": { "type": "boolean" }
       }
     },
     "remediation": {

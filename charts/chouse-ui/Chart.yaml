@@ -6,7 +6,7 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 2.0.4
+version: 2.1.0
 # App version — owned by auto-release.yml; never edit by hand.
 appVersion: "3.16.0"
 kubeVersion: ">=1.25.0-0"
@@ -48,7 +48,5 @@ annotations:
     - name: chouse-ui
       image: ghcr.io/daun-gatal/chouse-ui:v3.16.0
   artifacthub.io/changes: |
-    - kind: changed
-      description: scheduledQueries.enabled and dedicatedScheduler.enabled also place the scheduled dashboard report sender (CHouse UI 3.16); no values change
-    - kind: changed
-      description: publicBaseUrl is required for scheduled dashboard reports, which link back to the dashboard
+    - kind: added
+      description: observability.upgradeCheckEnabled sets UPGRADE_CHECK_ENABLED, letting Monitoring › Upgrades fetch release data and release notes from GitHub and Docker Hub (needs egress to both); off by default

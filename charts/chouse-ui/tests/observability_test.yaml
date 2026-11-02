@@ -20,6 +20,11 @@ tests:
           content:
             name: SLACK_SIGNING_SECRET
           any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: UPGRADE_CHECK_ENABLED
+          any: true
 
   - it: renders the values the user sets
     template: deployment.yaml
@@ -28,6 +33,7 @@ tests:
       observability.retentionDays: "30"
       observability.maxFingerprints: 2000
       observability.scratchDatabase: scratch
+      observability.upgradeCheckEnabled: true
       remediation.maintenanceWindow: "01:00-03:00"
       remediation.slackChannel: C123
       publicBaseUrl: https://chouse.example.com
@@ -44,6 +50,9 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content: { name: OBSERVE_SCRATCH_DATABASE, value: scratch }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: UPGRADE_CHECK_ENABLED, value: "true" }
       - contains:
           path: spec.template.spec.containers[0].env
           content: { name: REMEDIATION_MAINTENANCE_WINDOW, value: "01:00-03:00" }

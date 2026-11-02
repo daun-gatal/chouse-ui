@@ -180,6 +180,10 @@ are rendered, so existing installs render exactly as before.
 - name: OBSERVE_SCRATCH_DATABASE
   value: {{ . | quote }}
 {{- end }}
+{{- if .Values.observability.upgradeCheckEnabled }}
+- name: UPGRADE_CHECK_ENABLED
+  value: "true"
+{{- end }}
 {{- with .Values.remediation.maintenanceWindow }}
 - name: REMEDIATION_MAINTENANCE_WINDOW
   value: {{ . | quote }}

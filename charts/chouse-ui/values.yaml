@@ -199,6 +199,12 @@ observability:
   # -- ClickHouse database where codec trials copy samples
   # (`OBSERVE_SCRATCH_DATABASE`, app default `chouse_scratch`).
   scratchDatabase: ""
+  # -- Let Monitoring › Upgrades fetch release data and release notes
+  # (`UPGRADE_CHECK_ENABLED`, app default false): release dates and support
+  # from GitHub (`raw.githubusercontent.com`), the newest patch per line from
+  # Docker Hub (`hub.docker.com`). Needs egress to both hosts. Off, the tab
+  # still compares with a connection already on the target line.
+  upgradeCheckEnabled: false
 
 remediation:
   # -- UTC window `HH:MM-HH:MM` for window-only fixes such as codec or TTL
