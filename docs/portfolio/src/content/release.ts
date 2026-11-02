@@ -30,10 +30,11 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.17",
   kind: "minor",
-  summary: "AI agents sign in to CHouse MCP with only the URL: you choose what they may do, and they run as you with your own access.",
+  summary: "AI agents sign in to CHouse MCP with only the URL, and Upgrades shows what a ClickHouse upgrade changes for your workload.",
   highlights: [
     { label: "Sign in to MCP", href: "/docs/mcp/#sign-in-with-oauth" },
     { label: "Connected apps", href: "/docs/personal-access-tokens/#connected-apps" },
+    { label: "Check an upgrade", href: "/docs/monitoring-upgrades/#check-an-upgrade" },
     { label: "Connect an agent", href: "/docs/guide-connect-an-agent/" },
   ],
 };
