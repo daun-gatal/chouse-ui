@@ -191,7 +191,7 @@ export const ONBOARDING_CHAPTERS: OnboardingChapter[] = [
       step("monitoring.errors.crashes", "Crashes", "Review crash records and stack context separately from ordinary query exceptions.", "/monitoring/errors?guide=crashes", { target: "monitoring-errors-crashes", requiredAny: [p.ERRORS_VIEW] }),
       step("monitoring.performance", "What got slower", "Every query shape is compared with its own 14-day baseline; regressions line up with the upgrades, DDL and setting changes around them.", "/monitoring/performance?guide=regressions", { target: "monitoring-performance-regressions", requiredAny: [p.PERFORMANCE_VIEW] }),
       step("monitoring.capacity", "Capacity and cost", "Disk forecasts per node, top growth, measured codec and TTL savings, and cost by consumer at your configured rates.", "/monitoring/capacity?guide=forecast", { target: "monitoring-capacity-forecast", requiredAny: [p.CAPACITY_VIEW] }),
-      step("monitoring.upgrades", "Upgrade readiness", "Check a target version against your real workload, replay it on a canary, and follow the rollout gates.", "/monitoring/upgrades?guide=assess", { target: "monitoring-upgrades-assess", requiredAny: [p.UPGRADES_VIEW] }),
+      step("monitoring.upgrades", "Upgrade check", "Pick a target version and check what it changes for your real workload: removed functions, types and engines you use, changed defaults, and the release notes to read.", "/monitoring/upgrades?guide=assess", { target: "monitoring-upgrades-assess", requiredAny: [p.UPGRADES_VIEW] }),
     ],
   },
   {

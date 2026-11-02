@@ -90,7 +90,7 @@ const TAB_CONFIG: Record<TabKey, TabConfig> = {
   upgrades: {
     icon: ArrowUpCircle,
     label: "Upgrades",
-    description: "Readiness, canary replay & rollout",
+    description: "What an upgrade changes for you",
   },
 };
 
@@ -373,7 +373,7 @@ export default function Monitoring() {
                       {key === "errors" && "Server-wide error counters from system.errors and any crashes from system.crash_log."}
                       {key === "performance" && "Each query shape against its own 14-day baseline, with the upgrades, DDL and setting changes around a regression."}
                       {key === "capacity" && "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer."}
-                      {key === "upgrades" && "Check a target version against your workload, replay it on a canary, and follow rollout gates."}
+                      {key === "upgrades" && "See where this connection's version stands and check what an upgrade changes for your workload: exactly against a connection on the target line, or from the release notes."}
                     </span>
                   </div>
                 </div>

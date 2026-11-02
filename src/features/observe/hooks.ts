@@ -57,10 +57,12 @@ const contextKeys = {
 
 export const upgradeKeys = {
   all: ["upgrades"] as const,
+  status: (c: string | null) => [...upgradeKeys.all, "status", c] as const,
+  references: (c: string | null, target: string) => [...upgradeKeys.all, "references", c, target] as const,
+  fleet: () => [...upgradeKeys.all, "fleet"] as const,
   list: (c: string | null) => [...upgradeKeys.all, "list", c] as const,
   assessment: (id: string) => [...upgradeKeys.all, "assessment", id] as const,
   replay: (id: string) => [...upgradeKeys.all, "replay", id] as const,
-  rollout: () => [...upgradeKeys.all, "rollout"] as const,
 };
 
 const agentKeys = {
@@ -302,13 +304,35 @@ export function useContextMutations() {
 
 // --- upgrades ---------------------------------------------------------------------
 
+export function useUpgradeStatus(): UseQueryResult<upgrades.UpgradeStatus> {
+  const c = useConnection();
+  return useQuery({ queryKey: upgradeKeys.status(c), queryFn: () => upgrades.getUpgradeStatus(cid(c)), enabled: Boolean(c), staleTime: 60_000 });
+}
+
+/** Connections on the target's line the user can compare with (the exact mode). */
+export function useUpgradeReferences(target: string | null): UseQueryResult<upgrades.Reference[]> {
+  const c = useConnection();
+  return useQuery({ queryKey: upgradeKeys.references(c, target ?? ""), queryFn: () => upgrades.getReferences(target ?? "", cid(c)), enabled: Boolean(c && target), staleTime: 60_000 });
+}
+
+/** Version status and last check of every connection, for the Fleet version colour. */
+export function useFleetUpgrades(enabled = true): UseQueryResult<{ enabled: boolean; nodes: upgrades.FleetUpgradeNode[] }> {
+  return useQuery({ queryKey: upgradeKeys.fleet(), queryFn: upgrades.getFleetUpgrades, enabled, staleTime: 5 * 60_000, retry: false });
+}
+
 export function useUpgrades(): UseQueryResult<Awaited<ReturnType<typeof upgrades.listAssessments>>> {
   const c = useConnection();
   return useQuery({ queryKey: upgradeKeys.list(c), queryFn: () => upgrades.listAssessments(cid(c)), enabled: Boolean(c) });
 }
 
+/** One check; polled while it runs, so the page shows each stage. */
 export function useAssessment(id: string | null): UseQueryResult<upgrades.Assessment> {
-  return useQuery({ queryKey: upgradeKeys.assessment(id ?? ""), queryFn: () => upgrades.getAssessment(id ?? ""), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: upgradeKeys.assessment(id ?? ""),
+    queryFn: () => upgrades.getAssessment(id ?? ""),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 1_000 : false),
+  });
 }
 
 export function useReplay(id: string | null): UseQueryResult<upgrades.Replay> {
@@ -320,16 +344,12 @@ export function useReplay(id: string | null): UseQueryResult<upgrades.Replay> {
   });
 }
 
-export function useRollout(): UseQueryResult<upgrades.RolloutNode[]> {
-  return useQuery({ queryKey: upgradeKeys.rollout(), queryFn: upgrades.getRollout });
-}
-
 export function useUpgradeMutations() {
   const c = useConnection();
   const client = useQueryClient();
   const invalidate = (): Promise<void> => client.invalidateQueries({ queryKey: upgradeKeys.all });
   return {
-    assess: useMutation({ mutationFn: (targetVersion: string) => upgrades.runAssessment(targetVersion, cid(c)), onSuccess: invalidate }),
+    check: useMutation({ mutationFn: (input: { targetVersion: string; referenceConnectionId: string | null }) => upgrades.startCheck(input.targetVersion, input.referenceConnectionId, cid(c)), onSuccess: invalidate }),
     replay: useMutation({ mutationFn: (input: { canaryConnectionId: string; assessmentId: string | null }) => upgrades.startReplay(input.canaryConnectionId, input.assessmentId, cid(c)), onSuccess: invalidate }),
   };
 }
