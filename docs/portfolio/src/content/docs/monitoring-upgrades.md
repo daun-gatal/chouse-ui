@@ -32,13 +32,13 @@ Pick a target, then **Compare with**:
 | A connection that already runs the target line | **Exact.** The system tables of both servers: every setting with its default and whether it is obsolete, MergeTree settings, functions, data types, table engines, formats and database engines. |
 | **Release notes only** | The "Backward Incompatible Change" entries of every release between your version and the target. Notes don't list most default changes: in a test of 25.8 → 26.8 they named 16 of 56. Use a connection on the target line when you can. |
 
-The list offers every connection you can open that runs the target line; it doesn't need to be marked as staging. Click **Check** (needs `upgrades:run`). The check reads this server, the comparison server or the notes, and 30 days of `query_log`, and shows each step as it goes. It usually takes a few seconds.
+The list offers every connection you can open that runs the target line; it doesn't need to be marked as staging. Click **Check** (needs `upgrades:run`). The check reads this server, the comparison server or the notes, and 30 days of `query_log`, [tries your top queries](#try-it-on-this-server) with the target's settings, and shows each step as it goes. It usually takes under a minute.
 
 A change becomes a finding only when your workload uses it:
 
 | Finding | When |
 | --- | --- |
-| **Breaks** | A removed type your columns use, a removed function your queries call, a removed table, database engine or format you use, or a query shape that already got slower on a replica that was upgraded |
+| **Breaks** | A removed type your columns use, a removed function your queries call, a removed table, database engine or format you use, a query that fails when tried with the target's settings, or a query shape that already got slower on a replica that was upgraded |
 | **Behaves differently** | Setting defaults that change, with the ones your workload sets or a release note mentions listed first |
 | **Heads-up** | Obsolete settings your profiles or queries still set (ClickHouse ignores them), changed MergeTree defaults, a pinned `compatibility` |
 
@@ -62,20 +62,18 @@ When an AI model is set up and you have `ai:optimize`, Chouse AI reads the notes
 - What clients do: request headers, the values inside INSERT payloads.
 - Hosts behind a load balancer, one at a time.
 
-## Replay on a canary
+## Try it on this server
 
-**Workload replay on a canary** runs the top read-only query shapes of the **active connection** (the baseline) on a **Canary connection** that already runs the target version, and compares each result and run time. Only read-only queries are replayed. Each shape gets one outcome:
+**Also try my top 200 read-only query shapes with the target's settings on this server** is on by default. Many of a new version's behaviours already exist on your current server as settings it ships switched off; the new version turns them on. So CHouse plans your most-used read-only queries of the last 30 days on your **current** server with `EXPLAIN`, once with the settings each ran with and once with the target's:
 
-| Outcome | Meaning |
-| --- | --- |
-| **Same result** | Same rows and no slower. |
-| **Differs** | The canary returned different rows. |
-| **Slower ≥ 1.5×** | Same rows, at least 1.5× slower (and over 50 ms). |
-| **Missing on canary** | The table, database or column exists only on the baseline. This is a gap in the canary's schema, not an upgrade regression. |
-| **Errors** | The query works on the baseline but fails on the canary. These are what the replay is for. |
-| **Skipped** | The query no longer runs on the baseline either, usually because its table was dropped after it was logged. Skipped shapes are listed but not counted. |
+- the new analyzer on, which can't be turned off from 26.9 and is what breaks queries most often;
+- in an exact check, also every changed default your server already knows.
 
-**Replay differences** lists every shape that wasn't the same, most serious first, as the text that was actually replayed (the client's `FORMAT` clause is removed).
+A query that fails only with the target's settings becomes a **Breaks** finding, grouped by the setting that breaks it, with the error, its callers and how often it runs. A query that fails today too is skipped. Queries whose plan changes are one **Heads-up**: they still work, so watch them in [Performance](/docs/monitoring-performance/) after the first host. The coverage line says how many queries were tried, which settings were applied, and any your server refused.
+
+Nothing is executed and no data is read: every statement is read-only, limited to 10 seconds, capped in rows read, and run one at a time within one minute. The query text is shown only to people with `query:history:view:all`.
+
+It can't test code your server doesn't have yet, such as a function the target removes (the check's diff and notes cover that), queries outside the top 200, or speed.
 
 ## Fleet
 

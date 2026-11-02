@@ -1,6 +1,6 @@
 # Plan a ClickHouse upgrade
 
-Use **Monitoring › Upgrades** to choose a version and find out what it changes for *your* workload before you roll it out. You need `upgrades:view`, and `upgrades:run` to run checks and replays. Release data and notes need [`UPGRADE_CHECK_ENABLED`](/docs/configuration-env/).
+Use **Monitoring › Upgrades** to choose a version and find out what it changes for *your* workload before you roll it out. You need `upgrades:view`, and `upgrades:run` to run checks. Release data and notes need [`UPGRADE_CHECK_ENABLED`](/docs/configuration-env/).
 
 ## 1. Choose a target
 
@@ -15,14 +15,9 @@ Open **Monitoring › Upgrades** on the connection you want to upgrade. The left
 
 Each finding has the SQL to fix it or to keep today's behaviour, and links to the ClickHouse pull request. **Copy as Markdown** turns the check into a report for your change request. See [Check an upgrade](/docs/monitoring-upgrades/#check-an-upgrade).
 
-## 3. Replay on a canary
+## 3. Fix what breaks with the new settings
 
-The check shows what changed; a replay shows what actually happens to your queries.
-
-1. With the current server as the active connection (the baseline), go to **Workload replay on a canary**, pick the server on the target version as the **Canary connection** and start the replay.
-2. Your top read-only query shapes run on both servers. **Replay differences** lists every query that returns a **different result**, gets **slower**, **errors**, or is **missing on canary**. See [outcomes](/docs/monitoring-upgrades/#replay-on-a-canary).
-
-Only read-only queries are replayed; nothing is written to either server.
+Leave **Also try my top 200 read-only query shapes…** on. CHouse plans your most-used queries on your current server with the target's settings, the new analyzer above all, without running them. Findings marked **Tried here** list the queries that would fail after the upgrade, the setting that breaks them, and who runs them. Fix those queries, then remove anything that turns the analyzer off (`enable_analyzer = 0` in a profile or a query) before upgrading any host. See [Try it on this server](/docs/monitoring-upgrades/#try-it-on-this-server).
 
 ## 4. Roll out and watch
 

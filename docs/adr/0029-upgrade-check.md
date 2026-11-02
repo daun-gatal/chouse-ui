@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-02
 - **Amends:** [0016](0016-data-observability-platform.md) §9 (*Upgrade readiness*)
-- **Scope:** `services/upgrades/*`, `routes/upgrades.ts`, the `match-upgrade-notes`
+- **Scope:** `services/upgrades/*` (including trying the workload on the current server), `routes/upgrades.ts`, the `match-upgrade-notes`
   AI feature, the upgrade MCP and assistant tools, Monitoring › Upgrades, the
   Fleet version text, the `UPGRADE_CHECK_ENABLED` setting and its Helm value,
   the docs. One PR.
@@ -115,9 +115,40 @@ and the result of the last check. The card layout does not change.
 ### 8. Removed
 
 The rollout tracker (`GET /upgrades/rollout` and the `get_upgrade_rollout` tool),
-the rules pack (`rules/clickhouse.json`) and the single verdict. The workload
-replay on a canary stays as it is. Regressions already open on upgraded replicas
+the rules pack (`rules/clickhouse.json`), the single verdict, and the workload
+replay on a canary (its routes, the `get_canary_replay` and `run_canary_replay`
+tools and `chouse upgrades replay`; past replays stay in the database). The
+replay needed a second cluster with the same data, and its result comparison
+mostly reported data differences. Regressions already open on upgraded replicas
 stay as findings.
+
+### 9. Try it on this server
+
+Many of a new version's behaviours already exist on the current server as
+settings it ships switched off; the analyzer, which can't be turned off from
+26.9, is the one that breaks queries most. So a check, unless the user turns it
+off, plans the workload's top 200 read-only query shapes of the last 30 days on
+the current server with `EXPLAIN PLAN`:
+
+- once with the settings each shape ran with (from `query_log`; a query that
+  doesn't set the analyzer gets the server's own default), and
+- once with the target's: the analyzer on, plus, in exact mode, every changed
+  default this server knows. A pinned `compatibility` keeps the old defaults
+  but not the old analyzer.
+
+A shape that fails today too is skipped. One that fails only with the target's
+settings is a **Breaks** finding; CHouse retries it with the analyzer alone,
+then each changed setting alone, to name the cause. Plans that change are one
+heads-up, compared only for shapes already on the analyzer. Settings the server
+refuses are dropped and reported.
+
+Nothing is executed: `readonly = 2`, 10 s per statement, rows read capped with
+`read_overflow_mode = throw`, one statement at a time in a 60 s budget, tagged
+as CHouse's own so it never counts as workload. Errors are cut before any
+quoted query text; the query itself is shown only with `query:history:view:all`,
+and rows on tables the reader can't access are hidden. It can't test code the
+current server doesn't have (a removed function), queries outside the top 200,
+or speed.
 
 ## Consequences
 
