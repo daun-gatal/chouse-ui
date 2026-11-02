@@ -148,8 +148,23 @@ function objectJsonFix(columns: Array<{ database: string; table: string; column:
   ].join("\n");
 }
 
-function settingLiteral(value: string): string {
-  return /^-?\d+(\.\d+)?$/.test(value) ? value : quoteStringLiteral(value);
+const line = (version: string): string => version.split(".").slice(0, 2).join(".");
+
+/**
+ * How to keep the current version's defaults while testing. Not by copying old
+ * values: a setting's meaning can change with its default (max_insert_threads
+ * = 0 is one thread on 25.8 and "auto" on 26.8). ClickHouse's compatibility
+ * setting restores a version's defaults with their meaning. The default
+ * profile usually lives in users.xml, which SQL can't change.
+ */
+function keepDefaults(version: string, storage: string | null): { title: string; sql: string } {
+  if (storage && storage !== "users_xml") {
+    return { title: `Keep ${version}'s defaults while you test, with ClickHouse's compatibility setting`, sql: `ALTER SETTINGS PROFILE default SETTINGS compatibility = ${quoteStringLiteral(version)};` };
+  }
+  return {
+    title: `Keep ${version}'s defaults while you test: the default profile is in users.xml, so add a file to users.d/ and run SYSTEM RELOAD CONFIG`,
+    sql: `<!-- /etc/clickhouse-server/users.d/compatibility.xml -->\n<clickhouse>\n    <profiles>\n        <default>\n            <compatibility>${version}</compatibility>\n        </default>\n    </profiles>\n</clickhouse>`,
+  };
 }
 
 export interface MatchInput {
@@ -279,16 +294,13 @@ export function matchFindings(input: MatchInput): FindingDraft[] {
         key: "default-changes",
         category: "default-change",
         severity: "warning",
-        title: `${plural(changed.length, "setting default")} change${changed.length === 1 ? "s" : ""} between ${current.version.split(".").slice(0, 2).join(".")} and ${targetVersion}`,
+        title: `${plural(changed.length, "setting default")} change${changed.length === 1 ? "s" : ""} between ${line(current.version)} and ${targetVersion}`,
         detail: `Queries that don't set these themselves get the new value. ${named.length ? `${plural(named.length, "of them is", "of them are")} called out in a release note: ${list(named.map((c) => c.name), 4)}.` : "None of them is called out in a release note."} Settings your workload sets or a note mentions are listed first.`,
         evidence: {
           source: { diff: "default values in system.settings on both servers" },
           head: ["Setting", "Now", "On target", "Your workload"],
           ...rows(ordered.map((c) => ({ cells: [c.name, c.from || "''", c.to || "''", q.settings[c.name] ? `set by ${plural(q.settings[c.name].shapes, "shape")}` : setBy(c.name).length ? `set in ${list(setBy(c.name), 2)}` : "—"] }))),
-          keep: {
-            title: `Keep today's defaults for everyone while you test (or set compatibility = '${current.version.split(".").slice(0, 2).join(".")}')`,
-            sql: `ALTER SETTINGS PROFILE default SETTINGS\n  ${ordered.slice(0, 8).map((c) => `${c.name} = ${settingLiteral(c.from)}`).join(",\n  ")};`,
-          },
+          keep: keepDefaults(line(current.version), facts.defaultProfileStorage),
         },
       }, notes, named.map((c) => c.name)));
     }

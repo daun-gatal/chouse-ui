@@ -55,6 +55,7 @@ function facts(over: Partial<WorkloadFacts> = {}): WorkloadFacts {
       { target: "reporting", setting: "compatibility", value: "24.8" },
       { target: "etl", setting: "allow_experimental_object_type", value: "1" },
     ],
+    defaultProfileStorage: "users_xml",
     serverMergeTree: [],
     queries: {
       functions: { snowflakeToDateTime: use(14), count: use(900) },
@@ -125,9 +126,11 @@ describe("matching the workload", () => {
     const f = found["default-changes"];
     expect(f.severity).toBe("warning");
     expect(f.evidence.rows[0].cells[0]).toBe("max_insert_threads");
-    expect(f.evidence.keep?.sql).toContain("ALTER SETTINGS PROFILE default SETTINGS");
-    expect(f.evidence.keep?.sql).toContain("async_insert = 0");
-    expect(f.evidence.keep?.title).toContain("compatibility = '25.8'");
+    // Not the old values: max_insert_threads = 0 means one thread on 25.8 but "auto" on 26.8.
+    expect(f.evidence.keep?.sql).toContain("<compatibility>25.8</compatibility>");
+    expect(f.evidence.keep?.title).toContain("users.xml");
+    const sqlManaged = byKey(matchFindings({ diff, current: FROM, targetVersion: "26.8", facts: facts({ defaultProfileStorage: "local_directory" }), notes: [] }));
+    expect(sqlManaged["default-changes"].evidence.keep?.sql).toBe("ALTER SETTINGS PROFILE default SETTINGS compatibility = '25.8';");
   });
 
   it("leaves out defaults the default profile already pins", () => {

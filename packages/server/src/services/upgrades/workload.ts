@@ -26,6 +26,8 @@ export interface WorkloadFacts {
   tables: Array<{ database: string; table: string; engine: string }>;
   databases: Array<{ database: string; engine: string }>;
   profileSettings: Array<{ target: string; setting: string; value: string }>;
+  /** Where the `default` settings profile lives: `users_xml` is read-only to SQL. */
+  defaultProfileStorage: string | null;
   serverMergeTree: string[];
   queries: {
     functions: Record<string, Use>;
@@ -85,6 +87,7 @@ export async function gatherWorkload(client: ClickHouseClient): Promise<Workload
     SELECT coalesce(profile_name, user_name, role_name, '') AS target, setting_name, coalesce(value, '') AS value
     FROM system.settings_profile_elements WHERE setting_name IS NOT NULL LIMIT 5000`)).map((s) => ({ target: s.target, setting: s.setting_name, value: s.value }));
   const serverMergeTree = (await selectRows<{ name: string }>(client, "SELECT name FROM system.merge_tree_settings WHERE changed")).map((r) => r.name);
+  const [defaultProfile] = await selectRows<{ storage: string }>(client, "SELECT storage FROM system.settings_profiles WHERE name = 'default'").catch(() => []);
 
   let queries = EMPTY_QUERIES;
   let window: WorkloadFacts["window"] = { days: WINDOW_DAYS, from: null, shapes: 0, readable: false };
@@ -105,7 +108,7 @@ export async function gatherWorkload(client: ClickHouseClient): Promise<Workload
   } catch {
     // No query_log (logging off, or no grant): the schema-based findings still stand, and the coverage says so.
   }
-  return { columns, tableBytes, tables, databases, profileSettings, serverMergeTree, queries, window };
+  return { columns, tableBytes, tables, databases, profileSettings, defaultProfileStorage: defaultProfile?.storage ?? null, serverMergeTree, queries, window };
 }
 
 /** Pure: data type family names inside a column type, e.g. `Nullable(Object('json'))` → Nullable, Object. */
