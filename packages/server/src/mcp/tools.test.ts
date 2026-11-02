@@ -204,7 +204,6 @@ const DEFAULT_TOOL_NAMES = [
   "get_capacity",
   "list_upgrade_assessments",
   "get_upgrade_assessment",
-  "get_canary_replay",
   "get_upgrade_status",
   "get_collector_status",
   "get_collector_schedule",
@@ -603,7 +602,6 @@ describe("performance, capacity and upgrade tools", () => {
       ["get_capacity", { connection_id: "conn-2" }],
       ["list_upgrade_assessments", { connection_id: "conn-2" }],
       ["get_upgrade_assessment", { id: "as-1" }],
-      ["get_canary_replay", { id: "rp-1" }],
       ["get_upgrade_status", { connection_id: "conn-2" }],
       ["get_collector_status", { connection_id: "conn-2" }],
       ["get_collector_schedule", {}],
@@ -619,21 +617,20 @@ describe("performance, capacity and upgrade tools", () => {
       "GET /api/observe/capacity",
       "GET /api/upgrades/assessments",
       "GET /api/upgrades/assessments/as-1",
-      "GET /api/upgrades/replays/rp-1",
       "GET /api/upgrades/status",
       "GET /api/observe/status",
       "GET /api/observe/collectors/schedule",
       "GET /api/observe/collectors/schedule/conn-2",
     ]);
     // Connection-scoped observe routes read the connection from the header.
-    for (const i of [0, 1, 2, 3, 6, 7]) expect(headers[i]?.["x-connection-id"]).toBe("conn-2");
+    for (const i of [0, 1, 2, 3, 5, 6]) expect(headers[i]?.["x-connection-id"]).toBe("conn-2");
     await harness.close();
   });
 
   it("lists performance tools only for tokens with their permission", async () => {
     const { proxy } = makeProxy({});
     const names = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: [PERMISSIONS.CAPACITY_VIEW, PERMISSIONS.UPGRADES_VIEW] }));
-    expect(names.sort()).toEqual(["get_canary_replay", "get_capacity", "get_upgrade_assessment", "get_upgrade_status", "list_upgrade_assessments", "whoami"]);
+    expect(names.sort()).toEqual(["get_capacity", "get_upgrade_assessment", "get_upgrade_status", "list_upgrade_assessments", "whoami"]);
   });
 });
 

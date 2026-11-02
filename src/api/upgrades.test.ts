@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { getAssessment, getFleetUpgrades, getReferences, getReplay, getUpgradeStatus, listAssessments, startCheck, startReplay } from "./upgrades";
+import { getAssessment, getFleetUpgrades, getReferences, getUpgradeStatus, listAssessments, startCheck } from "./upgrades";
 
 describe("upgrades API", () => {
   it("calls the upgrade check routes with the right paths, params and bodies", async () => {
@@ -12,7 +12,7 @@ describe("upgrades API", () => {
         const url = new URL(request.url);
         const text = request.method === "GET" ? "" : await request.text();
         seen.push({ method: request.method, path: url.pathname, search: url.search, body: text ? JSON.parse(text) : undefined });
-        return HttpResponse.json({ success: true, data: { references: [{ connectionId: "c2", name: "staging", version: "26.8.36.3" }], nodes: [], enabled: true, assessments: [], replays: [], id: "a1", status: "running" } });
+        return HttpResponse.json({ success: true, data: { references: [{ connectionId: "c2", name: "staging", version: "26.8.36.3" }], nodes: [], enabled: true, assessments: [], id: "a1", status: "running" } });
       }),
     );
     await getUpgradeStatus("c1");
@@ -22,8 +22,6 @@ describe("upgrades API", () => {
     await getAssessment("a/1");
     await startCheck("26.8.36.3", "c2", true, "c1");
     await startCheck("26.8.36.3", null, false, "c1");
-    await startReplay("c2", "a1");
-    await getReplay("r1");
     expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
       "GET /api/upgrades/status",
       "GET /api/upgrades/references",
@@ -32,13 +30,10 @@ describe("upgrades API", () => {
       "GET /api/upgrades/assessments/a%2F1",
       "POST /api/upgrades/assessments",
       "POST /api/upgrades/assessments",
-      "POST /api/upgrades/replays",
-      "GET /api/upgrades/replays/r1",
     ]);
     expect(new URLSearchParams(seen[1].search).get("target")).toBe("26.8.36.3");
     expect(new URLSearchParams(seen[1].search).get("connectionId")).toBe("c1");
     expect(seen[5].body).toEqual({ targetVersion: "26.8.36.3", referenceConnectionId: "c2", tryQueries: true });
     expect(seen[6].body).toEqual({ targetVersion: "26.8.36.3", tryQueries: false });
-    expect(seen[7].body).toEqual({ canaryConnectionId: "c2", assessmentId: "a1" });
   });
 });

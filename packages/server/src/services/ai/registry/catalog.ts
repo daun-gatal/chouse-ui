@@ -527,7 +527,7 @@ const operationsTools: CatalogTool[] = [
   }),
   apiTool({
     name: "list_upgrade_assessments", title: "Upgrade assessments", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.",
+    description: "Upgrade checks of a connection: target version, mode and counts by severity.",
     schema: CONNECTION_SCHEMA,
     request: (a) => ({ path: "/api/upgrades/assessments", query: { connectionId: str(a.connectionId) } }),
   }),

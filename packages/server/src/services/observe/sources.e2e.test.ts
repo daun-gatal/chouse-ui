@@ -14,7 +14,8 @@
  *   and the blast radius
  * - remediation with approval, execution, verification and rollback
  * - DDL preflight blocking a breaking change
- * - workload replay against a canary on a different version
+ * - the upgrade check: queries that break with the new analyzer, tried on this
+ *   server, and an exact check from the old node against this one
  *
  * Skipped unless OBSERVE_E2E_SOURCES is set.
  */
@@ -32,14 +33,14 @@ import { PERMISSIONS } from "../../rbac/schema/base";
 import { approveAction, executeAction, proposeAction, rollbackAction, verifyAction, type Actor } from "../remediation/executor";
 import * as remediationStore from "../remediation/store";
 import { analyzeDdl } from "../schemaPreflight/impact";
-import { getReplay, runReplay } from "../upgrades/assess";
+import { getAssessment, startAssessment } from "../upgrades/assess";
+import { explainOn, loadShapes, tryShapes } from "../upgrades/tryQueries";
 import { probeCapabilities } from "./capabilities";
 import { observeClient } from "./clickhouse";
 import type { CollectorContext, ConnectionCollector } from "./collector";
 import { catalogCollector } from "./collectors/catalog";
 import { lineageCollector } from "./collectors/lineage";
 import { pipelinesCollector } from "./collectors/pipelines";
-import { queriesCollector } from "./collectors/queries";
 import { tablesCollector } from "./collectors/tables";
 import { downstreamOf } from "./rca";
 import { computeAndStoreRca, getStoredRca } from "./rcaService";
@@ -402,24 +403,40 @@ describe.skipIf(!ENABLED)("observability across every source (ADR 0016)", () => 
     expect(harmless.breaking).toBe(false);
   });
 
-  it("replays the workload on a canary running another version", async () => {
-    for (let i = 0; i < 5; i++) {
-      for (const q of ["SELECT sum(number) FROM numbers(100000)", "SELECT count() FROM numbers(1000) WHERE number % 7 = 0", "SELECT avg(toFloat32(number)) FROM numbers(10000)"]) {
-        await ch.query({ query: q, format: "JSONEachRow" }).then((r) => r.json());
-      }
+  it("finds a query the new analyzer breaks by planning it on this server", async () => {
+    await exec(`CREATE TABLE ${DB}.try_a (id UInt64, v UInt64) ENGINE = MergeTree ORDER BY id`);
+    await exec(`INSERT INTO ${DB}.try_a SELECT number, number FROM numbers(100)`);
+    for (let i = 0; i < 3; i++) {
+      // Plans with the old analyzer, fails with the new one (NOT_AN_AGGREGATE).
+      await ch.query({ query: `SELECT sum(v) FROM ${DB}.try_a HAVING id > ${i}`, format: "JSONEachRow", clickhouse_settings: { enable_analyzer: 0 } }).then((r) => r.json());
+      await ch.query({ query: `SELECT count() FROM ${DB}.try_a WHERE v > ${i}`, format: "JSONEachRow" }).then((r) => r.json());
     }
     await exec("SYSTEM FLUSH LOGS");
-    await runCollector(queriesCollector);
-    const id = await runReplay(connectionId, oldConnectionId, null, APPROVER_A, 50);
-    let replay = await getReplay(id, true);
-    for (let i = 0; i < 60 && replay?.status === "running"; i++) {
-      await sleep(1000);
-      replay = await getReplay(id, true);
-    }
-    expect(replay?.status).toBe("done");
-    expect(Number(replay?.total)).toBeGreaterThan(0);
-    // Total counts every replayed shape: objects missing only on the canary are a
-    // schema gap of their own; shapes the baseline itself can no longer run are skipped.
-    expect(Number(replay?.same) + Number(replay?.differs) + Number(replay?.slower) + Number(replay?.errors) + Number(replay?.missing)).toBe(Number(replay?.total));
+    const shapes = (await loadShapes(ch)).filter((s) => s.query.includes(`${DB}.try_a`));
+    expect(shapes).toHaveLength(2);
+    const result = await tryShapes(explainOn(ch, JSON.stringify({ source: "observe", collector: "upgrades-try" })), shapes, { analyzer: "enable_analyzer", analyzerDefaultOn: true, changed: {} });
+    expect(result.tried).toBe(2);
+    expect(result.failing).toHaveLength(1);
+    expect(result.failing[0].error?.type).toBe("NOT_AN_AGGREGATE");
+    expect(result.failing[0].cause).toBe("enable_analyzer");
+    expect(result.failing[0].error?.message).not.toContain("SELECT");
   }, 120_000);
+
+  it("checks an upgrade of the old node against this one, trying its workload there", async () => {
+    await old.query({ query: "SELECT count() FROM numbers(10) WHERE number > 1", format: "JSONEachRow" }).then((r) => r.json());
+    await old.command({ query: "SYSTEM FLUSH LOGS" });
+    const [row] = await ch.query({ query: "SELECT version() AS v", format: "JSONEachRow" }).then((r) => r.json<{ v: string }>());
+    const target = row.v.split(".").slice(0, 4).join(".");
+    const id = await startAssessment({ connectionId: oldConnectionId, targetVersion: target, reference: { connectionId, name: "e2e" }, tryQueries: true, actorId: APPROVER_A });
+    let a = await getAssessment(id);
+    for (let i = 0; i < 120 && a?.status === "running"; i++) {
+      await sleep(1000);
+      a = await getAssessment(id);
+    }
+    expect(a?.status).toBe("done");
+    expect(a?.summary.mode).toBe("exact");
+    expect(a?.summary.coverage?.diff?.settings[1]).toBeGreaterThan(a?.summary.coverage?.diff?.settings[0] ?? 0);
+    expect(a?.summary.coverage?.tried?.readable).toBe(true);
+    expect(a?.findings.some((f) => f.category === "default-change")).toBe(true);
+  }, 180_000);
 });

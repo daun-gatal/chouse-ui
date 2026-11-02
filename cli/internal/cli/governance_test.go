@@ -84,7 +84,6 @@ func TestGovernanceReadsProjectOntoTheAPI(t *testing.T) {
 		{[]string{"capacity", "-c", "prod", "--view", "growth"}, "/api/observe/capacity?connectionId=" + prodID + " [" + prodID + "]"},
 		{[]string{"upgrades", "list", "-c", "prod"}, "/api/upgrades/assessments?connectionId=" + prodID + " [" + prodID + "]"},
 		{[]string{"upgrades", "get", "as-1"}, "/api/upgrades/assessments/as-1"},
-		{[]string{"upgrades", "replay", "rp-1"}, "/api/upgrades/replays/rp-1"},
 		{[]string{"upgrades", "status", "-c", "prod"}, "/api/upgrades/status?connectionId=" + prodID + " [" + prodID + "]"},
 		{[]string{"upgrades", "fleet"}, "/api/upgrades/fleet"},
 		{[]string{"upgrades", "rollout"}, "/api/upgrades/fleet"},

@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 137 tools the [MCP server](/docs/mcp/) offers. 122 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 135 tools the [MCP server](/docs/mcp/) offers. 120 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -65,7 +65,6 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`get_capacity`](#get_capacity) | Read | Yes | `capacity:view` |
 | [`list_upgrade_assessments`](#list_upgrade_assessments) | Read | Yes | `upgrades:view` |
 | [`get_upgrade_assessment`](#get_upgrade_assessment) | Read | Yes | `upgrades:view` |
-| [`get_canary_replay`](#get_canary_replay) | Read | Yes | `upgrades:view` |
 | [`get_upgrade_status`](#get_upgrade_status) | Read | Yes | `upgrades:view` |
 | [`list_dashboards`](#list_dashboards) | Read | Yes | `dashboards:view` |
 | [`get_dashboard`](#get_dashboard) | Read | Yes | `dashboards:view` |
@@ -113,7 +112,6 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`update_doctor_schedule`](#update_doctor_schedule) | Write | Yes | `doctor:run` |
 | [`update_fleet_alert_config`](#update_fleet_alert_config) | Write | Yes | `settings:update` |
 | [`run_upgrade_assessment`](#run_upgrade_assessment) | Write | Yes | `upgrades:run` |
-| [`run_canary_replay`](#run_canary_replay) | Write | Yes | `upgrades:run` |
 | [`list_scheduled_jobs`](#list_scheduled_jobs) | Read | Yes | `scheduled_queries:view` |
 | [`get_scheduled_job`](#get_scheduled_job) | Read | Yes | `scheduled_queries:view` |
 | [`list_scheduled_runs`](#list_scheduled_runs) | Read | Yes | `scheduled_queries:view` |
@@ -720,7 +718,7 @@ Disk forecasts per node (days until the threshold), the fastest-growing tables, 
 
 *Upgrade assessments* — **Read** · on by default · needs any of `upgrades:view`
 
-Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.
+Upgrade checks of a connection: target version, mode and counts by severity.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -735,16 +733,6 @@ One upgrade check: what upgrading to the target changes for the real workload (r
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Assessment id |
-
-### get_canary_replay
-
-*Canary replay* — **Read** · on by default · needs any of `upgrades:view`
-
-One workload replay on a canary connection: queries replayed, skipped and missing on the canary, and the most serious result or latency differences. Replayed query text is included only with query:history:view:all.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | `string` | Yes | Replay id |
 
 ### get_upgrade_status
 
@@ -1301,24 +1289,13 @@ Turn fleet threshold alerts on or off and set their thresholds. Notification cha
 
 *Assess an upgrade* — **Write** · on by default · needs any of `upgrades:run`
 
-Check what upgrading the active connection's ClickHouse to a version changes for its workload. With referenceConnectionId (a connection already on the target line) it compares both servers exactly; otherwise it reads the release notes. Runs in the background: read the result with get_upgrade_assessment. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+Check what upgrading the active connection's ClickHouse to a version changes for its workload. With referenceConnectionId (a connection already on the target line) it compares both servers exactly; otherwise it reads the release notes. Runs in the background: read the result with get_upgrade_assessment. It also plans the workload's top query shapes on this server with the target's settings (EXPLAIN only) unless tryQueries is false. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `targetVersion` | `string` | Yes |   |
 | `referenceConnectionId` | `string` | No |   |
-
-### run_canary_replay
-
-*Replay queries on a canary* — **Write** · on by default · needs any of `upgrades:run`
-
-Replay recent read queries from the active connection against a canary connection to compare results before an upgrade. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `canaryConnectionId` | `string` | Yes |   |
-| `assessmentId` | `string` | No |   |
-| `limit` | `number` | No |   |
+| `tryQueries` | `boolean` | No |   |
 
 ## Scheduled queries
 

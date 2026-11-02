@@ -1388,13 +1388,13 @@ chouse scheduled runs 4d2e… --limit 5
 
 ### chouse upgrades
 
-ClickHouse version status, upgrade checks and canary replays.
+ClickHouse version status and upgrade checks.
 
 Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version
-stands and the targets worth moving to, the upgrade checks run against your
-real workload (exact against a connection on the target line, or from the
-release notes), and workload replays on a canary. Read-only; checks and
-replays are started in the UI.
+stands and the targets worth moving to, and the upgrade checks run against
+your real workload (exact against a connection on the target line, or from
+the release notes, with the top queries planned on the server with the
+target's settings). Read-only; checks are started in the UI.
 
 ```bash
 chouse upgrades
@@ -1405,7 +1405,6 @@ chouse upgrades status -c prod
 chouse upgrades fleet
 chouse upgrades list -c prod
 chouse upgrades get 3d1e… -o yaml
-chouse upgrades replay 7a90…
 ```
 
 #### chouse upgrades fleet
@@ -1436,7 +1435,7 @@ chouse upgrades get 3d1e… -o yaml
 
 #### chouse upgrades list
 
-Upgrade checks and replays of the -c connection.
+Upgrade checks of the -c connection.
 
 ```bash
 chouse upgrades list
@@ -1444,18 +1443,6 @@ chouse upgrades list
 
 ```bash
 chouse upgrades list -c prod
-```
-
-#### chouse upgrades replay
-
-One canary replay: replayed, skipped, missing and differing queries.
-
-```bash
-chouse upgrades replay <replayId>
-```
-
-```bash
-chouse upgrades replay 7a90…
 ```
 
 #### chouse upgrades status

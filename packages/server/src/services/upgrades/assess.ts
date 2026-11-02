@@ -7,16 +7,14 @@
  * - Release notes: the breaking-change notes between the two versions,
  *   filtered to names the workload uses (Chouse AI reads them separately).
  *
- * Plus the workload replay on a canary. CHouse UI never performs the upgrade.
+ * Plus, on by default, the workload's top query shapes planned on this server
+ * with the target's settings (tryQueries.ts). CHouse UI never performs the upgrade.
  */
 
 import { randomUUID } from "crypto";
 
-import type { ClickHouseClient } from "@clickhouse/client";
-
 import { logger } from "../../utils/logger";
 import { all, json, num, numOrNull, one, run, sql, str, strOrNull } from "../observe/db";
-import { selectRows, stripFormat } from "../observe/clickhouse";
 import { clientForConnection } from "../scheduledQueries/chClient";
 import { upgradeCheckEnabled, UpgradeSourceError } from "./fetch";
 import { matchFindings, nameKey, noteFindings, tryFindings, workloadNameList, type FindingDraft, type FindingEvidence, type Severity } from "./match";
@@ -219,7 +217,8 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
       const changed = Object.fromEntries((diff?.changedSettings ?? []).filter((c) => !NOT_TRIED.has(c.name)).map((c) => [c.name, c.to]));
       try {
         const explain = explainOn(client, JSON.stringify({ source: "observe", collector: "upgrades-try" }));
-        tried = await tryShapes(explain, await loadShapes(client), { analyzer, changed });
+        const analyzerDefault = analyzer ? current.settings.get(analyzer)?.value ?? "1" : "1";
+        tried = await tryShapes(explain, await loadShapes(client), { analyzer, analyzerDefaultOn: !["0", "false"].includes(analyzerDefault.toLowerCase()), changed });
       } catch (error) {
         // No query_log, or no grant: the rest of the check still stands, and the coverage says why.
         triedError = checkErrorText(error);
@@ -329,151 +328,4 @@ export async function latestChecks(connectionIds: string[]): Promise<Record<stri
     out[connectionId] = { id: str(a.id), targetVersion: str(a.target_version), mode: summary?.mode ?? "notes", counts: summary?.counts ?? null, at: numOrNull(a.finished_at) ?? num(a.created_at) };
   }
   return out;
-}
-
-// --- workload replay -----------------------------------------------------------
-
-/** Queries whose results legitimately differ between runs are not replayed. */
-export function replayable(query: string): boolean {
-  const q = query.toLowerCase();
-  if (!/^\s*(with|select)\b/.test(q)) return false;
-  if (/\bsystem\./.test(q)) return false;
-  if (/\b(now|now64|today|yesterday|rand|rand64|randcanonical|generateuuidv4|currentuser|hostname|uptime|version)\s*\(/.test(q)) return false;
-  return true;
-}
-
-
-export function replayQuery(query: string): string {
-  return `SELECT count() AS c, sum(cityHash64(*)) AS h FROM (${stripFormat(query)})`;
-}
-
-async function timed(client: ClickHouseClient, query: string): Promise<ReplayTiming> {
-  const started = Date.now();
-  const rows = await selectRows<{ c: number; h: string | number }>(client, query, { maxExecutionTime: 60 });
-  return { hash: `${rows[0]?.c ?? 0}:${rows[0]?.h ?? 0}`, ms: Date.now() - started };
-}
-
-/** UNKNOWN_IDENTIFIER, UNKNOWN_TABLE, UNKNOWN_DATABASE. */
-const MISSING_OBJECT_CODES = new Set(["47", "60", "81"]);
-
-/** True when ClickHouse refused a query because a table, database or column does not exist there. */
-export function isMissingObject(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const code = "code" in error ? String(error.code) : "";
-  if (MISSING_OBJECT_CODES.has(code)) return true;
-  const message = "message" in error ? String(error.message) : "";
-  return /Unknown table expression identifier|\b(Table|Database) \S+ does not exist/i.test(message);
-}
-
-export interface ReplayTiming {
-  hash: string;
-  ms: number;
-}
-
-export type ReplayOutcome = "same" | "differs" | "slower" | "missing" | "error" | "skipped";
-
-export interface ReplayShapeResult {
-  outcome: ReplayOutcome;
-  baseline: ReplayTiming | null;
-  canary: ReplayTiming | null;
-  error: string | null;
-}
-
-function errorText(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
-}
-
-/**
- * Replay one shape on the baseline, then the canary. A shape the baseline
- * itself can no longer run (its table was dropped since it was logged) says
- * nothing about the canary, so it is skipped rather than reported as an error;
- * an object missing only on the canary is a schema gap, not an upgrade regression.
- */
-export async function replayShape(runBaseline: () => Promise<ReplayTiming>, runCanary: () => Promise<ReplayTiming>): Promise<ReplayShapeResult> {
-  let baseline: ReplayTiming;
-  try {
-    baseline = await runBaseline();
-  } catch (e) {
-    return { outcome: "skipped", baseline: null, canary: null, error: errorText(e) };
-  }
-  let canary: ReplayTiming;
-  try {
-    canary = await runCanary();
-  } catch (e) {
-    return { outcome: isMissingObject(e) ? "missing" : "error", baseline, canary: null, error: errorText(e) };
-  }
-  if (baseline.hash !== canary.hash) return { outcome: "differs", baseline, canary, error: null };
-  if (canary.ms >= Math.max(50, baseline.ms * 1.5)) return { outcome: "slower", baseline, canary, error: null };
-  return { outcome: "same", baseline, canary, error: null };
-}
-
-export async function runReplay(connectionId: string, canaryConnectionId: string, assessmentId: string | null, actorId: string | null, limit = 500): Promise<string> {
-  const id = randomUUID();
-  await run(sql`INSERT INTO replay_runs (id, assessment_id, connection_id, canary_connection_id, status, requested_by, started_at) VALUES (${id}, ${assessmentId}, ${connectionId}, ${canaryConnectionId}, 'running', ${actorId}, ${Date.now()})`);
-  void (async () => {
-    // Skipped shapes stay out of total; missing and skipped are counted from replay_results on read.
-    const counts = { total: 0, same: 0, differs: 0, slower: 0, errors: 0 };
-    let attempts = 0;
-    try {
-      const comment = JSON.stringify({ source: "observe", collector: "replay", run_id: id });
-      const base = await clientForConnection(connectionId, comment);
-      const canary = await clientForConnection(canaryConnectionId, comment);
-      const shapes = await all(sql`
-        SELECT fingerprint, MAX(sample_query) AS sample_query, SUM(total_ms) AS total FROM obs_query_fingerprints
-        WHERE connection_id = ${connectionId} AND query_kind = 'Select' GROUP BY fingerprint ORDER BY total DESC LIMIT ${limit * 2}`);
-      for (const s of shapes) {
-        // Skipped shapes do not use up the limit, but stale history must not stretch the run either.
-        if (counts.total >= limit || attempts >= limit * 2) break;
-        const query = str(s.sample_query);
-        if (!replayable(query)) continue;
-        attempts++;
-        const wrapped = replayQuery(query);
-        const result = await replayShape(() => timed(base, wrapped), () => timed(canary, wrapped));
-        if (result.outcome !== "skipped") counts.total++;
-        if (result.outcome === "same") counts.same++;
-        if (result.outcome === "differs") counts.differs++;
-        if (result.outcome === "slower") counts.slower++;
-        if (result.outcome === "error") counts.errors++;
-        await run(sql`
-          INSERT INTO replay_results (run_id, fingerprint, outcome, baseline_ms, canary_ms, baseline_hash, canary_hash, error)
-          VALUES (${id}, ${str(s.fingerprint)}, ${result.outcome}, ${result.baseline?.ms ?? null}, ${result.canary?.ms ?? null}, ${result.baseline?.hash ?? null}, ${result.canary?.hash ?? null}, ${result.error})
-          ON CONFLICT (run_id, fingerprint) DO NOTHING`);
-      }
-      await run(sql`UPDATE replay_runs SET status = 'done', total = ${counts.total}, same = ${counts.same}, differs = ${counts.differs}, slower = ${counts.slower}, errors = ${counts.errors}, finished_at = ${Date.now()} WHERE id = ${id}`);
-    } catch (error) {
-      logger.warn({ module: "Upgrades", replayId: id, err: error instanceof Error ? error.message : String(error) }, "Workload replay failed");
-      await run(sql`UPDATE replay_runs SET status = 'failed', total = ${counts.total}, same = ${counts.same}, differs = ${counts.differs}, slower = ${counts.slower}, errors = ${counts.errors}, finished_at = ${Date.now()} WHERE id = ${id}`);
-    }
-  })();
-  return id;
-}
-
-/** Most actionable first, so the row cap never hides a real error behind skipped history. */
-const OUTCOME_ORDER = sql`CASE rr.outcome WHEN 'error' THEN 0 WHEN 'differs' THEN 1 WHEN 'missing' THEN 2 WHEN 'slower' THEN 3 ELSE 4 END`;
-
-export async function getReplay(id: string, canSeeQueryText: boolean): Promise<Record<string, unknown> | null> {
-  const r = await one(sql`SELECT * FROM replay_runs WHERE id = ${id}`);
-  if (!r) return null;
-  const byOutcome = new Map((await all(sql`SELECT outcome, COUNT(*) AS n FROM replay_results WHERE run_id = ${id} GROUP BY outcome`)).map((x) => [str(x.outcome), num(x.n)]));
-  const results = await all(sql`
-    SELECT rr.*, f.sample_query FROM replay_results rr
-    LEFT JOIN (SELECT fingerprint, MAX(sample_query) AS sample_query FROM obs_query_fingerprints GROUP BY fingerprint) f ON f.fingerprint = rr.fingerprint
-    WHERE rr.run_id = ${id} AND rr.outcome <> 'same' ORDER BY ${OUTCOME_ORDER}, rr.fingerprint LIMIT 200`);
-  return {
-    id, connectionId: str(r.connection_id), canaryConnectionId: str(r.canary_connection_id), status: str(r.status),
-    total: num(r.total), same: num(r.same), differs: num(r.differs), slower: num(r.slower), errors: num(r.errors),
-    missing: byOutcome.get("missing") ?? 0, skipped: byOutcome.get("skipped") ?? 0,
-    startedAt: num(r.started_at), finishedAt: numOrNull(r.finished_at),
-    results: results.map((x) => {
-      const sample = strOrNull(x.sample_query);
-      // Show the text that was replayed: the logged FORMAT clause is stripped before running.
-      return { fingerprint: str(x.fingerprint), outcome: str(x.outcome), baselineMs: numOrNull(x.baseline_ms), canaryMs: numOrNull(x.canary_ms), error: strOrNull(x.error), sampleQuery: canSeeQueryText && sample ? stripFormat(sample) : null };
-    }),
-  };
-}
-
-export async function listReplays(connectionId: string): Promise<Array<Record<string, unknown>>> {
-  return (await all(sql`SELECT * FROM replay_runs WHERE connection_id = ${connectionId} ORDER BY started_at DESC LIMIT 20`)).map((r) => ({
-    id: str(r.id), canaryConnectionId: str(r.canary_connection_id), status: str(r.status), total: num(r.total), same: num(r.same), differs: num(r.differs), slower: num(r.slower), errors: num(r.errors), startedAt: num(r.started_at),
-  }));
 }

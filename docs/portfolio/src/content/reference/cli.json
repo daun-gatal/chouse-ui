@@ -1694,9 +1694,9 @@
     {
       "path": "chouse upgrades",
       "use": "chouse upgrades",
-      "short": "ClickHouse version status, upgrade checks and canary replays",
-      "long": "Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version\nstands and the targets worth moving to, the upgrade checks run against your\nreal workload (exact against a connection on the target line, or from the\nrelease notes), and workload replays on a canary. Read-only; checks and\nreplays are started in the UI.",
-      "example": "  chouse upgrades status -c prod\n  chouse upgrades fleet\n  chouse upgrades list -c prod\n  chouse upgrades get 3d1e… -o yaml\n  chouse upgrades replay 7a90…",
+      "short": "ClickHouse version status and upgrade checks",
+      "long": "Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version\nstands and the targets worth moving to, and the upgrade checks run against\nyour real workload (exact against a connection on the target line, or from\nthe release notes, with the top queries planned on the server with the\ntarget's settings). Read-only; checks are started in the UI.",
+      "example": "  chouse upgrades status -c prod\n  chouse upgrades fleet\n  chouse upgrades list -c prod\n  chouse upgrades get 3d1e… -o yaml",
       "group": "ops",
       "runnable": true
     },
@@ -1720,15 +1720,8 @@
     {
       "path": "chouse upgrades list",
       "use": "chouse upgrades list",
-      "short": "Upgrade checks and replays of the -c connection",
+      "short": "Upgrade checks of the -c connection",
       "example": "  chouse upgrades list -c prod",
-      "runnable": true
-    },
-    {
-      "path": "chouse upgrades replay",
-      "use": "chouse upgrades replay <replayId>",
-      "short": "One canary replay: replayed, skipped, missing and differing queries",
-      "example": "  chouse upgrades replay 7a90…",
       "runnable": true
     },
     {

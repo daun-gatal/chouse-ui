@@ -1,7 +1,7 @@
 /**
  * Upgrades API (ADR 0029): version status and targets, the upgrade check
- * (exact against a connection on the target line, or from release notes),
- * the Fleet version colour, and the workload replay on a canary.
+ * (exact against a connection on the target line, or from release notes, plus
+ * the top queries planned with the target's settings) and the Fleet version colour.
  */
 
 import { api } from "./client";
@@ -135,29 +135,6 @@ export interface Assessment extends AssessmentSummary {
   hiddenRows: number;
 }
 
-export interface ReplaySummary {
-  id: string;
-  canaryConnectionId: string;
-  status: string;
-  total: number;
-  same: number;
-  differs: number;
-  slower: number;
-  errors: number;
-  startedAt: number;
-}
-
-/** `missing`: the table/column exists only on the baseline. `skipped`: the baseline itself can no longer run the shape. */
-export type ReplayOutcome = "same" | "differs" | "slower" | "missing" | "error" | "skipped";
-
-export interface Replay extends ReplaySummary {
-  connectionId: string;
-  finishedAt: number | null;
-  missing: number;
-  skipped: number;
-  results: Array<{ fingerprint: string; outcome: ReplayOutcome; baselineMs: number | null; canaryMs: number | null; error: string | null; sampleQuery: string | null }>;
-}
-
 export interface FleetUpgradeNode {
   connectionId: string;
   name: string;
@@ -179,7 +156,7 @@ export async function getFleetUpgrades(): Promise<{ enabled: boolean; nodes: Fle
   return api.get<{ enabled: boolean; nodes: FleetUpgradeNode[] }>("/upgrades/fleet");
 }
 
-export function listAssessments(connectionId?: string): Promise<{ assessments: AssessmentSummary[]; replays: ReplaySummary[] }> {
+export function listAssessments(connectionId?: string): Promise<{ assessments: AssessmentSummary[] }> {
   return api.get("/upgrades/assessments", { params: { connectionId } });
 }
 
@@ -190,12 +167,4 @@ export function getAssessment(id: string): Promise<Assessment> {
 /** Starts a check; it runs in the background, so poll getAssessment until it is no longer running. */
 export function startCheck(targetVersion: string, referenceConnectionId: string | null, tryQueries = true, connectionId?: string): Promise<{ id: string; status: "running" }> {
   return api.post("/upgrades/assessments", { targetVersion, ...(referenceConnectionId ? { referenceConnectionId } : {}), tryQueries }, { params: { connectionId } });
-}
-
-export function startReplay(canaryConnectionId: string, assessmentId: string | null, connectionId?: string): Promise<{ id: string }> {
-  return api.post("/upgrades/replays", { canaryConnectionId, assessmentId }, { params: { connectionId } });
-}
-
-export function getReplay(id: string): Promise<Replay> {
-  return api.get<Replay>(`/upgrades/replays/${encodeURIComponent(id)}`);
 }

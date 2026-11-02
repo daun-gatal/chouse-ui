@@ -2,9 +2,9 @@
  * `/api/upgrades` — the upgrade check (ADR 0029, amending ADR 0016 §9).
  *
  * Permission map:
- *   status, references, fleet, assessments, replays   upgrades:view
- *   run a check / workload replay                     upgrades:run (+ access to every connection involved)
- *   replayed query text                               query:history:view:all
+ *   status, references, fleet, assessments            upgrades:view
+ *   run a check                                       upgrades:run (+ access to every connection involved)
+ *   query text in tried shapes                        query:history:view:all
  *
  * Evidence that names a table is shown only to users whose data access
  * policies let them read it; the rest are counted, not named.
@@ -21,7 +21,7 @@ import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { json, one, sql, strOrNull } from "../services/observe/db";
 import { selectRows } from "../services/observe/clickhouse";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
-import { CheckInputError, getAssessment, getReplay, latestChecks, listAssessments, listReplays, runReplay, startAssessment, type Assessment } from "../services/upgrades/assess";
+import { CheckInputError, getAssessment, latestChecks, listAssessments, startAssessment, type Assessment } from "../services/upgrades/assess";
 import { upgradeCheckEnabled } from "../services/upgrades/fetch";
 import { getReleaseData, upgradeTargets, versionStatus } from "../services/upgrades/releaseData";
 import { lineOf, plainVersion } from "../services/upgrades/versions";
@@ -152,7 +152,7 @@ upgrades.get("/assessments", requirePermission(PERMISSIONS.UPGRADES_VIEW), async
     void _names;
     return { ...a, summary };
   });
-  return ok(c, { assessments, replays: await listReplays(connectionId) });
+  return ok(c, { assessments });
 });
 
 upgrades.get("/assessments/:id", requirePermission(PERMISSIONS.UPGRADES_VIEW), async (c) => {
@@ -192,27 +192,5 @@ upgrades.post(
     return ok(c, { id, status: "running" }, 202);
   },
 );
-
-upgrades.post(
-  "/replays",
-  requirePermission(PERMISSIONS.UPGRADES_RUN),
-  zValidator("json", z.object({ canaryConnectionId: z.string().min(1), assessmentId: z.string().nullish(), limit: z.number().int().min(1).max(500).default(500) })),
-  async (c) => {
-    const { connectionId } = await scopedConnection(c);
-    const body = c.req.valid("json");
-    if (body.canaryConnectionId === connectionId) throw AppError.badRequest("Pick a different connection as the canary");
-    await assertConnectionAccess(c, body.canaryConnectionId);
-    const id = await runReplay(connectionId, body.canaryConnectionId, body.assessmentId ?? null, getRbacUser(c).sub, body.limit);
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.UPGRADE_REPLAY, getRbacUser(c).sub, { resourceType: "connection", resourceId: connectionId, details: { canary: body.canaryConnectionId, replayId: id } });
-    return ok(c, { id }, 201);
-  },
-);
-
-upgrades.get("/replays/:id", requirePermission(PERMISSIONS.UPGRADES_VIEW), async (c) => {
-  const replay = await getReplay(requireParam(c, "id"), canSeeAllQueryText(c));
-  if (!replay) throw AppError.notFound("Replay not found");
-  await assertConnectionAccess(c, String(replay.connectionId));
-  return ok(c, replay);
-});
 
 export default upgrades;

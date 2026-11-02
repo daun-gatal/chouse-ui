@@ -62,7 +62,6 @@ export const upgradeKeys = {
   fleet: () => [...upgradeKeys.all, "fleet"] as const,
   list: (c: string | null) => [...upgradeKeys.all, "list", c] as const,
   assessment: (id: string) => [...upgradeKeys.all, "assessment", id] as const,
-  replay: (id: string) => [...upgradeKeys.all, "replay", id] as const,
 };
 
 const agentKeys = {
@@ -335,22 +334,12 @@ export function useAssessment(id: string | null): UseQueryResult<upgrades.Assess
   });
 }
 
-export function useReplay(id: string | null): UseQueryResult<upgrades.Replay> {
-  return useQuery({
-    queryKey: upgradeKeys.replay(id ?? ""),
-    queryFn: () => upgrades.getReplay(id ?? ""),
-    enabled: Boolean(id),
-    refetchInterval: (query) => (query.state.data?.status === "running" ? 5_000 : false),
-  });
-}
-
 export function useUpgradeMutations() {
   const c = useConnection();
   const client = useQueryClient();
   const invalidate = (): Promise<void> => client.invalidateQueries({ queryKey: upgradeKeys.all });
   return {
     check: useMutation({ mutationFn: (input: { targetVersion: string; referenceConnectionId: string | null; tryQueries: boolean }) => upgrades.startCheck(input.targetVersion, input.referenceConnectionId, input.tryQueries, cid(c)), onSuccess: invalidate }),
-    replay: useMutation({ mutationFn: (input: { canaryConnectionId: string; assessmentId: string | null }) => upgrades.startReplay(input.canaryConnectionId, input.assessmentId, cid(c)), onSuccess: invalidate }),
   };
 }
 
@@ -425,7 +414,7 @@ export function useUpdateMcpSettings(): UseMutationResult<agents.McpOverview, Er
 
 // --- connections ------------------------------------------------------------------
 
-/** Connections the user may use (EXPLAIN compare, canary replay). */
+/** Connections the user may use (e.g. EXPLAIN compare). */
 export function useMyConnections(enabled = true): UseQueryResult<ClickHouseConnection[]> {
   return useQuery({ queryKey: ["connections", "mine"], queryFn: () => rbacConnectionsApi.getMyConnections(), enabled, staleTime: 60_000 });
 }

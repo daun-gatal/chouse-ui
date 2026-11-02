@@ -3,7 +3,8 @@
  * the versions worth moving to, and — when someone clicks Check — what that
  * upgrade changes for the real workload. Exact when a connection already runs
  * the target line, from the release notes otherwise; Chouse AI reads the notes
- * when it is set up. CHouse UI never performs the upgrade.
+ * when it is set up, and the top queries can be planned here with the
+ * target's settings. CHouse UI never performs the upgrade.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -30,7 +31,6 @@ import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { upgradeKeys, useAssessment, useUpgradeMutations, useUpgradeReferences, useUpgrades, useUpgradeStatus } from "./hooks";
 import { formatAgo, formatCount } from "./lib";
 import { copyText, UpgradeFinding } from "./UpgradeFinding";
-import { UpgradeReplayPanel } from "./UpgradeReplayPanel";
 import { EmptyState, ErrorState, LoadingGrid, OBS_LABEL, Panel, StatusPill } from "./ui";
 
 const VERSION_RE = /^\d{1,3}\.\d{1,2}(\.\d{1,4}(\.\d{1,6})?)?$/;
@@ -103,8 +103,6 @@ export function UpgradesView({ refreshKey }: { refreshKey?: number }): ReactElem
       ) : (
         <Panel title="Impact"><EmptyState title="Pick a version to check" body="Choose a target above or type one." /></Panel>
       )}
-
-      <UpgradeReplayPanel canRun={canRun} latestReplayId={list.data.replays[0]?.id ?? null} assessmentId={checks[0]?.id ?? null} />
     </div>
   );
 }

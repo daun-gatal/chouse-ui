@@ -343,10 +343,11 @@ export const OBSERVE_ACTIONS: ActionDefinition[] = [
     description:
       "Check what upgrading the active connection's ClickHouse to a version changes for its workload. With referenceConnectionId (a connection " +
       "already on the target line) it compares both servers exactly; otherwise it reads the release notes. Runs in the background: read the result " +
-      "with get_upgrade_assessment.",
+      "with get_upgrade_assessment. It also plans the workload's top query shapes on this server with the target's settings (EXPLAIN only) unless tryQueries is false.",
     schema: z.object({
       targetVersion: z.string().regex(/^\d{1,3}\.\d{1,2}(\.\d{1,4}(\.\d{1,6})?)?$/, "Use a version such as 26.8 or 26.8.36.3"),
       referenceConnectionId: z.string().min(1).max(64).optional(),
+      tryQueries: z.boolean().optional(),
     }),
     describe: (args) => `Check an upgrade to ClickHouse ${str(args.targetVersion)}${typeof args.referenceConnectionId === "string" ? ` against ${quote(args.referenceConnectionId)}` : ""}`,
     execute: async (args, ctx) => {
@@ -354,27 +355,8 @@ export const OBSERVE_ACTIONS: ActionDefinition[] = [
       return ctx.api.post("/api/upgrades/assessments", {
         targetVersion: str(args.targetVersion),
         ...(typeof args.referenceConnectionId === "string" ? { referenceConnectionId: args.referenceConnectionId } : {}),
+        ...(typeof args.tryQueries === "boolean" ? { tryQueries: args.tryQueries } : {}),
       });
-    },
-  },
-  {
-    name: "run_canary_replay",
-    title: "Replay queries on a canary",
-    toolkit: "observe",
-    category: "operations",
-    tier: "t2",
-    connectionScoped: true,
-    permissions: [PERMISSIONS.UPGRADES_RUN],
-    description: "Replay recent read queries from the active connection against a canary connection to compare results before an upgrade.",
-    schema: z.object({
-      canaryConnectionId: z.string().min(1),
-      assessmentId: z.string().optional(),
-      limit: z.number().int().min(1).max(500).optional(),
-    }),
-    describe: (args) => `Replay up to ${typeof args.limit === "number" ? args.limit : 500} queries on the canary ${quote(str(args.canaryConnectionId))}`,
-    execute: async (args, ctx) => {
-      needConnection(ctx);
-      return ctx.api.post("/api/upgrades/replays", given(args, ["canaryConnectionId", "assessmentId", "limit"]));
     },
   },
 ];

@@ -1,8 +1,8 @@
 /**
  * Performance, capacity and upgrade tools (ADR 0016 §8–9), plus the
  * observability collectors behind them: query-shape regressions against their
- * own baselines, disk forecasts and growth, upgrade readiness and canary
- * replays, and what each collector last read and how often it runs. All
+ * own baselines, disk forecasts and growth, upgrade checks, and what each
+ * collector last read and how often it runs. All
  * read-only projections of the Monitoring and Admin › Connections pages.
  */
 
@@ -89,7 +89,7 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.",
+    description: "Upgrade checks of a connection: target version, mode and counts by severity.",
     inputSchema: connectionSchema,
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
@@ -114,24 +114,6 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
       const api = deps.clientFor(ctx);
       const id = argString(args, "id");
       return runApiTool(ctx, api, "get_upgrade_assessment", id, () => api.request("GET", `/api/upgrades/assessments/${segment(id)}`));
-    },
-  });
-
-  registerChouseTool(sink, {
-    name: "get_canary_replay",
-    title: "Canary replay",
-    category: "performance",
-    access: "read",
-    permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description:
-      "One workload replay on a canary connection: queries replayed, skipped and missing on the canary, and the most serious result " +
-      "or latency differences. Replayed query text is included only with query:history:view:all.",
-    inputSchema: idSchema("Replay"),
-    handler: async (args, extra) => {
-      const ctx = toolContext(extra);
-      const api = deps.clientFor(ctx);
-      const id = argString(args, "id");
-      return runApiTool(ctx, api, "get_canary_replay", id, () => api.request("GET", `/api/upgrades/replays/${segment(id)}`));
     },
   });
 

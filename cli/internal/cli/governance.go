@@ -327,17 +327,16 @@ cost:view.`,
 func (a *App) newUpgradesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrades",
-		Short: "ClickHouse version status, upgrade checks and canary replays",
+		Short: "ClickHouse version status and upgrade checks",
 		Long: `Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version
-stands and the targets worth moving to, the upgrade checks run against your
-real workload (exact against a connection on the target line, or from the
-release notes), and workload replays on a canary. Read-only; checks and
-replays are started in the UI.`,
+stands and the targets worth moving to, and the upgrade checks run against
+your real workload (exact against a connection on the target line, or from
+the release notes, with the top queries planned on the server with the
+target's settings). Read-only; checks are started in the UI.`,
 		Example: `  chouse upgrades status -c prod
   chouse upgrades fleet
   chouse upgrades list -c prod
-  chouse upgrades get 3d1e… -o yaml
-  chouse upgrades replay 7a90…`,
+  chouse upgrades get 3d1e… -o yaml`,
 	}
 	status := &cobra.Command{
 		Use:     "status",
@@ -357,7 +356,7 @@ replays are started in the UI.`,
 	}
 	list := &cobra.Command{
 		Use:     "list",
-		Short:   "Upgrade checks and replays of the -c connection",
+		Short:   "Upgrade checks of the -c connection",
 		Example: `  chouse upgrades list -c prod`,
 		Args:    cobra.NoArgs,
 		RunE: a.action(needAuth, func(s *Session, _ []string) error {
@@ -373,14 +372,12 @@ replays are started in the UI.`,
 	}
 	get := a.getCmd("get <checkId>", "One upgrade check: its findings, their sources and evidence", "  chouse upgrades get 3d1e… -o yaml", cobra.ExactArgs(1),
 		func(args []string) string { return "/api/upgrades/assessments/" + url.PathEscape(args[0]) }, output.View{})
-	replay := a.getCmd("replay <replayId>", "One canary replay: replayed, skipped, missing and differing queries", "  chouse upgrades replay 7a90…", cobra.ExactArgs(1),
-		func(args []string) string { return "/api/upgrades/replays/" + url.PathEscape(args[0]) }, output.View{})
 	fleet := a.getCmd("fleet", "Every connection's version, support status and last upgrade check", "  chouse upgrades fleet", cobra.NoArgs,
 		func([]string) string { return "/api/upgrades/fleet" },
 		view("nodes", "CONNECTION=name", "VERSION", "SUPPORTED=status.supported", "NEWER PATCH=status.newerPatch", "LAST CHECK=lastCheck.targetVersion"))
 	// `rollout` was the old name; the rollout gates it showed live on the Fleet page and in Performance now.
 	fleet.Aliases = []string{"rollout"}
-	cmd.AddCommand(status, list, get, replay, fleet)
+	cmd.AddCommand(status, list, get, fleet)
 	return cmd
 }
 
