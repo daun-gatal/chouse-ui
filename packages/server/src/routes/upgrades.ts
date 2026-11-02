@@ -71,18 +71,23 @@ async function liveVersion(connectionId: string): Promise<string | null> {
   }
 }
 
-/** Rows naming a table the reader may not see are dropped and counted. */
-export function visibleAssessment(a: Assessment, allowed: TablePredicate): Assessment & { hiddenRows: number } {
+function tableVisible(allowed: TablePredicate, qualified: string): boolean {
+  const [db, ...rest] = qualified.split(".");
+  return allowed(db, rest.join(".") || null);
+}
+
+/**
+ * Rows naming a table the reader may not see are dropped and counted; query
+ * text stays only for readers who may see all query history.
+ */
+export function visibleAssessment(a: Assessment, allowed: TablePredicate, canSeeQueries = false): Assessment & { hiddenRows: number } {
   let hiddenRows = 0;
   const findings = a.findings.map((f) => {
     const rows = f.evidence.rows.filter((r) => {
-      if (!r.table) return true;
-      const [db, ...rest] = r.table.split(".");
-      const table = rest.join(".");
-      const visible = allowed(db, table || null);
+      const visible = (!r.table || tableVisible(allowed, r.table)) && (r.tables ?? []).every((t) => tableVisible(allowed, t));
       if (!visible) hiddenRows++;
       return visible;
-    });
+    }).map((r) => (canSeeQueries || r.query === undefined ? r : { ...r, query: undefined }));
     const hidden = f.evidence.rows.length - rows.length;
     return { ...f, evidence: { ...f.evidence, rows, totalRows: Math.max(0, f.evidence.totalRows - hidden), hiddenRows: hidden } };
   });
@@ -154,7 +159,7 @@ upgrades.get("/assessments/:id", requirePermission(PERMISSIONS.UPGRADES_VIEW), a
   const assessment = await getAssessment(requireParam(c, "id"));
   if (!assessment) throw AppError.notFound("Check not found");
   await assertConnectionAccess(c, assessment.connectionId);
-  return ok(c, visibleAssessment(assessment, await tableAccess(c, assessment.connectionId)));
+  return ok(c, visibleAssessment(assessment, await tableAccess(c, assessment.connectionId), canSeeAllQueryText(c)));
 });
 
 upgrades.post(
@@ -163,10 +168,11 @@ upgrades.post(
   zValidator("json", z.object({
     targetVersion: z.string().trim().regex(/^\d{1,3}\.\d{1,2}(\.\d{1,4}(\.\d{1,6})?)?$/, "Use a version such as 26.8 or 26.8.36.3"),
     referenceConnectionId: z.string().min(1).max(64).nullish(),
+    tryQueries: z.boolean().default(true),
   })),
   async (c) => {
     const { connectionId } = await scopedConnection(c);
-    const { targetVersion, referenceConnectionId } = c.req.valid("json");
+    const { targetVersion, referenceConnectionId, tryQueries } = c.req.valid("json");
     let reference: { connectionId: string; name: string } | null = null;
     if (referenceConnectionId) {
       if (referenceConnectionId === connectionId) throw AppError.badRequest("Pick a different connection to compare with");
@@ -177,12 +183,12 @@ upgrades.post(
     }
     let id: string;
     try {
-      id = await startAssessment({ connectionId, targetVersion, reference, actorId: getRbacUser(c).sub });
+      id = await startAssessment({ connectionId, targetVersion, reference, tryQueries, actorId: getRbacUser(c).sub });
     } catch (error) {
       if (error instanceof CheckInputError) throw AppError.badRequest(error.message);
       throw error;
     }
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.UPGRADE_ASSESS, getRbacUser(c).sub, { resourceType: "connection", resourceId: connectionId, details: { targetVersion, reference: reference?.connectionId ?? null, assessmentId: id } });
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.UPGRADE_ASSESS, getRbacUser(c).sub, { resourceType: "connection", resourceId: connectionId, details: { targetVersion, reference: reference?.connectionId ?? null, tryQueries, assessmentId: id } });
     return ok(c, { id, status: "running" }, 202);
   },
 );

@@ -8,6 +8,7 @@
 import { escapeIdentifier, quoteStringLiteral } from "../../utils/sqlIdentifier";
 import type { ReleaseNote } from "./notes";
 import type { SnapshotDiff, VersionSnapshot } from "./snapshot";
+import type { TriedShape, TryResult } from "./tryQueries";
 import { typeFamilies, type Use, type WorkloadFacts } from "./workload";
 
 export type Severity = "blocker" | "warning" | "info" | "note";
@@ -16,6 +17,12 @@ export interface EvidenceRow {
   cells: string[];
   /** `db.table` when the row names a table, so readers without access can be shown a count instead. */
   table?: string;
+  /** Every table the row's query touches; the row is hidden unless the reader may see all of them. */
+  tables?: string[];
+  /** A short error for the row (no query text). */
+  detail?: string;
+  /** The query text, shown only to readers who may see all query history. */
+  query?: string;
 }
 
 export interface FindingEvidence {
@@ -347,4 +354,69 @@ export function noteFindings(notes: ReleaseNote[], names: Set<string>, findings:
       evidence: { source: { notes: [{ id: note.id, line: note.line, prs: note.prs }] }, head: [], rows: [], totalRows: 0, noteText: note.text },
     })),
   };
+}
+
+function triedRows(shapes: TriedShape[], withError: boolean): EvidenceRow[] {
+  return shapes.map((sh) => ({
+    cells: withError
+      ? [sh.error?.type ?? "ERROR", list(sh.users, 2) || "—", list(sh.clients, 2) || "—", sh.runs7d.toLocaleString("en-US")]
+      : [list(sh.users, 2) || "—", list(sh.clients, 2) || "—", sh.runs7d.toLocaleString("en-US"), list(sh.tables, 2) || "—"],
+    tables: sh.tables,
+    detail: withError ? sh.error?.message : undefined,
+    query: sh.query.slice(0, 2000),
+  }));
+}
+
+/**
+ * Pure: findings from trying the workload on this server. Shapes that only
+ * fail with the target's settings are grouped by the setting that breaks
+ * them; shapes whose plan changes are one heads-up.
+ */
+export function tryFindings(result: TryResult, targetVersion: string, targetLine: string, notes: ReleaseNote[]): FindingDraft[] {
+  const out: FindingDraft[] = [];
+  const byCause = new Map<string, TriedShape[]>();
+  for (const f of result.failing) {
+    const key = f.cause ?? "";
+    byCause.set(key, [...(byCause.get(key) ?? []), f]);
+  }
+  const analyzerMandatory = compareLines(targetLine, "26.9") >= 0;
+  for (const [cause, shapes] of [...byCause.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    const isAnalyzer = cause === "enable_analyzer" || cause === "allow_experimental_analyzer";
+    const value = cause && !isAnalyzer ? result.applied[cause] : undefined;
+    const users = [...new Set(shapes.flatMap((s) => s.users))];
+    out.push(withNotes({
+      key: `tried:${cause || "combination"}`,
+      category: "tried-here",
+      severity: "blocker",
+      title: `${plural(shapes.length, "query shape")} fail${shapes.length === 1 ? "s" : ""} with ${targetVersion}'s settings${isAnalyzer ? ", with the new analyzer" : cause ? `, because of ${cause} = ${value}` : ""}`,
+      detail: isAnalyzer
+        ? `${analyzerMandatory ? "From 26.9 the analyzer can't be turned off, so these fail after the upgrade." : "The analyzer is on by default; these plan today only because a profile, user or query turns it off."} Callers: ${list(users, 3) || "unknown"}.`
+        : cause
+          ? `They plan today and fail once ${cause} takes ${targetVersion}'s default. Callers: ${list(users, 3) || "unknown"}.`
+          : `They fail only with ${targetVersion}'s settings together, not with any one of them. Callers: ${list(users, 3) || "unknown"}.`,
+      evidence: {
+        source: { check: `EXPLAIN on this server with ${targetVersion}'s settings${cause ? `; cause found by retrying with only ${cause}` : ""}` },
+        head: ["Error", "Users", "Clients", "Runs (7d)"],
+        ...rows(triedRows(shapes, true)),
+        fix: { title: isAnalyzer ? "Fix these queries (often a column to qualify or an alias to rename), then stop turning the analyzer off before upgrading any host" : "Fix these queries, or keep today's value of the setting for their users while you do" },
+      },
+    }, notes, cause ? [cause] : []));
+  }
+  if (result.planChanged.length) {
+    out.push({
+      key: "tried:plan-changed",
+      category: "tried-here",
+      severity: "info",
+      title: `${plural(result.planChanged.length, "query shape")} plan${result.planChanged.length === 1 ? "s" : ""} differently with ${targetVersion}'s settings`,
+      detail: "They still work. A different plan can be faster or slower: watch them in Performance after the first host.",
+      evidence: { source: { check: `EXPLAIN on this server, compared for the ${result.compared} shapes that already run with the analyzer` }, head: ["Users", "Clients", "Runs (7d)", "Tables"], ...rows(triedRows(result.planChanged, false)) },
+    });
+  }
+  return out;
+}
+
+function compareLines(a: string, b: string): number {
+  const [am, an] = a.split(".").map(Number);
+  const [bm, bn] = b.split(".").map(Number);
+  return am - bm || an - bn;
 }

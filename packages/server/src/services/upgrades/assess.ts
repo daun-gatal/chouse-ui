@@ -19,23 +19,29 @@ import { all, json, num, numOrNull, one, run, sql, str, strOrNull } from "../obs
 import { selectRows, stripFormat } from "../observe/clickhouse";
 import { clientForConnection } from "../scheduledQueries/chClient";
 import { upgradeCheckEnabled, UpgradeSourceError } from "./fetch";
-import { matchFindings, nameKey, noteFindings, workloadNameList, type FindingDraft, type FindingEvidence, type Severity } from "./match";
+import { matchFindings, nameKey, noteFindings, tryFindings, workloadNameList, type FindingDraft, type FindingEvidence, type Severity } from "./match";
 import { notesBetween, type NotesResult } from "./notes";
 import { getReleaseData } from "./releaseData";
 import { diffSnapshots, readSnapshot, type SnapshotDiff } from "./snapshot";
 import { compareVersions, lineOf, plainVersion } from "./versions";
+import { explainOn, loadShapes, tryShapes, type TryResult } from "./tryQueries";
 import { gatherWorkload } from "./workload";
+
+/** Changed defaults not applied when trying queries: they change nothing about planning, or CHouse sets them itself. */
+const NOT_TRIED = new Set(["compatibility", "readonly", "max_execution_time", "max_rows_to_read", "read_overflow_mode", "max_result_rows", "result_overflow_mode", "log_comment"]);
 
 /** A check still "running" after this long was cut off (a restart) and is reported as failed. */
 const STALE_MS = 15 * 60 * 1000;
 
-export type Stage = "release" | "current" | "target" | "notes" | "workload" | "matching" | "done";
+export type Stage = "release" | "current" | "target" | "notes" | "workload" | "try" | "matching" | "done";
 
 export interface CheckSummary {
   stage: Stage;
   mode: "exact" | "notes";
   target: { version: string; line: string };
   reference: { connectionId: string; name: string; version: string } | null;
+  /** Plan the workload's top shapes on this server with the target's settings (on by default). */
+  tryQueries?: boolean;
   coverage?: {
     diff: SnapshotDiff["counts"] | null;
     removed: number;
@@ -45,6 +51,19 @@ export interface CheckSummary {
     notes: { count: number; lines: string[]; missingLines: string[]; errors: string[]; skipped: string | null };
     workload: { days: number; from: number | null; shapes: number; readable: boolean };
     generalNotes: number;
+    tried?: {
+      readable: boolean;
+      tried: number;
+      skipped: number;
+      failing: number;
+      planChanged: number;
+      compared: number;
+      applied: number;
+      dropped: string[];
+      analyzerOnly: boolean;
+      budgetExhausted: boolean;
+      error?: string;
+    };
   };
   counts?: Record<Severity, number>;
   /** Names the workload uses, for Chouse AI to read the notes against. */
@@ -109,6 +128,7 @@ const SEVERITY_ORDER: Record<Severity, number> = { blocker: 0, warning: 1, info:
 export interface StartInput {
   connectionId: string;
   targetVersion: string;
+  tryQueries?: boolean;
   reference: { connectionId: string; name: string } | null;
   actorId: string | null;
 }
@@ -134,6 +154,7 @@ export async function startAssessment(input: StartInput): Promise<string> {
     mode: input.reference ? "exact" : "notes",
     target: { version: target, line: targetLine },
     reference: input.reference ? { ...input.reference, version: "" } : null,
+    tryQueries: input.tryQueries !== false,
   };
   await run(sql`INSERT INTO upgrade_assessments (id, connection_id, target_version, status, summary, created_by, created_at) VALUES (${id}, ${input.connectionId}, ${target}, 'running', ${JSON.stringify(summary)}, ${input.actorId}, ${Date.now()})`);
   void runCheck(id, input.connectionId, summary).catch((error: unknown) => {
@@ -189,9 +210,26 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     await setSummary(id, s);
     const facts = await gatherWorkload(client);
 
+    let tried: TryResult | null = null;
+    let triedError: string | undefined;
+    if (s.tryQueries !== false) {
+      s.stage = "try";
+      await setSummary(id, s);
+      const analyzer = current.settings.has("enable_analyzer") ? "enable_analyzer" : current.settings.has("allow_experimental_analyzer") ? "allow_experimental_analyzer" : null;
+      const changed = Object.fromEntries((diff?.changedSettings ?? []).filter((c) => !NOT_TRIED.has(c.name)).map((c) => [c.name, c.to]));
+      try {
+        const explain = explainOn(client, JSON.stringify({ source: "observe", collector: "upgrades-try" }));
+        tried = await tryShapes(explain, await loadShapes(client), { analyzer, changed });
+      } catch (error) {
+        // No query_log, or no grant: the rest of the check still stands, and the coverage says why.
+        triedError = checkErrorText(error);
+      }
+    }
+
     s.stage = "matching";
     await setSummary(id, s);
     const findings: FindingDraft[] = matchFindings({ diff, current, targetVersion: s.target.version, facts, notes: notes.notes });
+    if (tried) findings.push(...tryFindings(tried, s.target.version, s.target.line, notes.notes));
     findings.push(...await regressionFindings(connectionId));
     const nameList = workloadNameList(facts, current);
     const fromNotes = noteFindings(notes.notes, new Set(nameList.map(nameKey)), findings);
@@ -214,6 +252,11 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
       notes: { count: notes.notes.length, lines: notes.lines, missingLines: notes.missingLines, errors: notes.errors, skipped },
       workload: facts.window,
       generalNotes: fromNotes.general,
+      ...(s.tryQueries !== false ? {
+        tried: tried
+          ? { readable: true, tried: tried.tried, skipped: tried.skipped, failing: tried.failing.length, planChanged: tried.planChanged.length, compared: tried.compared, applied: Object.keys(tried.applied).length, dropped: tried.dropped, analyzerOnly: !diff, budgetExhausted: tried.budgetExhausted }
+          : { readable: false, tried: 0, skipped: 0, failing: 0, planChanged: 0, compared: 0, applied: 0, dropped: [], analyzerOnly: !diff, budgetExhausted: false, error: triedError },
+      } : {}),
     };
     await run(sql`UPDATE upgrade_assessments SET status = 'done', summary = ${JSON.stringify(s)}, finished_at = ${Date.now()} WHERE id = ${id}`);
   } catch (error) {
