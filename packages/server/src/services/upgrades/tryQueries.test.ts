@@ -47,8 +47,10 @@ describe("pure helpers", () => {
     expect(targetSettings({ enable_analyzer: "0" }, { analyzer: "allow_experimental_analyzer", changed: {} })).toEqual({ allow_experimental_analyzer: "1" });
   });
 
-  it("reads whether a shape ran with the analyzer", () => {
+  it("reads whether a shape ran with the analyzer, falling back to the server's default", () => {
     expect(analyzerOn({}, "enable_analyzer")).toBe(true);
+    expect(analyzerOn({}, "allow_experimental_analyzer", false)).toBe(false);
+    expect(analyzerOn({ allow_experimental_analyzer: "1" }, "allow_experimental_analyzer", false)).toBe(true);
     expect(analyzerOn({ enable_analyzer: "0" }, "enable_analyzer")).toBe(false);
     expect(analyzerOn({ allow_experimental_analyzer: "false" }, "allow_experimental_analyzer")).toBe(false);
   });
@@ -71,6 +73,13 @@ describe("trying shapes", () => {
     expect(r.failing).toHaveLength(1);
     expect(r.failing[0].error).toEqual({ type: "NOT_AN_AGGREGATE", message: "Column id is not under aggregate function" });
     expect(r.failing[0].cause).toBe("enable_analyzer");
+  });
+
+  it("on a server where the analyzer is off by default (before 24.3), names it as the cause and doesn't compare plans", async () => {
+    const r = await tryShapes(fakeExplain(), [shape({ settings: { enable_analyzer: "0" } }), shape({ hash: "c", query: "SELECT changes FROM shop.a", settings: { enable_analyzer: "0" } })],
+      { analyzer: "enable_analyzer", analyzerDefaultOn: false, changed: { join_algorithm: "hash" } });
+    expect(r.failing[0].cause).toBe("enable_analyzer");
+    expect(r.compared).toBe(0);
   });
 
   it("skips a shape that fails today too, and one that already fails with the analyzer on", async () => {

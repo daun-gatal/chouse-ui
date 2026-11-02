@@ -48,6 +48,8 @@ const OFF = new Set(["0", "false"]);
 export interface TryPlan {
   /** The analyzer setting this server knows (`enable_analyzer`, or the older name), or null. */
   analyzer: string | null;
+  /** Whether this server turns the analyzer on by default (off before 24.3). */
+  analyzerDefaultOn?: boolean;
   /** Changed defaults at the target's value, only those this server knows. */
   changed: Record<string, string>;
 }
@@ -65,10 +67,11 @@ export function targetSettings(logged: Record<string, string>, plan: TryPlan): R
   return out;
 }
 
-export function analyzerOn(settings: Record<string, string>, analyzer: string | null): boolean {
+/** Whether a shape ran with the analyzer: its own setting, else the server's default. */
+export function analyzerOn(settings: Record<string, string>, analyzer: string | null, defaultOn = true): boolean {
   if (!analyzer) return true;
   const v = settings.enable_analyzer ?? settings.allow_experimental_analyzer;
-  return v === undefined || !OFF.has(v.toLowerCase());
+  return v === undefined ? defaultOn : !OFF.has(v.toLowerCase());
 }
 
 export interface TryShape {
@@ -227,7 +230,7 @@ async function usableSettings(explain: Explain, changed: Record<string, string>,
 export async function tryShapes(explain: Explain, shapes: TryShape[], plan: TryPlan, now: () => number = Date.now): Promise<TryResult> {
   const deadline = now() + BUDGET_MS;
   const { applied, dropped } = await usableSettings(explain, plan.changed, deadline);
-  const usable: TryPlan = { analyzer: plan.analyzer, changed: applied };
+  const usable: TryPlan = { analyzer: plan.analyzer, analyzerDefaultOn: plan.analyzerDefaultOn, changed: applied };
   const result: TryResult = { readable: true, tried: 0, skipped: 0, failing: [], planChanged: [], compared: 0, applied, dropped, budgetExhausted: false };
   for (const shape of shapes) {
     if (now() > deadline) {
@@ -245,7 +248,7 @@ export async function tryShapes(explain: Explain, shapes: TryShape[], plan: TryP
     const target = targetSettings(shape.settings, usable);
     try {
       const after = await explain(shape.query, target);
-      if (analyzerOn(shape.settings, plan.analyzer)) {
+      if (analyzerOn(shape.settings, plan.analyzer, plan.analyzerDefaultOn ?? true)) {
         result.compared++;
         if (normalisePlan(before) !== normalisePlan(after)) result.planChanged.push(shape);
       }
@@ -266,7 +269,7 @@ async function findCause(explain: Explain, shape: TryShape, plan: TryPlan, deadl
       return true;
     }
   };
-  if (plan.analyzer && !analyzerOn(shape.settings, plan.analyzer)) {
+  if (plan.analyzer && !analyzerOn(shape.settings, plan.analyzer, plan.analyzerDefaultOn ?? true)) {
     if (await fails(targetSettings(shape.settings, { analyzer: plan.analyzer, changed: {} }))) return plan.analyzer;
   }
   if (shape.settings.compatibility) return null;
