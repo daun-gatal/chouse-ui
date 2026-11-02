@@ -19,7 +19,7 @@ import { all, json, num, numOrNull, one, run, sql, str, strOrNull } from "../obs
 import { selectRows, stripFormat } from "../observe/clickhouse";
 import { clientForConnection } from "../scheduledQueries/chClient";
 import { upgradeCheckEnabled, UpgradeSourceError } from "./fetch";
-import { matchFindings, noteFindings, workloadNames, type FindingDraft, type FindingEvidence, type Severity } from "./match";
+import { matchFindings, nameKey, noteFindings, workloadNameList, type FindingDraft, type FindingEvidence, type Severity } from "./match";
 import { notesBetween, type NotesResult } from "./notes";
 import { getReleaseData } from "./releaseData";
 import { diffSnapshots, readSnapshot, type SnapshotDiff } from "./snapshot";
@@ -193,8 +193,8 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     await setSummary(id, s);
     const findings: FindingDraft[] = matchFindings({ diff, current, targetVersion: s.target.version, facts, notes: notes.notes });
     findings.push(...await regressionFindings(connectionId));
-    const names = workloadNames(facts, current);
-    const fromNotes = noteFindings(notes.notes, names, findings);
+    const nameList = workloadNameList(facts, current);
+    const fromNotes = noteFindings(notes.notes, new Set(nameList.map(nameKey)), findings);
     findings.push(...fromNotes.findings);
 
     for (const f of findings) {
@@ -204,7 +204,7 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     for (const f of findings) counts[f.severity]++;
     s.stage = "done";
     s.counts = counts;
-    s.workloadNames = [...names].slice(0, 3000);
+    s.workloadNames = nameList.slice(0, 3000);
     s.coverage = {
       diff: diff?.counts ?? null,
       removed: diff ? Object.values(diff.removed).reduce((n, xs) => n + xs.length, 0) : 0,

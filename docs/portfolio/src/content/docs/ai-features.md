@@ -41,6 +41,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
 | [Auto-triage](#auto-triage) | Observability | `ai_agents:manage` | Fleet nodes | [Incident Triager](#incident-triager) |
+| [Read upgrade release notes](#read-upgrade-release-notes) | Observability | `ai:optimize` | Evidence only | [Upgrade Notes Reader](#upgrade-notes-reader) |
 | [Draft a dashboard](#draft-a-dashboard) | Dashboards | `ai:optimize` | ClickHouse session | [Dashboard Drafter](#dashboard-drafter) |
 | [Explain this spike](#explain-this-spike) | Dashboards | `ai:optimize` | ClickHouse session | [Spike Explainer](#spike-explainer) |
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
@@ -372,6 +373,18 @@ AI Governance › Auto-triage: investigates new incidents, alerts, failed schedu
 | `ctx.evidence` | json | What CHouse knows about the subject (pretty-printed JSON). |
 | `ctx.nodes` | json | Connections the agent may query with query_node (id and name). |
 
+### Read upgrade release notes
+
+ID `match-upgrade-notes` · needs `ai:optimize` · structured answer (JSON contract)
+
+Monitoring › Upgrades › Check: reads the breaking-change notes between two versions against the names the workload uses.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Upgrade Notes Reader](#upgrade-notes-reader).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The evidence object the feature assembled (JSON). |
+
 ## Dashboards features
 
 ### Draft a dashboard
@@ -450,7 +463,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 34 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 35 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -813,6 +826,20 @@ Drafts a table's curated context from metadata and an aggregate-only profile.
 | Used by | [Draft table context](#draft-table-context) |
 | Harness | Focused |
 | Tuning | 3 steps · 2,500 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
+### Upgrade Notes Reader
+
+Reads ClickHouse's breaking-change notes for an upgrade against the names one workload uses (Monitoring › Upgrades).
+
+| Setting | Value |
+| --- | --- |
+| Slug | `upgrade-notes-reader` |
+| Kind | Feature agent |
+| Used by | [Read upgrade release notes](#read-upgrade-release-notes) |
+| Harness | Focused |
+| Tuning | 3 steps · 6,000 output tokens |
 | Tools | none |
 | Skills | all built-in skills on demand |
 

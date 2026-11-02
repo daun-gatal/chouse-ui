@@ -44,8 +44,8 @@ describe("capability registry", () => {
     expect(getCapability("nope")).toBeUndefined();
   });
 
-  it("exposes all 30 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(30);
+  it("exposes all 31 capabilities", () => {
+    expect(CAPABILITY_IDS).toHaveLength(31);
     expect(CAPABILITY_IDS).toContain("suggest-memories");
     expect(CAPABILITY_IDS).toContain("explain-incident");
     expect(CAPABILITY_IDS).toContain("compile-watcher");

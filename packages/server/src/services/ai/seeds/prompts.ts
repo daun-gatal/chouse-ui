@@ -295,6 +295,12 @@ optimize_partition{database, table, partitionId, final}, restart_replica{databas
 modify_ttl{database, table, ttl}, modify_column_codec{database, table, column, codec}, restart_engine_table{database, table},
 reload_dictionary{database, name}, refresh_view{database, view}, flush_distributed{database, table}.
 Use identifiers exactly as they appear in the evidence. Return an empty list when no catalog action fits.`),
+  "match-upgrade-notes": observePrompt(`Read ClickHouse's breaking-change notes for one upgrade against what one workload uses.
+evidence.notes are the "Backward Incompatible Change" entries between evidence.currentVersion and evidence.targetVersion. evidence.workloadNames lists the names this workload uses: functions, data types, table and database engines, formats, and settings it sets. evidence.alreadyFound lists changes CHouse already reported: do not repeat them.
+Return a finding only for a note that names, or clearly concerns, something in workloadNames. Cite it by noteId and list in matched the workloadNames it concerns, spelled exactly as given.
+severity: blocker when queries fail or tables stop loading; warning when results, performance or defaults change; info for a heads-up.
+title: one sentence on what changes for this workload. detail: why, from the note, in at most two sentences. action: what to do before upgrading in one sentence, or "" when nothing is needed.
+Never invent notes, names or versions. At most 25 findings, most serious first. An empty findings list is the right answer when nothing applies.`),
   "compile-watcher": observePrompt(`Compile the user's sentence into ONE Data Health check on ONE table from the evidence.
 check must be a Data Health check definition: {checkKey (snake_case), name, type, severity: warning|critical, enabled: true, config}.
 Types: freshness{eventTimeColumn, maxAgeSeconds}, row_count{min, max}, volume_anomaly{minSamples, sensitivity, minRelativeBand},

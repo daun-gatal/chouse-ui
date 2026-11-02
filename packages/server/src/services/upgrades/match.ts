@@ -29,6 +29,9 @@ export interface FindingEvidence {
   rows: EvidenceRow[];
   totalRows: number;
   noteText?: string;
+  /** Chouse AI findings: the workload names the note concerns, and what to do. */
+  matched?: string[];
+  action?: string;
   fix?: { title: string; sql?: string };
   keep?: { title: string; sql: string };
 }
@@ -69,18 +72,23 @@ export function nameKey(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "");
 }
 
-/** Names the workload touches, as name keys, for matching release notes. */
-export function workloadNames(facts: WorkloadFacts, current: VersionSnapshot): Set<string> {
-  const out = new Set<string>();
+/** The names the workload touches, as ClickHouse spells them, one per name key. */
+export function workloadNameList(facts: WorkloadFacts, current: VersionSnapshot): string[] {
+  const out = new Map<string, string>();
   const add = (n: string): void => {
-    if (n) out.add(nameKey(n));
+    if (n && !out.has(nameKey(n))) out.set(nameKey(n), n);
   };
   for (const c of facts.columns) for (const t of typeFamilies(c.type, current.types)) add(t);
   for (const t of facts.tables) add(t.engine);
   for (const d of facts.databases) add(d.engine);
   for (const p of facts.profileSettings) add(p.setting);
   for (const kind of Object.values(facts.queries)) for (const name of Object.keys(kind)) add(name);
-  return out;
+  return [...out.values()];
+}
+
+/** Names the workload touches, as name keys, for matching release notes. */
+export function workloadNames(facts: WorkloadFacts, current: VersionSnapshot): Set<string> {
+  return new Set(workloadNameList(facts, current).map(nameKey));
 }
 
 /**

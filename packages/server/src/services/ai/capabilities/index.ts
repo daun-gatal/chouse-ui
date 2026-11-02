@@ -36,6 +36,7 @@ import { draftDashboardCapability, explainSpikeCapability } from "./dashboards";
 import { draftGuardrailCapability } from "./guardrails";
 import { triageIncidentCapability } from "./triage";
 import { suggestMemoriesCapability } from "./memories";
+import { matchUpgradeNotesCapability } from "./upgrades";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -68,6 +69,7 @@ export const CAPABILITIES = {
   "draft-guardrail": draftGuardrailCapability,
   "triage-incident": triageIncidentCapability,
   "suggest-memories": suggestMemoriesCapability,
+  "match-upgrade-notes": matchUpgradeNotesCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;
