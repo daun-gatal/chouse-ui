@@ -40,7 +40,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017, 0028) |
 | [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted (amended by 0017) |
 | [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
-| [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted (amended by 0027) |
+| [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted (amended by 0027, 0029) |
 | [0017](0017-mcp-managed-in-the-ui.md) | MCP Served on the Web Port and Managed in the UI | Accepted |
 | [0018](0018-cli-1-0.md) | CLI 1.0: One Tool for People and Scripts | Accepted |
 | [0019](0019-deepagents-managed-in-the-ui.md) | DeepAgents Managed in the UI: Agent Registry for Every AI Feature, Multi-Agent Chat, Read-Only CHouse Management Agent | Accepted |
@@ -53,6 +53,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
 | [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted |
 | [0028](0028-mcp-oauth.md) | Sign In to MCP with OAuth | Accepted |
+| [0029](0029-upgrade-check.md) | Upgrade Check: What a ClickHouse Upgrade Changes for Your Workload | Accepted |
 
 ## Conventions
 
