@@ -53,6 +53,8 @@ export const IGNORED_ENV = new Set([
   // The e2e suite's fake chat platforms (ADR 0026): never set in a deployment.
   "CHOUSE_ALLOW_TEST_OVERRIDES",
   "CHOUSE_INTEGRATIONS_TEST_HOSTS",
+  // The upgrade check's fake GitHub and Docker Hub (ADR 0029).
+  "CHOUSE_UPGRADE_TEST_HOSTS",
 ]);
 
 export const CONFIG_KEYS: ConfigKey[] = [
@@ -112,6 +114,7 @@ export const CONFIG_KEYS: ConfigKey[] = [
   { name: "OBSERVE_INCIDENT_HOLD_SECONDS", section: "Data observability", default: "300", description: "Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample." },
   { name: "OBSERVE_CAPACITY_THRESHOLD", section: "Data observability", default: "0.85", description: "Disk fill ratio that capacity forecasts warn about (0–1)." },
   { name: "OBSERVE_SCRATCH_DATABASE", section: "Data observability", default: "chouse_scratch", description: "Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`." },
+  { name: "UPGRADE_CHECK_ENABLED", section: "Data observability", default: "false", description: "Lets **Monitoring › Upgrades** fetch release data: release dates and support from GitHub (`raw.githubusercontent.com`), the newest patch per line from Docker Hub (`hub.docker.com`), and the release notes between two versions. Off, the tab still compares with a connection already on the target line." },
 
   // AI usage (ADR 0020)
   { name: "AI_USAGE_RETENTION_DAYS", section: "AI usage", default: "30", description: "Days of AI usage kept for **AI Governance › AI activity**: requests, tokens, cost, ClickHouse queries and data sent to providers (1–365). Older requests are deleted hourly." },

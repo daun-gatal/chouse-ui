@@ -1,29 +1,24 @@
 # Plan a ClickHouse upgrade
 
-Use **Monitoring › Upgrades** to find out whether a new ClickHouse version will break *your* workload before you roll it out, then watch the rollout. You need `upgrades:view`, and `upgrades:run` to run checks and replays.
+Use **Monitoring › Upgrades** to choose a version and find out what it changes for *your* workload before you roll it out. You need `upgrades:view`, and `upgrades:run` to run checks. Release data and notes need [`UPGRADE_CHECK_ENABLED`](/docs/configuration-env/).
 
-## 1. Check readiness
+## 1. Choose a target
 
-1. **Monitoring › Upgrades** → **Target version**, e.g. `25.3` → run the check.
-2. Read the **Verdict**: *Ready*, *Ready with warnings* or *Not ready*.
-3. Work through **Blockers** first, then **Warnings**. Each finding names what in your workload it matched — a column type, an engine, a settings profile, a function or query setting you use.
+Open **Monitoring › Upgrades** on the connection you want to upgrade. The left card says whether its version is still supported. Under **Where to go next**, the newest LTS line is **Recommended**; an older LTS is a smaller step, and the newest stable line is only supported for about three months. When a newer patch is out on your own line, take that first.
 
-*Nothing in your workload is affected* means no known behaviour change matches what you run.
+## 2. Check it against your workload
 
-## 2. Replay on a canary
+1. If you have a server on the target line, add it as a [connection](/docs/connections/) and pick it under **Compare with**. The comparison is then exact. Without one, pick **Release notes only**; notes miss most default changes.
+2. Click **Check**.
+3. Work through **Breaks** first: removed types, functions and engines your workload uses. Then **Behaves differently** (changed defaults) and **Heads-up**.
+4. Read the **Release notes that name what you use**. With Chouse AI set up, it reads them for you and turns the ones that matter into findings.
 
-Findings come from rules; a replay shows what actually happens.
+Each finding has the SQL to fix it or to keep today's behaviour, and links to the ClickHouse pull request. **Copy as Markdown** turns the check into a report for your change request. See [Check an upgrade](/docs/monitoring-upgrades/#check-an-upgrade).
 
-1. Stand up a ClickHouse on the target version with a copy of the data you care about, and add it as a [connection](/docs/connections/).
-2. With the current server as the active connection (the baseline), go to **Workload replay on a canary**, pick the new server as the **Canary connection** and start the replay.
-3. Your top read-only query shapes run on both servers. **Replay differences** lists every query that returns a **different result**, gets **slower**, **errors**, or is **missing on canary** (its table isn't on the canary yet). Queries that no longer run on the baseline itself are **skipped**. See [outcomes](/docs/monitoring-upgrades/#replay-on-a-canary).
+## 3. Fix what breaks with the new settings
 
-Only read-only queries are replayed; nothing is written to either server.
+Leave **Also try my top 200 read-only query shapes…** on. CHouse plans your most-used queries on your current server with the target's settings, the new analyzer above all, without running them. Findings marked **Tried here** list the queries that would fail after the upgrade, the setting that breaks them, and who runs them. Fix those queries, then remove anything that turns the analyzer off (`enable_analyzer = 0` in a profile or a query) before upgrading any host. See [Try it on this server](/docs/monitoring-upgrades/#try-it-on-this-server).
 
-## 3. Roll out
+## 4. Roll out and watch
 
-Upgrade one connection at a time. The **Rollout tracker** shows each connection's version and three gates — replica lag, regressions and replica health. Move on when all three are green.
-
-## 4. Watch afterwards
-
-**Monitoring › Performance** compares each query shape with its own 14-day baseline and lines regressions up with the changes around them — an upgrade shows up on the change timeline, so a slowdown that starts with it is easy to spot. With `query:history:view:all`, compare a shape's `EXPLAIN` on the upgraded connection with a not-yet-upgraded one.
+Upgrade one replica at a time. The [Fleet](/docs/fleet/) page shows each connection's version, and **Monitoring › Performance** compares each query shape with its own 14-day baseline and lines regressions up with the version change, so a slowdown that starts with the upgrade is easy to spot. A regression on an upgraded replica also shows as a finding the next time you check.

@@ -1,7 +1,7 @@
 ---
 generated: charts/chouse-ui/values.yaml (via the chart README)
 ---
-Every value of the `chouse-ui` Helm chart, version **2.0.4**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
+Every value of the `chouse-ui` Helm chart, version **2.1.0**. Installing, topology and upgrades are covered in [Helm chart](/docs/deploy-helm/); this page is the lookup table.
 
 The app itself is configured through the free-form `config:` value, which the chart renders to a YAML file loaded via `CHOUSE_CONFIG_PATH` — so every key on [Environment variables](/docs/configuration-env/) can go there. Secrets belong in `secrets.*` or an existing Kubernetes secret, not in `config:`.
 
@@ -174,6 +174,7 @@ The app itself is configured through the free-form `config:` value, which the ch
 | `observability.maxFingerprints` | `string` | `""` | Query shapes tracked per connection for regression detection (`OBSERVE_MAX_FINGERPRINTS`, app default 5000). |
 | `observability.retentionDays` | `string` | `""` | Days of lineage, pipeline and query-shape evidence to keep (`OBSERVE_RETENTION_DAYS`, app default 90). |
 | `observability.scratchDatabase` | `string` | `""` | ClickHouse database where codec trials copy samples (`OBSERVE_SCRATCH_DATABASE`, app default `chouse_scratch`). |
+| `observability.upgradeCheckEnabled` | `bool` | `false` | Let Monitoring › Upgrades fetch release data and release notes (`UPGRADE_CHECK_ENABLED`, app default false): release dates and support from GitHub (`raw.githubusercontent.com`), the newest patch per line from Docker Hub (`hub.docker.com`). Needs egress to both hosts. Off, the tab still compares with a connection already on the target line. |
 
 ## pdb
 

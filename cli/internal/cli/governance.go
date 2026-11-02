@@ -327,19 +327,36 @@ cost:view.`,
 func (a *App) newUpgradesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrades",
-		Short: "Upgrade readiness, canary replays and rollout gates",
-		Long: `Upgrade readiness (Monitoring › Upgrades): assessments of a target
-version against your real workload, workload replays on a canary, and the
-rollout gates of every connection. Read-only; assessments and replays are
-started in the UI.`,
-		Example: `  chouse upgrades list -c prod
-  chouse upgrades get 3d1e… -o yaml
-  chouse upgrades replay 7a90…
-  chouse upgrades rollout`,
+		Short: "ClickHouse version status and upgrade checks",
+		Long: `Upgrades (Monitoring › Upgrades): where a connection's ClickHouse version
+stands and the targets worth moving to, and the upgrade checks run against
+your real workload (exact against a connection on the target line, or from
+the release notes, with the top queries planned on the server with the
+target's settings). Read-only; checks are started in the UI.`,
+		Example: `  chouse upgrades status -c prod
+  chouse upgrades fleet
+  chouse upgrades list -c prod
+  chouse upgrades get 3d1e… -o yaml`,
+	}
+	status := &cobra.Command{
+		Use:     "status",
+		Short:   "The -c connection's version, support status and upgrade targets",
+		Example: `  chouse upgrades status -c prod -o yaml`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if err := s.requireConnection("upgrades status"); err != nil {
+				return err
+			}
+			got, err := s.Client.Get(s.Ctx, "/api/upgrades/status", s.connectionQuery())
+			if err != nil {
+				return err
+			}
+			return s.Print(got, view("targets", "TARGET=line", "KIND", "PATCH", "RECOMMENDED", "RELEASED=releasedAt"))
+		}),
 	}
 	list := &cobra.Command{
 		Use:     "list",
-		Short:   "Assessments and replays of the -c connection",
+		Short:   "Upgrade checks of the -c connection",
 		Example: `  chouse upgrades list -c prod`,
 		Args:    cobra.NoArgs,
 		RunE: a.action(needAuth, func(s *Session, _ []string) error {
@@ -350,17 +367,17 @@ started in the UI.`,
 			if err != nil {
 				return err
 			}
-			return s.Print(got, view("assessments", "ID", "FROM=currentVersion", "TO=targetVersion", "VERDICT", "CREATED=createdAt"))
+			return s.Print(got, view("assessments", "ID", "FROM=currentVersion", "TO=targetVersion", "MODE=summary.mode", "STATUS", "CREATED=createdAt"))
 		}),
 	}
-	get := a.getCmd("get <assessmentId>", "One assessment: every rule and its evidence", "  chouse upgrades get 3d1e… -o yaml", cobra.ExactArgs(1),
+	get := a.getCmd("get <checkId>", "One upgrade check: its findings, their sources and evidence", "  chouse upgrades get 3d1e… -o yaml", cobra.ExactArgs(1),
 		func(args []string) string { return "/api/upgrades/assessments/" + url.PathEscape(args[0]) }, output.View{})
-	replay := a.getCmd("replay <replayId>", "One canary replay: replayed, skipped, missing and differing queries", "  chouse upgrades replay 7a90…", cobra.ExactArgs(1),
-		func(args []string) string { return "/api/upgrades/replays/" + url.PathEscape(args[0]) }, output.View{})
-	rollout := a.getCmd("rollout", "Every connection's version and rollout gates", "  chouse upgrades rollout", cobra.NoArgs,
-		func([]string) string { return "/api/upgrades/rollout" },
-		view("nodes", "CONNECTION=name", "VERSION", "LAG S=gates.replicaLagSeconds", "REGRESSIONS=gates.openRegressions", "SICK=gates.sickReplicas", "CHECKED=checkedAt"))
-	cmd.AddCommand(list, get, replay, rollout)
+	fleet := a.getCmd("fleet", "Every connection's version, support status and last upgrade check", "  chouse upgrades fleet", cobra.NoArgs,
+		func([]string) string { return "/api/upgrades/fleet" },
+		view("nodes", "CONNECTION=name", "VERSION", "SUPPORTED=status.supported", "NEWER PATCH=status.newerPatch", "LAST CHECK=lastCheck.targetVersion"))
+	// `rollout` was the old name; the rollout gates it showed live on the Fleet page and in Performance now.
+	fleet.Aliases = []string{"rollout"}
+	cmd.AddCommand(status, list, get, fleet)
 	return cmd
 }
 

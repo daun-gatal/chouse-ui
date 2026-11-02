@@ -83,7 +83,7 @@ describe("management tools through the real API", () => {
       ["get_query_regressions", {}],
       ["get_capacity", {}],
       ["list_upgrade_assessments", {}],
-      ["get_upgrade_rollout", {}],
+      ["get_upgrade_status", {}],
       ["get_collector_status", {}],
       ["get_collector_schedule", {}],
       ["get_collector_schedule", { connectionId: "conn-ip" }],

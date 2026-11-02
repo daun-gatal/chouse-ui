@@ -1,8 +1,8 @@
 /**
  * Performance, capacity and upgrade tools (ADR 0016 §8–9), plus the
  * observability collectors behind them: query-shape regressions against their
- * own baselines, disk forecasts and growth, upgrade readiness and canary
- * replays, and what each collector last read and how often it runs. All
+ * own baselines, disk forecasts and growth, upgrade checks, and what each
+ * collector last read and how often it runs. All
  * read-only projections of the Monitoring and Admin › Connections pages.
  */
 
@@ -89,7 +89,7 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.",
+    description: "Upgrade checks of a connection: target version, mode and counts by severity.",
     inputSchema: connectionSchema,
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
@@ -104,7 +104,10 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "One upgrade readiness assessment: every rule checked against the real workload, with the evidence behind each finding.",
+    description:
+      "One upgrade check: what upgrading to the target changes for the real workload (removed functions, types and engines in use, " +
+      "changed defaults, obsolete settings, release notes to judge), with the evidence and sources behind each finding. " +
+      "A check started a moment ago may still be running; its summary.stage says how far it got.",
     inputSchema: idSchema("Assessment"),
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
@@ -115,34 +118,19 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
   });
 
   registerChouseTool(sink, {
-    name: "get_canary_replay",
-    title: "Canary replay",
+    name: "get_upgrade_status",
+    title: "Upgrade status",
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
     description:
-      "One workload replay on a canary connection: queries replayed, skipped and missing on the canary, and the most serious result " +
-      "or latency differences. Replayed query text is included only with query:history:view:all.",
-    inputSchema: idSchema("Replay"),
+      "A connection's ClickHouse version, whether it is still supported, whether a newer patch exists, and the upgrade targets on offer " +
+      "(recommended LTS first). Support data needs UPGRADE_CHECK_ENABLED on the server.",
+    inputSchema: connectionSchema,
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const api = deps.clientFor(ctx);
-      const id = argString(args, "id");
-      return runApiTool(ctx, api, "get_canary_replay", id, () => api.request("GET", `/api/upgrades/replays/${segment(id)}`));
-    },
-  });
-
-  registerChouseTool(sink, {
-    name: "get_upgrade_rollout",
-    title: "Upgrade rollout",
-    category: "performance",
-    access: "read",
-    permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Every connection the token can use with its ClickHouse version and rollout gates: replica lag, open regressions and sick replicas.",
-    handler: async (_args, extra) => {
-      const ctx = toolContext(extra);
-      const api = deps.clientFor(ctx);
-      return runApiTool(ctx, api, "get_upgrade_rollout", undefined, () => api.request("GET", "/api/upgrades/rollout"));
+      const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
+      return runApiTool(ctx, api, "get_upgrade_status", argOptionalString(args, "connection_id"), () => api.request("GET", "/api/upgrades/status"));
     },
   });
 

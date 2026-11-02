@@ -317,6 +317,8 @@ export const SEED_AGENTS: SeedAgent[] = [
     { stepBudget: 3, maxOutputTokens: 2500 }),
   evidenceAgent("builtin-agent-table-context-drafter", "table-context-drafter", "Table Context Drafter", "Drafts a table's curated context from metadata and an aggregate-only profile.", "draft-table-context",
     { stepBudget: 3, maxOutputTokens: 2500 }),
+  evidenceAgent("builtin-agent-upgrade-notes-reader", "upgrade-notes-reader", "Upgrade Notes Reader", "Reads ClickHouse's breaking-change notes for an upgrade against the names one workload uses (Monitoring › Upgrades).", "match-upgrade-notes",
+    { stepBudget: 3, maxOutputTokens: 6000 }),
   // --- AI Governance ----------------------------------------------------------------------
   evidenceAgent("builtin-agent-skill-author", "skill-author", "Skill Author", "Drafts and refines custom skills (SKILL.md and reference files) from a goal or pasted runbook.", "draft-ai-skill",
     { stepBudget: 3, maxOutputTokens: 12000 }),
@@ -346,7 +348,7 @@ export const SEED_AGENTS: SeedAgent[] = [
     tools: [
       "list_scheduled_jobs", "get_scheduled_job", "list_scheduled_runs", "list_health_checks", "get_health_check", "list_health_incidents", "list_alerting",
       "list_observe_incidents", "list_remediation_actions", "get_investigation_notebook", "list_doctor_reports", "fleet_snapshots",
-      "get_query_regressions", "get_capacity", "list_upgrade_assessments", "get_upgrade_rollout", "get_collector_status", "get_collector_schedule",
+      "get_query_regressions", "get_capacity", "list_upgrade_assessments", "get_upgrade_assessment", "get_upgrade_status", "get_collector_status", "get_collector_schedule",
       "list_dashboards", "get_dashboard", "get_dashboard_annotations",
     ],
   },
@@ -403,6 +405,7 @@ export const SEED_BINDINGS: Record<string, string> = {
   "draft-guardrail": "guardrail-drafter",
   "triage-incident": "incident-triager",
   "suggest-memories": "memory-suggester",
+  "match-upgrade-notes": "upgrade-notes-reader",
 };
 
 // ============================================

@@ -30,6 +30,8 @@ import type { FleetConnectionSnapshot } from "@/api/fleet";
 import Sparkline from "./Sparkline";
 import { activateConnection } from "@/lib/activateConnection";
 import type { ClickHouseConnection } from "@/api/rbac";
+import type { FleetUpgradeNode } from "@/api/upgrades";
+import { FleetVersion } from "./FleetVersion";
 import {
   Tooltip,
   TooltipContent,
@@ -55,6 +57,8 @@ interface FleetCardProps {
   snapshotPollIntervalSeconds?: number;
   /** Memory-% history for the inline sparkline (from the page's bulk fetch). */
   memoryHistory?: { time: number; value: number | null }[];
+  /** Version support and last upgrade check, for readers with upgrades:view (ADR 0029). */
+  upgrade?: FleetUpgradeNode;
 }
 
 const STATUS_STYLES: Record<FleetCardStatus, { dot: string; label: string }> = {
@@ -118,6 +122,7 @@ export default function FleetCard({
   snapshot,
   snapshotPollIntervalSeconds = 30,
   memoryHistory,
+  upgrade,
 }: FleetCardProps) {
   const queryClient = useQueryClient();
   const [isOpening, setIsOpening] = useState(false);
@@ -190,7 +195,7 @@ export default function FleetCard({
 
   const pollAgeMs = effectiveUpdatedAt ? Date.now() - effectiveUpdatedAt : null;
 
-  const handleOpen = async () => {
+  const handleOpen = async (path = "/monitoring") => {
     if (isOpening) return;
     setIsOpening(true);
     try {
@@ -202,7 +207,7 @@ export default function FleetCard({
       // Full navigation (not SPA): the app re-initialises on the persisted
       // connection, so the page lands ready on the new node instead of needing
       // a manual refresh to shake off the previous connection's state.
-      window.location.assign("/monitoring");
+      window.location.assign(path);
     } catch (e) {
       log.error("[FleetCard] Failed to open connection", {
         connectionId: connection.id,
@@ -273,19 +278,19 @@ export default function FleetCard({
               </span>
             )}
           </div>
-          <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
-            {connection.host}:{connection.port}
+          <p className="mt-0.5 flex min-w-0 items-center font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
+            <span className="min-w-0 truncate">{connection.host}:{connection.port}</span>
             {effectiveSummary?.serverVersion && (
               <>
-                <span className="mx-2 text-ink-700">·</span>
-                {effectiveSummary.serverVersion}
+                <span className="mx-2 shrink-0 text-ink-700">·</span>
+                <FleetVersion version={effectiveSummary.serverVersion} node={upgrade} disabled={isOpening} onOpen={(path) => void handleOpen(path)} />
               </>
             )}
           </p>
         </div>
         <button
           type="button"
-          onClick={handleOpen}
+          onClick={() => void handleOpen()}
           disabled={isOpening}
           className={cn(
             "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper transition-colors",

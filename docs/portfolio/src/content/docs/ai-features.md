@@ -41,6 +41,7 @@ Features marked *Evidence only* gather their evidence in code and hand it over a
 | [Compile a watcher](#compile-a-watcher) | Observability | `ai:optimize` | Evidence only | [Watcher Compiler](#watcher-compiler) |
 | [Draft table context](#draft-table-context) | Observability | `ai:optimize` | Evidence only | [Table Context Drafter](#table-context-drafter) |
 | [Auto-triage](#auto-triage) | Observability | `ai_agents:manage` | Fleet nodes | [Incident Triager](#incident-triager) |
+| [Read upgrade release notes](#read-upgrade-release-notes) | Observability | `ai:optimize` | Evidence only | [Upgrade Notes Reader](#upgrade-notes-reader) |
 | [Draft a dashboard](#draft-a-dashboard) | Dashboards | `ai:optimize` | ClickHouse session | [Dashboard Drafter](#dashboard-drafter) |
 | [Explain this spike](#explain-this-spike) | Dashboards | `ai:optimize` | ClickHouse session | [Spike Explainer](#spike-explainer) |
 | [Draft a skill](#draft-a-skill) | AI Governance | `ai:optimize` | Evidence only | [Skill Author](#skill-author) |
@@ -372,6 +373,18 @@ AI Governance › Auto-triage: investigates new incidents, alerts, failed schedu
 | `ctx.evidence` | json | What CHouse knows about the subject (pretty-printed JSON). |
 | `ctx.nodes` | json | Connections the agent may query with query_node (id and name). |
 
+### Read upgrade release notes
+
+ID `match-upgrade-notes` · needs `ai:optimize` · structured answer (JSON contract)
+
+Monitoring › Upgrades › Check: reads the breaking-change notes between two versions against the names the workload uses.
+
+**Tools may use:** Evidence only. **Built-in agent:** [Upgrade Notes Reader](#upgrade-notes-reader).
+
+| Variable | Type | Value |
+| --- | --- | --- |
+| `ctx.evidence` | json | The evidence object the feature assembled (JSON). |
+
 ## Dashboards features
 
 ### Draft a dashboard
@@ -450,7 +463,7 @@ AI Governance › Guardrails › Draft with AI: turns a goal into a guardrail dr
 
 ## Built-in agents
 
-The 34 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
+The 35 agents CHouse installs. Steps are the agent's step budget; its recursion limit defaults to four times that, and at least 24. Without a timeout of its own, a run stops after 4 minutes for a feature and 2 minutes in the chat. See [Editing agents](/docs/ai-agent-editor/#settings).
 
 ### SQL Optimizer
 
@@ -816,6 +829,20 @@ Drafts a table's curated context from metadata and an aggregate-only profile.
 | Tools | none |
 | Skills | all built-in skills on demand |
 
+### Upgrade Notes Reader
+
+Reads ClickHouse's breaking-change notes for an upgrade against the names one workload uses (Monitoring › Upgrades).
+
+| Setting | Value |
+| --- | --- |
+| Slug | `upgrade-notes-reader` |
+| Kind | Feature agent |
+| Used by | [Read upgrade release notes](#read-upgrade-release-notes) |
+| Harness | Focused |
+| Tuning | 3 steps · 6,000 output tokens |
+| Tools | none |
+| Skills | all built-in skills on demand |
+
 ### Skill Author
 
 Drafts and refines custom skills (SKILL.md and reference files) from a goal or pasted runbook.
@@ -897,7 +924,7 @@ Scheduled jobs and runs, Data Health promises and incidents, alerting, observabi
 | Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 8 steps |
-| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
+| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_assessment`, `get_upgrade_status`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
 | Skills | none |
 
 ### Platform Auditor
@@ -925,6 +952,6 @@ Chobi's assistant: answers, investigates with read-only investigators, and makes
 | Used by | [Chat](#chat) |
 | Harness | Assistant |
 | Tuning | 16 steps · 240 s timeout |
-| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query`, `whoami`, `load_toolkit`, `navigate`, `open_entity`, `fill_form`, `kill_query`, `create_saved_query`, `update_saved_query`, `delete_saved_query`, `share_saved_query`, `create_database`, `create_table`, `drop_table`, `drop_database`, `run_sql_change`, `create_scheduled_query`, `update_scheduled_job`, `pause_scheduled_job`, `resume_scheduled_job`, `run_scheduled_job`, `delete_scheduled_job`, `create_health_promise`, `watch_table`, `update_health_promise`, `pause_health_promise`, `resume_health_promise`, `run_health_check`, `acknowledge_health_incident`, `snooze_health_incident`, `delete_health_promise`, `propose_remediation`, `create_alert_rule`, `update_alert_rule`, `mute_alert_rule`, `test_alert_channel`, `post_alert_message`, `clear_alert_events`, `acknowledge_observe_incident`, `dismiss_suggestion`, `pin_table_criticality`, `add_notebook_cell`, `update_cost_rates`, `update_collector_schedule`, `start_codec_trial`, `run_doctor_scan`, `update_doctor_schedule`, `update_fleet_alert_config`, `run_upgrade_assessment`, `run_canary_replay`, `create_dashboard`, `update_dashboard`, `add_panel`, `update_panel`, `remove_panel`, `restore_dashboard_version`, `delete_dashboard`, `add_dashboard_note`, `delete_dashboard_note`, `share_dashboard`, `update_table_context`, `upsert_metric`, `delete_metric`, `create_user`, `update_user`, `deactivate_user`, `assign_role`, `create_role`, `update_role`, `delete_role`, `create_data_access_policy`, `update_data_access_policy`, `delete_data_access_policy`, `set_role_policies`, `create_clickhouse_role`, `update_clickhouse_role`, `draft_ai_agent`, `run_ai_eval`, `publish_ai_agent`, `update_my_preferences` |
+| Tools | `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_size`, `get_table_sample`, `run_select_query`, `explain_query`, `get_database_info`, `get_running_queries`, `get_server_info`, `search_columns`, `analyze_query`, `validate_sql`, `export_query_result`, `get_slow_queries`, `render_chart`, `generate_query`, `optimize_query`, `whoami`, `load_toolkit`, `navigate`, `open_entity`, `fill_form`, `kill_query`, `create_saved_query`, `update_saved_query`, `delete_saved_query`, `share_saved_query`, `create_database`, `create_table`, `drop_table`, `drop_database`, `run_sql_change`, `create_scheduled_query`, `update_scheduled_job`, `pause_scheduled_job`, `resume_scheduled_job`, `run_scheduled_job`, `delete_scheduled_job`, `create_health_promise`, `watch_table`, `update_health_promise`, `pause_health_promise`, `resume_health_promise`, `run_health_check`, `acknowledge_health_incident`, `snooze_health_incident`, `delete_health_promise`, `propose_remediation`, `create_alert_rule`, `update_alert_rule`, `mute_alert_rule`, `test_alert_channel`, `post_alert_message`, `clear_alert_events`, `acknowledge_observe_incident`, `dismiss_suggestion`, `pin_table_criticality`, `add_notebook_cell`, `update_cost_rates`, `update_collector_schedule`, `start_codec_trial`, `run_doctor_scan`, `update_doctor_schedule`, `update_fleet_alert_config`, `run_upgrade_assessment`, `create_dashboard`, `update_dashboard`, `add_panel`, `update_panel`, `remove_panel`, `restore_dashboard_version`, `delete_dashboard`, `add_dashboard_note`, `delete_dashboard_note`, `share_dashboard`, `update_table_context`, `upsert_metric`, `delete_metric`, `create_user`, `update_user`, `deactivate_user`, `assign_role`, `create_role`, `update_role`, `delete_role`, `create_data_access_policy`, `update_data_access_policy`, `delete_data_access_policy`, `set_role_policies`, `create_clickhouse_role`, `update_clickhouse_role`, `draft_ai_agent`, `run_ai_eval`, `publish_ai_agent`, `update_my_preferences` |
 | Skills | all built-in skills on demand |
 | Subagents | [ClickHouse Data](#clickhouse-data), [Operations Analyst](#operations-analyst), [Access Auditor](#access-auditor), [Platform Auditor](#platform-auditor) |

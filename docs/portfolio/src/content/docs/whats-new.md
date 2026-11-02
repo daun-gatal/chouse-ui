@@ -16,6 +16,10 @@
 
 ![Sign-in for agents in AI Governance › MCP](/docs/img/app/agents-mcp-sign-in.jpg "Turn sign-in on, decide whether tokens still work on MCP, approve new agents and see who is connected")
 
+**Check what a ClickHouse upgrade changes for you** — **Monitoring › Upgrades** now shows whether your version is still supported and which versions to move to, then checks a target against your real workload: removed functions, types and engines you use, changed defaults, obsolete settings you still set, and the release notes that name what you use. It is exact when another of your connections already runs the target line, and Chouse AI can read the notes for you. It also plans your top queries on your current server with the target's settings, without running them, so you see which ones the new analyzer or a changed default breaks before you upgrade. On the Fleet page, a version that is out of support or behind on patches is coloured and links to the check. → [Upgrades](/docs/monitoring-upgrades/), [Plan a ClickHouse upgrade](/docs/guide-plan-an-upgrade/)
+
+![Monitoring › Upgrades after an exact check](/docs/img/app/monitoring-upgrades.jpg "A check of 25.8 against 26.8: what breaks, what changes, and the notes to read")
+
 ## Upgrading from 3.16
 
 Migrations run on start; nothing to run by hand. Check these:
@@ -24,5 +28,7 @@ Migrations run on start; nothing to run by hand. Check these:
 | --- | --- |
 | Migration 1.75.0 adds tables for agents, sign-ins and tokens, and marks every existing personal access token as one | Nothing to do: tokens keep working |
 | Sign-in for agents is off | To use it, set an https public address (**AI Governance › MCP**, or `PUBLIC_BASE_URL`, Helm `publicBaseUrl`) and turn on **Sign-in for agents**. If your proxy forwards only some paths, also forward `/oauth/` and `/.well-known/oauth-` to CHouse |
+| Upgrades fetches release data and notes only when allowed | Set `UPGRADE_CHECK_ENABLED=true` (Helm `observability.upgradeCheckEnabled: true`) and allow egress to `raw.githubusercontent.com` and `hub.docker.com`. Without it, Upgrades compares only with a connection on the target line |
+| The upgrade rollout tracker and the workload replay on a canary are gone | Versions are on the Fleet page, and a check now tries your queries on the current server. Agents using the MCP tool `get_upgrade_rollout` should use `get_upgrade_status`; `get_canary_replay`, `run_canary_replay` and `chouse upgrades replay` are removed; `chouse upgrades rollout` now runs `chouse upgrades fleet` |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).
