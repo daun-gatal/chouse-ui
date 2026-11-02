@@ -9,7 +9,7 @@ import type { ClickHouseClient } from "@clickhouse/client";
 
 import { NOT_OBSERVE, selectRows } from "../observe/clickhouse";
 
-export const WINDOW_DAYS = 30;
+const WINDOW_DAYS = 30;
 const PER_KIND = 400;
 const SYSTEM_DATABASES = "('system', 'INFORMATION_SCHEMA', 'information_schema')";
 

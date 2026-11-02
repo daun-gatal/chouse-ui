@@ -29,7 +29,7 @@ const RELEASE_HEADING = /^###\s+(?:<a id="[^"]*"><\/a>\s*)?ClickHouse release (?
 const BIC_HEADING = /^####\s+Backward Incompatible Change\s*$/;
 
 /** Markdown links to plain text, PR links to `#123`, author credits removed. */
-export function cleanNoteText(raw: string): string {
+function cleanNoteText(raw: string): string {
   return raw
     .replace(/\s*\(\[[^\]]*\]\(https:\/\/github\.com\/[^)\s]*\)(?:,\s*\[[^\]]*\]\(https:\/\/github\.com\/[^)\s]*\))*\)/g, "")
     .replace(/\[#(\d+)\]\([^)]*\)/g, "#$1")
