@@ -527,14 +527,21 @@ const operationsTools: CatalogTool[] = [
   }),
   apiTool({
     name: "list_upgrade_assessments", title: "Upgrade assessments", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.",
+    description: "Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.",
     schema: CONNECTION_SCHEMA,
     request: (a) => ({ path: "/api/upgrades/assessments", query: { connectionId: str(a.connectionId) } }),
   }),
   apiTool({
-    name: "get_upgrade_rollout", title: "Upgrade rollout", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Every connection the user can use with its ClickHouse version and rollout gates (replica lag, open regressions, sick replicas).",
-    request: () => ({ path: "/api/upgrades/rollout" }),
+    name: "get_upgrade_status", title: "Upgrade status", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
+    description: "A connection's ClickHouse version, whether it is still supported, whether a newer patch exists, and the upgrade targets on offer (recommended LTS first).",
+    schema: CONNECTION_SCHEMA,
+    request: (a) => ({ path: "/api/upgrades/status", query: { connectionId: str(a.connectionId) } }),
+  }),
+  apiTool({
+    name: "get_upgrade_assessment", title: "Upgrade check", category: "operations", permissions: [PERMISSIONS.UPGRADES_VIEW],
+    description: "One upgrade check: what upgrading to the target changes for the real workload (removed functions, types and engines in use, changed defaults, obsolete settings, release notes to judge), with the evidence and sources behind each finding.",
+    schema: z.object({ id: z.string().min(1).max(64).describe("Check id from list_upgrade_assessments") }),
+    request: (a) => ({ path: `/api/upgrades/assessments/${segment(String(a.id))}` }),
   }),
   apiTool({
     name: "get_collector_status", title: "Collector status", category: "operations", permissions: [PERMISSIONS.OBSERVE_VIEW],

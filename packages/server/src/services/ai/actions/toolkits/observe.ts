@@ -340,12 +340,21 @@ export const OBSERVE_ACTIONS: ActionDefinition[] = [
     tier: "t2",
     connectionScoped: true,
     permissions: [PERMISSIONS.UPGRADES_RUN],
-    description: "Assess what would break upgrading the active connection's ClickHouse to a version (it scans settings, functions and recent queries).",
-    schema: z.object({ targetVersion: z.string().regex(/^\d+(\.\d+){1,3}$/, "Use a version such as 25.3") }),
-    describe: (args) => `Assess an upgrade to ClickHouse ${str(args.targetVersion)}`,
+    description:
+      "Check what upgrading the active connection's ClickHouse to a version changes for its workload. With referenceConnectionId (a connection " +
+      "already on the target line) it compares both servers exactly; otherwise it reads the release notes. Runs in the background: read the result " +
+      "with get_upgrade_assessment.",
+    schema: z.object({
+      targetVersion: z.string().regex(/^\d{1,3}\.\d{1,2}(\.\d{1,4}(\.\d{1,6})?)?$/, "Use a version such as 26.8 or 26.8.36.3"),
+      referenceConnectionId: z.string().min(1).max(64).optional(),
+    }),
+    describe: (args) => `Check an upgrade to ClickHouse ${str(args.targetVersion)}${typeof args.referenceConnectionId === "string" ? ` against ${quote(args.referenceConnectionId)}` : ""}`,
     execute: async (args, ctx) => {
       needConnection(ctx);
-      return ctx.api.post("/api/upgrades/assessments", { targetVersion: str(args.targetVersion) });
+      return ctx.api.post("/api/upgrades/assessments", {
+        targetVersion: str(args.targetVersion),
+        ...(typeof args.referenceConnectionId === "string" ? { referenceConnectionId: args.referenceConnectionId } : {}),
+      });
     },
   },
   {

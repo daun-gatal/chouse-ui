@@ -66,7 +66,7 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | [`list_upgrade_assessments`](#list_upgrade_assessments) | Read | Yes | `upgrades:view` |
 | [`get_upgrade_assessment`](#get_upgrade_assessment) | Read | Yes | `upgrades:view` |
 | [`get_canary_replay`](#get_canary_replay) | Read | Yes | `upgrades:view` |
-| [`get_upgrade_rollout`](#get_upgrade_rollout) | Read | Yes | `upgrades:view` |
+| [`get_upgrade_status`](#get_upgrade_status) | Read | Yes | `upgrades:view` |
 | [`list_dashboards`](#list_dashboards) | Read | Yes | `dashboards:view` |
 | [`get_dashboard`](#get_dashboard) | Read | Yes | `dashboards:view` |
 | [`export_dashboard`](#export_dashboard) | Read | Yes | `dashboards:view` |
@@ -720,7 +720,7 @@ Disk forecasts per node (days until the threshold), the fastest-growing tables, 
 
 *Upgrade assessments* — **Read** · on by default · needs any of `upgrades:view`
 
-Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.
+Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -730,7 +730,7 @@ Upgrade readiness assessments of a connection (target version, verdict, findings
 
 *Upgrade assessment* — **Read** · on by default · needs any of `upgrades:view`
 
-One upgrade readiness assessment: every rule checked against the real workload, with the evidence behind each finding.
+One upgrade check: what upgrading to the target changes for the real workload (removed functions, types and engines in use, changed defaults, obsolete settings, release notes to judge), with the evidence and sources behind each finding. A check started a moment ago may still be running; its summary.stage says how far it got.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -746,13 +746,15 @@ One workload replay on a canary connection: queries replayed, skipped and missin
 | --- | --- | --- | --- |
 | `id` | `string` | Yes | Replay id |
 
-### get_upgrade_rollout
+### get_upgrade_status
 
-*Upgrade rollout* — **Read** · on by default · needs any of `upgrades:view`
+*Upgrade status* — **Read** · on by default · needs any of `upgrades:view`
 
-Every connection the token can use with its ClickHouse version and rollout gates: replica lag, open regressions and sick replicas.
+A connection's ClickHouse version, whether it is still supported, whether a newer patch exists, and the upgrade targets on offer (recommended LTS first). Support data needs UPGRADE_CHECK_ENABLED on the server.
 
-No parameters.
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `connection_id` | `string` | No | Connection id (defaults to the request's connection) |
 
 ## Dashboards
 
@@ -1299,11 +1301,12 @@ Turn fleet threshold alerts on or off and set their thresholds. Notification cha
 
 *Assess an upgrade* — **Write** · on by default · needs any of `upgrades:run`
 
-Assess what would break upgrading the active connection's ClickHouse to a version (it scans settings, functions and recent queries). Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
+Check what upgrading the active connection's ClickHouse to a version changes for its workload. With referenceConnectionId (a connection already on the target line) it compares both servers exactly; otherwise it reads the release notes. Runs in the background: read the result with get_upgrade_assessment. Write tool: CHouse decides per call how it is checked — undoable changes run at once, others wait for the user's confirmation in CHouse, and high-risk ones go to a second approver. When a call returns a pending actionId, tell the user and check it later with get_action_status.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `targetVersion` | `string` | Yes |   |
+| `referenceConnectionId` | `string` | No |   |
 
 ### run_canary_replay
 

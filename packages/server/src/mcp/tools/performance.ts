@@ -89,7 +89,7 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Upgrade readiness assessments of a connection (target version, verdict, findings) and its canary workload replays.",
+    description: "Upgrade checks of a connection (target version, mode, counts by severity) and its canary workload replays.",
     inputSchema: connectionSchema,
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
@@ -104,7 +104,10 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "One upgrade readiness assessment: every rule checked against the real workload, with the evidence behind each finding.",
+    description:
+      "One upgrade check: what upgrading to the target changes for the real workload (removed functions, types and engines in use, " +
+      "changed defaults, obsolete settings, release notes to judge), with the evidence and sources behind each finding. " +
+      "A check started a moment ago may still be running; its summary.stage says how far it got.",
     inputSchema: idSchema("Assessment"),
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
@@ -133,16 +136,19 @@ export function registerPerformanceTools(sink: McpToolSink, deps: McpDeps): void
   });
 
   registerChouseTool(sink, {
-    name: "get_upgrade_rollout",
-    title: "Upgrade rollout",
+    name: "get_upgrade_status",
+    title: "Upgrade status",
     category: "performance",
     access: "read",
     permissions: [PERMISSIONS.UPGRADES_VIEW],
-    description: "Every connection the token can use with its ClickHouse version and rollout gates: replica lag, open regressions and sick replicas.",
-    handler: async (_args, extra) => {
+    description:
+      "A connection's ClickHouse version, whether it is still supported, whether a newer patch exists, and the upgrade targets on offer " +
+      "(recommended LTS first). Support data needs UPGRADE_CHECK_ENABLED on the server.",
+    inputSchema: connectionSchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const api = deps.clientFor(ctx);
-      return runApiTool(ctx, api, "get_upgrade_rollout", undefined, () => api.request("GET", "/api/upgrades/rollout"));
+      const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
+      return runApiTool(ctx, api, "get_upgrade_status", argOptionalString(args, "connection_id"), () => api.request("GET", "/api/upgrades/status"));
     },
   });
 

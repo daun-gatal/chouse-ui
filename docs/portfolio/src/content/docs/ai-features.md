@@ -897,7 +897,7 @@ Scheduled jobs and runs, Data Health promises and incidents, alerting, observabi
 | Used by | subagent of CHouse Assistant |
 | Harness | Focused |
 | Tuning | 8 steps |
-| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_rollout`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
+| Tools | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `list_health_incidents`, `list_alerting`, `list_observe_incidents`, `list_remediation_actions`, `get_investigation_notebook`, `list_doctor_reports`, `fleet_snapshots`, `get_query_regressions`, `get_capacity`, `list_upgrade_assessments`, `get_upgrade_assessment`, `get_upgrade_status`, `get_collector_status`, `get_collector_schedule`, `list_dashboards`, `get_dashboard`, `get_dashboard_annotations` |
 | Skills | none |
 
 ### Platform Auditor
