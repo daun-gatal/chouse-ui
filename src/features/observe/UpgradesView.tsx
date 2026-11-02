@@ -217,12 +217,14 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
 
   const notesCount = a?.summary.coverage?.notes.count ?? 0;
   const aiWanted = Boolean(a && a.status === "done" && aiAvailable && canRun && notesCount > 0 && a.summary.target.line !== currentLine);
+  // Runs on its own only right after a check started here; an older check offers a button instead,
+  // so opening the page never spends tokens by itself.
   useEffect(() => {
-    if (!a || !aiWanted || a.summary.ai || aiTried.current.has(a.id)) return;
+    if (!a || !aiWanted || a.id !== checkId || a.summary.ai || aiTried.current.has(a.id)) return;
     aiTried.current.add(a.id);
     ai.mutate(a.id);
     // Keyed on the check, not on the mutation object, which changes every render.
-  }, [a?.id, a?.status, aiWanted, a?.summary.ai]);
+  }, [a?.id, a?.status, aiWanted, a?.summary.ai, checkId]);
 
   const start = async (): Promise<void> => {
     if (!chosen) return;
@@ -339,9 +341,9 @@ function ImpactPanel({ target, status, checks, canRun }: { target: string; statu
               <span className="ml-1 text-[11px] text-paper-faint">Checked {formatAgo(a.finishedAt ?? a.createdAt)}</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {aiWanted && (a.summary.ai || ai.isError) && (
-                <Button variant="outline" className="h-8 rounded-xs border-brand/40 text-[11px] text-brand" onClick={() => ai.mutate(a.id)}>
-                  <Sparkles className="mr-1.5 h-3 w-3" /> {a.summary.ai ? "Read the notes again" : "Try Chouse AI again"}
+              {aiWanted && (
+                <Button variant="outline" className="h-8 rounded-xs border-brand/40 text-[11px] text-brand" disabled={ai.isPending} onClick={() => ai.mutate(a.id)}>
+                  <Sparkles className="mr-1.5 h-3 w-3" /> {a.summary.ai ? "Read the notes again" : ai.isError ? "Try Chouse AI again" : "Read the notes with Chouse AI"}
                 </Button>
               )}
               <Button variant="outline" className="h-8 rounded-xs text-[11px]" onClick={() => void copyText(checkMarkdown(a, connectionName), "Report")}><Copy className="mr-1.5 h-3 w-3" /> Copy as Markdown</Button>

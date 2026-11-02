@@ -140,10 +140,14 @@ export const matchUpgradeNotesCapability: StructuredCapability<{ assessmentId: s
     const row = await one(sql`SELECT summary FROM upgrade_assessments WHERE id = ${prepared.assessmentId}`);
     const summary = json<CheckSummary | null>(row?.summary, null);
     if (summary) {
+      // A note an AI finding now cites is no longer waiting for a person, so it leaves the to-judge count.
+      const cited = new Set(kept.map((f) => f.noteId));
       const counts = { blocker: 0, warning: 0, info: 0, note: 0 };
-      for (const r of await all(sql`SELECT severity FROM upgrade_findings WHERE assessment_id = ${prepared.assessmentId}`)) {
+      for (const r of await all(sql`SELECT severity, evidence FROM upgrade_findings WHERE assessment_id = ${prepared.assessmentId}`)) {
         const sev = str(r.severity) as keyof typeof counts;
-        if (sev in counts) counts[sev]++;
+        if (!(sev in counts)) continue;
+        if (sev === "note" && json<{ source?: { notes?: Array<{ id: string }> } }>(r.evidence, {}).source?.notes?.some((n) => cited.has(n.id))) continue;
+        counts[sev]++;
       }
       summary.counts = counts;
       summary.ai = { status: "done", model: meta.modelLabel, at: Date.now(), dropped };

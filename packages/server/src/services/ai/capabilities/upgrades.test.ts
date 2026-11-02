@@ -117,6 +117,18 @@ describe("match-upgrade-notes finalize", () => {
     expect(a.summary.counts).toEqual({ blocker: 1, warning: 1, info: 0, note: 0 });
   });
 
+  it("takes notes an AI finding now covers out of the to-judge count", async () => {
+    const id = await seedCheck();
+    const p = await cap.prepare({ assessmentId: id }, ADMIN);
+    const note = p.evidence.notes.find((n) => n.text.includes("JSONEachRow"))!;
+    const other = p.evidence.notes.find((n) => n.noteId !== note.noteId)!;
+    for (const n of [note, other]) {
+      await run(sql`INSERT INTO upgrade_findings (id, assessment_id, category, severity, title, detail, evidence) VALUES (${`${id}-${n.noteId}`}, ${id}, 'release-note', 'note', 't', 'd', ${JSON.stringify({ source: { notes: [{ id: n.noteId, line: n.line, prs: [] }] } })})`);
+    }
+    await cap.finalize({ findings: [{ noteId: note.noteId, severity: "warning", title: "t", detail: "d", action: "", matched: ["JSONEachRow"] }] }, p, ADMIN, META);
+    expect((await getAssessment(id))!.summary.counts).toEqual({ blocker: 1, warning: 1, info: 0, note: 1 });
+  });
+
   it("replaces the previous AI findings on a rerun", async () => {
     const id = await seedCheck();
     const p = await cap.prepare({ assessmentId: id }, ADMIN);
