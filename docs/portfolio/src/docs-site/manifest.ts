@@ -269,7 +269,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "guide-build-a-chat-agent", title: "Build a chat agent", description: "A team chat agent with its own data skill and tools, gated by permission, optionally routed to by Auto." },
           { slug: "guide-connect-an-agent", title: "Connect an AI agent", description: "Turn MCP on, give Claude Code a narrow token or let an agent sign in, and watch and limit what it does." },
           { slug: "guide-cli-in-ci", title: "Use the CLI in CI", description: "A scoped token, JSON output and exit codes for reports and data checks in a pipeline." },
-          { slug: "guide-plan-an-upgrade", title: "Plan a ClickHouse upgrade", description: "Choose a target, check what it changes for your workload, replay on a canary and watch the rollout." },
+          { slug: "guide-plan-an-upgrade", title: "Plan a ClickHouse upgrade", description: "Choose a target, check what it changes for your workload, fix the queries the new settings break and watch the rollout." },
           { slug: "guide-least-privilege-role", title: "Give a team least-privilege access", description: "A data access policy and a custom role that let a team read one database and nothing else." },
         ],
       },

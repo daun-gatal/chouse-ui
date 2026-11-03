@@ -13,7 +13,8 @@ screenshot: fleet
 | Area | Shows |
 | --- | --- |
 | Status counts | How many connections are **healthy**, **degraded** or **down** — click one to filter |
-| Cards (or compact rows) | Per connection: status, memory use, active queries, the longest-running query, replica lag and per-node trend sparklines |
+| Cards (or compact rows) | Per connection: status, ClickHouse version, memory use, active queries, the longest-running query, replica lag and per-node trend sparklines |
+| Version colour | Red when the connection's ClickHouse line is out of support, amber when a newer patch is out — hover for why, click to open [Upgrades](/docs/monitoring-upgrades/#fleet). Needs `UPGRADE_CHECK_ENABLED` |
 | Fleet inventory | Databases and tables at a glance |
 | Fleet trends | Memory and lag over the selected history window |
 | Recent exceptions | The latest errors from `system.errors` across the fleet |

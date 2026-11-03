@@ -525,12 +525,12 @@
     "anchor": "performance-capacity"
   },
   "upgrades:view": {
-    "name": "View Upgrade Readiness",
+    "name": "View Upgrades",
     "category": "Performance & Capacity",
     "anchor": "performance-capacity"
   },
   "upgrades:run": {
-    "name": "Run Upgrade Replays and Codec Trials",
+    "name": "Run Upgrade Checks and Codec Trials",
     "category": "Performance & Capacity",
     "anchor": "performance-capacity"
   },

@@ -36,7 +36,7 @@ const GROUPS: FeatureGroup[] = [
       { icon: LayoutGrid, title: "Fleet view", desc: "Every connection side by side — status, memory, lag, trends — sampled once by the server, not by every browser" },
       { icon: TrendingUp, title: "Performance regressions", desc: "Each query shape against its own 14-day baseline, lined up with the upgrades, DDL and setting changes around it" },
       { icon: HardDrive, title: "Capacity & cost", desc: "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer" },
-      { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
+      { icon: ArrowUpCircle, title: "Upgrade check", desc: "A target version checked against your schema, settings and queries — exactly against a server on that line, or from the release notes — before you upgrade" },
       { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
       { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, Telegram, email or webhooks — with an AI root-cause report on breach, and one hub that shows where each alert went" },
       { icon: Timer, title: "Collection schedule", desc: "How often each collector samples, for every connection or one — incremental reads keep the load on ClickHouse low" },

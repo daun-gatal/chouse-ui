@@ -8,7 +8,6 @@ Terms used across CHouse UI and these docs.
 | **Approval class** | Whether a [fix](/docs/data-incidents/#fixes-with-approval) is low-impact (one approver, `remediation:approve`) or high-impact (two approvers, `remediation:approve_high`) |
 | **Baseline** | What CHouse UI learned is normal for a table — write cadence and hourly volume — or for a query shape's latency |
 | **Blast radius** | Everything downstream of an incident's root cause: tables, promises, jobs, saved queries and agents |
-| **Canary** | A connection on a newer ClickHouse version used to replay your workload before [upgrading](/docs/monitoring-upgrades/) |
 | **Chobi** | The CHouse buddy on the screen edge: what needs a look, the chat with CHouse Assistant, and what AI changed for you. The name is CHouse UI + *chibi*, Japanese for small and cute. See [Chobi](/docs/chobi/) |
 | **Collector** | The server component that reads ClickHouse metadata on a schedule and stores the evidence. See [How data is watched](/docs/data-observability/) |
 | **Connection** | A ClickHouse server CHouse UI talks to, with encrypted credentials. See [Connections](/docs/connections/) |
@@ -17,6 +16,7 @@ Terms used across CHouse UI and these docs.
 | **Data access policy** | A named set of database/table rules, per connection, attached to roles. See [Data access rules](/docs/data-access-rules/) |
 | **Deployment** (AI) | A named model configuration people use, pointing at a provider model. See [AI models](/docs/ai-models/) |
 | **Evidence** | What the collector stored from system tables, which every status, root cause and suggestion is computed from |
+| **Exact check** | An [upgrade check](/docs/monitoring-upgrades/#check-an-upgrade) that compares your server's system tables with another of your connections that already runs the target version |
 | **Fix** / **remediation action** | One action from the closed remediation catalog, run only after approval |
 | **Health notice** | A note attached to an agent's query result when a table it read has an open incident or is degraded |
 | **Incident** | Something wrong with the data, a pipeline or the engine — *open*, *acknowledged* or *recovered*. See [Incidents](/docs/data-incidents/) |

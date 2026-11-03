@@ -87,7 +87,7 @@ Every setting the server reads, with its default. Set them as environment variab
 | `OBSERVE_RUN_TIMEOUT_SECONDS` | `120` | Time limit for one collector run before it is abandoned. |
 | `OBSERVE_INCIDENT_HOLD_SECONDS` | `300` | Seconds a pipeline must stay bad before it opens an incident, so brief blips do not page. `0` opens on the first bad sample. |
 | `OBSERVE_CAPACITY_THRESHOLD` | `0.85` | Disk fill ratio that capacity forecasts warn about (0–1). |
-| `OBSERVE_SCRATCH_DATABASE` | `chouse_scratch` | Database used for codec trials and upgrade replays. Needs write access for `upgrades:run`. YAML: `observe.scratch_database`. |
+| `OBSERVE_SCRATCH_DATABASE` | `chouse_scratch` | Database used for codec trials. Needs write access for `upgrades:run`. YAML: `observe.scratch_database`. |
 | `UPGRADE_CHECK_ENABLED` | `false` | Lets **Monitoring › Upgrades** fetch release data: release dates and support from GitHub (`raw.githubusercontent.com`), the newest patch per line from Docker Hub (`hub.docker.com`), and the release notes between two versions. Off, the tab still compares with a connection already on the target line. |
 
 ## AI usage
