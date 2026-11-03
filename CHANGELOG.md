@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.17.0] - 2026-11-03
+
+### Added
+- **Upgrade check** — **Monitoring › Upgrades** shows whether the connection's ClickHouse version is still supported, when its last patch came out, and the versions worth moving to (the newest LTS recommended, a same-line patch first when one is out). **Check** compares the target with your real workload: exactly against another of your connections on the target line (settings and their defaults, obsolete settings, functions, types, engines and formats), or from the breaking-change notes between the two versions. Only changes your schema, settings profiles and 30 days of `query_log` use become findings, each with its sources, evidence, callers and the SQL to fix it or keep today's defaults; notes that name what you use are listed to judge, and **Copy as Markdown** gives a report. Release data and notes come from GitHub and Docker Hub when `UPGRADE_CHECK_ENABLED` (Helm `observability.upgradeCheckEnabled`) is on (ADR 0029)
+- **Try it on this server** — a check also plans your top 200 read-only query shapes on the current server with `EXPLAIN`, once with the settings each ran with and once with the target's (the new analyzer on, plus the changed defaults in an exact check). Queries that fail only with the target's settings become findings with the setting that breaks them, their callers and the error; plans that change are a heads-up. Nothing is executed. On by default, with a checkbox to turn it off
+- **Chouse AI reads the release notes** — when a model is set up, it turns the notes that matter for your workload into findings; each must cite a note and names from your workload, or it is dropped
+- **Fleet version colour** — a card's version turns red when its line is out of support and amber when a newer patch is out, with the reason on hover and a link to Upgrades
+- **MCP and assistant tool `get_upgrade_status`**; `run_upgrade_assessment` takes a connection to compare with
+- **Sign in to MCP with OAuth** — agents connect to `/mcp` with the URL alone: they open CHouse in the browser, the person signs in (password or SSO) and picks the agent's write tools and how long access lasts, and the agent gets a token that only works on MCP. CHouse is its own OAuth 2.1 server following the MCP authorization specification (protected resource and authorization server metadata, dynamic client registration, PKCE, resource indicators, refresh-token rotation with reuse detection, revocation). Off by default; turn it on in **AI Governance › MCP › Sign-in for agents**, where administrators can also turn pasted tokens off for MCP, hold new agents for approval, limit return addresses and the longest access, and block an agent or revoke a person's access. People see and revoke their agents under **Preferences › Personal access tokens › Connected apps** (ADR 0028)
+
+### Fixed
+- **Sampling settings on newer models** — AI requests no longer fail with "`temperature` is deprecated for this model" on Claude models after 4.6 (such as Claude Haiku 5.5), or with an unsupported-temperature error on OpenAI reasoning models (o-series, GPT-5). Temperature, top P, top K and the penalties are now left out for those models, including when they are reached through Bedrock, OpenRouter or an OpenAI-compatible endpoint; other models keep the temperature-0 default
+- **Dependency security updates** — `@hono/node-server` moves to 2.1.3, fixing a static-file path-decoding issue that could skip middleware, and `qs` moves to 6.16.1, fixing a crash (denial of service) in `qs.stringify`. Both come in through the MCP SDK on the server. The lint-only `minimatch` advisory is recorded as an accepted risk until eslint ships a compatible fix
+- **Watch test** — the `watch_table` test no longer fails once its hardcoded end date has passed
+- **Upgrade permission names** — **Admin › Roles** now calls `upgrades:view` "View Upgrades" and `upgrades:run` "Run Upgrade Checks and Codec Trials", instead of naming the upgrade readiness and canary replay that the upgrade check replaced
+
+### Removed
+- **Upgrade rollout tracker**, the six-rule readiness pack and its verdict; the MCP and assistant tool `get_upgrade_rollout` and `GET /api/upgrades/rollout` and `/rules`
+- **Workload replay on a canary** — replaced by trying the workload on the current server; the `get_canary_replay` and `run_canary_replay` tools and `/api/upgrades/replays` are removed
+
 ## [v3.16.0] - 2026-10-25
 
 ### Added
@@ -269,13 +289,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Container image vulnerabilities** — the published image shipped Bun's global install cache (~1 GB), which held the entire dependency tree including dev-only prebuilt binaries such as esbuild 0.18.20 and 0.19.12; scanners reported those stale binaries as part of the runtime. The cache is now dropped in the same layer it is created in. The base image's Alpine packages are also patched at build time (`apk upgrade`), picking up OpenSSL 3.5.7-r0, and GNU `wget` — which carried unfixed CVEs and was installed only for the healthcheck — is replaced by busybox's built-in `wget`.
 - **Explorer sidebar clipped its own controls** — Radix's scroll area wraps its content in a shrink-to-fit `display: table` element, so a single long query in the History tab stretched the panel to the width of that query and everything past the sidebar edge was clipped: the status filter, the Clear button, and the per-row delete buttons all disappeared, and query text never truncated. The scroll area's content wrapper now uses block layout, so list rows stay at viewport width in every sidebar tab (horizontal scroll areas are unaffected).
 - **Explorer sidebar tab strip overflowed** — the five sidebar tabs did not fit at the default sidebar width, pushing Queries out of view. Tab labels now collapse to icons for inactive tabs when the sidebar is narrow, and every tab carries an accessible name and tooltip.
-
-## [v3.11.0] - 2026-07-30
-
-### Added
-- **Production Helm chart** — official Kubernetes deployment via `helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui`: SQLite (single replica + PVC) and PostgreSQL/HA topologies with render-time guard rails, automatic `CHOUSE_HA` wiring, optional dedicated scheduled-queries pod, hardened security defaults, and cosign-signed chart releases published automatically alongside app releases (ADR 0008).
-
-### Fixed
-- **Security** — upgraded react-router to v8.3.0, resolving GHSA-qwww-vcr4-c8h2 (High), and bumped dompurify to 3.4.12 (GHSA-c2j3-45gr-mqc4, Low); dependency scans now report no known vulnerabilities.
-- **RBAC version reporting** — servers no longer log a contradictory "current 1.47.0 / target 1.46.0" migration state; the schema version constant now matches the newest migration and is guarded by a test.
 
