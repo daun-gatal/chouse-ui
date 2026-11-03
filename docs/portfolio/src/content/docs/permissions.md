@@ -242,8 +242,8 @@ Built-in roles can't be deleted, and only a super admin can change their permiss
 | `performance:view` | View Query Performance | ✓ | ✓ | ✓ | ✓ | ✓ |   |
 | `capacity:view` | View Capacity | ✓ | ✓ | ✓ |   |   |   |
 | `cost:view` | View Cost | ✓ | ✓ | ✓ |   |   |   |
-| `upgrades:view` | View Upgrade Readiness | ✓ | ✓ | ✓ |   |   |   |
-| `upgrades:run` | Run Upgrade Replays and Codec Trials | ✓ | ✓ |   |   |   |   |
+| `upgrades:view` | View Upgrades | ✓ | ✓ | ✓ |   |   |   |
+| `upgrades:run` | Run Upgrade Checks and Codec Trials | ✓ | ✓ |   |   |   |   |
 
 ## Remediation
 

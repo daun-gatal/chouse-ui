@@ -71,6 +71,8 @@ When an AI model is set up and you have `ai:optimize`, Chouse AI reads the notes
 
 A query that fails only with the target's settings becomes a **Breaks** finding, grouped by the setting that breaks it, with the error, its callers and how often it runs. A query that fails today too is skipped. Queries whose plan changes are one **Heads-up**: they still work, so watch them in [Performance](/docs/monitoring-performance/) after the first host. The coverage line says how many queries were tried, which settings were applied, and any your server refused.
 
+![A query that fails with the target's settings](/docs/img/app/monitoring-upgrades-try.jpg "Two query shapes that the new analyzer rejects, with the error, the users and clients that run them, and how often")
+
 Nothing is executed and no data is read: every statement is read-only, limited to 10 seconds, capped in rows read, and run one at a time within one minute. The query text is shown only to people with `query:history:view:all`.
 
 It can't test code your server doesn't have yet, such as a function the target removes (the check's diff and notes cover that), queries outside the top 200, or speed.

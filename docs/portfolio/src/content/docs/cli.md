@@ -69,14 +69,15 @@ chouse scheduled list && chouse health incidents
 chouse alert rules && chouse audit list --limit 20
 ```
 
-[Performance, capacity and upgrades](/docs/monitoring-performance/) — read-only; assessments, replays and the collection schedule are changed in the UI:
+[Performance, capacity and upgrades](/docs/monitoring-performance/) — read-only; upgrade checks and the collection schedule are run and changed in the UI:
 
 ```bash
 chouse perf regressions -c prod              # query shapes slower than their own baseline
 chouse perf shape <fingerprint> -c prod      # one shape's hourly history
 chouse capacity -c prod --view growth        # also: forecasts (default), cold, trials
-chouse upgrades list -c prod && chouse upgrades rollout
-chouse upgrades get <assessmentId> -o yaml   # every rule and its evidence
+chouse upgrades status -c prod              # support, newest patch, where to go next
+chouse upgrades fleet                        # every connection's version and support
+chouse upgrades get <checkId> -o yaml        # one check's findings and evidence
 chouse collectors status -c prod             # last run, last error, missing grants
 chouse collectors schedule -c prod           # how often each collector runs, bytes read per day
 ```

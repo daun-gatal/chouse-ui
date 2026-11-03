@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, type LucideIcon, Smile, Undo2, ShieldCheck, MessageSquare, LayoutGrid, History } from "lucide-react";
+import { ArrowRight, type LucideIcon, LogIn, ShieldCheck, Plug, ArrowUpCircle, FlaskConical, Server } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
 import { RELEASE, WHATS_NEW_PATH } from "../content/release";
 import { withBase } from "../docs-site/lib";
@@ -27,88 +27,88 @@ interface Showcase {
 
 const SHOWCASES: Showcase[] = [
   {
-    icon: Smile,
-    label: "Meet Chobi",
-    title: "One place for AI, on the edge of every screen",
-    pitch: "Chobi — CHouse UI + chibi, Japanese for small and cute — shows what needs a look across every connection you can reach, chats with CHouse Assistant, and lists what AI changed for you — and stays usable above any dialog.",
+    icon: LogIn,
+    label: "Sign in to MCP",
+    title: "Paste the URL. Sign in. The agent works as you.",
+    pitch: "Agents connect to CHouse MCP with the URL alone — even hosted ones with nowhere to paste a token. They open CHouse in your browser, you choose what they may change and for how long, and they get a token that only works on MCP, with your live access.",
     steps: [
-      "Click Chobi on the right edge, or press Ctrl/⌘ J from anywhere",
-      "Now lists open incidents, failed jobs, unreachable clusters and what waits for you",
-      "Select text or drop a table on Chobi to ask about it",
+      "Turn on AI Governance › MCP › Sign-in for agents",
+      "Add https://<your CHouse>/mcp to your agent",
+      "Sign in, pick its write tools and how long, then Allow",
     ],
-    shot: "chobi-now",
-    alt: "Chobi's panel open on the Now tab, listing what needs a look per connection",
-    docs: { label: "Chobi", href: "/docs/chobi/" },
-  },
-  {
-    icon: Undo2,
-    label: "Changes with Undo",
-    title: "Ask for a change. Take it back if you need to.",
-    pitch: "CHouse Assistant makes the changes you ask for, as you, through the same checks as the UI. Changes that are easy to reverse run at once and show Undo for 24 hours.",
-    steps: [
-      "Ask: “keep an eye on shop.orders until tomorrow”",
-      "The watch runs at once — the receipt says Done · Undo",
-      "Undo from the chat, Chobi's Activity tab or the CLI",
-    ],
-    shot: "chobi-undo",
-    alt: "A chat reply with a Done · Undo receipt for a table watch",
-    docs: { label: "Let Chobi make a change", href: "/docs/guide-first-ai-change/" },
+    shot: "oauth-consent",
+    alt: "The consent page an agent opens: its name, where it returns to, write tools and how long access lasts",
+    docs: { label: "Sign in with OAuth", href: "/docs/mcp/#sign-in-with-oauth" },
   },
   {
     icon: ShieldCheck,
-    label: "Checked by tier",
-    title: "The bigger the change, the more it asks",
-    pitch: "Changes undo can't reverse ask once. Privileged or destructive ones — DROP, roles, policies — need a second person. A production connection makes every change one tier stricter.",
+    label: "Agent controls",
+    title: "Decide which agents get in, and for how long",
+    pitch: "Sign-in starts off. Administrators decide whether pasted tokens still work on MCP, hold new agents until they are approved, limit where agents may return to and cap how long access lasts — and see every agent and who is connected through it.",
     steps: [
-      "Ask for a new table — the reply pauses on an approval card",
-      "Approve, edit the arguments, or reject",
-      "Second-approver requests wait in AI Governance › Approvals",
+      "AI Governance › MCP › Sign-in for agents",
+      "Approve new agents, or limit their return addresses",
+      "Block an agent, or revoke one person's access",
     ],
-    shot: "chobi-approval",
-    alt: "An approval card in the chat for creating a table, with Approve, Edit and Reject",
-    docs: { label: "Approvals & tiers", href: "/docs/ai-approvals/" },
+    shot: "agents-mcp-sign-in",
+    alt: "Sign-in for agents in AI Governance › MCP, with the agents list and who is connected",
+    docs: { label: "Connect an AI agent", href: "/docs/guide-connect-an-agent/" },
   },
   {
-    icon: MessageSquare,
-    label: "Approve from chat",
-    title: "Slack, Google Chat and Telegram buttons that run as you",
-    pitch: "Chat app channels edit what they posted — an alert shows resolved, a request shows who decided it — and carry Acknowledge, Snooze, Approve and Reject buttons, checked like a click in CHouse.",
+    icon: Plug,
+    label: "Connected apps",
+    title: "Every agent you let in, with Revoke",
+    pitch: "Agents you signed in are listed next to your tokens, with their write tools, when access ends and when they last called CHouse. Change what one may do, or revoke it at once.",
     steps: [
-      "Admin › Alerting › Channels › Add channel, in App mode",
-      "Say who may act from the channel",
-      "Turn on Need You alerts for approvals that wait on a person",
+      "Open Preferences › Personal access tokens",
+      "Check each agent's write tools, expiry and last use",
+      "Use the wrench to change its tools, the bin to revoke it",
     ],
-    shot: "admin-alerting-add-channel",
-    alt: "The Add channel dialog in Admin › Alerting, connecting a Slack app",
-    docs: { label: "Approve from Slack", href: "/docs/guide-approve-from-chat/" },
+    shot: "preferences-connected-apps",
+    alt: "Connected apps in Preferences: two agents signed in with OAuth above a personal access token",
+    docs: { label: "Connected apps", href: "/docs/personal-access-tokens/#connected-apps" },
   },
   {
-    icon: LayoutGrid,
-    label: "Dashboard canvas",
-    title: "Place panels anywhere. Or let Tidy up do it.",
-    pitch: "Drag and resize panels on a 24-column grid, add Markdown text and section headings, and lay a dashboard out in one click. Existing dashboards were converted on upgrade.",
+    icon: ArrowUpCircle,
+    label: "Upgrade check",
+    title: "See what a ClickHouse upgrade changes for your workload",
+    pitch: "Upgrades says whether your version is still supported and which versions to move to, then checks a target against your schema, settings and 30 days of queries: exactly against a server on that line, or from the release notes.",
     steps: [
-      "Open a dashboard and choose Edit",
-      "Drag by the grip, resize from any edge, add text or headings",
-      "Tidy up: values first, then trends, breakdowns and tables",
+      "Open Monitoring › Upgrades and pick a target",
+      "Compare with a connection on that line, or the notes",
+      "Work through Breaks, then changed defaults; Copy as Markdown",
     ],
-    shot: "dashboards-canvas",
-    alt: "A dashboard in edit mode on the canvas, with Tidy up in the toolbar",
-    docs: { label: "Build a dashboard", href: "/docs/guide-build-a-dashboard/" },
+    shot: "monitoring-upgrades",
+    alt: "Monitoring › Upgrades after an exact check of 25.8 against 26.8, with findings by severity",
+    docs: { label: "Check an upgrade", href: "/docs/monitoring-upgrades/#check-an-upgrade" },
   },
   {
-    icon: History,
-    label: "What changed & why",
-    title: "Charts that mark what changed — and explain a spike",
-    pitch: "Line and area charts mark DDL, upgrades, settings changes, new writers, alerts, incidents, fixes and notes. Select a range to zoom, add a note, or ask Chouse AI to explain it.",
+    icon: FlaskConical,
+    label: "Try it on this server",
+    title: "Find the queries the new analyzer breaks, before you upgrade",
+    pitch: "A check plans your top 200 read-only query shapes on your current server with the target's settings, using EXPLAIN. Nothing runs. A query that would fail shows with the setting that breaks it, the error and who runs it.",
     steps: [
-      "Hover a marker on the time axis for what happened",
-      "Drag across a chart to select a range",
-      "Explain this spike — the likely cause, with its evidence",
+      "Leave “Also try my top 200 read-only query shapes…” on",
+      "Click Check",
+      "Open the Tried here finding, fix the queries, then stop turning the analyzer off",
     ],
-    shot: "dashboards-annotations",
-    alt: "A dashboard chart with annotation markers and a note along the time axis",
-    docs: { label: "Annotations and notes", href: "/docs/dashboards/#annotations-and-notes" },
+    shot: "monitoring-upgrades-try",
+    alt: "A Tried here finding: two query shapes that fail with the new analyzer, with their errors, users and run counts",
+    docs: { label: "Try it on this server", href: "/docs/monitoring-upgrades/#try-it-on-this-server" },
+  },
+  {
+    icon: Server,
+    label: "Fleet versions",
+    title: "Spot the clusters that need an upgrade",
+    pitch: "On Fleet, a version turns red when its line is out of support and amber when a newer patch is out. Hover it for the reason; click it to check an upgrade for that connection.",
+    steps: [
+      "Set UPGRADE_CHECK_ENABLED (Helm observability.upgradeCheckEnabled)",
+      "Open Fleet",
+      "Click a red or amber version to open Upgrades",
+    ],
+    shot: "fleet",
+    alt: "Fleet with four connections: two versions out of support in red, one behind on patches in amber",
+    docs: { label: "Fleet view", href: "/docs/fleet/" },
   },
 ];
 
@@ -123,7 +123,7 @@ export default function WhatsNew() {
       <Container>
         <SectionHeader
           eyebrow={`New in ${RELEASE.version}`}
-          title="Chobi, AI that acts with Undo, and dashboards that explain themselves."
+          title="AI agents that sign in, and upgrades checked against your workload."
           description="Real screens from this release. Pick one to see it and how to try it."
           action={
             <a

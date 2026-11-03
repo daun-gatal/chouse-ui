@@ -28,5 +28,5 @@ With `query:history:view:all`, run `EXPLAIN indexes = 1` for the shape on this c
 
 ## Next steps
 
-- A regression that started with an upgrade → check [Upgrades](/docs/monitoring-upgrades/) and replay the workload on a canary.
+- A regression that started with an upgrade → run a [check](/docs/monitoring-upgrades/#check-an-upgrade) in Upgrades: it lists the changed defaults and the queries the new version's settings break.
 - A slow shape you own → [optimize it with Chouse AI](/docs/ai-in-tab/) from Query logs.

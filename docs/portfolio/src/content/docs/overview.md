@@ -6,7 +6,7 @@ Open source under Apache 2.0. It runs next to your clusters with nothing to inst
 
 | Area | What you get |
 | --- | --- |
-| **Monitoring** | Ten [Monitoring](/docs/monitoring-overview/) tabs from live queries to [performance regressions](/docs/monitoring-performance/), [capacity forecasts](/docs/monitoring-capacity/) and [upgrade readiness](/docs/monitoring-upgrades/); every cluster at once on [Fleet](/docs/fleet/) with [alerts](/docs/alerting/) |
+| **Monitoring** | Ten [Monitoring](/docs/monitoring-overview/) tabs from live queries to [performance regressions](/docs/monitoring-performance/), [capacity forecasts](/docs/monitoring-capacity/) and [upgrade checks](/docs/monitoring-upgrades/); every cluster at once on [Fleet](/docs/fleet/) with [alerts](/docs/alerting/) |
 | **Data observability** | Learned freshness and volume for [every table](/docs/data-observability/), [pipelines](/docs/data-pipelines/) from Kafka to S3Queue in one status vocabulary, [lineage](/docs/data-lineage/) without instrumentation, [promises](/docs/data-health/) and [coverage](/docs/data-coverage/) |
 | **Root cause & fixes** | [Incidents](/docs/data-incidents/) traced across layers with their blast radius, investigation notebooks, and fixes from a closed catalog that run only after approval |
 | **Dashboards** | [Dashboards](/docs/dashboards/) on a free canvas with text and heading panels, charts that mark what changed and explain a spike, compare with last week, snapshots, scheduled reports, version history and [Grafana import](/docs/dashboards/#import-from-grafana); [drafted with AI](/docs/dashboards-ai/) |

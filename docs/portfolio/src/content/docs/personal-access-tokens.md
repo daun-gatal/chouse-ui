@@ -31,6 +31,8 @@ From the token's menu: **Rotate token** issues a new secret for the same token (
 
 Agents you connected by [signing in](/docs/mcp/#sign-in-with-oauth) are listed above your tokens. Each works on MCP only, with your live permissions, until it expires or you revoke it. The wrench sets its write tools, the bin revokes it at once (`oauth.grant_revoke`). Signing the same agent in again replaces its earlier access.
 
+![Connected apps in Preferences](/docs/img/app/preferences-connected-apps.jpg "Two agents signed in with OAuth, each with its write tools, expiry and last use, above a personal access token")
+
 ## Where tokens are used
 
 | Consumer | How |
