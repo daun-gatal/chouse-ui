@@ -1,3 +1,270 @@
-See [CLAUDE.md](CLAUDE.md) for project instructions.
+# AGENTS.md
 
-Security-sensitive changes (auth, RBAC and data access rules, SQL generation, CORS/redirects, outbound requests, secrets, AI tools, dependencies) must also follow [.rules/SECURITY.md](.rules/SECURITY.md), including its security review checklist.
+Project-level instructions for AI agents working on CHouse UI. This is the
+canonical instructions file for every agent (Claude Code reads it through
+`CLAUDE.md`, which imports it; Codex, Cursor, Copilot and other tools read it
+directly). Edit this file, not `CLAUDE.md`.
+
+EGM artifact directory: .egm/
+
+## Project Overview
+
+CHouse UI is a web interface for ClickHouse with built-in RBAC, fleet monitoring, and an AI SRE. Apache 2.0 licensed.
+
+**Monorepo layout:**
+- `src/` — Frontend (React 19 + Vite 7 SPA)
+- `packages/server/` — Backend (Bun + Hono v4 API server)
+- `docs/portfolio/` — Marketing/docs website (separate Vite app)
+- `charts/chouse-ui/` — Production Helm chart (published to `oci://ghcr.io/daun-gatal/charts/chouse-ui`; see [.rules/HELM_CHART.md](.rules/HELM_CHART.md))
+
+## Quick Reference
+
+### Commands
+
+```bash
+bun install                    # Install dependencies
+bun run dev                    # Start frontend (:5173) + backend (:5521)
+bun run dev:web                # Frontend only
+bun run dev:server             # Backend only
+bun run build                  # Build both frontend and server
+bun run lint                   # ESLint
+bun run typecheck              # TypeScript check (tsc --noEmit)
+bunx vitest run                # Frontend tests
+./scripts/test-isolated-server.sh  # Server tests
+./scripts/test-migrations.sh   # RBAC migration tests (SQLite + PostgreSQL via Docker)
+```
+
+### Default Login
+
+- Email: `admin@localhost` / Username: `admin` / Password: `admin123!`
+
+## Tech Stack
+
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | React 19, Vite 7, React Router v8, Zustand 5, TanStack Query v5, shadcn/ui, Tailwind CSS 4, Monaco Editor, AG Grid |
+| **Backend** | Bun, Hono v4, Drizzle ORM (SQLite / PostgreSQL), Pino logger |
+| **AI** | DeepAgents / LangChain, multi-provider (OpenAI, Anthropic, Google, OpenAI-compatible) |
+| **ClickHouse** | `@clickhouse/client` (server), `@clickhouse/client-web` (frontend) |
+| **Testing** | Vitest + jsdom + MSW (frontend), Bun Test (server) |
+
+## Architecture
+
+**Key patterns:**
+- Frontend uses feature-based organization under `src/features/`
+- State: Zustand stores in `src/stores/`, data fetching via TanStack Query
+- API client modules in `src/api/`
+- Server routes in `packages/server/src/routes/`, services in `packages/server/src/services/`
+- RBAC subsystem in `packages/server/src/rbac/`
+
+**Directory contracts:** every code directory has a `README.md` contract
+(Overview, Interface, Invariants, Side Effects, Verification) in the
+Elephant-and-Goldfish Model (EGM) format; [ARCHITECTURE.md](ARCHITECTURE.md) is the
+root blueprint that links them all. **Read the contract of a directory before
+changing code in it, and update it in the same change** when its exports,
+invariants or side effects change. `bun run check:contracts` validates them
+(sections, links, and that every cited `[file:symbol]` exists).
+
+## Code Standards
+
+### TypeScript
+- Strict mode enabled, never use `any` (use `unknown` + type guards)
+- Explicit return types on functions
+- Avoid `as` type assertions; prefer type narrowing
+- Import order: React > third-party > internal (`@/`) > types
+- Use `import type` for type-only imports
+
+### React
+- Functional components only, props typed via interfaces
+- Zustand for global state, `useState` for local state
+- `useMemo`/`useCallback` for expensive computations and child callbacks
+- Always return cleanup functions from `useEffect` (timers, controllers, subscriptions)
+- Use `React.lazy` + `Suspense` for code splitting
+
+### Logging
+- **Client** (`src/`): Use `import { log } from '@/lib/log'` — never raw `console.*`
+- **Server** (`packages/server/`): Use `logger` from `utils/logger.ts` (Pino) or `requestLogger(c.get('requestId'))` in route handlers — never raw `console.*`
+- Never log passwords, tokens, or PII
+
+### Error Handling
+- **Client**: try-catch with `toast.error()` for user-facing messages, `log.error()` for logging
+- **Server**: Use `AppError` class (`AppError.notFound()`, `AppError.internal()`, etc.) with proper HTTP status codes
+- Always clean up resources (connections, timers, AbortControllers)
+
+### Security
+- Passwords: Argon2id via `Bun.password.hash` (NOT bcrypt)
+- JWT: `jose` library (NOT jsonwebtoken)
+- Connection password encryption: AES-256-GCM
+- Validation: Zod v4 (frontend and server)
+- Server routes: `rbacAuthMiddleware` + `requirePermission` middleware
+- Client: `PermissionGuard` component for UI gating
+- SQL injection prevention via `node-sql-parser` middleware
+- Never use `dangerouslySetInnerHTML` without DOMPurify
+- Data access rules are only as strong as the SQL parser: every table a statement touches (subqueries, UNION, INSERT/CREATE … SELECT, `dictGet`) must be checked, unknown shapes fail closed, and server-built DDL goes through `checkDatabaseAccess`/`checkTableAccess`
+- Server-built SQL: `escapeIdentifier` for names, `quoteStringLiteral` for strings (ClickHouse treats `\` as an escape), whole-string grammar checks for types/engines/key expressions
+- Never key a security limit on a client-controlled header (`X-Forwarded-For`); never send credentialed CORS for a wildcard origin
+- Full rules and the security review checklist: **[.rules/SECURITY.md](.rules/SECURITY.md)**
+
+### Testing
+- Test files co-located with source: `file.ts` -> `file.test.ts`
+- **Required for**: `src/api/*`, `src/hooks/*`, `src/lib/*`, `src/helpers/*`, `src/stores/*`, `src/utils/*`
+- **Optional for**: pure UI components without complex logic
+- Frontend: Vitest + jsdom, MSW for API mocking, React Testing Library for hooks
+- Server: Bun Test + Hono test utilities
+- Zustand store tests must use dynamic imports to avoid persist initialization issues
+- Coverage goal: 80%+ on utilities and API modules
+
+### Database Migrations — testing is MANDATORY
+Any change to `packages/server/src/rbac/db/migrations.ts` (adding a migration, or
+editing an existing one) **MUST** be accompanied by tests, and they must pass on
+**both SQLite and PostgreSQL**:
+
+- Tests live in `packages/server/src/rbac/db/migrations.test.ts` and run on both
+  dialects via the harness in `migrationTestHarness.ts`. PostgreSQL is exercised in
+  a throwaway Docker container the harness creates and destroys — **Docker is
+  required** (`./scripts/test-migrations.sh`).
+- **Every migration version must have an entry in `VERSION_CHECKS`** asserting its
+  effect (table/column/index/permission/grant/data). A guard test fails if a
+  migration is added without one — so a new migration cannot merge untested.
+- **Upgrade paths are covered, not just fresh install.** `migrations.test.ts` runs
+  three install/upgrade shapes on both dialects — fresh install (all at once),
+  *stepwise* upgrade (one release at a time, the common real-world path), and a
+  *skip-version* upgrade (old install jumping straight to HEAD) — and asserts they
+  all land in the same final state. A new migration is exercised by all three
+  automatically once it has a `VERSION_CHECKS` entry; make sure it applies cleanly
+  on top of an existing DB (idempotent, `IF NOT EXISTS`/guarded), not only on a
+  freshly-created schema.
+- For **data migrations** (anything that moves/transforms rows, not just schema),
+  also add a dedicated test that seeds representative pre-migration data with
+  `runMigrations({ through: '<prev-version>' })`, runs the new migration, and
+  asserts the transformation **and idempotency** (re-running is a no-op). Cover the
+  edge cases (empty data, conflicting rows, dedup, fail-closed behaviour).
+- Migrations are forward-only and not transaction-wrapped: keep every step
+  idempotent, and split destructive steps (e.g. `DROP TABLE`) into their own later
+  migration so a failed transform never reaches the drop.
+
+### Code Organization
+- Feature-based structure (not file-type-based)
+- Named exports for utilities/components; default exports only for page components
+- Barrel exports via `index.ts`
+- Naming: PascalCase (components/types), camelCase (hooks/utils), UPPER_SNAKE_CASE (constants)
+
+### Style
+- 2-space indentation, trailing commas, double quotes, semicolons
+- Comments explain *why*, not *what* — no commented-out code
+- JSDoc only for complex functions
+
+## Pull Request Creation
+
+**Every new PR must target the `preview` branch** (`gh pr create --base preview`). Never open a PR against `main` — the owner promotes `preview` to `main` manually.
+
+When creating a PR via `gh pr create`, always read `.github/pull_request_template.md` and use its structure as the `--body` content, filling in each section based on the actual changes. Never write a free-form body that skips the template sections.
+
+**Before `gh pr create`, pass every step of [.rules/PRE_PR.md](.rules/PRE_PR.md)**
+(branch and base, scope, changelog/release-notes/Helm/migration obligations,
+contracts, the full test gate, edge-case walkthrough, self-review). Report in
+the PR's Testing section what was run and anything that could not be run.
+
+## Versioning & Releases
+
+Releases are **fully automated** — never edit `CHANGELOG.md` directly and never manually bump version numbers.
+
+### For contributors (every user-visible change)
+
+Drop a fragment file in `changelogs/unreleased/`:
+
+```
+changelogs/unreleased/<pr-number>-<slug>.md
+```
+
+```md
+type: minor
+
+### Added
+- **Feature name** — description
+```
+
+- `type` is required: `major` (breaking), `minor` (new feature), `patch` (bug fix)
+- Use `### Added / Changed / Fixed / Removed` sections
+- See `changelogs/unreleased/README.md` for full details
+
+Skip the fragment only for non-user-visible changes (refactors, CI, docs-only).
+
+**`minor` and `major` fragments also update the release announcement** (same PR):
+the "New · X.Y" banner on the landing page and docs home
+(`docs/portfolio/src/content/release.ts`) and the docs page **What's new in X.Y**
+(`docs/portfolio/src/content/docs/whats-new.md`). Both describe the *next* feature
+release. The first `minor`/`major` fragment after a release starts the next
+version there, and CI fails until it does. Later ones add their highlight and any
+upgrade step. `patch` fragments change neither. See
+[.rules/RELEASE_NOTES.md](.rules/RELEASE_NOTES.md).
+
+### How releases happen
+
+When a PR containing a fragment merges to `main`, `auto-release.yml` fires automatically:
+1. Assembles all fragments into a new version block in `CHANGELOG.md`
+2. Bumps `version` in all three `package.json` files (root, server, portfolio) in sync
+3. Commits and pushes — triggering the existing `release.yml` which creates the git tag, GitHub Release, and Docker image
+
+The **CLI** releases independently: run the `CLI Release` workflow (`cli-release.yml`, manual dispatch, from `preview`) when `changelogs/cli/unreleased/` has fragments — it builds/signs/publishes `cli-vX` archives, then fast-forwards `main` to the CLI release commit so preview and main stay aligned (skipped for `-pre` prereleases).
+
+Manual override (emergency use only): `bun run release 2.20.0`
+
+**Helm chart versioning is separate:** `charts/chouse-ui/Chart.yaml` `version`
+is bumped **manually** in every PR that changes the chart (CI enforces this),
+while `appVersion` is synced automatically by `auto-release.yml` — never edit
+`appVersion` or the generated chart `README.md` by hand. Chart-only releases
+ship via the `Helm Release` workflow. See [.rules/HELM_CHART.md](.rules/HELM_CHART.md).
+
+## Architecture Decision Records (ADR)
+
+For **big, multi-component** changes, capture the proposal as an ADR in
+[`docs/adr/`](docs/adr/) **before** implementation — so approaches and concerns are
+discussed up front and the merged ADR becomes the spec. This is a reasonable
+process, not a hard gate: use it for significant decisions (security boundaries,
+data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
+**skip it for patches, minor features, and bug fixes**.
+
+- **Flow:** PR the ADR (`Proposed`) → discuss → merge as `Accepted` → implement in
+  follow-up PR(s). Acceptance is separate from shipping the feature.
+- ADRs do **not** change releases — semver and `changelogs/unreleased/` fragments
+  are unaffected, and an ADR itself needs no changelog fragment.
+- Full rules and conventions: **[.rules/ADR.md](.rules/ADR.md)** and the
+  [`docs/adr/README.md`](docs/adr/README.md) template/index.
+- Designing with the EGM skills (`egm-brainstorm` → `egm-draft` → `egm-review`):
+  the finished design **is** the ADR. Follow **[.rules/EGM.md](.rules/EGM.md)**
+  for where EGM files go and how they map onto this flow.
+
+## EGM (Elephant-and-Goldfish Model)
+
+The repository is set up for the EGM skills. The short version — full mapping in
+**[.rules/EGM.md](.rules/EGM.md)**:
+
+- **Working files** (concept briefs, `design_draft.md`, review, resolve and drift
+  reports) go in `.egm/`, which is git-ignored. Never commit them.
+- **Design docs** are ADRs: `egm-draft` writes `docs/adr/NNNN-kebab-title.md`
+  (MADR sections, status `Proposed`) and adds the row to the
+  `docs/adr/README.md` index. There is no `docs/designs/` or `SITEMAP.md`.
+- **Reviews** (`egm-review`) always get, as `GoldfishContext`, the contracts
+  (`README.md`) of the directories the design touches, plus
+  [.rules/SECURITY.md](.rules/SECURITY.md) when it touches anything listed there.
+- **Directory contracts** are maintained by hand with each change and validated by
+  `bun run check:contracts`; `egm-bootstrap` and `egm-drift-report` honour
+  [`.egmignore`](.egmignore).
+
+## When to Apply Each Rule
+
+| Situation | Rule file to follow |
+|-----------|-------------------|
+| Planning a **big / multi-component** change before writing code | **[.rules/ADR.md](.rules/ADR.md)** — when an ADR is required, the draft → discuss → accept → implement flow, and conventions. See [Architecture Decision Records](#architecture-decision-records-adr). |
+| Running any EGM skill (`egm-brainstorm`, `egm-draft`, `egm-review`, `egm-resolve`, `egm-bootstrap`, `egm-drift-report`) | **[.rules/EGM.md](.rules/EGM.md)** — where working files go, drafts become ADRs, review context, contract upkeep. |
+| Writing or modifying any code | **[.rules/CODE_CHANGES.md](.rules/CODE_CHANGES.md)** — standards, patterns, pre-commit checklist; update the directory's `README.md` contract in the same change. |
+| Reviewing a PR or diff, or self-checking before marking a task done | **[.rules/CODE_REVIEWER.md](.rules/CODE_REVIEWER.md)** — review checklist, approval criteria, common issues |
+| Touching auth, RBAC/data access rules, SQL generation or the SQL parser, CORS/redirects, outbound requests, secrets, AI tools, or dependencies — or reviewing such a change | **[.rules/SECURITY.md](.rules/SECURITY.md)** — threat model, data-access and SQL-building rules, rate limiting, SSRF, dependency/scanner policy, security review checklist |
+| About to open a PR (`gh pr create`) | **[.rules/PRE_PR.md](.rules/PRE_PR.md)** — the mandatory pre-PR gate; nothing is raised until every applicable step passes. |
+| After finishing a task — scan files you touched | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — remove unused imports, symbols, exports left behind |
+| Proactively scanning the codebase for cleanup | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — full scan process including dependency and barrel-export checks |
+| A change is user-visible (new feature, bug fix, removal) | Drop a fragment in `changelogs/unreleased/<pr-number>-<slug>.md` — never edit `CHANGELOG.md` directly |
+| The fragment is `minor` or `major` | **[.rules/RELEASE_NOTES.md](.rules/RELEASE_NOTES.md)** — update the landing/docs release banner (`docs/portfolio/src/content/release.ts`) and **What's new in X.Y** (`whats-new.md`) in the same PR: highlight, upgrade steps, and the version when it's the first feature of a new release. |
+| Touching `rbac/db/migrations.ts` (add or edit a migration) | **MANDATORY** — add/update `migrations.test.ts` (per-version `VERSION_CHECKS` + data-migration cases) and run `./scripts/test-migrations.sh` (SQLite + PostgreSQL/Docker). See [Database Migrations](#database-migrations--testing-is-mandatory). |
+| Changing env vars / config keys, server port or health endpoints, required secrets, the Dockerfile, background services/leases, or anything under `charts/` | **[.rules/HELM_CHART.md](.rules/HELM_CHART.md)** — whether the Helm chart must change in the same PR, how to version it (bump `Chart.yaml` `version`; never `appVersion`), and what to regenerate/test. |
