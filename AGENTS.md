@@ -237,7 +237,10 @@ data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
 
 ## EGM (Elephant-and-Goldfish Model)
 
-The repository is set up for the EGM skills. The short version — full mapping in
+The repository is set up for the EGM skills. The plugin is optional. If you are
+asked to run an `egm-*` skill and it isn't available, don't improvise one: point the user to
+[CONTRIBUTING.md › Optional: EGM skills](CONTRIBUTING.md#optional-egm-skills)
+for install steps. The short version — full mapping in
 **[.rules/EGM.md](.rules/EGM.md)**:
 
 - **Working files** (concept briefs, `design_draft.md`, review, resolve and drift

@@ -94,6 +94,22 @@ If you're using AI coding assistants (like Cursor, Claude Code, GitHub Copilot, 
 
 These rules ensure production-grade code quality and consistency.
 
+### Optional: EGM skills
+
+The repository is set up for the [Elephant-and-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model)
+skills: designs that become ADRs, fresh-context reviews of those designs, and
+drift reports that compare docs with the code. They are optional. The directory
+contracts, `bun run check:contracts` and the pre-PR gate apply whether or not you
+install them. To use them:
+
+- **Claude Code:** `claude plugin marketplace add google/elephant-goldfish-model && claude plugin install egm@egm`, then run `/egm:egm-brainstorm`, `/egm:egm-draft`, `/egm:egm-review` and the other skills.
+- **Codex CLI:** `codex plugin marketplace add google/elephant-goldfish-model && codex plugin add egm@egm`, then pick the EGM skill in the skill picker.
+- **Other tools:** see EGM's [harness list](https://github.com/google/elephant-goldfish-model/blob/main/docs/harnesses.md).
+
+[`.rules/EGM.md`](.rules/EGM.md) explains how the skills map onto this
+repository: where their files go, why drafts become ADRs, and what reviewers
+are given to read.
+
 
 ## Reporting Issues
 

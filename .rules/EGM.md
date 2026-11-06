@@ -7,6 +7,11 @@ defaults assume a generic repository: `docs/designs/`, a `SITEMAP.md`, and worki
 files dropped in the working directory. This file maps those defaults onto how
 CHouse UI already works, so a run lands in the right place and ends in a clean PR.
 
+**Setup:** the EGM plugin is optional. Install steps are in
+[CONTRIBUTING.md](../CONTRIBUTING.md#optional-egm-skills). Without it, everything
+here about directory contracts and the pre-PR gate still applies; only the
+`egm-*` skills are missing.
+
 When this file and an EGM skill's default disagree, **this file wins**. When it
 disagrees with [AGENTS.md](../AGENTS.md) or another rule file, follow the stricter
 of the two and say so.
