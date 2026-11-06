@@ -10,6 +10,9 @@ Checklist and process for reviewing code changes. For coding standards and examp
 - [ ] No sensitive data (passwords, tokens, API keys) in code
 - [ ] No commented-out code or debug statements
 - [ ] Code is properly formatted and linted
+- [ ] `README.md` contracts of touched directories match the change: new or renamed
+      exports, invariants, side effects and env vars are recorded, and new directories
+      have a contract ([EGM.md](EGM.md#directory-contracts))
 
 ### TypeScript
 - [ ] No `any` types (use `unknown` + type guards)
@@ -122,6 +125,7 @@ Checklist and process for reviewing code changes. For coding standards and examp
 - Missing error handling
 - New utility/API code lacks tests
 - Tests are failing
+- A directory contract now contradicts the code, or `bun run check:contracts` fails
 
 ---
 

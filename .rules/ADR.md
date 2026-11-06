@@ -33,16 +33,26 @@ adopt it where it adds clarity; don't let it hinder velocity.
 
 ## The flow
 
-1. **Draft** — open a PR adding `docs/adr/NNNN-kebab-title.md` with status
-   `Proposed`, using the MADR-style template (Context → Decision → Consequences →
-   Alternatives considered).
-2. **Discuss** — review and comment on the PR; clash approaches and surface
-   concerns until the decision settles.
-3. **Accept & merge** — flip the status to `Accepted` and merge. The merged ADR is
-   now the spec.
-4. **Implement** — build it in follow-up PR(s) that reference the ADR. Implementation
-   is separate from acceptance: merging the process or the ADR doc does not by
-   itself ship the feature.
+1. **Draft** — write `docs/adr/NNNN-kebab-title.md` with status `Proposed`, using
+   the MADR-style template (Context → Decision → Consequences → Alternatives
+   considered).
+2. **Discuss** — clash approaches and surface concerns until the decision
+   settles: in review on a PR, or with the owner in the working session.
+3. **Accept** — flip the status to `Accepted` once the owner approves the design.
+   The accepted ADR is now the spec.
+4. **Implement** — build it against the ADR, in one of two shapes:
+   - **Same PR (default).** The accepted ADR and its implementation ship together
+     in one PR, as with 0028 (#409) and 0029 (#412). The design is approved
+     before any code is written; the PR then carries the spec and the code that
+     meets it.
+   - **ADR first.** Open an ADR-only PR (`Proposed` → discussed → merged as
+     `Accepted`), then implement in follow-up PR(s) that reference it. Use this
+     when the decision needs wider review than the owner, or when the
+     implementation will span several PRs.
+
+   Either way, if the implementation has to depart from the ADR, update the ADR
+   (while still unmerged) or supersede it — never let the merged ADR and the code
+   disagree.
 
 ---
 

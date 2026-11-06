@@ -1,5 +1,13 @@
 # Docs site — authoring guide
 
+## Overview
+
+`docs-site/` is the static-site generator library for `/docs`: manifest,
+markdown parsing, SSR rendering and a framework-free client script. It is
+driven by [`../../scripts/build-docs.ts`](../../scripts/README.md), and the
+landing page reuses `lib.ts` for base-path handling. The authoring guide below
+is the human-maintained part of this file; the EGM contract sections follow it.
+
 The `/docs` site is generated at build time from `src/content/docs/*.md` by
 `scripts/build-docs.ts`. It is the source of truth for operating CHouse UI, so
 every user-visible change should update the page that describes it.
@@ -52,6 +60,7 @@ link.
 | `audit-events.md` | `AUDIT_ACTIONS` in `packages/server/src/rbac/schema/base.ts` |
 | `ai-features.md` | the AI feature contracts (`packages/server/src/services/ai/capabilities`) and the built-in agents and bindings (`services/ai/seeds`) |
 | `ai-tools.md` | the AI tool catalog and DeepAgents built-in tools (`services/ai/registry/catalog.ts`, `harness.ts`) and the built-in harnesses and skills (`services/ai/seeds`) |
+| `connection-privileges.md` | `PRIVILEGE_FEATURES` in `packages/server/src/services/connectionPrivileges.ts` |
 
 ```bash
 # docs/portfolio — needs `bun install` in packages/server too
@@ -97,6 +106,7 @@ clickhouse: 23.8
 | `route` | App route (must start with `/`) |
 | `permissions` | Permissions that open the screen. Holding any one of them is enough. Each must exist in the permission catalog; badges link to it |
 | `clickhouse` | Minimum ClickHouse version, when the feature needs one |
+| `generated` | Set only by `gen-reference.ts` on generated pages: what the page is generated from. Shown in the facts strip and hides the edit link |
 | `screenshot` | A capture name from `public/docs/img/app/` (without `.jpg`), shown under the lead. Regenerate all captures with `./scripts/docs-screenshots.sh` (needs Docker) |
 
 Unknown keys fail the build.
@@ -143,3 +153,30 @@ helm install chouse oci://ghcr.io/daun-gatal/charts/chouse-ui
 `dist/docs/search-index.json` is built from every page, with one entry per
 `##`/`###` heading, so results link to the section. Nothing to maintain. Good
 headings make good results.
+
+## Interface
+
+- `[manifest.ts:DOC_SECTIONS]` - sections > groups > pages (`DocSection`, `DocGroup`, `DocPage`); `[manifest.ts:DOC_REDIRECTS]` maps old slugs to new.
+- `[manifest.ts:allPages]`, `[manifest.ts:sectionPages]`, `[manifest.ts:docNav]`, `[manifest.ts:docPath]`, `[manifest.ts:sectionPath]`, `[manifest.ts:DOCS_HOME_PATH]` (`/docs/`).
+- `[content.ts:parseFrontmatter]` (returns `PageFacts`), `[content.ts:stripLeadingH1]`, `[content.ts:parseBlocks]` (`markdown`/`diagram`/`tabs` `ContentBlock`s), `[content.ts:plainMarkdown]`, `[content.ts:searchChunks]`.
+- `[lib.ts:getBase]`, `[lib.ts:withBase]`, `[lib.ts:SITE_URL]` (`https://chouse-ui.com`), `[lib.ts:slugify]`, `[lib.ts:headingId]`, `[lib.ts:resetHeadings]`, `[lib.ts:parseHeadings]`, `[lib.ts:nodeText]`.
+- `[render.tsx:renderDocPageHtml]`, `[render.tsx:renderHomeHtml]`, `[render.tsx:renderSectionHtml]`, `[render.tsx:renderRedirectHtml]`, `[render.tsx:RenderContext]`.
+- `docs-client.js` - vanilla progressive enhancement loaded with `defer` on docs pages.
+- components: [./components/README.md](./components/README.md) - React page components rendered to static HTML.
+
+## Invariants
+
+- Frontmatter accepts only the known keys; `route` must start with `/`, `permissions` must match the permission pattern, `screenshot` must be a bare `[a-z0-9-]` name. Anything else throws `[content.ts:parseFrontmatter]`.
+- An unknown `{{diagram:<name>}}` marker throws at render time `[render.tsx:DIAGRAMS]`.
+- The base path comes from `VITE_BASE_PATH` (Vite or process env), defaulting to `/` `[lib.ts:getBase]`.
+- Redirect stubs are `noindex`, canonical to the new URL, and preserve the hash `[render.tsx:renderRedirectHtml]`.
+
+## Side Effects
+
+- Library modules are pure; `build-docs.ts` does the file writes.
+- `docs-client.js` stores the chosen tab per label set in `localStorage` (ignored if storage is blocked) and fetches the search index on demand `[docs-client.js]`.
+
+## Verification
+
+- Run: `cd docs/portfolio && bun run build` (validates manifest, frontmatter and every link)
+- Run: `bunx vitest run docs/portfolio/src/docs-site` (from the repository root)

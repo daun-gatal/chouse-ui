@@ -70,6 +70,8 @@ See `changelogs/unreleased/README.md` for full details.
 - [ ] My changes generate no new warnings or errors
 - [ ] I have checked for breaking changes and documented them (if applicable)
 - [ ] I have updated the docs site (`docs/portfolio`) for user-visible changes, and regenerated reference pages if needed
+- [ ] I have updated the `README.md` contracts of directories I changed, and `bun run check:contracts` passes
+- [ ] I have gone through the pre-PR gate in [`.rules/PRE_PR.md`](../.rules/PRE_PR.md)
 - [ ] I have tested the changes in the relevant environment (development/production)
 
 ## Additional Notes

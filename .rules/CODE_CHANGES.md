@@ -212,6 +212,25 @@ operating CHouse UI. A user-visible change is not done until its docs page is.
 - CI fails when a generated page is stale, the server reads an undocumented env
   var, an app screen (route or tab) has no docs page, or a docs link is broken.
 
+### Directory contracts
+
+Every code directory has a `README.md` contract (Overview, Interface,
+Invariants, Side Effects, Verification), rolled up in `ARCHITECTURE.md`. They
+are how agents and new contributors learn a directory without reading every
+file, so they must stay true. The format and rules are in
+[EGM.md](EGM.md#directory-contracts).
+
+- **Read the contract first** when you start work in a directory.
+- **Update it in the same change** when you add, rename or remove an export,
+  change an invariant (permission, validation, limit, ordering), add a side effect
+  (DB table, network call, timer, storage key, event, env var), or change the
+  verification command.
+- **New code directory → new contract**, and a link to it from the parent's
+  contract.
+- **Cite real code** as `[file.ts:symbol]` and describe the code as it is,
+  even where it breaks a rule. `bun run check:contracts` fails when a
+  section, link or cited symbol is missing.
+
 ---
 
 ## Checklist Before Committing
@@ -229,4 +248,5 @@ operating CHouse UI. A user-visible change is not done until its docs page is.
 - [ ] Unit tests added/updated for new/modified functions
 - [ ] All tests pass (`bunx vitest run`)
 - [ ] Unused imports/symbols cleaned up in touched files (see `.rules/DEAD_CODE.md`)
+- [ ] `README.md` contracts of touched directories updated, and `bun run check:contracts` passes
 - [ ] If change is user-visible: fragment added in `changelogs/unreleased/` (never edit `CHANGELOG.md`) and the docs page updated (see Documentation)

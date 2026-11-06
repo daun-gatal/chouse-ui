@@ -1,0 +1,18 @@
+# Directories that egm-bootstrap and egm-drift-report skip, in addition to
+# .gitignore. Keep it in sync with scripts/check-contracts.ts (CONTRACT_SKIP),
+# which reads this file. See .rules/EGM.md.
+
+# Test-only trees: fixtures, harnesses and e2e suites carry no contracts.
+e2e/
+testbed/
+src/test/
+packages/server/src/rbac/sso/testFixtures/
+
+# Generated or data-only trees.
+charts/
+changelogs/
+public/
+docs/adr/
+docs/portfolio/public/
+docs/portfolio/src/content/docs/
+packages/server/src/services/ai/seeds/skills/
