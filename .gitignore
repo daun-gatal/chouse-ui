@@ -55,3 +55,7 @@ CLI_RELEASE_NOTES.md
 
 # Debug output of scripts/docs-screenshots.sh
 docs/portfolio/public/docs/img/app/_debug.*
+
+# EGM working files (concept briefs, design drafts, review and drift reports).
+# Only finished designs are committed, as ADRs in docs/adr/. See .rules/EGM.md.
+.egm/

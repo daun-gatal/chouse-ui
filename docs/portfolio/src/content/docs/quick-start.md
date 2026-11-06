@@ -21,9 +21,11 @@ services:
       - "5521:5521"
     environment:
       NODE_ENV: production
-      JWT_SECRET: dev-secret-change-me
-      RBAC_ENCRYPTION_KEY: dev-key-change-me
-      RBAC_ENCRYPTION_SALT: dev-salt-change-me
+      # Throwaway local values. Production mode checks their length at startup:
+      # JWT_SECRET and RBAC_ENCRYPTION_KEY need 32+ characters, the salt exactly 64.
+      JWT_SECRET: dev-jwt-secret-change-me-min-32-characters-long
+      RBAC_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      RBAC_ENCRYPTION_SALT: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -46,7 +48,7 @@ Then start it:
 docker compose up -d
 ```
 
-> **Warning:** The `dev-secret-*` placeholders are fine for a local throwaway. Before exposing CHouse UI to anyone, generate real secrets — see [Secrets generation](/docs/configuration-secrets/) and the [Production checklist](/docs/production-checklist/).
+> **Warning:** These placeholder secrets are public. They are fine for a local throwaway, but the server refuses to start in production mode with shorter ones. Before exposing CHouse UI to anyone, generate real secrets — see [Secrets generation](/docs/configuration-secrets/) and the [Production checklist](/docs/production-checklist/).
 
 ## Open and sign in
 

@@ -20,6 +20,7 @@
     "seed:scheduled-queries": "bun run packages/server/scripts/seed-scheduled-queries.ts",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "check:contracts": "bun run scripts/check-contracts.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

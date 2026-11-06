@@ -45,6 +45,11 @@ jobs:
         working-directory: ./packages/server
         run: bun run typecheck
 
+      # Directory contracts (README.md per code directory, ARCHITECTURE.md):
+      # sections, links and cited symbols must match the code. .rules/EGM.md
+      - name: Check Directory Contracts
+        run: bun run check:contracts
+
   test-server:
     name: Server Tests
     runs-on: ubuntu-latest

@@ -20,10 +20,11 @@ gate 1 "Install"
 bun install --frozen-lockfile
 (cd packages/server && bun install --frozen-lockfile)
 
-gate 2 "Lint & types"
+gate 2 "Lint, types & contracts"
 bun run lint
 bun run typecheck
 (cd packages/server && bun run typecheck)
+bun run check:contracts
 
 gate 3 "Frontend tests"
 bunx vitest run
