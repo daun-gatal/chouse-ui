@@ -110,6 +110,18 @@ install them. To use them:
 repository: where their files go, why drafts become ADRs, and what reviewers
 are given to read.
 
+The path from an idea to a merged change, in brief (details and stop points:
+[From idea to PR](.rules/EGM.md#from-idea-to-pr)):
+
+```
+idea ─► discuss & size ─┬─ small ─────────────────────────────────────────────┐
+                        └─ big ─► brainstorm ─► draft ADR ─► review & accept ─┤
+                                                                              ▼
+                     PR to preview ◄── validate (PRE_PR) ◄── implement + tests + contracts
+```
+
+Big changes carry their accepted ADR in the same PR by default.
+
 
 ## Reporting Issues
 

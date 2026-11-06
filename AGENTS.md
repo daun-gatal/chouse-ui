@@ -225,8 +225,10 @@ process, not a hard gate: use it for significant decisions (security boundaries,
 data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
 **skip it for patches, minor features, and bug fixes**.
 
-- **Flow:** PR the ADR (`Proposed`) → discuss → merge as `Accepted` → implement in
-  follow-up PR(s). Acceptance is separate from shipping the feature.
+- **Flow:** draft the ADR (`Proposed`) → discuss → `Accepted` when the owner approves →
+  implement. By default the accepted ADR and its implementation ship in **one PR**;
+  use a separate ADR-first PR when the decision needs wider review or the work spans
+  several PRs. Details in [.rules/ADR.md](.rules/ADR.md#the-flow).
 - ADRs do **not** change releases — semver and `changelogs/unreleased/` fragments
   are unaffected, and an ADR itself needs no changelog fragment.
 - Full rules and conventions: **[.rules/ADR.md](.rules/ADR.md)** and the

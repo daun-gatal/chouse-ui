@@ -31,7 +31,7 @@ and says what "done" means.
 | `charts/`, env vars, config keys, ports, health endpoints, the Dockerfile, background services | Make the chart change and bump `Chart.yaml` `version` (never `appVersion`) | [HELM_CHART.md](HELM_CHART.md) |
 | Auth, RBAC or data access, SQL building or parsing, CORS or redirects, outbound requests, secrets, AI tools, dependencies | Work through the security review checklist | [SECURITY.md](SECURITY.md) |
 | A new env var or config key | Add it to `docs/portfolio/src/content/reference/config-keys.ts` (`gen-reference.ts --check` fails otherwise) | [RELEASE_NOTES.md](RELEASE_NOTES.md) |
-| A big, multi-component decision | Have an `Accepted` ADR, or ship the ADR first | [ADR.md](ADR.md), [EGM.md](EGM.md) |
+| A big, multi-component decision | Include its `Accepted` ADR (and index row) in this PR (the default), or reference the already-merged ADR | [ADR.md](ADR.md#the-flow), [EGM.md](EGM.md#from-idea-to-pr) |
 | Code in a directory with a `README.md` contract | Update the contract wherever exports, invariants, side effects or verification changed, and add a contract for each new code directory | [EGM.md](EGM.md#directory-contracts) |
 | User-visible behaviour | Update the docs site pages under `docs/portfolio` | [CODE_CHANGES.md](CODE_CHANGES.md#documentation) |
 

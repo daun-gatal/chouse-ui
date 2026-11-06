@@ -18,6 +18,44 @@ of the two and say so.
 
 ---
 
+## From idea to PR
+
+The end-to-end path an agent follows when the user brings an idea, from the first
+conversation to a validated, green PR. Each stage names its exit condition and
+whether the agent **stops for the user** before going on. Stages link to the rule
+that owns the detail; this section only fixes the order.
+
+```mermaid
+flowchart LR
+    I[0 Intake] -->|big| B[1 Brainstorm] --> D[2 Draft ADR] --> R[3 Review & accept]
+    I -->|small| M[4 Implement]
+    R --> M --> V[5 Validate] --> P[6 PR & CI]
+    V -->|departs from ADR| D
+```
+
+| # | Stage | What happens | Done when | Stop for the user? |
+|---|---|---|---|---|
+| 0 | **Intake** | Discuss the idea in chat — no code, branches or worktrees yet. Classify it with [ADR.md](ADR.md#when-an-adr-is-required): **small** (fix, patch, minor feature) skips to stage 4; **big** goes through 1–3. | Scope, size and non-goals agreed | **Yes** — wait for an explicit go-ahead |
+| 1 | **Brainstorm** | `egm-brainstorm` stress-tests the concept → `.egm/concepts_brief.md`. | Concept, risks and open questions written down | **Yes** — confirm the concept |
+| 2 | **Draft** | `egm-draft` writes `docs/adr/NNNN-kebab-title.md` (`Proposed`, MADR spine, index row — see [Designs are ADRs](#designs-are-adrs)), including an **implementation plan** (target files) and a **verification plan** (tests, e2e, edge cases). | Every section approved | **Yes** — per section |
+| 3 | **Review & accept** | `egm-review` with the right [Goldfish context](#goldfish-context), then `egm-resolve` to fold findings into the ADR. Flip the status to `Accepted` when the user approves. | Findings resolved; ADR `Accepted` | **Yes** — approval of the design |
+| 4 | **Implement** | Branch from up-to-date `preview` (`<type>/<slug>`). Build to the ADR's plan under [CODE_CHANGES.md](CODE_CHANGES.md) (+ [SECURITY.md](SECURITY.md), migration rules when they apply): code, co-located tests and [directory contracts](#directory-contracts) change together. The ADR goes in the **same branch and PR** by default ([ADR.md](ADR.md#the-flow)). | Every item of the implementation plan is done | Only if the code must depart from the ADR — then go back to stage 2 |
+| 5 | **Validate** | Run [PRE_PR.md](PRE_PR.md) end to end: triggered obligations, the full gate (`./scripts/verify-all.sh`), real-app checks (browser at desktop and narrow widths, API as permitted and denied callers, real ClickHouse), the ADR's verification plan and edge-case list **item by item**, a self-review against [CODE_REVIEWER.md](CODE_REVIEWER.md), and `egm-drift-report` on the ADR and the touched contracts. Fix everything found and re-run. | All green, drift report clean, anything not run is written down with the reason | No — keep fixing until done |
+| 6 | **PR & CI** | `gh pr create --base preview` with the template filled from stage 5's evidence (commands, results, screenshots, follow-ups). Watch CI and fix any red check. | CI green | **Yes** — hand off with the PR link and what was and wasn't verified |
+
+Rules that hold across the stages:
+
+- **Never skip a stop.** A "yes" in one stage is not approval for the next.
+- **One request, one PR.** Everything the user batched into one thread ships in
+  one PR, ADR included, unless they ask otherwise.
+- **The ADR is the spec.** If reality disagrees with it during stages 4–5, the ADR
+  changes first (while unmerged), then the code.
+- **Working files stay in `.egm/`;** only the ADR, code, tests, contracts and docs
+  are committed.
+- **Small changes still validate.** Skipping stages 1–3 never skips stage 5.
+
+---
+
 ## Where files go
 
 | EGM output | Location | Committed? |
@@ -68,8 +106,9 @@ file's flow (draft → discuss → accept → implement). Do not create
    [ADR.md](ADR.md) requires. `egm-drift-report` findings against an accepted ADR
    are fixed in the code or recorded in a new ADR, never by rewriting history.
 
-An ADR PR needs no changelog fragment. Implementation follows in later PRs that
-reference the ADR.
+By default the accepted ADR ships in the same PR as its implementation (see
+[From idea to PR](#from-idea-to-pr)). An ADR-only PR needs no changelog fragment;
+a combined PR needs one for the user-visible implementation.
 
 ---
 
