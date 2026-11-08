@@ -53,12 +53,11 @@ and handles graceful shutdown.
   `/api/integrations/*`, `/oauth/*`, `/.well-known/*`, `/api/query/*`,
   `/api/ai/*` and `/api/*` use the in-memory store, so each pod counts
   separately [index.ts]
-- `/api/query/*` (300/min) and `/api/ai/*` (60/min) key on
-  `c.get('rbacUserId') || 'unknown'`, but `rbacUserId` is only set later by the
-  route-level auth middleware, so all callers share one `'unknown'` bucket per
-  pod; the general `/api/*` limiter (1000/min) falls back to
-  `rateLimitClientKey`, i.e. per address, not per user — see the 2026-11-06
-  drift report follow-ups [index.ts]
+- `/api/query/*` (300/min), `/api/ai/*` (60/min) and `/api/*` (1000/min) key
+  on `rateLimitUserKey`: they run before route auth, so the key comes from the
+  bearer token itself — a session JWT, PAT or OAuth token counts against its
+  owning user, anything else per client address [index.ts],
+  [middleware/rateLimitKeys.ts:rateLimitUserKey]
 - Background schedulers (scheduled queries, dashboard alerts and reports,
   Need You sweeper) start only when `SCHEDULED_QUERIES_ENABLED !== "false"`.
   SQLite with `CHOUSE_HA=true` logs an error, because leases cannot span pods [index.ts]
@@ -73,12 +72,11 @@ and handles graceful shutdown.
   `startConfigGenerationWatcher` [index.ts]
 - Intervals: `cleanupExpiredRateLimits` every 60 s and `pruneAiUsage` hourly [index.ts]
 - On `SIGINT`/`SIGTERM`, `gracefulShutdown` runs in order: stop the server,
-  clear the intervals, flush AI usage writes (5 s cap), stop observability, the
-  scheduled-query scheduler, the dashboard alert evaluator and report
-  scheduler, the Need You sweeper and the config watcher, run
-  `shutdownRbac()`, then `process.exit(0)` [index.ts:gracefulShutdown].
-  `startApprovalSweeper`, `startTriageRunner` and `DoctorScheduler` are not
-  stopped there — known issue, see [ARCHITECTURE.md › Known issues](../../../ARCHITECTURE.md#known-issues)
+  clear the intervals, flush AI usage writes (5 s cap), stop the
+  approval sweeper, the triage runner (which releases its lease), the Doctor
+  scheduler, observability, the scheduled-query scheduler, the dashboard alert
+  evaluator and report scheduler, the Need You sweeper and the config watcher,
+  run `shutdownRbac()`, then `process.exit(0)` [index.ts:gracefulShutdown]
 - Logs a warning for ignored legacy MCP env keys (`legacyMcpEnvKeys`) [index.ts]
 
 ## Verification

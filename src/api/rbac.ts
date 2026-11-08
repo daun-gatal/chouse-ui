@@ -6,6 +6,7 @@
 
 import {
   ApiError,
+  apiUrl,
   getSessionId,
   connectionIdentityHeaders,
   clearSession,
@@ -370,6 +371,7 @@ async function rbacFetch<T>(
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
+    credentials: 'include',
     signal: options.signal,
   };
 
@@ -380,7 +382,7 @@ async function rbacFetch<T>(
       : JSON.stringify(options.body);
   }
 
-  const response = await fetch(`/api/rbac${endpoint}`, fetchOptions);
+  const response = await fetch(apiUrl(`/rbac${endpoint}`), fetchOptions);
 
   if (!response.ok) {
     // Try to refresh token on 401
@@ -437,7 +439,8 @@ export const rbacAuthApi = {
    */
   async login(identifier: string, password: string): Promise<RbacLoginResponse> {
     // ... existing implementation
-    const response = await fetch('/api/rbac/auth/login', {
+    const response = await fetch(apiUrl('/rbac/auth/login'), {
+      credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -932,7 +935,7 @@ export const rbacAuditApi = {
     if (options?.endDate) params.set('endDate', options.endDate);
 
     const accessToken = getRbacAccessToken();
-    return `/api/rbac/audit/export?${params}&token=${accessToken}`;
+    return apiUrl(`/rbac/audit/export?${params}&token=${accessToken}`);
   }
 };
 
@@ -1564,7 +1567,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/favorites', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/favorites'), {
+      credentials: 'include',
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1592,7 +1596,8 @@ export const rbacUserPreferencesApi = {
 
     const body = { database, table, connectionId, connectionName };
 
-    let response = await fetch('/api/rbac/user-preferences/favorites', {
+    let response = await fetch(apiUrl('/rbac/user-preferences/favorites'), {
+      credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1608,7 +1613,8 @@ export const rbacUserPreferencesApi = {
       if (refreshed) {
         accessToken = getRbacAccessToken();
         if (accessToken) {
-          response = await fetch('/api/rbac/user-preferences/favorites', {
+          response = await fetch(apiUrl('/rbac/user-preferences/favorites'), {
+            credentials: 'include',
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1643,7 +1649,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch(`/api/rbac/user-preferences/favorites/${favoriteId}`, {
+    const response = await fetch(apiUrl(`/rbac/user-preferences/favorites/${favoriteId}`), {
+      credentials: 'include',
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -1665,7 +1672,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/favorites', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/favorites'), {
+      credentials: 'include',
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -1690,7 +1698,8 @@ export const rbacUserPreferencesApi = {
     const params = new URLSearchParams({ database });
     if (table) params.append('table', table);
 
-    const response = await fetch(`/api/rbac/user-preferences/favorites/check?${params.toString()}`, {
+    const response = await fetch(apiUrl(`/rbac/user-preferences/favorites/check?${params.toString()}`), {
+      credentials: 'include',
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1713,7 +1722,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch(`/api/rbac/user-preferences/recent?limit=${limit}`, {
+    const response = await fetch(apiUrl(`/rbac/user-preferences/recent?limit=${limit}`), {
+      credentials: 'include',
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1736,7 +1746,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/recent', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/recent'), {
+      credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1760,7 +1771,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/recent', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/recent'), {
+      credentials: 'include',
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -1782,7 +1794,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/preferences', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/preferences'), {
+      credentials: 'include',
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1805,7 +1818,8 @@ export const rbacUserPreferencesApi = {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
-    const response = await fetch('/api/rbac/user-preferences/preferences', {
+    const response = await fetch(apiUrl('/rbac/user-preferences/preferences'), {
+      credentials: 'include',
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -1962,7 +1976,8 @@ export async function checkRbacHealth(): Promise<{
   status: 'healthy' | 'unhealthy';
   database: string;
 }> {
-  const response = await fetch('/api/rbac/health', {
+  const response = await fetch(apiUrl('/rbac/health'), {
+    credentials: 'include',
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
   });
   const data = await response.json();
@@ -2070,7 +2085,8 @@ export interface SsoCallbackResponse extends RbacLoginResponse {
 export const ssoApi = {
   /** Public list of configured SSO providers (empty when SSO is disabled). */
   async getProviders(): Promise<SsoProviderInfo[]> {
-    const response = await fetch('/api/rbac/auth/sso/providers', {
+    const response = await fetch(apiUrl('/rbac/auth/sso/providers'), {
+      credentials: 'include',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await response.json();
@@ -2086,7 +2102,7 @@ export const ssoApi = {
 
   /** URL that begins the SSO flow for a provider (server 302s to the IdP). */
   startUrl(providerId: string, redirect: string): string {
-    return `/api/rbac/auth/sso/${encodeURIComponent(providerId)}/start?redirect=${encodeURIComponent(redirect)}`;
+    return apiUrl(`/rbac/auth/sso/${encodeURIComponent(providerId)}/start?redirect=${encodeURIComponent(redirect)}`);
   },
 
   /**
@@ -2098,7 +2114,8 @@ export const ssoApi = {
    * so no provider id is needed here.
    */
   async completeCallback(params: string): Promise<SsoCallbackResponse> {
-    const response = await fetch('/api/rbac/auth/sso/callback', {
+    const response = await fetch(apiUrl('/rbac/auth/sso/callback'), {
+      credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2125,7 +2142,8 @@ export const ssoApi = {
    * The code is short-lived and server-bound — never log it or put tokens in the URL.
    */
   async samlExchange(code: string): Promise<SsoCallbackResponse> {
-    const response = await fetch('/api/rbac/auth/sso/saml/exchange', {
+    const response = await fetch(apiUrl('/rbac/auth/sso/saml/exchange'), {
+      credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2153,7 +2171,8 @@ export interface AuthConfig {
 export const authConfigApi = {
   /** Public auth configuration for the login page (whether to show the password form). */
   async get(): Promise<AuthConfig> {
-    const response = await fetch('/api/rbac/auth/config', {
+    const response = await fetch(apiUrl('/rbac/auth/config'), {
+      credentials: 'include',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await response.json();

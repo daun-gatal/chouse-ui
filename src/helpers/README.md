@@ -7,8 +7,10 @@ Client-side SQL identifier validation and escaping for ClickHouse, column-type a
 - `validateIdentifier(name)` - letters/digits/underscore, starts with a letter or `_`, 1-64 chars, not a reserved keyword (`default` is allowed) [sqlUtils.ts:validateIdentifier]
 - `escapeIdentifier(name)` - backtick-quotes a validated identifier [sqlUtils.ts:escapeIdentifier]
 - `escapeQualifiedIdentifier(parts)` - escapes and joins with `.` (for `db.table`) [sqlUtils.ts:escapeQualifiedIdentifier]
-- `validateColumnType(type)` - checks the (base) type against `ALLOWED_COLUMN_TYPES` [sqlUtils.ts:validateColumnType]
-- `validateFormat(format)` - upper-cases the input and checks it against `ALLOWED_FORMATS`; because that set holds mixed-case names (`JSONEachRow`, `Parquet`, ...), only `CSV`, `TSV`, `JSON` and `XML` can validate. No caller in `src/` outside tests today — known issue, see [ARCHITECTURE.md › Known issues](../../ARCHITECTURE.md#known-issues) [sqlUtils.ts:validateFormat]
+- `validateFormat(format)` - case-insensitive check against `ALLOWED_FORMATS` (ClickHouse spelling kept, compared upper-cased). No caller in `src/` outside tests today [sqlUtils.ts:validateFormat]
+- `validateColumnType(type)` accepts only an allowed base type with at most one balanced argument list and nothing after it (`isNameWithOptionalArgs`, same rule as the server) [sqlUtils.ts:validateColumnType], [sqlUtils.ts:isNameWithOptionalArgs]
+- `quoteIdentifier(name)` backtick-quotes any name, escaping `` ` `` and `\`, and never throws; `quoteStringLiteral(value)` escapes `'` and `\` [sqlUtils.ts:quoteIdentifier], [sqlUtils.ts:quoteStringLiteral]
+- `buildCreateTableSql(input)` quotes every name, quotes comments as literals, rejects an invalid column type or engine with `CreateTableSqlError`, and passes DEFAULT/PARTITION BY/TTL expressions through as written [createTableSql.ts:buildCreateTableSql]
 - `isCreateOrInsert(query)` - regex detection of CREATE/INSERT/ALTER/DROP-style statements, ignoring `--` comment lines [sqlUtils.ts:isCreateOrInsert]
 
 ## Invariants

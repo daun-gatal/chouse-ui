@@ -1,6 +1,7 @@
 import { forwardRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveHref } from "../docs-site/lib";
 
 /**
  * Editorial layout primitives — keep visual language consistent across sections.
@@ -112,9 +113,10 @@ interface PrimaryLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement>
   children: ReactNode;
 }
 
-export function PrimaryAction({ className, children, ...props }: PrimaryLinkProps) {
+export function PrimaryAction({ className, children, href, ...props }: PrimaryLinkProps) {
   return (
     <a
+      href={resolveHref(href)}
       className={cn(
         "group inline-flex h-11 items-center gap-3 rounded-xs bg-accent px-5 text-sm font-semibold tracking-tight text-ink-50",
         "transition-[transform,background-color] duration-200 hover:bg-accent-soft hover:-translate-y-px",
@@ -128,9 +130,10 @@ export function PrimaryAction({ className, children, ...props }: PrimaryLinkProp
   );
 }
 
-export function SecondaryAction({ className, children, ...props }: PrimaryLinkProps) {
+export function SecondaryAction({ className, children, href, ...props }: PrimaryLinkProps) {
   return (
     <a
+      href={resolveHref(href)}
       className={cn(
         "group inline-flex h-11 items-center gap-3 rounded-xs border border-ink-500 bg-transparent px-5 text-sm font-semibold tracking-tight text-paper",
         "transition-colors duration-200 hover:border-ink-700 hover:bg-ink-100",

@@ -19,7 +19,7 @@ text headline helper. No module here depends on routes, services, or RBAC.
   - `[sqlIdentifier.ts:quoteStringLiteral]` - ClickHouse string literal quoting (escapes `\` and `'`).
   - `[sqlIdentifier.ts:validateColumnType]`, `[sqlIdentifier.ts:isNameWithOptionalArgs]`, `[sqlIdentifier.ts:isSafeKeyExpression]` - whole-string grammar checks for types and ORDER/PARTITION/PRIMARY key expressions.
   - `[sqlIdentifier.ts:validateTableEngine]`, `[sqlIdentifier.ts:validateDatabaseEngine]` - engine allow-lists, bypassed only when `allowAnyEngine` is true.
-  - `[sqlIdentifier.ts:validateFormat]` - `INSERT ... FORMAT` allow-list. It upper-cases the input before the lookup while `ALLOWED_FORMATS` holds mixed-case names, so only `CSV`, `TSV`, `JSON` and `XML` pass; no server route calls it today (`../routes/explorer.ts` only imports it) — known issue, see [ARCHITECTURE.md › Known issues](../../../../ARCHITECTURE.md#known-issues).
+  - `[sqlIdentifier.ts:validateFormat]` - `INSERT ... FORMAT` allow-list, compared case-insensitively; no server route calls it today (`../routes/explorer.ts` only imports it).
 - `parseUserAgent.ts`
   - `[parseUserAgent.ts:parseUserAgent]`, `[parseUserAgent.ts:extractClientInfo]`, `[parseUserAgent.ts:getClientHeaders]`, types `ParsedUserAgent`, `ClientInfo`.
 - `text.ts`

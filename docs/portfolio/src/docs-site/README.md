@@ -159,7 +159,7 @@ headings make good results.
 - `[manifest.ts:DOC_SECTIONS]` - sections > groups > pages (`DocSection`, `DocGroup`, `DocPage`); `[manifest.ts:DOC_REDIRECTS]` maps old slugs to new.
 - `[manifest.ts:allPages]`, `[manifest.ts:sectionPages]`, `[manifest.ts:docNav]`, `[manifest.ts:docPath]`, `[manifest.ts:sectionPath]`, `[manifest.ts:DOCS_HOME_PATH]` (`/docs/`).
 - `[content.ts:parseFrontmatter]` (returns `PageFacts`), `[content.ts:stripLeadingH1]`, `[content.ts:parseBlocks]` (`markdown`/`diagram`/`tabs` `ContentBlock`s), `[content.ts:plainMarkdown]`, `[content.ts:searchChunks]`.
-- `[lib.ts:getBase]`, `[lib.ts:withBase]`, `[lib.ts:SITE_URL]` (`https://chouse-ui.com`), `[lib.ts:slugify]`, `[lib.ts:headingId]`, `[lib.ts:resetHeadings]`, `[lib.ts:parseHeadings]`, `[lib.ts:nodeText]`.
+- `[lib.ts:getBase]`, `[lib.ts:withBase]`, `[lib.ts:resolveHref]` (base-prefix a root-absolute link; leaves anchors, URLs and already-prefixed paths alone), `[lib.ts:SITE_URL]` (`https://chouse-ui.com`), `[lib.ts:slugify]`, `[lib.ts:headingId]`, `[lib.ts:resetHeadings]`, `[lib.ts:parseHeadings]`, `[lib.ts:nodeText]`.
 - `[render.tsx:renderDocPageHtml]`, `[render.tsx:renderHomeHtml]`, `[render.tsx:renderSectionHtml]`, `[render.tsx:renderRedirectHtml]`, `[render.tsx:RenderContext]`.
 - `docs-client.js` - vanilla progressive enhancement loaded with `defer` on docs pages.
 - components: [./components/README.md](./components/README.md) - React page components rendered to static HTML.

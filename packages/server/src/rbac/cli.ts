@@ -90,34 +90,10 @@ async function resetDatabase() {
     logger.warn({ phase: 'cli', command: 'reset' }, 'Reset cancelled. Set CONFIRM_RESET=yes to proceed.');
     return;
   }
-  const { getDatabase, isSqlite } = await import('./db');
-  const { sql } = await import('drizzle-orm');
-  const db = getDatabase();
-  const tables = [
-    '_rbac_migrations',
-    'rbac_audit_logs',
-    'rbac_refresh_tokens',
-    'rbac_user_roles',
-    'rbac_role_permissions',
-    'rbac_permissions',
-    'rbac_roles',
-    'rbac_users',
-  ];
-  const dropped: string[] = [];
-  const failed: { table: string; err: string }[] = [];
-  for (const table of tables) {
-    try {
-      if (isSqlite()) {
-        (db as { run: (q: unknown) => void }).run(sql.raw(`DROP TABLE IF EXISTS ${table}`));
-      } else {
-        await (db as { execute: (q: unknown) => Promise<unknown> }).execute(sql.raw(`DROP TABLE IF EXISTS ${table} CASCADE`));
-      }
-      dropped.push(table);
-    } catch (error) {
-      failed.push({ table, err: error instanceof Error ? error.message : String(error) });
-    }
-  }
-  logger.info({ phase: 'cli', command: 'reset', dropped, failed }, 'Database reset complete');
+  const { dropRbacTables } = await import('./db/reset');
+  const { dropped, failed } = await dropRbacTables();
+  logger.info({ phase: 'cli', command: 'reset', dropped: dropped.length, failed }, 'Database reset complete');
+  if (failed.length > 0) process.exitCode = 1;
 }
 
 async function showVersion() {

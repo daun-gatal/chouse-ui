@@ -141,7 +141,58 @@ export function validateColumnType(type: string): boolean {
   }
 
   const baseType = baseTypeMatch[1];
-  return ALLOWED_COLUMN_TYPES.has(baseType);
+  // The whole string goes into DDL, so it must be nothing more than the type
+  // (same rule as the server's validateColumnType).
+  return ALLOWED_COLUMN_TYPES.has(baseType) && isNameWithOptionalArgs(type.trim());
+}
+
+const QUERY_KEYWORDS = new Set(['SELECT', 'FROM', 'WITH', 'JOIN', 'UNION', 'SETTINGS', 'FORMAT', 'INTO']);
+
+/**
+ * True when `text` is `Name` or `Name(args)` with nothing after it, where the
+ * arguments are only identifiers, numbers, plain string literals, commas, `=`,
+ * `-`, `.` and nested balanced parentheses — e.g. `Map(String, Array(UInt64))`
+ * or `Enum8('a' = 1)`. Mirrors the server's isNameWithOptionalArgs.
+ */
+export function isNameWithOptionalArgs(text: string): boolean {
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*(\(.*\))?$/s.exec(text);
+  if (!match) return false;
+  const args = match[2];
+  if (!args) return true;
+
+  const tokens = /\s+|[A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?|'[^'\\]*'|[(),=.-]/y;
+  let depth = 0;
+  let index = 0;
+  while (index < args.length) {
+    tokens.lastIndex = index;
+    const token = tokens.exec(args);
+    if (!token) return false;
+    if (QUERY_KEYWORDS.has(token[0].toUpperCase())) return false;
+    if (token[0] === '(') depth++;
+    if (token[0] === ')') {
+      depth--;
+      if (depth < 0 || (depth === 0 && tokens.lastIndex !== args.length)) return false;
+    }
+    index = tokens.lastIndex;
+  }
+  return depth === 0;
+}
+
+/**
+ * Quote any name as a ClickHouse identifier. Unlike escapeIdentifier it never
+ * throws, so it suits names read back from the server (which ClickHouse
+ * already accepted) — e.g. a table called `my-table` or `select`.
+ */
+export function quoteIdentifier(name: string): string {
+  return `\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\``;
+}
+
+/**
+ * Quote a value as a ClickHouse string literal. ClickHouse treats `\` as an
+ * escape character, so it is escaped along with the quote.
+ */
+export function quoteStringLiteral(value: string): string {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 /**
@@ -155,11 +206,14 @@ const ALLOWED_FORMATS = new Set([
   'RowBinaryWithNamesAndTypes', 'CapnProto', 'LineAsString', 'RawBLOB', 'MsgPack'
 ]);
 
+// Formats are matched case-insensitively; the list above keeps ClickHouse's spelling.
+const ALLOWED_FORMATS_UPPER: ReadonlySet<string> = new Set([...ALLOWED_FORMATS].map((f) => f.toUpperCase()));
+
 export function validateFormat(format: string): boolean {
   if (!format || typeof format !== 'string') {
     return false;
   }
-  return ALLOWED_FORMATS.has(format.toUpperCase());
+  return ALLOWED_FORMATS_UPPER.has(format.toUpperCase());
 }
 
 // ============================================

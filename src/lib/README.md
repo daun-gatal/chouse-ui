@@ -6,7 +6,8 @@ Shared client-side utilities with no UI of their own: logging, class-name and nu
 ## Interface
 - [viz](./viz/README.md) - dashboard viz spec, chart resolution, time and unit helpers.
 - `log.ts` - `log.error|warn|info|debug`; the required client logger [log.ts:log]
-- `utils.ts` - `cn`, `formatBytes`, `formatDate`, `formatNumber`, `formatCompactNumber`, `generateRandomPassword`, `redactSecrets` [utils.ts:redactSecrets]
+- `password.ts` - `generatePassword(length = 16)` (Web Crypto, at least one upper/lower/digit/symbol, no look-alikes) and `secureRandomInt(max)` (rejection sampling, no modulo bias); the only password generator for admin "generate" buttons [password.ts:generatePassword], [password.ts:secureRandomInt]
+- `utils.ts` - `cn`, `formatBytes`, `formatDate`, `formatNumber`, `formatCompactNumber`, `redactSecrets` [utils.ts:redactSecrets]
 - `activateConnection.ts` - `activateConnection({ connectionId, connectionName?, queryClient })` [activateConnection.ts:activateConnection]
 - `schemaPreflight.ts` - `withSchemaOverride(statement, run)`, `SCHEMA_PREFLIGHT_CODE` [schemaPreflight.ts:withSchemaOverride]
 - `navAccess.ts` - `ADMIN_TAB_PERMISSIONS`, `ADMIN_ACCESS_PERMISSIONS`, `MONITORING_ACCESS_PERMISSIONS`, `DASHBOARDS_ACCESS_PERMISSIONS`, `EXPLORER_ACCESS_PERMISSIONS`, `DATA_ACCESS_PERMISSIONS`, `AGENTS_ACCESS_PERMISSIONS`, `AdminTabKey` [navAccess.ts:ADMIN_TAB_PERMISSIONS]

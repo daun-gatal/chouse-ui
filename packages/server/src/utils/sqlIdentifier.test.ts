@@ -77,7 +77,13 @@ describe("SQL Identifier Utils", () => {
         it("should accept allowed formats", () => {
             expect(validateFormat("JSON")).toBe(true);
             expect(validateFormat("CSV")).toBe(true);
-            expect(validateFormat("json")).toBe(true); // Case insensitive check? Implementation usually uppercases
+            expect(validateFormat("json")).toBe(true);
+        });
+
+        it("accepts mixed-case ClickHouse format names in any case", () => {
+            for (const f of ["JSONEachRow", "jsoneachrow", "Parquet", "PARQUET", "RowBinaryWithNamesAndTypes", "MsgPack"]) {
+                expect(validateFormat(f)).toBe(true);
+            }
         });
 
         it("should reject invalid formats", () => {

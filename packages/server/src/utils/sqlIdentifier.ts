@@ -270,9 +270,12 @@ const ALLOWED_FORMATS = new Set([
   'RowBinaryWithNamesAndTypes', 'CapnProto', 'LineAsString', 'RawBLOB', 'MsgPack'
 ]);
 
+// Formats are matched case-insensitively; the list above keeps ClickHouse's spelling.
+const ALLOWED_FORMATS_UPPER: ReadonlySet<string> = new Set([...ALLOWED_FORMATS].map((f) => f.toUpperCase()));
+
 export function validateFormat(format: string): boolean {
   if (!format || typeof format !== 'string') {
     return false;
   }
-  return ALLOWED_FORMATS.has(format.toUpperCase());
+  return ALLOWED_FORMATS_UPPER.has(format.toUpperCase());
 }

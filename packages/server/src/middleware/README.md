@@ -15,7 +15,7 @@ preflight gate, and the DB-backed rate-limit store with its key functions.
 - `sqlParser.ts`: `[sqlParser.ts:splitSqlStatements]`, `[sqlParser.ts:parseStatement]`, `[sqlParser.ts:getAccessTypeFromStatementType]`, `[sqlParser.ts:SAFE_TABLE_FUNCTIONS]`, types `TableRef`, `ParsedStatement`, `AccessType`.
 - `schemaPreflight.ts`: `[schemaPreflight.ts:enforceSchemaPreflight]` - returns a 409 `Response` or `null` to proceed.
 - `rateLimitStore.ts`: `[rateLimitStore.ts:DbRateLimitStore]` (`hono-rate-limiter` `Store`), `[rateLimitStore.ts:cleanupExpiredRateLimits]`.
-- `rateLimitKeys.ts`: `[rateLimitKeys.ts:rateLimitClientKey]`, `[rateLimitKeys.ts:loginAccountKey]`.
+- `rateLimitKeys.ts`: `[rateLimitKeys.ts:rateLimitClientKey]`, `[rateLimitKeys.ts:loginAccountKey]`, `[rateLimitKeys.ts:rateLimitUserKey]`.
 
 ## Invariants
 - Connection resolution order: `X-Connection-Id` (re-checked against RBAC each request), else a legacy `X-Session-ID` fails closed with `connectionContextStale` (409), else the user's default connection; no RBAC user means `AppError.unauthorized` `[connectionContext.ts:connectionContextMiddleware]`.
@@ -27,6 +27,7 @@ preflight gate, and the DB-backed rate-limit store with its key functions.
 - `checkDatabaseAccess`/`checkTableAccess`/`filterDatabases`/`filterTables` grant admins everything, throw when no RBAC user is supplied, and hide system databases/tables from non-admins `[dataAccess.ts]`.
 - CORS: a wildcard origin never sends `Access-Control-Allow-Credentials`; credentialed responses echo the exact origin with `Vary: Origin`; in `strictMode` a disallowed origin gets 403 `CORS_BLOCKED`, except on the default `bypassPaths` (`/api/health`, `/api/rbac/health`, `/api/rbac/status`, `/auth/sso/saml/acs`, `/mcp`), which skip the origin check `[cors.ts:corsMiddleware]`.
 - Rate-limit client keys use the rightmost `X-Forwarded-For` hop (the one the nearest proxy appended), then `X-Real-IP`, then the socket address; login is also keyed per account identifier so header rotation cannot reset the budget `[rateLimitKeys.ts:rateLimitClientKey]`, `[rateLimitKeys.ts:loginAccountKey]`.
+- `rateLimitUserKey` keys by the owning user (`user:<id>`) taken from a verified session JWT or, for a PAT or OAuth access token, from one hash lookup of the token's owner (no writes); anything else (no token, a bad JWT, an unknown token) counts by client address (`addr:<key>`). So a forged token can't spend another user's budget, rotating made-up tokens can't escape the per-address limit, and extra tokens add no budget `[rateLimitKeys.ts:rateLimitUserKey]`.
 - A breaking DDL proceeds only if the caller is admin or holds `schema:override` and sent `X-Schema-Override: confirm`; dependents in tables the caller cannot read are counted, not named `[schemaPreflight.ts:enforceSchemaPreflight]`.
 - `AppError`, Hono `HTTPException`, and `ZodError` keep their 4xx status; stack traces are only returned for 500s outside production `[error.ts:errorHandler]`.
 

@@ -15,7 +15,7 @@ import { AlertSeverity } from "../../alerting/types";
 import { notifyChannelIds } from "../../alerting/notify";
 import { linkTo } from "../../alerting/notify/links";
 import { addCell, ensureNotebook } from "../../notebooks/store";
-import { acquireLease } from "../../observe/lease";
+import { acquireLease, releaseAll } from "../../observe/lease";
 import { runStructuredCapability } from "../engine";
 import { triageIncidentCapability, type TriageFindings } from "../capabilities/triage";
 import { parseToolResult } from "../runtime/chatOutput";
@@ -204,7 +204,13 @@ export function startTriageRunner(): void {
   timer.unref?.();
 }
 
-export function stopTriageRunner(): void {
+/** Stop ticking and hand the lease back, so another replica takes over at once (graceful shutdown). */
+export async function stopTriageRunner(): Promise<void> {
   if (timer) clearInterval(timer);
   timer = null;
+  try {
+    await releaseAll(HOLDER);
+  } catch (error) {
+    logger.warn({ module: "AiTriage", err: error instanceof Error ? error.message : String(error) }, "Triage lease release failed");
+  }
 }

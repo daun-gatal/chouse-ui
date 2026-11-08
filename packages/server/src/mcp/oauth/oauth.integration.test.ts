@@ -27,7 +27,7 @@ import { createMcpApp } from "../index";
 import { buildMcpDeps, MCP_PATH } from "../server";
 import { resetMcpSettingsCache, saveMcpSettings } from "../settings";
 import { createOAuthRoutes } from "./routes";
-import { getClient, purgeExpired, UNUSED_CLIENT_TTL_MS } from "./store";
+import { getClient, oauthAccessTokenOwner, purgeExpired, UNUSED_CLIENT_TTL_MS } from "./store";
 
 const ISSUER = "https://chouse.test";
 const ALICE = "oauth-alice";
@@ -365,6 +365,12 @@ describe("tokens and MCP", () => {
     expect(tokens.refresh_token.startsWith("ch_ort_")).toBe(true);
     expect(tokens.expires_in).toBeGreaterThan(3500);
     expect(tokens.expires_in).toBeLessThanOrEqual(3600);
+  });
+
+  it("names the token's owner for rate limiting, and nobody for an unknown token", async () => {
+    expect(await oauthAccessTokenOwner(tokens.access_token)).toBe(ALICE);
+    expect(await oauthAccessTokenOwner("ch_oat_not-a-real-token")).toBeNull();
+    expect(await oauthAccessTokenOwner(tokens.refresh_token)).toBeNull();
   });
 
   it("runs an MCP tool as the person, reaching the API in-process", async () => {

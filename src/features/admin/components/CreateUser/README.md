@@ -13,7 +13,7 @@ Page for creating an RBAC user with email, username, optional display name, a ge
 - Changing the role requires ROLES_ASSIGN, but the `isDefault` role is pre-selected on load regardless; `super_admin` hidden unless `isSuperAdmin()` `[index.tsx:CreateUser]`
 - Exactly one role at a time `[index.tsx:toggleRole]`
 - Manual password: >= 12 chars with upper, lower, digit, special, and matching confirmation `[index.tsx:passwordReqs]`
-- Manual mode's generate button builds a 16-char password client-side with `Math.random()` (not a CSPRNG) and fills both password fields — known issue, see [ARCHITECTURE.md › Known issues](../../../../../ARCHITECTURE.md#known-issues) `[index.tsx:handleGeneratePasswordManually]`
+- Manual mode's generate button fills both password fields with a 16-char password from `generatePassword` in `@/lib/password` (Web Crypto, unbiased) `[index.tsx:handleGeneratePasswordManually]`
 - Username forced to lowercase `[a-z0-9_-]` `[index.tsx:CreateUser]`
 
 ## Side Effects

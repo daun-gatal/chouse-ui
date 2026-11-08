@@ -444,6 +444,21 @@ export async function verifyAccessToken(raw: string, now = Date.now()): Promise<
   return { ...identity, patName: client.name, clientId: client.id };
 }
 
+/**
+ * Owner of an OAuth access token, for rate limiting: one indexed lookup, no
+ * expiry or client checks and no writes (the route's auth does those). Null
+ * when no such token exists or the lookup fails.
+ */
+export async function oauthAccessTokenOwner(raw: string): Promise<string | null> {
+  if (!raw.startsWith(OAUTH_ACCESS_PREFIX)) return null;
+  try {
+    const row = await one(sql`SELECT k.user_id AS user_id FROM oauth_tokens t JOIN rbac_api_keys k ON k.id = t.grant_id WHERE t.token_hash = ${hashSecret(raw)} AND t.kind = 'access'`);
+    return row ? strOrNull(row.user_id) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function touchGrant(grantId: string, clientId: string, now: number): Promise<void> {
   try {
     const db = getDatabase() as AnyDb;

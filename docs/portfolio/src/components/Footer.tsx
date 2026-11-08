@@ -1,5 +1,6 @@
 import { Github } from "lucide-react";
 import { Container } from "./Section";
+import { resolveHref } from "../docs-site/lib";
 
 // Mirrors the primary navbar (Docs · Features · Try Lab · FAQ).
 const NAV = [
@@ -71,7 +72,7 @@ export default function Footer() {
               {NAV.map((item) => (
                 <li key={item.href}>
                   <a
-                    href={item.href}
+                    href={resolveHref(item.href)}
                     className="text-[13px] text-paper-muted transition-colors hover:text-paper"
                   >
                     {item.label}
@@ -90,7 +91,7 @@ export default function Footer() {
               {EXPLORE.map((item) => (
                 <li key={item.href}>
                   <a
-                    href={item.href}
+                    href={resolveHref(item.href)}
                     className="text-[13px] text-paper-muted transition-colors hover:text-paper"
                   >
                     {item.label}
@@ -109,7 +110,7 @@ export default function Footer() {
               {RESOURCES.map((item) => (
                 <li key={item.href}>
                   <a
-                    href={item.href}
+                    href={resolveHref(item.href)}
                     target={item.external ? "_blank" : undefined}
                     rel={item.external ? "noopener noreferrer" : undefined}
                     className="text-[13px] text-paper-muted transition-colors hover:text-paper"
