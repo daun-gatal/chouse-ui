@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useExplorerStore } from "@/stores";
 import { useDatabases, useExecuteQuery, useClusterNames } from "@/hooks";
+import { buildCreateTableSql } from "@/helpers/createTableSql";
 
 interface Column {
   id: string;
@@ -138,6 +139,19 @@ const CreateTable: React.FC = () => {
     }
   };
 
+  const buildTableSql = (cols: Column[]): string =>
+    buildCreateTableSql({
+      database,
+      table: tableName.trim(),
+      columns: cols,
+      engine,
+      orderBy: selectedEngine?.requiresOrderBy ? orderByColumns : [],
+      partitionBy,
+      ttl: ttlExpression,
+      comment,
+      cluster: useCluster && selectedCluster ? selectedCluster : undefined,
+    });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -167,43 +181,12 @@ const CreateTable: React.FC = () => {
       return;
     }
 
-    // Build column definitions
-    const columnDefs = validColumns
-      .map((col) => {
-        let def = `\`${col.name}\` `;
-        def += col.nullable ? `Nullable(${col.type})` : col.type;
-        if (col.defaultValue) {
-          def += ` DEFAULT ${col.defaultValue}`;
-        }
-        if (col.description) {
-          def += ` COMMENT '${col.description.replace(/'/g, "\\'")}'`;
-        }
-        return def;
-      })
-      .join(",\n    ");
-
-    // Build query
-    let query = `CREATE TABLE ${database}.\`${tableName}\``;
-    if (useCluster && selectedCluster) {
-      query += ` ON CLUSTER '${selectedCluster}'`;
-    }
-    query += ` (\n    ${columnDefs}\n)`;
-    query += `\nENGINE = ${engine}`;
-
-    if (selectedEngine?.requiresOrderBy && orderByColumns.length > 0) {
-      query += `\nORDER BY (${orderByColumns.map((c) => `\`${c}\``).join(", ")})`;
-    }
-
-    if (partitionBy) {
-      query += `\nPARTITION BY ${partitionBy}`;
-    }
-
-    if (ttlExpression) {
-      query += `\nTTL ${ttlExpression}`;
-    }
-
-    if (comment) {
-      query += `\nCOMMENT '${comment.replace(/'/g, "\\'")}'`;
+    let query: string;
+    try {
+      query = buildTableSql(validColumns);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid table definition");
+      return;
     }
 
     try {
@@ -247,44 +230,11 @@ const CreateTable: React.FC = () => {
       return "-- Add at least one column to see the query";
     }
 
-    const columnDefs = validCols
-      .map((col) => {
-        let def = `\`${col.name}\` `;
-        def += col.nullable ? `Nullable(${col.type})` : col.type;
-        if (col.defaultValue) {
-          def += ` DEFAULT ${col.defaultValue}`;
-        }
-        if (col.description) {
-          def += ` COMMENT '${col.description.replace(/'/g, "\\'")}'`;
-        }
-        return def;
-      })
-      .join(",\n    ");
-
-    let query = `CREATE TABLE ${database}.\`${tableName}\``;
-    if (useCluster && selectedCluster) {
-      query += ` ON CLUSTER '${selectedCluster}'`;
+    try {
+      return buildTableSql(validCols);
+    } catch (error) {
+      return `-- ${error instanceof Error ? error.message : "Invalid table definition"}`;
     }
-    query += ` (\n    ${columnDefs}\n)`;
-    query += `\nENGINE = ${engine}`;
-
-    if (selectedEngine?.requiresOrderBy && orderByColumns.length > 0) {
-      query += `\nORDER BY (${orderByColumns.map((c) => `\`${c}\``).join(", ")})`;
-    }
-
-    if (partitionBy) {
-      query += `\nPARTITION BY ${partitionBy}`;
-    }
-
-    if (ttlExpression) {
-      query += `\nTTL ${ttlExpression}`;
-    }
-
-    if (comment) {
-      query += `\nCOMMENT '${comment.replace(/'/g, "\\'")}'`;
-    }
-
-    return query;
   };
 
   const queryPreview = generateQueryPreview();

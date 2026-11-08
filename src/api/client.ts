@@ -56,6 +56,11 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+/** Absolute API URL for a path under `/api` (e.g. `/rbac/health`), honouring VITE_API_URL. */
+export function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
 const SESSION_STORAGE_KEY = 'ch_session_id';
 export const RBAC_ACCESS_TOKEN_KEY = 'rbac_access_token';
 export const RBAC_REFRESH_TOKEN_KEY = 'rbac_refresh_token';
@@ -203,7 +208,8 @@ export async function refreshTokens(): Promise<boolean> {
 
   globalRefreshPromise = (async () => {
     try {
-      const response = await fetch('/api/rbac/auth/refresh', {
+      const response = await fetch(apiUrl('/rbac/auth/refresh'), {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

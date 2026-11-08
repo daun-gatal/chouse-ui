@@ -8,7 +8,6 @@ import {
   formatBytes,
   formatDate,
   formatNumber,
-  generateRandomPassword,
   redactSecrets,
 } from './utils';
 
@@ -84,32 +83,6 @@ describe('lib/utils', () => {
 
     it('should handle falsy non-zero values', () => {
       expect(formatNumber(null as any)).toBe('');
-    });
-  });
-
-  describe('generateRandomPassword', () => {
-    it('should generate password with default length', () => {
-      const password = generateRandomPassword();
-      expect(password).toHaveLength(16);
-    });
-
-    it('should generate password with custom length', () => {
-      const password = generateRandomPassword(20);
-      expect(password).toHaveLength(20);
-    });
-
-    it('should contain required character types', () => {
-      const password = generateRandomPassword();
-      expect(/[a-z]/.test(password)).toBe(true);
-      expect(/[A-Z]/.test(password)).toBe(true);
-      expect(/[0-9]/.test(password)).toBe(true);
-      expect(/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)).toBe(true);
-    });
-
-    it('should generate different passwords', () => {
-      const password1 = generateRandomPassword();
-      const password2 = generateRandomPassword();
-      expect(password1).not.toBe(password2);
     });
   });
 

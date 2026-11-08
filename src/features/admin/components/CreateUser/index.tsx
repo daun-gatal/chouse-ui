@@ -21,6 +21,7 @@ import {
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { log } from "@/lib/log";
+import { generatePassword as generateRandomPassword } from "@/lib/password";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,16 +126,7 @@ const CreateUser: React.FC = () => {
   };
 
   const handleGeneratePasswordManually = () => {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    let pwd = "";
-    pwd += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
-    pwd += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
-    pwd += "0123456789"[Math.floor(Math.random() * 10)];
-    pwd += "!@#$%^&*"[Math.floor(Math.random() * 8)];
-    for (let i = 0; i < 12; i++) {
-      pwd += chars[Math.floor(Math.random() * chars.length)];
-    }
-    pwd = pwd.split("").sort(() => Math.random() - 0.5).join("");
+    const pwd = generateRandomPassword();
     setPassword(pwd);
     setConfirmPassword(pwd);
   };

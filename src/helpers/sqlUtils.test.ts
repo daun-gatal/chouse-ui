@@ -9,6 +9,9 @@ import {
   escapeQualifiedIdentifier,
   validateColumnType,
   validateFormat,
+  quoteIdentifier,
+  quoteStringLiteral,
+  isNameWithOptionalArgs,
   isCreateOrInsert,
 } from './sqlUtils';
 
@@ -103,6 +106,12 @@ describe('helpers/sqlUtils', () => {
       expect(validateFormat('Csv')).toBe(true);
     });
 
+    it('accepts mixed-case ClickHouse format names in any case', () => {
+      for (const f of ['JSONEachRow', 'jsoneachrow', 'Parquet', 'PARQUET', 'RowBinaryWithNamesAndTypes', 'MsgPack']) {
+        expect(validateFormat(f)).toBe(true);
+      }
+    });
+
     it('should reject invalid formats', () => {
       expect(validateFormat('INVALID')).toBe(false);
       expect(validateFormat('HTML')).toBe(false);
@@ -140,6 +149,41 @@ describe('helpers/sqlUtils', () => {
     it('should detect complex patterns', () => {
       expect(isCreateOrInsert('CREATE MATERIALIZED VIEW mv AS SELECT 1')).toBe(true);
       expect(isCreateOrInsert('TRUNCATE TABLE test')).toBe(true);
+    });
+  });
+
+  describe('validateColumnType (whole string)', () => {
+    it('accepts type signatures', () => {
+      for (const t of ['UInt64', 'Nullable(String)', 'Map(String, Array(UInt64))', "DateTime64(3, 'UTC')", "Enum8('a' = 1)"]) {
+        expect(validateColumnType(t)).toBe(true);
+      }
+    });
+
+    it('rejects a type with SQL after it', () => {
+      expect(validateColumnType('String; DROP TABLE x')).toBe(false);
+      expect(validateColumnType('UInt64) ENGINE = Memory AS SELECT * FROM secret.s')).toBe(false);
+      expect(validateColumnType("Array(String) DEFAULT 'x'")).toBe(false);
+      expect(isNameWithOptionalArgs('Array(SELECT 1)')).toBe(false);
+    });
+  });
+
+  describe('quoteIdentifier', () => {
+    it('quotes any name without throwing', () => {
+      expect(quoteIdentifier('events')).toBe('`events`');
+      expect(quoteIdentifier('my-table')).toBe('`my-table`');
+      expect(quoteIdentifier('select')).toBe('`select`');
+    });
+
+    it('escapes backticks and backslashes', () => {
+      expect(quoteIdentifier('a`b')).toBe('`a\\`b`');
+      expect(quoteIdentifier('a\\')).toBe('`a\\\\`');
+    });
+  });
+
+  describe('quoteStringLiteral', () => {
+    it('escapes quotes and backslashes', () => {
+      expect(quoteStringLiteral("it's")).toBe("'it\\'s'");
+      expect(quoteStringLiteral('x\\')).toBe("'x\\\\'");
     });
   });
 });

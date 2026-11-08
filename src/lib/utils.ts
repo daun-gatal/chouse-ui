@@ -35,31 +35,6 @@ export function formatNumber(number: number) {
 }
 
 
-export function generateRandomPassword(length: number = 16) {
-  const lowercase = "abcdefghijklmnopqrstuvwxyz";
-  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const numbers = "0123456789";
-  const special = "!@#$%^&*()_+-=[]{}|;:,.<>?";
-
-  const allChars = lowercase + uppercase + numbers + special;
-
-  // Ensure at least one of each required type
-  let password = [
-    lowercase[Math.floor(Math.random() * lowercase.length)],
-    uppercase[Math.floor(Math.random() * uppercase.length)],
-    numbers[Math.floor(Math.random() * numbers.length)],
-    special[Math.floor(Math.random() * special.length)],
-  ];
-
-  // Fill the rest randomly
-  for (let i = 4; i < length; i++) {
-    password.push(allChars[Math.floor(Math.random() * allChars.length)]);
-  }
-
-  // Shuffle the password
-  return password.sort(() => 0.5 - Math.random()).join('');
-}
-
 export function redactSecrets(query: string): string {
   if (!query) return "";
   let redacted = query;

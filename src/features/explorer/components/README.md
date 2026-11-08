@@ -18,9 +18,9 @@ Explorer sidebar (database tree plus pinned/recent/history/saved tabs) and modal
 ## Invariants
 
 - Create/upload menu items need DB_CREATE, TABLE_CREATE, TABLE_INSERT; saved queries need SAVED_QUERIES_VIEW/DELETE `[DataExplorer.tsx:DatabaseExplorer]`; context menu uses `PermissionGuard` for TABLE_* `[TreeNode.tsx:TreeNode]`
-- AlterTable escapes names with `escapeIdentifier` and validates types with `validateColumnType` `[AlterTable.tsx:AlterTable]`; Describe uses `escapeQualifiedIdentifier` but the Drop Table tab text interpolates names unescaped (opened as an editable SQL tab, not executed) `[TreeNode.tsx:TreeNode]`
-- The Query tab (`SELECT * ... LIMIT 100`) also interpolates `databaseName` / `node.name` unescaped; for a database node it produces malformed SQL (`SELECT * FROM <db>. LIMIT 100`) — known issue, see [ARCHITECTURE.md › Known issues](../../../../ARCHITECTURE.md#known-issues) `[TreeNode.tsx:handleNewQuery]`
-- CreateTable backtick-wraps table/column names but interpolates database, column types (incl. `Nullable(<type>)`), DEFAULT, PARTITION BY, TTL and the cluster name (`ON CLUSTER '<cluster>'`) raw; COMMENT values only escape `'` as `\'` rather than using `quoteStringLiteral` — known issue, see [ARCHITECTURE.md › Known issues](../../../../ARCHITECTURE.md#known-issues) `[CreateTable.tsx:handleSubmit]` `[CreateTable.tsx:generateQueryPreview]`
+- AlterTable escapes names with `escapeIdentifier` and validates types with `validateColumnType` `[AlterTable.tsx:AlterTable]`; the Describe, Drop Table and Query tabs quote names with `quoteIdentifier` (they open as editable SQL tabs, not executed) `[TreeNode.tsx:TreeNode]`
+- The Query tab opens `SELECT * FROM <db>.<table> LIMIT 100` for a table and `SHOW TABLES FROM <db>` for a database `[TreeNode.tsx:handleNewQuery]`
+- CreateTable builds both the submitted statement and the preview with `buildCreateTableSql`: names quoted, comments as string literals, column types whole-string validated (an invalid type is a toast on submit and a comment in the preview); DEFAULT, PARTITION BY and TTL are user-written expressions passed through as typed `[CreateTable.tsx:CreateTable]`
 - Database name must match `/^[a-zA-Z_][a-zA-Z0-9_]*$/` `[CreateDatabase.tsx:handleSubmit]`; MergeTree engines need >= 1 ORDER BY column `[CreateTable.tsx:handleSubmit]`
 - SQL preview sanitized with DOMPurify `[ManualCreationForm.tsx:ManualCreationForm]`
 

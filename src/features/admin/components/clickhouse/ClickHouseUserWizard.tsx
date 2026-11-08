@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { log } from "@/lib/log";
+import { generatePassword } from "@/lib/password";
 import { cn } from "@/lib/utils";
 import {
   rbacClickHouseUsersApi,
@@ -123,14 +124,6 @@ const RequirementItem = ({ ok, label }: { ok: boolean; label: string }) => (
     <span>{label}</span>
   </div>
 );
-
-function generatePassword(): string {
-  const pools = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnpqrstuvwxyz", "23456789", "!@#$%^&*"];
-  const all = pools.join("");
-  let pwd = pools.map((p) => p[Math.floor(Math.random() * p.length)]).join("");
-  for (let i = 0; i < 12; i++) pwd += all[Math.floor(Math.random() * all.length)];
-  return pwd.split("").sort(() => Math.random() - 0.5).join("");
-}
 
 export function ClickHouseUserWizard({ isOpen, onClose, onSaved, availableRoles, editingUser }: ClickHouseUserWizardProps) {
   const isEditing = !!editingUser;

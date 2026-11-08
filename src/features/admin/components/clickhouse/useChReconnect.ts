@@ -22,9 +22,13 @@ import { useAuthStore } from "@/stores";
 import { ApiError } from "@/api/client";
 import { log } from "@/lib/log";
 
-/** True when an error is the "no active ClickHouse session" condition. */
+/**
+ * True when the request failed because its ClickHouse connection context is
+ * gone: the legacy NO_SESSION, or ADR 0010's CONNECTION_CONTEXT_STALE, which the
+ * API client throws once its own retry can't recover.
+ */
 export function isNoSessionError(error: unknown): boolean {
-  if (error instanceof ApiError && error.code === "NO_SESSION") return true;
+  if (error instanceof ApiError && (error.code === "NO_SESSION" || error.code === "CONNECTION_CONTEXT_STALE")) return true;
   const message = error instanceof Error ? error.message : String(error);
   return /no active clickhouse session|session not found|please reconnect/i.test(message);
 }

@@ -19,7 +19,7 @@ Building blocks for native ClickHouse user/role management: user and role wizard
 - User create needs >= 1 role and, unless `no_password`, a password of >= 8 chars with upper, lower, digit, special; on edit the password is optional, but a typed one must pass the same checks `[ClickHouseUserWizard.tsx:passwordValid]`
 - Existing column-level grants are preserved unchanged `[ClickHouseRoleWizard.tsx:ClickHouseRoleWizard]`
 - Privileges implied by a selected ancestor are locked; selecting a parent drops redundant descendants `[CHPrivilegeTree.tsx:CHPrivilegeTree]`
-- `isNoSessionError` matches only `ApiError.code === "NO_SESSION"` or the messages "no active clickhouse session" / "session not found" / "please reconnect"; it does not match `CONNECTION_CONTEXT_STALE`, although the file header says the server now reports that code — known issue, see [ARCHITECTURE.md › Known issues](../../../../../ARCHITECTURE.md#known-issues) `[useChReconnect.ts:isNoSessionError]`
+- `isNoSessionError` matches `ApiError.code` `NO_SESSION` or `CONNECTION_CONTEXT_STALE` (thrown once the API client's own retry can't recover), or the messages "no active clickhouse session" / "session not found" / "please reconnect" `[useChReconnect.ts:isNoSessionError]`
 - No permission gating in this directory (callers gate)
 
 ## Side Effects

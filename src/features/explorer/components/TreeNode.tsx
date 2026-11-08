@@ -20,8 +20,7 @@ import { useExplorerStore, useWorkspaceStore, genTabId, RBAC_PERMISSIONS } from 
 import PermissionGuard from "@/components/common/PermissionGuard";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { log } from "@/lib/log";
-import { escapeQualifiedIdentifier } from "@/helpers/sqlUtils";
+import { quoteIdentifier } from "@/helpers/sqlUtils";
 import { explorerPath } from "@/lib/explorerPath";
 
 export interface TreeNodeData {
@@ -124,9 +123,10 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     if (e) {
       e.stopPropagation();
     }
+    // A database has no rows to select, so its query lists its tables.
     const query = isDatabase
-      ? `SELECT * FROM ${node.name}. LIMIT 100`
-      : `SELECT * FROM ${databaseName}.${node.name} LIMIT 100`;
+      ? `SHOW TABLES FROM ${quoteIdentifier(node.name)}`
+      : `SELECT * FROM ${quoteIdentifier(databaseName)}.${quoteIdentifier(node.name)} LIMIT 100`;
 
     addTab({
       id: genTabId(),
@@ -322,25 +322,12 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    try {
-                      // Validate and escape identifiers to prevent SQL injection
-                      const escapedTable = escapeQualifiedIdentifier([databaseName, node.name]);
-                      addTab({
-                        id: genTabId(),
-                        type: "sql",
-                        title: `Describe ${node.name}`,
-                        content: `DESCRIBE TABLE ${escapedTable}`,
-                      });
-                    } catch (error) {
-                      log.error('Invalid table identifier:', error);
-                      // Still add tab but with error message
-                      addTab({
-                        id: genTabId(),
-                        type: "sql",
-                        title: `Describe ${node.name}`,
-                        content: `-- Error: Invalid table identifier - ${(error as Error).message}`,
-                      });
-                    }
+                    addTab({
+                      id: genTabId(),
+                      type: "sql",
+                      title: `Describe ${node.name}`,
+                      content: `DESCRIBE TABLE ${quoteIdentifier(databaseName)}.${quoteIdentifier(node.name)}`,
+                    });
                   }}
                   className="text-xs gap-2"
                 >
@@ -369,7 +356,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                         id: genTabId(),
                         type: "sql",
                         title: `Drop ${node.name}`,
-                        content: `-- WARNING: This will permanently delete the table!\nDROP TABLE ${databaseName}.${node.name}`,
+                        content: `-- WARNING: This will permanently delete the table!\nDROP TABLE ${quoteIdentifier(databaseName)}.${quoteIdentifier(node.name)}`,
                       });
                     }}
                   >
