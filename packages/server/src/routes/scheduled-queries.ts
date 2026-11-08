@@ -16,7 +16,7 @@ import { zValidator } from "@hono/zod-validator";
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { PERMISSIONS, AUDIT_ACTIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
-import { getUserConnections, getConnectionById } from "../rbac/services/connections";
+import { getUserConnections } from "../rbac/services/connections";
 import { validateQueryAccess } from "../middleware/dataAccess";
 import { AppError, requireParam } from "../types";
 import { logger } from "../utils/logger";
@@ -28,7 +28,7 @@ import {
   SQ_OUTPUT_MODES,
   type ScheduledQueryRow,
 } from "../services/scheduledQueries/types";
-import { validateReadOnlySelect, toParseableSql } from "../services/scheduledQueries/validation";
+import { validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { fireTimesBetween, isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import {
@@ -47,7 +47,7 @@ import {
   type ClusterInspection,
 } from "../services/scheduledQueries/cluster";
 import { plainSession, type ChSession } from "../services/scheduledQueries/session";
-import { buildExecutableQuery, toDateTime64Param } from "../services/scheduledQueries/validation";
+import { buildExecutableQuery, executableForAccessCheck, toDateTime64Param } from "../services/scheduledQueries/validation";
 import { buildLineage, clampWindowDays } from "../services/observe/jobLineage";
 import { listPromisesByUpstreamJobId } from "../services/dataHealth/store";
 
@@ -141,15 +141,8 @@ async function dataAccessCheck(c: Context, query: string, connectionId: string):
     return { allowed: false, reason: "RBAC authentication is required." };
   }
   const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
-  const conn = await getConnectionById(connectionId);
-  const result = await validateQueryAccess(
-    userId(c),
-    isAdmin,
-    permissions,
-    toParseableSql(query),
-    conn?.database ?? undefined,
-    connectionId,
-  );
+  const { sql, params } = executableForAccessCheck(query);
+  const result = await validateQueryAccess({ userId: userId(c), isAdmin, permissions, sql, params, connectionId });
   return { allowed: result.allowed, reason: result.reason };
 }
 

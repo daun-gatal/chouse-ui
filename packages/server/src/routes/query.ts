@@ -2,7 +2,7 @@ import { Hono, Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { AppError } from "../types";
-import { validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
 import { ClickHouseService } from "../services/clickhouse";
 import {
   connectionContextMiddleware,
@@ -213,29 +213,23 @@ async function executeQueryWithValidation(
   const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
   const defaultDatabase = session?.connectionConfig?.database;
 
-  // Validate access before execution
-  const accessCheck = await validateQueryAccess(
-    rbacUserId,
-    isRbacAdmin,
-    rbacPermissions,
+  // Validate access before execution (ADR 0030: ClickHouse parses exactly this text).
+  const accessCheck = await validateQueryAccess({
+    userId: rbacUserId,
+    isAdmin: isRbacAdmin,
+    permissions: rbacPermissions,
     sql,
-    defaultDatabase,
-    connectionId
-  );
+    connectionId,
+  });
 
   if (!accessCheck.allowed) {
-    const statementCount = sql.split(';').filter(s => s.trim().length > 0).length;
     return c.json({
       success: false,
       error: {
-        code: "FORBIDDEN",
+        code: accessCheck.code ?? "FORBIDDEN",
         message: accessCheck.reason || "Access denied to one or more tables in query",
-        ...(accessCheck.statementIndex !== undefined && {
-          statementIndex: accessCheck.statementIndex,
-          hint: statementCount > 1 ? "Multi-statement queries require all statements to pass validation" : undefined
-        })
       },
-    }, 403);
+    }, accessCheck.status ?? 403);
   }
 
   // ADR 0016 §11: schema changes that break dependents need schema:override + confirmation.
@@ -364,23 +358,22 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
   const defaultDatabase = session?.connectionConfig?.database;
 
   // RBAC access check — same as /execute
-  const accessCheck = await validateQueryAccess(
-    rbacUserId,
-    isRbacAdmin,
-    rbacPermissions,
+  const accessCheck = await validateQueryAccess({
+    userId: rbacUserId,
+    isAdmin: isRbacAdmin,
+    permissions: rbacPermissions,
     sql,
-    defaultDatabase,
-    connectionId
-  );
+    connectionId,
+  });
 
   if (!accessCheck.allowed) {
     return c.json({
       success: false,
       error: {
-        code: "FORBIDDEN",
+        code: accessCheck.code ?? "FORBIDDEN",
         message: accessCheck.reason || "Access denied to one or more tables in query",
       },
-    }, 403);
+    }, accessCheck.status ?? 403);
   }
 
   const preflight = await enforceSchemaPreflight(c, connectionId, sql, defaultDatabase);
@@ -461,19 +454,17 @@ query.post("/explain", zValidator("json", ExplainRequestSchema), async (c) => {
     throw AppError.badRequest('Explain plan is only available for SELECT or WITH queries.');
   }
 
-  // Validate access for the underlying query
-  // We check if the user has permission to execute the query they want to explain
-  const accessCheck = await validateQueryAccess(
-    rbacUserId,
-    isRbacAdmin,
-    rbacPermissions,
+  // Validate access for the underlying query on the connection it runs on.
+  const accessCheck = await validateQueryAccess({
+    userId: rbacUserId,
+    isAdmin: isRbacAdmin,
+    permissions: rbacPermissions,
     sql,
-    c.get("session")?.connectionConfig?.database,
-    c.get("rbacConnectionId")
-  );
+    connectionId: c.get("session")?.rbacConnectionId || c.get("rbacConnectionId"),
+  });
 
   if (!accessCheck.allowed) {
-    throw AppError.forbidden(accessCheck.reason || "Access denied to one or more tables in query");
+    throw accessDeniedError(accessCheck);
   }
 
   const service = c.get("service");

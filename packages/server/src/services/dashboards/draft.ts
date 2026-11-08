@@ -104,7 +104,7 @@ async function reviewPanel(raw: DashboardDraftOutput["panels"][number], variable
 
   const compiled = compileSql(panel.sql, variables, defaultValues(variables), resolveWindow({ kind: "relative", value: "1h" }, Date.now()));
   if (!compiled.ok) return { ...base, status: "blocked", panel, reasons: [compiled.error], lint: [] };
-  const access = await validateQueryAccess(ctx.userId, ctx.isAdmin, ctx.permissions, compiled.compiled.validationSql, ctx.defaultDatabase, request.connectionId);
+  const access = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: compiled.compiled.sql, params: compiled.compiled.params, connectionId: request.connectionId });
   if (!access.allowed) return { ...base, status: "blocked", panel, reasons: [access.reason ?? "You do not have access to a table this panel reads"], lint: [] };
 
   let fit: DraftPanel["lint"];

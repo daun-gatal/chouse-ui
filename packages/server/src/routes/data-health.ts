@@ -2,10 +2,10 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
-import { validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
-import { getConnectionById, getUserConnections } from "../rbac/services/connections";
+import { getUserConnections } from "../rbac/services/connections";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { compileDataHealthQuery, DataHealthCompileError, eventTimeTypeFromSchema, isDateOnlyEventTimeType } from "../services/dataHealth/compiler";
 import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
@@ -16,7 +16,7 @@ import { fireTimesBetween, isValidTimeZone, nextFireTimes, validateCron } from "
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { DATA_HEALTH_FREQUENCIES, type ScheduledQueryRow, type SqFrequency } from "../services/scheduledQueries/types";
-import { buildExecutableQuery, toDateTime64Param, toParseableSql, validateReadOnlySelect } from "../services/scheduledQueries/validation";
+import { buildExecutableQuery, executableForAccessCheck, toDateTime64Param, validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
 import { plainSession } from "../services/scheduledQueries/session";
@@ -50,17 +50,10 @@ async function assertConnectionAccess(c: Context, connectionId: string): Promise
 
 async function assertQueryAccess(c: Context, query: string, connectionId: string): Promise<void> {
   const user = currentUser(c);
-  const connection = await getConnectionById(connectionId);
   const isAdmin = user.roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || user.roles.includes(SYSTEM_ROLES.ADMIN);
-  const result = await validateQueryAccess(
-    user.sub,
-    isAdmin,
-    user.permissions,
-    toParseableSql(query),
-    connection?.database ?? undefined,
-    connectionId,
-  );
-  if (!result.allowed) throw AppError.forbidden(result.reason ?? "Access denied to the monitored dataset");
+  const { sql, params } = executableForAccessCheck(query);
+  const result = await validateQueryAccess({ userId: user.sub, isAdmin, permissions: user.permissions, sql, params, connectionId });
+  if (!result.allowed) throw accessDeniedError(result, "Access denied to the monitored dataset");
 }
 
 const promiseBodySchema = z.object({

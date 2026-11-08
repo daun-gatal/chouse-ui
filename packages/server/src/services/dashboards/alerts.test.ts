@@ -5,11 +5,13 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { sql } from "drizzle-orm";
+import { fakeExec } from "../../middleware/sqlAccess/fixtures/fakeParser";
 
 let rows: Array<Record<string, unknown>> = [{ v: 10 }];
 let queries = 0;
 mock.module("../scheduledQueries/chClient", () => ({
   clientForConnection: async () => ({
+    exec: fakeExec,
     query: async () => {
       queries += 1;
       return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => ({ meta: [{ name: "t", type: "DateTime" }, { name: "v", type: "UInt64" }], data: rows.map((r) => ({ t: "2026-10-17 00:00:00", ...r })), statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 } }) };

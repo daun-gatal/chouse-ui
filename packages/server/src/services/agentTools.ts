@@ -482,21 +482,15 @@ export function createCoreTools(ctx: AgentToolContext) {
                         };
                     }
 
-                    const accessCheck = await validateQueryAccess(
-                        ctx.userId,
-                        ctx.isAdmin,
-                        ctx.permissions,
-                        cleanedSql,
-                        ctx.defaultDatabase,
-                        ctx.connectionId
-                    );
-                    if (!accessCheck.allowed) {
-                        return { error: accessCheck.reason || "Access denied" };
-                    }
-
                     let limitedSql = cleanedSql;
                     if (!normalized.includes("LIMIT")) {
                         limitedSql = `${cleanedSql} LIMIT 100`;
+                    }
+
+                    // Check the text that runs, LIMIT included (ADR 0030).
+                    const accessCheck = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: limitedSql, connectionId: ctx.connectionId });
+                    if (!accessCheck.allowed) {
+                        return { error: accessCheck.reason || "Access denied" };
                     }
 
           const result = await ctx.clickhouseService.executeQuery(
@@ -535,20 +529,14 @@ export function createCoreTools(ctx: AgentToolContext) {
         sql: string;
       }): Promise<Record<string, unknown>> => {
         try {
-          const accessCheck = await validateQueryAccess(
-            ctx.userId,
-            ctx.isAdmin,
-            ctx.permissions,
-            sql,
-            ctx.defaultDatabase,
-            ctx.connectionId
-          );
+          const explainSql = `EXPLAIN ${sql}`;
+          const accessCheck = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: explainSql, connectionId: ctx.connectionId });
           if (!accessCheck.allowed) {
             return { error: accessCheck.reason || "Access denied" };
           }
 
           const result = await ctx.clickhouseService.executeQuery(
-            `EXPLAIN ${sql}`,
+            explainSql,
             "JSON"
           );
           return { plan: result.data };
@@ -824,22 +812,13 @@ export function createCoreTools(ctx: AgentToolContext) {
         ) {
           return { error: "Only SELECT and WITH queries are allowed." };
         }
-        const accessCheck = await validateQueryAccess(
-          ctx.userId,
-          ctx.isAdmin,
-          ctx.permissions,
-          cleanedSql,
-          ctx.defaultDatabase,
-          ctx.connectionId
-        );
+        const limitedSql = /\bLIMIT\b/i.test(cleanedSql) ? cleanedSql : `${cleanedSql} LIMIT 1000`;
+        // Check the text that runs, LIMIT included (ADR 0030).
+        const accessCheck = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: limitedSql, connectionId: ctx.connectionId });
         if (!accessCheck.allowed) {
           return { error: accessCheck.reason || "Access denied" };
         }
         try {
-          let limitedSql = cleanedSql;
-          if (!/\bLIMIT\b/i.test(cleanedSql)) {
-            limitedSql = `${cleanedSql} LIMIT 1000`;
-          }
           const result = await ctx.clickhouseService.executeQuery(
             limitedSql,
             "JSON"
@@ -1040,25 +1019,20 @@ export function createChartTool(ctx: AgentToolContext) {
           };
         }
 
-        const accessCheck = await validateQueryAccess(
-          ctx.userId,
-          ctx.isAdmin,
-          ctx.permissions,
-          cleanedSql,
-          ctx.defaultDatabase,
-          ctx.connectionId
-        );
+        let chartSql = cleanedSql;
+        if (!normalized.includes("LIMIT")) {
+          const limit =
+            chartType === "pie" || chartType === "donut" ? 20 : 500;
+          chartSql = `${cleanedSql} LIMIT ${limit}`;
+        }
+
+        // Check the text that runs, LIMIT included (ADR 0030).
+        const accessCheck = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: chartSql, connectionId: ctx.connectionId });
         if (!accessCheck.allowed) {
           return { error: accessCheck.reason || "Access denied" };
         }
 
         try {
-          let chartSql = cleanedSql;
-          if (!normalized.includes("LIMIT")) {
-            const limit =
-              chartType === "pie" || chartType === "donut" ? 20 : 500;
-            chartSql = `${cleanedSql} LIMIT ${limit}`;
-          }
 
           const result = await ctx.clickhouseService.executeQuery(
             chartSql,

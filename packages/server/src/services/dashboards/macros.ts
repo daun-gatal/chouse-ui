@@ -6,9 +6,10 @@
  * Compiling produces two texts from one scan:
  *   - `sql` + `params`, which ClickHouse runs;
  *   - `validationSql`, with literals in place of the parameters and the chosen
- *     identifier values inlined, which the read-only and data-access validators
+ *     identifier values inlined, which the read-only check and agent governance
  *     read (they cannot read `{name:Type}`). Identifier values are checked
  *     against IDENTIFIER_RE first, so inlining them cannot change the statement.
+ *     The data access check (ADR 0030) reads `sql` + `params`, exactly what runs.
  *
  * A multi-value variable (ADR 0023 §7) compiles to an `Array(String)`
  * parameter, used as `col IN {{var.NAME}}` or `has({{var.NAME}}, col)`.

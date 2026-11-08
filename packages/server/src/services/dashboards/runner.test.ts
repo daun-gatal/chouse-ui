@@ -7,12 +7,14 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 import type { AgentContext, GovernanceResult } from "../agents/governance";
+import { fakeExec } from "../../middleware/sqlAccess/fixtures/fakeParser";
 
 const sent: string[] = [];
 const signals: unknown[] = [];
 let failNext = false;
 mock.module("../scheduledQueries/chClient", () => ({
   clientForConnection: async () => ({
+    exec: fakeExec,
     query: async (args: { query: string; abort_signal?: unknown }) => {
       sent.push(args.query);
       signals.push(args.abort_signal);
