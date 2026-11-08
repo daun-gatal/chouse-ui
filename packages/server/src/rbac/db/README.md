@@ -15,6 +15,7 @@ in [`../schema/`](../schema/README.md).
   - `[index.ts:initializeDatabase]`, `[index.ts:getDatabase]`, `[index.ts:getDatabaseType]`, `[index.ts:getPostgresClient]`, `[index.ts:isSqlite]`, `[index.ts:isPostgres]`, `[index.ts:getSchema]`, `[index.ts:closeDatabase]`, `[index.ts:checkDatabaseHealth]` (`{ healthy, type, error? }`); re-exports drizzle `sql` and everything from `migrations.ts`; types `DatabaseType`, `DatabaseConfig`, `SqliteDb`, `PostgresDb`, `RbacDb`.
 - `raw.ts`: `[raw.ts:rawAll]`, `[raw.ts:rawRun]`, `[raw.ts:toNumber]` - one call/result shape over both drivers.
 - `configGeneration.ts`: `[configGeneration.ts:readConfigGeneration]`, `[configGeneration.ts:bumpConfigGeneration]` (table `rbac_config_generation`, row `id = 1`).
+- `reset.ts`: `[reset.ts:RBAC_TABLES]` (every table a fresh install creates), `[reset.ts:LEGACY_RBAC_TABLES]`, `[reset.ts:dropRbacTables]` (used by `rbac:reset`; drops only those tables, `CASCADE` on PostgreSQL, foreign keys off during the drop on SQLite).
 - `migrations.ts`
   - `[migrations.ts:Migration]` (`version`, `name`, `description`, `up`, optional `down`), `MigrationStatus`, `MigrationResult`.
   - `[migrations.ts:MIGRATIONS]` - ordered chain; `[migrations.ts:APP_VERSION]` (`'1.75.0'`, the RBAC schema version, not the app release).

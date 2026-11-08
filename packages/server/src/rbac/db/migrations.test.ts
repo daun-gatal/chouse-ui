@@ -17,6 +17,7 @@ import { randomUUID } from "crypto";
 import { closeDatabase, getDatabaseType } from "./index";
 import { runMigrations, MIGRATIONS, APP_VERSION } from "./migrations";
 import * as h from "./migrationTestHarness";
+import { RBAC_TABLES, dropRbacTables } from "./reset";
 import { OBSERVE_TABLE_NAMES } from "./observeSchema";
 import { AI_REGISTRY_TABLE_NAMES } from "./aiRegistrySchema";
 import { AI_USAGE_INDEX_NAMES, AI_USAGE_TABLE_NAMES } from "./aiUsageSchema";
@@ -622,6 +623,14 @@ async function userRoleIds(userId: string): Promise<string[]> {
   return rows.map((r) => String(r.role_id));
 }
 
+/** Every table in the current database, sorted. */
+async function listTables(): Promise<string[]> {
+  const rows = getDatabaseType() === "sqlite"
+    ? await h.rawAll(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+    : await h.rawAll(sql`SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`);
+  return rows.map((r) => String(r.name)).sort();
+}
+
 // ---------------------------------------------------------------------------
 // Per-dialect suites.
 // ---------------------------------------------------------------------------
@@ -657,6 +666,33 @@ for (const dialect of DIALECTS) {
         await VERSION_CHECKS[m.version]();
       });
     }
+
+    // rbac:reset drops RBAC_TABLES; a table missing from it would survive a reset.
+    it("creates exactly the tables rbac:reset knows about", async () => {
+      expect(await listTables()).toEqual([...RBAC_TABLES].sort());
+    });
+  });
+
+  describe(`rbac:reset [${dialect}]`, () => {
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true });
+      // Not ours: a reset must leave it alone.
+      await h.rawRun(sql`CREATE TABLE other_app_table (id INTEGER)`);
+    }, 60_000);
+
+    it("drops every CHouse UI table and nothing else", async () => {
+      const { failed } = await dropRbacTables();
+      expect(failed).toEqual([]);
+      expect(await listTables()).toEqual(["other_app_table"]);
+    }, 120_000);
+
+    it("leaves a database a fresh install can migrate again", async () => {
+      await runMigrations({ skipSeed: true });
+      for (const m of MIGRATIONS) {
+        await VERSION_CHECKS[m.version]();
+      }
+    }, 120_000);
   });
 
   describe(`migrations · stepwise upgrade [${dialect}]`, () => {

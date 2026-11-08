@@ -29,7 +29,7 @@ maintenance CLI.
 - Password login is on unless `AUTH_PASSWORD_LOGIN_ENABLED` is `false` (compared case-insensitively), and it can only actually turn off when at least one usable SSO provider exists, so admins are never locked out `[authConfig.ts:resolvePasswordLoginEnabled]`.
 - The effective password-login state is cached for the hot path and must be refreshed after SSO config changes `[authConfig.ts:refreshPasswordLoginState]`.
 - `initializeRbac` must succeed before routes serve; a migration or first-run seed failure is logged and rethrown, while a seed triggered by `needsSeeding()` propagates without its own log `[index.ts:initializeRbac]`.
-- `cli.ts reset` refuses to run unless `CONFIRM_RESET=yes`, then drops only a hard-coded list of 8 legacy tables (`_rbac_migrations`, `rbac_audit_logs`, `rbac_refresh_tokens` (no longer in the schema), `rbac_user_roles`, `rbac_role_permissions`, `rbac_permissions`, `rbac_roles`, `rbac_users`); connections, API keys, sessions, SSO/AI and feature tables are left in place, so the reset is partial `[cli.ts:resetDatabase]`.
+- `cli.ts reset` refuses to run unless `CONFIRM_RESET=yes`, then drops every table in `db/reset.ts` `RBAC_TABLES` plus `LEGACY_RBAC_TABLES` and nothing else (a PostgreSQL RBAC database may be shared); the migration tests fail if a fresh install creates a table missing from `RBAC_TABLES` `[cli.ts:resetDatabase]`, `[db/reset.ts:dropRbacTables]`.
 - Cross-cutting rules from the children: Argon2id passwords, `jose` HS256 JWTs, AES-256-GCM secrets (`services/`); token-first then DB-rechecked permission gates (`middleware/`); idempotent dual-dialect migrations with `VERSION_CHECKS` (`db/`).
 
 ## Side Effects
