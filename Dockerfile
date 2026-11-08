@@ -37,11 +37,12 @@ FROM oven/bun:1-alpine@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270
 # install CA certificates for HTTPS connections.
 # The HEALTHCHECK uses busybox's built-in wget, so GNU wget is deliberately not
 # installed — it ships unfixed CVEs and adds nothing busybox doesn't cover.
-# libcrypto3/libssl3 and musl carry an explicit floor so a base (or a cached
-# `apk upgrade` layer) that predates a security fix fails the build instead of
-# silently shipping known CVEs. musl 1.2.5-r13 fixes CVE-2026-107891.
+# libcrypto3/libssl3, musl and zlib carry an explicit floor so a base (or a
+# cached `apk upgrade` layer) that predates a security fix fails the build
+# instead of silently shipping known CVEs. musl 1.2.5-r13 fixes CVE-2026-107891;
+# zlib 1.4-r0 fixes CVE-2026-4738.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache ca-certificates 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' 'musl>=1.2.5-r13' 'musl-utils>=1.2.5-r13' && \
+    apk add --no-cache ca-certificates 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' 'musl>=1.2.5-r13' 'musl-utils>=1.2.5-r13' 'zlib>=1.4-r0' && \
     update-ca-certificates
 
 # Re-declare build arguments for labels
