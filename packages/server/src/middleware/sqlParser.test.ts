@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from "bun:test";
-import { splitSqlStatements, parseStatement, getAccessTypeFromStatementType } from "./sqlParser";
+import { splitSqlStatements, parseStatement } from "./sqlParser";
 
 describe("SQL Parser", () => {
     describe("splitSqlStatements", () => {
@@ -107,16 +107,4 @@ describe("SQL Parser", () => {
         });
     });
 
-    describe("getAccessTypeFromStatementType", () => {
-        it("should map SELECT to read", () => {
-            expect(getAccessTypeFromStatementType("select")).toBe("read");
-        });
-        it("should map INSERT/UPDATE/DELETE to write", () => {
-            expect(getAccessTypeFromStatementType("insert")).toBe("write");
-            expect(getAccessTypeFromStatementType("update")).toBe("write");
-        });
-        it("should map DROP/ALTER to admin", () => {
-            expect(getAccessTypeFromStatementType("drop")).toBe("admin");
-        });
-    });
 });

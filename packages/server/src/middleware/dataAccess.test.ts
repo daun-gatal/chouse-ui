@@ -6,8 +6,10 @@ import {
     filterDatabases,
     filterTables,
     validateQueryAccess,
-    extractTablesFromQuery
+    accessDeniedStatus,
 } from "./dataAccess";
+import { CASES } from "./sqlAccess/fixtures/cases";
+import { fixtureParser, linesParser } from "./sqlAccess/fixtures/fakeParser";
 
 // Mock dependencies
 const mockRbacService = {
@@ -83,295 +85,114 @@ describe("Data Access Middleware", () => {
             expect(result).toContain("app");
         });
     });
+});
 
-    describe("validateQueryAccess", () => {
-        it("should allow admin to run anything", async () => {
-            const result = await validateQueryAccess(userId, true, [], "DROP DATABASE foo");
-            expect(result.allowed).toBe(true);
-        });
+// ADR 0030: the access decision on real ClickHouse printouts. `secret` is the
+// database the user's rules deny; everything else is allowed.
+describe("validateQueryAccess", () => {
+    const userId = "user-123";
+    const ALL = [
+        "table:select", "table:insert", "table:update", "table:delete", "table:create", "table:alter",
+        "table:drop", "table:view", "database:create", "database:drop", "query:execute:misc",
+    ];
 
-        it("should deny if no permissions", async () => {
-            const sql = "SELECT * FROM users";
-            // User has no permissions
-            const result = await validateQueryAccess(userId, false, [], sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("table:select");
-        });
-
-        it("should deny if data access rules fail", async () => {
-            const sql = "SELECT * FROM db.secrets";
-            // User has permission but data access denies
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: false });
-
-            const result = await validateQueryAccess(userId, false, ["table:select"], sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("Access denied");
-        });
-
-        it("should allow if valid", async () => {
-            const sql = "SELECT * FROM db.users";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const result = await validateQueryAccess(userId, false, ["table:select"], sql);
-
-            expect(result.allowed).toBe(true);
-        });
-
-        it("should block multi-statement attacks", async () => {
-            // SELECT allowed, DROP denied
-            const sql = "SELECT * FROM users; DROP TABLE users";
-
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            // User has read permissions but not admin/drop
-            const permissions = ["table:select"];
-
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("table:drop");
-        });
-
-        it("should allow mixed valid statements", async () => {
-            // SELECT (read) + SHOW (misc)
-            const sql = "SELECT * FROM users; SHOW TABLES";
-
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            // User has both read and misc permissions
-            const permissions = ["table:select", "query:execute:misc", "read", "misc"];
-            // Each statement type requires its specific permission: SELECT → table:select, SHOW → table:view, INSERT → table:insert
-            const result = await validateQueryAccess(userId, false, ["table:select", "table:view", "table:insert"], sql);
-
-            expect(result.allowed).toBe(true);
-        });
-
-        it("should check table access for ALL tables in multi-statement query", async () => {
-            const sql = "SELECT * FROM allowed_table; SELECT * FROM denied_table";
-
-            // Setup mock to allow first table, deny second
-            mockRbacService.checkUserAccess.mockImplementation(async (userId, db, table) => {
-                if (table === 'allowed_table') return { allowed: true };
-                if (table === 'denied_table') return { allowed: false, reason: 'Denied table' };
-                return { allowed: true };
-            });
-
-            const result = await validateQueryAccess(userId, false, ["table:select"], sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("Access denied to");
-            expect(result.reason).toContain("denied_table");
-        });
-
-        it("should validate permissions for MIXED types (DQL, MISC, DML, DDL)", async () => {
-            const sql = "SELECT 1; SHOW TABLES; INSERT INTO t VALUES(1); CREATE TABLE t2 (a Int)";
-
-            // Reset mock to allow everything for this test (we are testing permissions here)
-            // Need to ensure checkUserAccess returns allowed: true
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            // Case 1: All permissions for SELECT, SHOW, INSERT, CREATE TABLE -> Allowed
-            const allPerms = ["table:select", "table:view", "table:insert", "table:create"];
-            const resultAllowed = await validateQueryAccess(userId, false, allPerms, sql);
-            expect(resultAllowed.allowed).toBe(true);
-
-            // Case 2: Missing DDL (table:create) -> Denied on CREATE TABLE
-            const missingDdl = ["table:select", "table:view", "table:insert"];
-            const resultDenied = await validateQueryAccess(userId, false, missingDdl, sql);
-            expect(resultDenied.allowed).toBe(false);
-            expect(resultDenied.reason).toContain("table:create");
-        });
-
-        it("should deny DROP DATABASE when user has only table:create (operation-specific DDL)", async () => {
-            const sql = "DROP DATABASE foo";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const permissions = ["database:view", "table:create"];
-
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("database:drop");
-        });
-
-        it("should allow DROP DATABASE when user has database:drop", async () => {
-            const sql = "DROP DATABASE foo";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const permissions = ["database:drop"];
-
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-
-            expect(result.allowed).toBe(true);
-        });
-
-        it("should deny DROP TABLE when user has only database:drop", async () => {
-            const sql = "DROP TABLE mydb.mytable";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const permissions = ["database:drop", "database:view"];
-
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("table:drop");
-        });
-
-        it("should deny SELECT when user has only table:view (execute routes to table:select)", async () => {
-            const sql = "SELECT * FROM db.t1";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const result = await validateQueryAccess(userId, false, ["table:view"], sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("table:select");
-        });
-
-        it("should deny INSERT when user has only table:delete (execute routes to table:insert)", async () => {
-            const sql = "INSERT INTO db.t1 VALUES (1)";
-            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-            const result = await validateQueryAccess(userId, false, ["table:delete"], sql);
-
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("table:insert");
-        });
-
-        describe("Detailed Failure Scenarios", () => {
-            it("should allow TRUNCATE when user has table:delete", async () => {
-                const sql = "TRUNCATE TABLE logs";
-                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-                const permissions = ["table:delete"];
-
-                const result = await validateQueryAccess(userId, false, permissions, sql);
-
-                expect(result.allowed).toBe(true);
-            });
-
-            it("should fail when using TRUNCATE without table:delete", async () => {
-                const sql = "TRUNCATE TABLE logs";
-                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-                const permissions = ["table:insert", "table:update"];
-
-                const result = await validateQueryAccess(userId, false, permissions, sql);
-
-                expect(result.allowed).toBe(false);
-                expect(result.reason).toContain("table:delete");
-            });
-
-            it("should fail validation for specific statement in a long batch", async () => {
-                // 3 valid statements (SELECT, SELECT, SHOW), 4th is invalid (DROP TABLE - needs table:drop)
-                const sql = "SELECT 1; SELECT 2; SHOW TABLES; DROP TABLE x; SELECT 3";
-                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
-
-                const permissions = ["table:select", "table:view"]; // no table:drop
-
-                const result = await validateQueryAccess(userId, false, permissions, sql);
-
-                expect(result.allowed).toBe(false);
-                expect(result.statementIndex).toBe(3); // 0-indexed, 4th statement is index 3
-                expect(result.reason).toContain("Statement 4");
-            });
-
-            it("should fail if database access is explicitly denied even if table pattern matches", async () => {
-                const sql = "SELECT * FROM restricted_db.public_table";
-
-                // Mock: Table matches, but implicit check logic in service might flag DB
-                // In our integration, checkUserAccess handles this. 
-                // We simulate checkUserAccess returning false.
-                mockRbacService.checkUserAccess.mockResolvedValue({
-                    allowed: false,
-                    reason: "Database access denied"
-                });
-
-                const permissions = ["table:select", "read"];
-
-                const result = await validateQueryAccess(userId, false, permissions, sql);
-
-                expect(result.allowed).toBe(false);
-                expect(result.reason).toContain("Access denied to restricted_db.public_table");
-            });
-        });
+    beforeEach(() => {
+        mockRbacService.checkUserAccess.mockReset();
+        mockRbacService.checkUserAccess.mockImplementation(async (_user: string, database: string) => ({ allowed: database !== "secret" }));
     });
 
-    describe("validateQueryAccess — tables hidden from the top-level FROM", () => {
-        // Only `public` is readable; every query below reads `secret.t` somewhere.
-        const allowPublicOnly = (_user: string, db: string) =>
-            Promise.resolve({ allowed: db === "public" });
-        const permissions = ["table:select", "table:insert", "table:delete", "table:create", "query:execute:ddl"];
-
-        beforeEach(() => {
-            mockRbacService.checkUserAccess.mockImplementation(allowPublicOnly);
+    async function check(sql: string, opts: { permissions?: string[]; params?: Record<string, string>; parser?: ReturnType<typeof fixtureParser> } = {}) {
+        return validateQueryAccess({
+            userId,
+            isAdmin: false,
+            permissions: opts.permissions ?? ALL,
+            sql,
+            params: opts.params,
+            connectionId: "conn-1",
+            parser: opts.parser ?? fixtureParser("26.5"),
         });
+    }
 
-        it.each([
-            ["scalar subquery", "SELECT (SELECT any(v) FROM secret.t) AS leaked"],
-            ["IN subquery", "SELECT v FROM public.t WHERE id IN (SELECT id FROM secret.t)"],
-            ["EXISTS subquery", "SELECT v FROM public.t WHERE EXISTS (SELECT 1 FROM secret.t)"],
-            ["UNION arm", "SELECT v FROM public.t UNION ALL SELECT v FROM secret.t"],
-            ["same table name in another database", "SELECT b.v FROM public.t AS a, secret.t AS b"],
-            ["qualified name shadowed by a CTE", "WITH t AS (SELECT 1) SELECT * FROM secret.t"],
-            ["qualified name shadowed by a CTE (fallback parser)", "WITH t AS (SELECT 1) SELECT * FROM secret.t FINAL"],
-            ["INSERT … SELECT source", "INSERT INTO public.t SELECT id, v FROM secret.t"],
-            ["CREATE … AS SELECT source", "CREATE TABLE public.c ENGINE = Memory AS SELECT * FROM secret.t"],
-            ["DELETE subquery", "DELETE FROM public.t WHERE id IN (SELECT id FROM secret.t)"],
-            ["dictionary lookup", "SELECT dictGet('secret.d', 'v', toUInt64(1))"],
-            ["Join-engine lookup", "SELECT joinGet('secret.j', 'v', 1)"],
-        ])("denies a %s", async (_label, sql) => {
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("secret.");
-        });
-
-        it.each([
-            "SELECT * FROM remote('localhost', 'secret', 't')",
-            "SELECT * FROM cluster('default', secret.t)",
-            "SELECT * FROM merge('secret', '.*')",
-            "SELECT * FROM url('http://169.254.169.254/latest/meta-data', 'TSV')",
-            "SELECT * FROM file('/etc/passwd', 'LineAsString')",
-            "SELECT * FROM public.t JOIN s3('https://bucket/x.csv') AS s ON 1",
-        ])("denies a data-reaching table function: %s", async (sql) => {
-            const result = await validateQueryAccess(userId, false, permissions, sql);
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("Table function");
-        });
-
-        it("allows inline-data table functions without a rule for them", async () => {
-            const result = await validateQueryAccess(userId, false, permissions, "SELECT number FROM numbers(10)");
-            expect(result.allowed).toBe(true);
-        });
-
-        it("checks a subquery source for read access only", async () => {
-            const result = await validateQueryAccess(
-                userId, false, permissions, "INSERT INTO public.t SELECT id, v FROM public.src"
-            );
-            expect(result.allowed).toBe(true);
-            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "public", "src", "read", undefined);
-            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "public", "t", "write", undefined);
-        });
-
-        it("still allows a query that only touches permitted tables", async () => {
-            const result = await validateQueryAccess(
-                userId, false, permissions,
-                "WITH x AS (SELECT v FROM public.t) SELECT * FROM x WHERE v IN (SELECT v FROM public.u)"
-            );
-            expect(result.allowed).toBe(true);
-        });
+    it("lets admins run anything without parsing", async () => {
+        const parser = fixtureParser("26.5");
+        expect(await validateQueryAccess({ userId, isAdmin: true, permissions: [], sql: "DROP DATABASE secret", connectionId: "c", parser })).toEqual({ allowed: true });
+        expect(parser.calls).toBe(0);
     });
 
-    describe("extractTablesFromQuery", () => {
-        it("should extract tables", () => {
-            const sql = "SELECT * FROM db.t1 JOIN db.t2";
-            const result = extractTablesFromQuery(sql);
+    it("refuses without an RBAC user or a connection", async () => {
+        expect(await validateQueryAccess({ userId: undefined, isAdmin: false, permissions: ALL, sql: "SELECT 1", connectionId: "c" })).toMatchObject({ allowed: false, code: "PERMISSION_DENIED" });
+        expect(await validateQueryAccess({ userId, isAdmin: false, permissions: ALL, sql: "SELECT 1", connectionId: undefined })).toMatchObject({ allowed: false, code: "CHECK_UNAVAILABLE", status: 503 });
+    });
 
-            expect(result).toHaveLength(2);
-            const tables = result.map(t => t.table);
-            expect(tables).toContain("t1");
-            expect(tables).toContain("t2");
+    for (const c of CASES) {
+        if (typeof c.expect === "string") continue;
+        const refs = [...(c.expect.targets ?? []), ...(c.expect.reads ?? []), ...(c.expect.databases ?? [])];
+        const touchesSecret = refs.some((r) => r === "secret" || r.startsWith("secret."));
+        it(`${touchesSecret ? "denies" : "allows"} ${c.sql.replace(/\n/g, "⏎").slice(0, 80)}`, async () => {
+            const result = await check(c.sql, { params: c.params });
+            if (touchesSecret) {
+                expect(result).toMatchObject({ allowed: false, code: "TABLE_DENIED", status: 403 });
+            } else {
+                expect(result).toMatchObject({ allowed: true });
+            }
         });
+    }
+
+    it("resolves unqualified names against the connection's default database, not comment text", async () => {
+        await check("SELECT * FROM t /* FROM public.t */", { parser: fixtureParser("26.5", "analytics") });
+        expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "analytics", "t", "read", "conn-1");
+        expect(mockRbacService.checkUserAccess).not.toHaveBeenCalledWith(userId, "public", "t", expect.anything(), expect.anything());
+    });
+
+    it("checks every target and read once", async () => {
+        await check("INSERT INTO public.t SELECT * FROM secret.s");
+        expect(mockRbacService.checkUserAccess.mock.calls.map((call: unknown[]) => `${call[1]}.${call[2]}`)).toEqual(["public.t", "secret.s"]);
+    });
+
+    it("checks databases as a whole for CREATE/DROP DATABASE, SHOW TABLES and USE", async () => {
+        await check("SHOW TABLES");
+        expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db", null, "misc", "conn-1");
+        expect(await check("DROP DATABASE d2")).toEqual({ allowed: true, statementType: "drop" });
+        mockRbacService.checkUserAccess.mockImplementation(async () => ({ allowed: false }));
+        expect(await check("USE public")).toMatchObject({ allowed: false, code: "TABLE_DENIED", reason: "Access denied to database public" });
+    });
+
+    describe("operation permissions", () => {
+        const cases: Array<[string, string[], boolean]> = [
+            ["SELECT 1", ["table:view"], false],
+            ["SELECT 1", ["table:select"], true],
+            ["DROP DATABASE d2", ["table:create", "table:drop"], false],
+            ["DROP DATABASE d2", ["database:drop"], true],
+            ["DROP TABLE IF EXISTS public.t SYNC", ["database:drop"], false],
+            ["DROP TABLE IF EXISTS public.t SYNC", ["table:drop"], true],
+            ["TRUNCATE TABLE IF EXISTS public.t", ["table:drop"], false],
+            ["TRUNCATE TABLE IF EXISTS public.t", ["table:delete"], true],
+            ["INSERT INTO t FORMAT CSV", ["table:delete"], false],
+            ["INSERT INTO t FORMAT CSV", ["table:insert"], true],
+            ["CREATE DATABASE d2 ENGINE = Atomic", ["table:create"], false],
+            ["CREATE DATABASE d2 ENGINE = Atomic", ["database:create"], true],
+            ["EXPLAIN ESTIMATE SELECT * FROM public.t", ["table:select"], false],
+            ["EXPLAIN ESTIMATE SELECT * FROM public.t", ["query:execute:misc"], true],
+        ];
+        for (const [sql, permissions, allowed] of cases) {
+            it(`${allowed ? "allows" : "refuses"} ${sql} with ${permissions.join(", ")}`, async () => {
+                const result = await check(sql, { permissions });
+                expect(result.allowed).toBe(allowed);
+                if (!allowed) expect(result.code).toBe("PERMISSION_DENIED");
+            });
+        }
+    });
+
+    it("maps refusals to HTTP status", async () => {
+        expect(await check("SELECT 1; SELECT 2")).toMatchObject({ allowed: false, code: "SQL_SYNTAX", status: 400 });
+        expect(await check("SELECT * FROM public.t WHERE x = {p:String}")).toMatchObject({ code: "QUERY_PARAM_UNBOUND", status: 400 });
+        expect(await check("SELECT * FROM remote('h', secret.s)")).toMatchObject({ code: "UNSAFE_TABLE_FUNCTION", status: 403 });
+        expect(await check("SELECT 1", { parser: { ...linesParser([]), explainAst: async () => ({ ok: false, code: "CHECK_UNAVAILABLE", message: "down" }) } as ReturnType<typeof fixtureParser> })).toMatchObject({ code: "CHECK_UNAVAILABLE", status: 503 });
+        expect(accessDeniedStatus("TABLE_DENIED")).toBe(403);
+    });
+
+    it("refuses when a rule lookup would see a table only ClickHouse resolves", async () => {
+        const result = await check("SELECT * FROM {t:Identifier}", { params: { t: "secret.s" } });
+        expect(result).toMatchObject({ allowed: false, code: "TABLE_DENIED", reason: "Access denied to secret.s (requires read permission)" });
     });
 });

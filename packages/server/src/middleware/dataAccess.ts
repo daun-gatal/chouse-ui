@@ -1,8 +1,10 @@
 /**
  * Data Access Middleware
- * 
- * Middleware for filtering databases/tables based on RBAC data access rules.
- * Combines ClickHouse session with RBAC user context.
+ *
+ * Filters databases/tables by RBAC data access rules, and decides whether a
+ * non-admin may run a SQL statement (ADR 0030): ClickHouse parses the exact
+ * text that will run, `sqlAccess/` walks the tree under an allow-list policy,
+ * and every table and database it touches is checked here.
  */
 
 import { Context, Next } from 'hono';
@@ -14,125 +16,15 @@ import {
   filterTablesForUser,
   type AccessType
 } from '../rbac/services/dataAccess';
+import { isMcpSubrequestFor } from '../mcp/inProcess';
 import { AppError } from '../types';
 import {
-  splitSqlStatements,
-  parseStatement,
-  getAccessTypeFromStatementType,
-  SAFE_TABLE_FUNCTIONS,
-  type ParsedStatement,
-  type TableRef,
-} from './sqlParser';
-import { PERMISSIONS } from '../rbac/schema/base';
-import { logger } from '../utils/logger';
-import { isMcpSubrequestFor } from '../mcp/inProcess';
-
-// ============================================
-// Context Extension
-// ============================================
-
-export interface DataAccessContext {
-  rbacUserId?: string;
-  rbacRoles?: string[];
-  rbacPermissions?: string[];
-  isRbacAdmin?: boolean;
-}
-
-// ============================================
-// Permission Constants (for access type mapping)
-// ============================================
-
-const READ_PERMISSIONS = ['table:select', 'query:execute', 'database:view', 'table:view'];
-const MISC_PERMISSIONS = ['query:execute:misc'];
-const WRITE_PERMISSIONS = ['table:insert', 'table:update', 'table:delete', 'query:execute:dml'];
-const ADMIN_PERMISSIONS = ['table:create', 'table:alter', 'table:drop', 'database:create', 'database:drop', 'query:execute:ddl'];
-
-/**
- * Check if user has permission for an access type based on their role permissions
- */
-function hasPermissionForAccessType(permissions: string[], accessType: AccessType): boolean {
-  switch (accessType) {
-    case 'read':
-      return permissions.some(p => READ_PERMISSIONS.includes(p));
-    case 'misc':
-      return permissions.some(p => MISC_PERMISSIONS.includes(p));
-    case 'write':
-      return permissions.some(p => WRITE_PERMISSIONS.includes(p));
-    case 'admin':
-      return permissions.some(p => ADMIN_PERMISSIONS.includes(p));
-    default:
-      return false;
-  }
-}
-
-/**
- * Get the required RBAC permission for a DDL statement (operation-specific).
- * Returns the permission name (e.g. database:drop, table:create) or null if unknown.
- * Used so that e.g. table:create does not authorize DROP DATABASE.
- */
-function getRequiredDdlPermission(
-  statement: string,
-  parsedType: ParsedStatement['type']
-): string | null {
-  const normalized = statement.trim().replace(/\s+/g, ' ');
-  const upper = normalized.toUpperCase();
-
-  if (parsedType === 'drop') {
-    if (/^\s*DROP\s+(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_DROP;
-    if (/^\s*DROP\s+(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_DROP;
-    return null;
-  }
-
-  if (parsedType === 'create') {
-    if (/^\s*CREATE\s+(OR\s+REPLACE\s+)?(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_CREATE;
-    if (/^\s*CREATE\s+(OR\s+REPLACE\s+)?(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_CREATE;
-    return null;
-  }
-
-  if (parsedType === 'alter') {
-    if (/^\s*ALTER\s+(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_CREATE;
-    if (/^\s*ALTER\s+(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_ALTER;
-    return null;
-  }
-
-  if (parsedType === 'truncate') {
-    return PERMISSIONS.TABLE_DELETE;
-  }
-
-  return null;
-}
-
-/**
- * Get the required RBAC permission for any statement (operation-specific).
- * Maps each operation to the matching table/query permission so execute always routes to the right permission.
- */
-function getRequiredStatementPermission(
-  statement: string,
-  parsedType: ParsedStatement['type']
-): string | null {
-  // DDL: create, drop, alter, truncate (database vs table handled inside)
-  const ddlPerm = getRequiredDdlPermission(statement, parsedType);
-  if (ddlPerm !== null) return ddlPerm;
-
-  // DML
-  if (parsedType === 'insert') return PERMISSIONS.TABLE_INSERT;
-  if (parsedType === 'update') return PERMISSIONS.TABLE_UPDATE;
-  if (parsedType === 'delete') return PERMISSIONS.TABLE_DELETE;
-
-  // Read (select)
-  if (parsedType === 'select') return PERMISSIONS.TABLE_SELECT;
-
-  // View (show, describe)
-  if (parsedType === 'show' || parsedType === 'describe') return PERMISSIONS.TABLE_VIEW;
-
-  // Misc (use, set, explain, exists, check, kill)
-  if (parsedType === 'use' || parsedType === 'set' || parsedType === 'explain' ||
-      parsedType === 'exists' || parsedType === 'check' || parsedType === 'kill') {
-    return PERMISSIONS.QUERY_EXECUTE_MISC;
-  }
-
-  return null;
-}
+  clickhouseParsePort,
+  parseStatementAccess,
+  type DenyCode,
+  type SqlParsePort,
+  type StatementType,
+} from './sqlAccess';
 
 // ============================================
 // Middleware
@@ -271,378 +163,104 @@ export async function filterTables(
   return filterTablesForUser(userId, database, tables, connectionId);
 }
 
-/**
- * Extract database and table from a SQL query using AST parser
- * Falls back to regex if parsing fails
- */
-export function extractTablesFromQuery(sql: string): { database?: string; table?: string }[] {
-  try {
-    const parsed = parseStatement(sql);
-    return parsed.tables;
-  } catch (error) {
-    // Fallback to empty array if parsing fails completely
-    logger.warn({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Failed to extract tables from query');
-    return [];
-  }
+// ============================================
+// Statement access (ADR 0030)
+// ============================================
+
+export interface QueryAccessInput {
+  userId: string | undefined;
+  isAdmin: boolean | undefined;
+  permissions: string[] | undefined;
+  /** The exact text that will run. */
+  sql: string;
+  /** The query parameters it runs with (`{name:Type}`). */
+  params?: Record<string, unknown>;
+  /** The connection it runs on: the parse and the rules are both per connection. */
+  connectionId: string | undefined;
+  /** Test seam; defaults to `EXPLAIN AST` on the connection. */
+  parser?: SqlParsePort;
 }
 
-/**
- * Determine access type needed for a query using AST parser
- * Falls back to pattern matching if parsing fails
- */
-export function getQueryAccessType(sql: string): AccessType {
-  try {
-    const parsed = parseStatement(sql);
-    return getAccessTypeFromStatementType(parsed.type);
-  } catch (error) {
-    // Fallback to simple pattern matching
-    const normalizedSql = sql.trim().toUpperCase();
-
-    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('WITH') || normalizedSql.startsWith('EXPLAIN')) {
-      return 'read';
-    }
-
-    if (normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE') ||
-      normalizedSql.startsWith('USE') || normalizedSql.startsWith('SET') ||
-      normalizedSql.startsWith('USE') || normalizedSql.startsWith('SET') ||
-      normalizedSql.startsWith('EXISTS') ||
-      normalizedSql.startsWith('CHECK') || normalizedSql.startsWith('KILL')) {
-      return 'misc';
-    }
-
-    if (normalizedSql.startsWith('INSERT') || normalizedSql.startsWith('UPDATE') || normalizedSql.startsWith('DELETE')) {
-      return 'write';
-    }
-
-    // DDL operations
-    if (normalizedSql.startsWith('CREATE') || normalizedSql.startsWith('DROP') ||
-      normalizedSql.startsWith('ALTER') || normalizedSql.startsWith('TRUNCATE')) {
-      return 'admin';
-    }
-
-    return 'misc'; // Default to misc for unknown types
-  }
+export interface QueryAccessResult {
+  allowed: boolean;
+  reason?: string;
+  code?: DenyCode;
+  /** HTTP status for a refusal: 400 for bad SQL, 503 when the check couldn't run, else 403. */
+  status?: 400 | 403 | 503;
+  statementType?: StatementType;
 }
 
+/** HTTP status for a refusal code. */
+export function accessDeniedStatus(code: DenyCode | undefined): 400 | 403 | 503 {
+  if (code === 'SQL_SYNTAX' || code === 'QUERY_PARAM_UNBOUND') return 400;
+  if (code === 'CHECK_UNAVAILABLE') return 503;
+  return 403;
+}
+
+/** The AppError to throw for a refusal, with its status (400 / 403 / 503). */
+export function accessDeniedError(result: QueryAccessResult, fallback = 'Access denied to one or more tables in query'): AppError {
+  const message = result.reason || fallback;
+  if (result.status === 400) return AppError.badRequest(message);
+  if (result.status === 503) return AppError.unavailable(message);
+  return AppError.forbidden(message);
+}
+
+function refuse(code: DenyCode, reason: string): QueryAccessResult {
+  return { allowed: false, code, reason, status: accessDeniedStatus(code) };
+}
+
+const ACCESS_TYPE: Record<StatementType, AccessType> = {
+  select: 'read', show: 'misc', describe: 'misc', exists: 'misc', check: 'misc', explain: 'misc',
+  use: 'misc', set: 'misc', kill: 'misc',
+  insert: 'write', update: 'write', delete: 'write',
+  create: 'admin', drop: 'admin', alter: 'admin', truncate: 'admin',
+};
+
 /**
- * Validate a single SQL statement
- * 
- * Checks:
- * 1. User has required permissions for the operation type (read/write/admin)
- * 2. User has data access rules allowing access to all referenced tables
- * 
- * @param statement - Single SQL statement to validate
- * @param statementIndex - Zero-based index of the statement (for error reporting)
- * @param userId - RBAC user ID
- * @param permissions - User's role permissions
- * @param defaultDatabase - Default database context
- * @param connectionId - Connection ID for data access rules
- * @returns Validation result with detailed error message if denied
+ * May this user run this statement? Admins always may. Everyone else needs the
+ * statement's permission and data access to every table and database it
+ * touches, as ClickHouse itself parses it. Any doubt is a refusal.
  */
-async function validateSingleStatement(
-  statement: string,
-  statementIndex: number,
-  userId: string,
-  permissions: string[],
-  defaultDatabase: string | undefined,
-  connectionId: string | undefined
-): Promise<{ allowed: boolean; reason?: string; statementIndex?: number; warnings?: string[] }> {
-  // Parse statement using AST parser for robust analysis
-  let parsed: ParsedStatement;
-  try {
-    parsed = parseStatement(statement);
-  } catch (error) {
-    // If parsing fails completely, deny access for security
-    return {
-      allowed: false,
-      reason: `Statement ${statementIndex + 1}: Failed to parse SQL statement`,
-      statementIndex,
-    };
+export async function validateQueryAccess(input: QueryAccessInput): Promise<QueryAccessResult> {
+  if (input.isAdmin) return { allowed: true };
+
+  if (!input.userId) {
+    return refuse('PERMISSION_DENIED', 'RBAC authentication is required. Please login with RBAC credentials.');
+  }
+  if (!input.sql.trim()) return refuse('SQL_SYNTAX', 'No SQL statement found');
+  if (!input.connectionId && !input.parser) {
+    return refuse('CHECK_UNAVAILABLE', 'No ClickHouse connection is selected, so the query can\'t be checked against your data access rules.');
   }
 
-  // Require the operation-specific permission for every statement type (table:select, table:insert, etc.)
-  const requiredPermission = getRequiredStatementPermission(statement, parsed.type);
-  if (requiredPermission === null) {
-    return {
-      allowed: false,
-      reason: `Statement ${statementIndex + 1}: Unsupported or unrecognized statement type`,
-      statementIndex,
-    };
-  }
-  if (!permissions.includes(requiredPermission)) {
-    return {
-      allowed: false,
-      reason: `Statement ${statementIndex + 1}: Permission '${requiredPermission}' required for this ${parsed.type} statement`,
-      statementIndex,
-    };
+  const parser = input.parser ?? clickhouseParsePort(input.connectionId as string);
+  const parsed = await parseStatementAccess(input.sql, input.params, parser);
+  if (!parsed.ok) return refuse(parsed.code, parsed.reason);
+
+  const { access, defaultDatabase } = parsed;
+  const permissions = input.permissions ?? [];
+  if (!permissions.includes(access.permission)) {
+    return { ...refuse('PERMISSION_DENIED', `Permission '${access.permission}' required for this ${access.type} statement`), statementType: access.type };
   }
 
-  // Used for data access rule checks (read/write/admin) when validating table access
-  const accessType = getAccessTypeFromStatementType(parsed.type);
-
-  // Table functions such as remote(), cluster(), merge(), url() or file() read
-  // data the per-table rules below never see, so only the inline-data ones are
-  // allowed.
-  const tableFunctions = parsed.tableFunctions ?? [];
-  const unsafeFunction = tableFunctions.find((fn) => !SAFE_TABLE_FUNCTIONS.has(fn));
-  if (unsafeFunction) {
-    return {
-      allowed: false,
-      reason: `Statement ${statementIndex + 1}: Table function '${unsafeFunction}' is not allowed by your data access rules`,
-      statementIndex,
-    };
-  }
-
-  // Deduplicate on database + table + role. Keying on the table name alone let
-  // `public.t` hide `secret.t` in the same statement.
-  const tableMap = new Map<string, TableRef>();
-  for (const table of parsed.tables) {
-    if (!table.table) continue;
-    // The fallback patterns report a table function call (`FROM numbers(10)`)
-    // as a table; it was vetted above.
-    if (!table.database && tableFunctions.includes(table.table.toLowerCase())) continue;
-    const key = `${table.database ?? ''}\u0000${table.table}\u0000${table.source ? 'r' : 'w'}`;
-    if (!tableMap.has(key)) tableMap.set(key, table);
-  }
-  const tables = Array.from(tableMap.values());
-
-  // If no tables detected, allow (might be a system query)
-  if (tables.length === 0) {
-    return { allowed: true };
-  }
-
-  // Known system tables that should be checked against 'system' database
-  // even if parsed as being in another database
-  const SYSTEM_TABLES = [
-    // Log tables
-    'query_log', 'query_thread_log', 'part_log', 'metric_log', 'trace_log',
-    'text_log', 'asynchronous_metric_log', 'session_log', 'zookeeper_log',
-    'system_log', 'crash_log', 'asynchronous_insert_log', 'backup_log',
-    'error_log',
-    // Error counters
-    'errors',
-    // Metrics tables (current metrics, not logs)
-    'metrics', 'asynchronous_metrics',
-    // System information tables
-    'processes', 'mutations', 'replicas', 'databases', 'tables', 'columns',
-    'functions', 'dictionaries', 'formats', 'table_functions', 'table_engines',
-    'settings', 'users', 'roles', 'quotas', 'row_policies', 'grants',
-    'clusters', 'macros', 'merges', 'parts', 'detached_parts', 'data_skipping_indices', 'projections',
-    'distribution_queue', 'distributed_ddl_queue', 'replication_queue',
-    'zookeeper', 'disks', 'storage_policies', 'merge_tree_settings',
-    'build_options', 'licenses', 'server_settings', 'time_zones',
-  ];
-
-  // Check each table against data access rules
-  // Note: System databases are hidden from UI but queries are still allowed if user has permissions
-  for (const { database, table, source } of tables) {
-    const tableAccessType: AccessType = source ? 'read' : accessType;
-    let db = database || defaultDatabase || 'default';
-    let tbl = table || '*';
-
-    // Fix for parser errors: If database is missing but table exists, try to extract database.table from statement
-    // This handles cases where the parser fails to extract the database name (e.g., "CH_UI.saved_queries")
-    if (!database && tbl !== '*' && db === (defaultDatabase || 'default')) {
-      // Try to extract database.table pattern from the statement
-      // Match patterns like: FROM database.table, DROP TABLE database.table, etc.
-      // Use a more comprehensive pattern that handles various SQL contexts
-      const dbTablePatterns = [
-        // DROP/CREATE/ALTER/TRUNCATE TABLE database.table (most specific first)
-        /(?:DROP|CREATE|ALTER|TRUNCATE)\s+TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
-        // FROM/JOIN/INTO/UPDATE database.table (must have table name after dot)
-        /(?:FROM|JOIN|INTO|UPDATE)\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
-        // Generic TABLE database.table
-        /TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
-        // SELECT ... FROM database.table
-        /SELECT\s+.*?\s+FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
-      ];
-
-      for (const pattern of dbTablePatterns) {
-        const dbTableMatch = statement.match(pattern);
-        if (dbTableMatch && dbTableMatch[2]) {
-          const extractedDb = dbTableMatch[1].replace(/[`"]/g, '');
-          const extractedTable = dbTableMatch[2].replace(/[`"]/g, '');
-          // Use if the extracted table matches what we have, or if we don't have a table name
-          if (extractedTable === tbl || tbl === '*') {
-            db = extractedDb;
-            tbl = extractedTable;
-            break;
-          }
-        }
-      }
-
-      // Special case: If we have a table name that looks like a database name and the statement has "database.table" pattern,
-      // it might be that the parser extracted the database as the table. Try to find the actual table name.
-      // Example: "SELECT * FROM CH_UI.saved_queries" might be parsed as table="CH_UI" when it should be db="CH_UI", table="saved_queries"
-      if (db === (defaultDatabase || 'default') && tbl !== '*') {
-        // Look for patterns like "FROM database.table" where database matches our table name
-        // This handles cases where the parser incorrectly treats "database" as the table name
-        const dbAsTablePatterns = [
-          new RegExp(`(?:FROM|JOIN|INTO|UPDATE)\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
-          new RegExp(`(?:DROP|CREATE|ALTER|TRUNCATE)\\s+TABLE\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
-        ];
-
-        for (const pattern of dbAsTablePatterns) {
-          const dbAsTableMatch = statement.match(pattern);
-          if (dbAsTableMatch && dbAsTableMatch[2]) {
-            const actualDb = dbAsTableMatch[1].replace(/[`"]/g, '');
-            const actualTable = dbAsTableMatch[2].replace(/[`"]/g, '');
-            // Only use if the database name matches what we thought was the table
-            if (actualDb === tbl && actualTable) {
-              db = actualDb;
-              tbl = actualTable;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Fix for parser errors: If table is 'system' but we're checking against 'default' database,
-    // it's likely the parser incorrectly extracted 'system' as the table name from 'system.tableName'
-    // Try to extract the correct database.table from the statement
-    if (db !== 'system' && tbl === 'system') {
-      const systemTableMatch = statement.match(/FROM\s+system\.([`"]?[\w]+[`"]?)/i);
-      if (systemTableMatch) {
-        db = 'system';
-        tbl = systemTableMatch[1].replace(/[`"]/g, '');
-      }
-    }
-
-    // If table is a known system table but database is not 'system', check against 'system' database
-    if (tbl !== '*' && SYSTEM_TABLES.includes(tbl.toLowerCase()) && db !== 'system') {
-      db = 'system';
-    }
-
-    // Additional fix: If database is 'system' but table is still 'system' or '*', extract from statement
-    if (db === 'system' && (tbl === 'system' || tbl === '*')) {
-      const fallbackMatch = statement.match(/FROM\s+system\.([`"]?[\w]+[`"]?)/i);
-      if (fallbackMatch) {
-        tbl = fallbackMatch[1].replace(/[`"]/g, '');
-      }
-    }
-
-    // System databases are hidden from Explorer UI but queries are still allowed
-    // Check user access normally (don't block system database queries)
-    const result = await checkUserAccess(userId, db, tbl, tableAccessType, connectionId);
-
+  const accessType = ACCESS_TYPE[access.type];
+  const seen = new Set<string>();
+  for (const ref of [...access.targets, ...access.reads]) {
+    const database = ref.database ?? defaultDatabase;
+    const key = `${database}\u0000${ref.table}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const result = await checkUserAccess(input.userId, database, ref.table, accessType, input.connectionId);
     if (!result.allowed) {
-      return {
-        allowed: false,
-        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${tableAccessType} permission)`,
-        statementIndex,
-      };
+      return { ...refuse('TABLE_DENIED', `Access denied to ${database}.${ref.table} (requires ${accessType} permission)`), statementType: access.type };
+    }
+  }
+  for (const name of access.databases) {
+    const database = name || defaultDatabase;
+    const result = await checkUserAccess(input.userId, database, null, accessType, input.connectionId);
+    if (!result.allowed) {
+      return { ...refuse('TABLE_DENIED', `Access denied to database ${database}`), statementType: access.type };
     }
   }
 
-  return { allowed: true, warnings: parsed.warnings };
-}
-
-/**
- * Validate query access for a user
- * 
- * SECURITY: Advanced multi-statement validation
- * - Splits SQL query into individual statements
- * - Validates EACH statement separately for:
- *   1. Operation type permissions (read/write/admin based on role)
- *   2. Data access rules (which databases/tables user can access)
- * 
- * This prevents security vulnerabilities where users with limited permissions
- * could execute dangerous operations by combining statements:
- * 
- * Example attack prevented:
- *   SELECT * FROM safe_table; DROP TABLE sensitive_data;
- * 
- * The first statement would pass (read permission), but the second would be
- * rejected (requires admin permission), preventing the entire query.
- * 
- * @param userId - RBAC user ID (required)
- * @param isAdmin - Whether user is admin (admins bypass all checks)
- * @param permissions - User's role permissions array
- * @param sql - SQL query string (may contain multiple statements separated by semicolons)
- * @param defaultDatabase - Default database context for table references
- * @param connectionId - Connection ID for connection-specific data access rules
- * @returns Validation result with detailed error message including statement index if denied
- */
-export async function validateQueryAccess(
-  userId: string | undefined,
-  isAdmin: boolean | undefined,
-  permissions: string[] | undefined,
-  sql: string,
-  defaultDatabase?: string,
-  connectionId?: string
-): Promise<{ allowed: boolean; reason?: string; statementIndex?: number; warnings?: string[] }> {
-  // Admins have full access
-  if (isAdmin) return { allowed: true };
-
-  // RBAC user is required
-  if (!userId) {
-    return {
-      allowed: false,
-      reason: 'RBAC authentication is required. Please login with RBAC credentials.',
-    };
-  }
-
-  // Split SQL into individual statements
-  const statements = splitSqlStatements(sql);
-
-  // If no valid statements found, deny
-  if (statements.length === 0) {
-    return {
-      allowed: false,
-      reason: 'No valid SQL statements found',
-    };
-  }
-
-  // Validate each statement individually
-  const allWarnings: string[] = [];
-  for (let i = 0; i < statements.length; i++) {
-    const statement = statements[i];
-    const validation = await validateSingleStatement(
-      statement,
-      i,
-      userId,
-      permissions || [],
-      defaultDatabase,
-      connectionId
-    );
-
-    if (!validation.allowed) {
-      // Provide detailed error message
-      const statementPreview = statement.substring(0, 50).replace(/\s+/g, ' ');
-      return {
-        allowed: false,
-        reason: `${validation.reason}${statements.length > 1 ? `\nStatement: ${statementPreview}...` : ''}`,
-        statementIndex: validation.statementIndex,
-      };
-    }
-
-    if (validation.warnings) {
-      allWarnings.push(...validation.warnings);
-    }
-  }
-
-  // All statements passed validation
-  return { allowed: true, warnings: allWarnings.length > 0 ? allWarnings : undefined };
-}
-
-/**
- * Extract distinct tables from EXPLAIN ESTIMATE result
- */
-export function extractTablesFromExplainEstimate(estimateData: any[]): { database: string; table: string }[] {
-  const tables = new Set<string>();
-  const result: { database: string; table: string }[] = [];
-
-  if (!Array.isArray(estimateData)) return [];
-
-  for (const row of estimateData) {
-    if (row.database && row.table) {
-      const key = `${row.database}.${row.table}`;
-      if (!tables.has(key)) {
-        tables.add(key);
-        result.push({ database: row.database, table: row.table });
-      }
-    }
-  }
-  return result;
+  return { allowed: true, statementType: access.type };
 }
