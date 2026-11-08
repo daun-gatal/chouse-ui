@@ -147,14 +147,12 @@ an ADR.
 
 ## Known issues
 
-Code behaviour that contradicts a project rule. These were found by the
-2026-11-06 contract drift review and are recorded here until fixed. Contracts
-that describe them link back to this section. When you fix one, update the
-contract and remove its entry.
+Code behaviour that contradicts a project rule, recorded here until it is fixed
+(`| # | Issue | Where | Contract |`). The contract that describes an issue links
+back to this section. When you fix one, update the contract and remove its row.
 
-| # | Issue | Where | Contract |
-|---|---|---|---|
-| 2 | A statement the SQL parser can't handle falls back to keyword and regex classification, and a statement with no detected tables is allowed. That falls short of "unknown shapes fail closed" | `packages/server/src/middleware/sqlParser.ts`, `dataAccess.ts` | [middleware](packages/server/src/middleware/README.md) |
+None open. The ten found by the 2026-11-06 contract drift review were closed by
+PR #417 and [ADR 0030](docs/adr/0030-clickhouse-parses-sql-access-checks.md).
 
 ## Verification
 

@@ -10,7 +10,7 @@ Every request passes the same checks, whichever client sent it:
 
 1. **Authenticate** — a session JWT from the web app, a [personal access token](/docs/personal-access-tokens/) checked live for the CLI, MCP and scripts, or an MCP-only token an agent got by [signing in](/docs/mcp/#sign-in-with-oauth).
 2. **Authorize** — the endpoint's required [permission](/docs/permissions/).
-3. **Parse SQL** — `node-sql-parser` splits statements and extracts every database and table referenced.
+3. **Parse SQL** — ClickHouse parses the exact statement (`EXPLAIN AST`, which reads no data), and the server lists every database and table it touches. Anything it can't fully see is refused for non-admins ([how](/docs/data-access-rules/#what-gets-checked)).
 4. **Check data access** — the user's [data access policies](/docs/data-access-rules/) for that connection.
 5. **Preflight DDL** — [schema preflight](/docs/data-incidents/#schema-change-preflight) stops changes that would break dependents.
 6. **Forward** — `@clickhouse/client` on the server, with the connection's credentials, which never reach the browser.
@@ -58,7 +58,7 @@ Models and providers are configured in [AI models](/docs/ai-models/). The AI lay
 | Path | Contents |
 | --- | --- |
 | `src/` | Web app — React 19, Vite 7, React Router 7, Zustand, TanStack Query, shadcn/ui, Tailwind 4, Monaco, AG Grid |
-| `packages/server/` | Server — Bun, Hono, Drizzle ORM (SQLite/PostgreSQL), Pino, jose (JWT), node-sql-parser, the MCP server |
+| `packages/server/` | Server — Bun, Hono, Drizzle ORM (SQLite/PostgreSQL), Pino, jose (JWT), the MCP server |
 | `cli/` | The `chouse` CLI (Go, Cobra) |
 | `charts/chouse-ui/` | The Helm chart |
 | `docs/adr/` | Architecture decision records |

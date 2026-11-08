@@ -61,19 +61,36 @@ this endpoint, parameter or SQL shape?
 
 ## 3. Data access rules and SQL
 
-Data access rules are enforced by parsing SQL (`middleware/sqlParser.ts`) and
-checking every table it finds (`middleware/dataAccess.ts` →
-`validateQueryAccess`). A table the parser misses is a table the rules never
-see.
+Data access rules are enforced by having **ClickHouse itself parse** each
+non-admin statement (`EXPLAIN AST` on the request's own connection) and checking
+every table and database the printout shows
+([ADR 0030](../docs/adr/0030-clickhouse-parses-sql-access-checks.md),
+`middleware/sqlAccess/` → `middleware/dataAccess.ts:validateQueryAccess`).
+`node-sql-parser` (`middleware/sqlParser.ts`) is a hint for read-only checks,
+never the access decision.
 
-- **Every table a statement reads or writes must be checked** — including
-  scalar subqueries, `IN`/`EXISTS` subqueries, `UNION` arms, CTE bodies,
-  `INSERT … SELECT` and `CREATE … AS SELECT` sources, joins, and
-  `dictGet`/`joinGet` lookups. When you extend the parser, walk the whole AST;
-  never read a fixed list of keys.
-- **Fail closed.** If a statement can't be parsed, its type is unknown, or the
-  splitter and parser disagree on statement boundaries, deny it.
-  "No tables found → allow" is only safe because the walk is complete.
+- **Check exactly what runs.** Pass `validateQueryAccess` the text and
+  `query_params` that will execute, after any `LIMIT`/`EXPLAIN` you add. Never
+  check a rewritten copy (literals for parameters, macros replaced) and run
+  another.
+- **Everything is an allow-list.** Root statement kinds, node names, ALTER
+  commands, table functions and engines that aren't on a list are refused
+  (`UNSUPPORTED_SHAPE`). Extend a list only with a recorded printout fixture
+  (`sqlAccess/fixtures/cases.ts`, re-recorded with `record.ts`) on every
+  supported ClickHouse version.
+- **The printout must be complete and unforgeable.** Read it with
+  `result_overflow_mode='throw'`, in an escaping format, and refuse a children
+  count that doesn't match. Refuse quoted names and `Identifier` parameters that
+  aren't plain words. Any text the printout omits (INSERT data, WINDOW bodies)
+  must not contain a `SELECT`, `IN` or table-reaching function the tree doesn't
+  account for.
+- **Fail closed, with the right code.** Bad SQL is 400, an unreachable
+  ClickHouse is 503 (never phrased as "access denied"), and anything that can't
+  be fully checked is 403.
+- **Unqualified names resolve against the connection's default database** (its
+  configured database, else ClickHouse's `currentDatabase()`), never against a
+  caller-supplied value or a guess from the text. A name is a CTE only inside the
+  query that declares it.
 - **Identity of a table is `database + table`.** Never deduplicate, cache or
   compare on the table name alone. A db-qualified name is never a CTE.
 - **Table functions and engines reach outside the rules.** `remote`, `cluster`,
@@ -90,7 +107,8 @@ see.
 - **Background work runs as its owner.** Scheduled queries, reports, alerts and
   agent runs re-check the owner's *current* permissions and data access when
   they run, so revoking a user stops their schedules.
-- Add a regression test in `dataAccess.test.ts` for every new statement shape,
+- Add every new statement shape to `sqlAccess/fixtures/cases.ts` (record its
+  printout on each supported version) and a `dataAccess.test.ts` regression,
   phrased as "a user limited to `public` cannot read `secret.t` via …".
 
 ## 4. Building SQL on the server
@@ -360,7 +378,7 @@ areas above.
       power, or to grant more than they hold?
 - [ ] Object-level checks: every id from the request is scoped to the caller
       (owner, share or connection access)
-- [ ] New SQL shapes or parser changes have `dataAccess.test.ts` regressions
+- [ ] New SQL shapes or access-check changes have recorded `sqlAccess/fixtures/cases.ts` cases and `dataAccess.test.ts` regressions
 - [ ] Server-built SQL uses the escaping/validation helpers for *every*
       interpolated value, including ids
 - [ ] New routes have `requirePermission`; new public paths say what
