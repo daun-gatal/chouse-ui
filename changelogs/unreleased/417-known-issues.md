@@ -10,3 +10,4 @@ type: patch
 - **API base URL** — sign-in, SSO, preferences and the other RBAC calls now honour `VITE_API_URL` and send cookies, like the rest of the app.
 - **Format names** — `validateFormat` accepts every listed format in any case (only `CSV`, `TSV`, `JSON` and `XML` passed before).
 - **Docs site under a sub-path** — landing-page and docs links respect `VITE_BASE_PATH`; before, the base path was never read in the browser.
+- **Image: musl security fix** — the production image requires musl 1.2.5-r13 (CVE-2026-107891), so a stale base or build cache can't ship the vulnerable version.
