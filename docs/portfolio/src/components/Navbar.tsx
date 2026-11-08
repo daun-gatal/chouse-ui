@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Menu, X, Github, ArrowUpRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { resolveHref } from "../docs-site/lib";
 
 const NAV_ITEMS = [
   { label: "Docs", href: "/docs/" },
@@ -52,7 +53,7 @@ export default function Navbar() {
   const handleScrollTo = (href: string) => {
     // Route links (e.g. /docs/…) navigate away; only anchors scroll in-page.
     if (!href.startsWith("#")) {
-      window.location.href = href;
+      window.location.href = resolveHref(href);
       setMobileOpen(false);
       return;
     }
@@ -75,7 +76,7 @@ export default function Navbar() {
       <div className="container-editorial flex h-14 items-center justify-between gap-6">
         {/* Wordmark */}
         <a
-          href="/"
+          href={resolveHref("/")}
           className="group flex items-center gap-2.5"
           aria-label="CHouse UI — home"
         >

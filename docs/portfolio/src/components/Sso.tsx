@@ -1,5 +1,6 @@
 import { KeyRound, ShieldCheck, Settings2, ArrowUpRight } from "lucide-react";
 import { Section, Container, SectionHeader, CodeBlock, Tag, SecondaryAction } from "./Section";
+import { resolveHref } from "../docs-site/lib";
 
 const SSO_REFERENCE_URL =
   "/docs/sso/";
@@ -102,7 +103,7 @@ export default function Sso() {
               <span className="break-all font-mono text-paper">&lt;base_url&gt;/auth/sso/callback</span>{" "}
               as the redirect URI at your IdP. The{" "}
               <SecondaryAction
-                href={SSO_REFERENCE_URL}
+                href={resolveHref(SSO_REFERENCE_URL)}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-auto border-0 px-0 align-baseline text-accent hover:bg-transparent"

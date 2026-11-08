@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
 
-/** Resolve the deploy base path. Vite replaces import.meta.env at client build; bun SSG falls back to process.env. */
+/**
+ * Resolve the deploy base path. Vite only replaces the literal text
+ * `import.meta.env`, so it must be written out here (reading it through an
+ * alias left it undefined in the browser, and every link fell back to "/").
+ * Vite sets BASE_URL from `base` (VITE_BASE_PATH); bun SSG falls back to process.env.
+ */
 export function getBase(): string {
-  const meta = import.meta as unknown as { env?: Record<string, string | undefined> };
-  const fromVite = meta?.env?.VITE_BASE_PATH;
+  const env = (import.meta.env ?? {}) as Record<string, string | undefined>;
+  const fromVite = env.VITE_BASE_PATH || (env.BASE_URL && env.BASE_URL !== "/" ? env.BASE_URL : undefined);
   const fromProcess = typeof process !== "undefined" ? process.env?.VITE_BASE_PATH : undefined;
   const base = fromVite || fromProcess || "/";
   return base.endsWith("/") && base !== "/" ? base.replace(/\/$/, "") : base || "/";
@@ -14,6 +19,20 @@ export function withBase(path: string): string {
   const base = getBase().replace(/\/$/, "");
   if (!path.startsWith("/")) return `${base}/${path}`;
   return base === "/" ? path : `${base}${path}`;
+}
+
+/**
+ * Resolve a link for the current deploy: root-absolute paths ("/docs/…", "/")
+ * get the base path; anchors, relative paths, full URLs and paths that already
+ * carry the base are returned unchanged.
+ */
+export function resolveHref(href: string): string;
+export function resolveHref(href: string | undefined): string | undefined;
+export function resolveHref(href: string | undefined): string | undefined {
+  if (!href || !href.startsWith("/") || href.startsWith("//")) return href;
+  const base = getBase().replace(/\/$/, "");
+  if (base && (href === base || href.startsWith(`${base}/`))) return href;
+  return withBase(href);
 }
 
 /** Site URL used for canonical/OG/sitemap. */

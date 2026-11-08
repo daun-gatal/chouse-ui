@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, Minus } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
+import { resolveHref } from "../docs-site/lib";
 
 interface FaqItem {
   question: string;
@@ -169,7 +170,7 @@ export default function FAQ() {
                                 {faq.docs.map((doc) => (
                                   <a
                                     key={doc.href}
-                                    href={doc.href}
+                                    href={resolveHref(doc.href)}
                                     className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-paper-dim transition-colors hover:text-paper"
                                   >
                                     <span aria-hidden className="text-accent">→</span>

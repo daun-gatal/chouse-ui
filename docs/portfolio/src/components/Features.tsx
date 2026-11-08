@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
 import { cn } from "@/lib/utils";
+import { resolveHref } from "../docs-site/lib";
 
 interface FeatureItem {
   icon: LucideIcon;
@@ -280,7 +281,7 @@ export default function Features() {
                   {activeGroup.items.length} {activeGroup.items.length === 1 ? "feature" : "features"}
                 </p>
                 <a
-                  href={activeGroup.docs}
+                  href={resolveHref(activeGroup.docs)}
                   className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-accent"
                 >
                   Read the docs
@@ -371,7 +372,7 @@ export default function Features() {
                         })}
                       </div>
                       <a
-                        href={group.docs}
+                        href={resolveHref(group.docs)}
                         className="mb-10 ml-16 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-accent md:ml-20"
                       >
                         Read the docs
