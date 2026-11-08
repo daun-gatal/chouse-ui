@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.17.1] - 2026-11-08
+
+### Changed
+- **Some statements are refused for non-admins when they can't be fully checked** — OPTIMIZE, RENAME, SYSTEM, GRANT, SHOW COLUMNS/PROCESSLIST, table functions and engines that reach other data, `INTO OUTFILE`, materialized views with `TO`, `CREATE TABLE … AS another_table`, quoted names containing dots or spaces, and `INSERT … VALUES` rows with subqueries or dictionary lookups. Admins are unaffected. A syntax error now returns 400 with ClickHouse's message, and an unreachable ClickHouse returns 503 instead of "access denied". Unqualified names always mean the connection's default database (write `system.parts`, not `parts`).
+
+### Fixed
+- **Image and dependency security fixes** — the production image requires zlib 1.4-r0 (CVE-2026-4738), and lodash moves to 4.18.1 (CVE-2026-2950); the lodash override pinned the vulnerable 4.18.0 exactly. With the musl floor from the previous fix, a Trivy scan of the image finds nothing at any severity.
+- **Per-user query and AI rate limits** — the `/api/query`, `/api/ai` and general API limits ran before sign-in was checked, so every caller on a server shared one bucket and one busy user could throttle everyone. They now count per user (browser sessions and the user's API/MCP tokens share one budget), or per client IP when signed out.
+- **Secure generated passwords** — the "generate" buttons in Create user, Edit user and the ClickHouse user wizard now use the browser's secure random generator instead of `Math.random()`.
+- **Explorer SQL quoting** — Create table, Query, Describe and Drop tabs quote database, table, column and cluster names, quote comments correctly, and reject a column type with extra SQL after it. A database's Query tab now opens `SHOW TABLES FROM <db>` instead of broken SQL.
+- **`rbac:reset` resets everything** — it now drops every table CHouse UI creates (it used to drop only 8 old ones), and leaves other tables in a shared PostgreSQL database alone.
+- **Clean shutdown** — stopping the server now also stops the AI approval sweeper, the auto-triage runner (handing its lease to another replica at once) and the Doctor scheduler.
+- **ClickHouse users and roles reconnect** — these pages now recover when the server reports a stale connection (`CONNECTION_CONTEXT_STALE`).
+- **API base URL** — sign-in, SSO, preferences and the other RBAC calls now honour `VITE_API_URL` and send cookies, like the rest of the app.
+- **Format names** — `validateFormat` accepts every listed format in any case (only `CSV`, `TSV`, `JSON` and `XML` passed before).
+- **Docs site under a sub-path** — landing-page and docs links respect `VITE_BASE_PATH`; before, the base path was never read in the browser.
+- **Image: musl security fix** — the production image requires musl 1.2.5-r13 (CVE-2026-107891), so a stale base or build cache can't ship the vulnerable version.
+- **Data access rules can't be bypassed through SQL ClickHouse understands but the old parser didn't** — non-admin queries are now parsed by ClickHouse itself (`EXPLAIN AST` on the same connection, no data read) and every table and database in the result is checked (ADR 0030). This closes ways a user limited to some databases could read others: `SETTINGS`/`FORMAT`/`FINAL` queries listing a second table, `x IN other_table`, `joinGet(other_table, …)`, `{t:Identifier}` parameters, subqueries inside `INSERT … VALUES`, CTE name tricks, comment text, and a `CREATE VIEW` target that was never checked. Dashboards, scheduled queries and AI tools now check exactly the SQL and parameters they run.
+
 ## [v3.17.0] - 2026-11-03
 
 ### Added
@@ -279,14 +298,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SAML login broken and replay protection ineffective across replicas** — the handoff codes, `InResponseTo` request ids, and the assertion replay cache were per-process Maps. SP-initiated login failed roughly (N-1)/N of the time, and the same assertion could be replayed successfully against a replica that had not seen it. All three now live in shared tables with atomic single-use claims.
 - **Auth config changes applied to only one pod** — disabling password login or changing SSO providers rebuilt the cache only on the replica that served the mutation, leaving every other pod serving the old answer indefinitely (there was no TTL). A shared generation counter now propagates changes within seconds.
 - **Alert storm after every rollout** — fleet breach latches were in memory, so poller-lease failover re-fired every still-breaching condition. Latches and the auto-RCA cooldown are now persisted.
-
-## [v3.11.1] - 2026-07-30
-
-### Changed
-- **Smaller runtime image** — the frontend's runtime dependencies (~735 MB) are no longer installed into the production image. They were pulled in only because the root `package.json` made Bun treat `/app` as a workspace root; the server never loads them, since the frontend is served as the pre-built static bundle in `/app/dist`.
-
-### Fixed
-- **Container image vulnerabilities** — the published image shipped Bun's global install cache (~1 GB), which held the entire dependency tree including dev-only prebuilt binaries such as esbuild 0.18.20 and 0.19.12; scanners reported those stale binaries as part of the runtime. The cache is now dropped in the same layer it is created in. The base image's Alpine packages are also patched at build time (`apk upgrade`), picking up OpenSSL 3.5.7-r0, and GNU `wget` — which carried unfixed CVEs and was installed only for the healthcheck — is replaced by busybox's built-in `wget`.
-- **Explorer sidebar clipped its own controls** — Radix's scroll area wraps its content in a shrink-to-fit `display: table` element, so a single long query in the History tab stretched the panel to the width of that query and everything past the sidebar edge was clipped: the status filter, the Clear button, and the per-row delete buttons all disappeared, and query text never truncated. The scroll area's content wrapper now uses block layout, so list rows stay at viewport width in every sidebar tab (horizontal scroll areas are unaffected).
-- **Explorer sidebar tab strip overflowed** — the five sidebar tabs did not fit at the default sidebar width, pushing Queries out of view. Tab labels now collapse to icons for inactive tabs when the sidebar is narrow, and every tab carries an accessible name and tooltip.
 
