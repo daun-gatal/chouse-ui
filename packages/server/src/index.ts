@@ -1,5 +1,5 @@
 import "./utils/configLoader";
-import { Hono, Context } from "hono";
+import { Hono } from "hono";
 import { serve } from "bun";
 import { serveStatic } from "hono/bun";
 import { bodyLimit } from "hono/body-limit";
@@ -8,7 +8,7 @@ import { corsMiddleware } from "./middleware/cors";
 import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
 import { rateLimiter } from "hono-rate-limiter";
 import { DbRateLimitStore, cleanupExpiredRateLimits } from "./middleware/rateLimitStore";
-import { loginAccountKey, rateLimitClientKey } from "./middleware/rateLimitKeys";
+import { loginAccountKey, rateLimitClientKey, rateLimitUserKey } from "./middleware/rateLimitKeys";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
@@ -250,19 +250,20 @@ app.use('/api/integrations/*', rateLimiter({
   keyGenerator: rateLimitClientKey,
 }));
 
-// Query execution: 300 queries per minute per user
-// Applies to all query operations (select, insert, etc.)
+// Query execution: 300 queries per minute per user (or token, or address when
+// signed out). These run before route auth, so the key comes from the bearer
+// token itself — see rateLimitUserKey.
 app.use('/api/query/*', rateLimiter({
   windowMs: 60 * 1000,
   limit: 300, // 300 queries per minute
-  keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
+  keyGenerator: rateLimitUserKey,
 }));
 
 // AI capabilities are expensive (LLM + tool loops): 60 invocations per minute per user
 app.use('/api/ai/*', rateLimiter({
   windowMs: 60 * 1000,
   limit: 60,
-  keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
+  keyGenerator: rateLimitUserKey,
 }));
 
 // MCP OAuth (ADR 0028): agents register and exchange tokens without signing in,
@@ -291,7 +292,7 @@ app.use('/.well-known/*', rateLimiter({
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   limit: 1000, // 1000 requests per minute
-  keyGenerator: (c: Context) => c.get('rbacUserId') || rateLimitClientKey(c),
+  keyGenerator: rateLimitUserKey,
 }));
 
 // ============================================
@@ -479,6 +480,28 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
     // Write AI usage of requests that just finished; bounded so shutdown never hangs.
     await Promise.race([flushUsageWrites(), new Promise((resolve) => setTimeout(resolve, 5000))]);
+
+    // Stop the timers started after RBAC init, so none fires against a closing database.
+    try {
+      const { stopApprovalSweeper } = await import("./services/ai/runtime/chatRuns");
+      stopApprovalSweeper();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Approval sweeper stop failed");
+    }
+
+    try {
+      const { stopTriageRunner } = await import("./services/ai/triage/runner");
+      await stopTriageRunner();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Triage runner stop failed");
+    }
+
+    try {
+      const { DoctorScheduler } = await import("./services/doctorScheduler");
+      DoctorScheduler.getInstance().stop();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Doctor scheduler stop failed");
+    }
 
     // Stop the collectors — waits briefly for in-flight runs, then releases leases.
     try {

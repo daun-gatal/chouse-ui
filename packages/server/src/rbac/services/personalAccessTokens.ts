@@ -360,6 +360,27 @@ export async function rotatePat(userId: string, id: string): Promise<CreatedPat 
 const PAT_INVALID_MESSAGE = "Invalid personal access token";
 
 /**
+ * Owner of a personal access token, for rate limiting: one indexed lookup by
+ * hash, no expiry/revocation checks and no writes (the route's auth does
+ * those). Null when no such token exists or the lookup fails.
+ */
+export async function patOwner(rawToken: string): Promise<string | null> {
+  if (!rawToken.startsWith(PAT_PREFIX)) return null;
+  try {
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const rows: Array<{ userId: string }> = await db
+      .select({ userId: schema.apiKeys.userId })
+      .from(schema.apiKeys)
+      .where(eq(schema.apiKeys.keyHash, hashPatToken(rawToken)))
+      .limit(1);
+    return rows[0]?.userId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Verify a raw PAT secret. Resolves live owner roles/permissions and
  * intersects them with the token scopes. Fail-closed on every branch.
  */

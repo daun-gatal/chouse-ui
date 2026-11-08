@@ -413,6 +413,12 @@ export function startApprovalSweeper(): void {
   sweeper.unref?.();
 }
 
+/** Stop the approval sweeper (graceful shutdown). */
+export function stopApprovalSweeper(): void {
+  if (sweeper) clearInterval(sweeper);
+  sweeper = null;
+}
+
 /** The inputs a paused run needs to resume, kept by the replica that paused it. */
 const paused = new Map<string, StartChatRunInput>();
 

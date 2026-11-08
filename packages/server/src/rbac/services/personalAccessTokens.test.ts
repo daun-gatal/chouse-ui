@@ -6,6 +6,7 @@ import {
   createPat,
   hashPatToken,
   listPats,
+  patOwner,
   revokePat,
   rotatePat,
   touchPatLastUsed,
@@ -119,6 +120,14 @@ describe("personal access tokens", () => {
     const rows = await db.select().from(schema.apiKeys).where(eq(schema.apiKeys.keyHash, sha256(created.rawToken)));
     expect(rows.length).toBe(1);
     expect(rows[0].keyHash).not.toContain(created.rawToken);
+  });
+
+  it("names a token's owner for rate limiting, and nobody for an unknown token", async () => {
+    const { userId } = await seedIdentity([READ]);
+    const created = await createPat(userId, { name: "limit-me" });
+    expect(await patOwner(created.rawToken)).toBe(userId);
+    expect(await patOwner(`${PAT_PREFIX}not-a-real-token`)).toBeNull();
+    expect(await patOwner("not-a-pat")).toBeNull();
   });
 
   it("lists metadata without hashes or secrets", async () => {

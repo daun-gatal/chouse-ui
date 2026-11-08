@@ -11,6 +11,7 @@ CHouse UI is built for teams that share ClickHouse. It assumes browsers and toke
 | **Password hashing** | Argon2id for CHouse UI user passwords; tokens are stored hashed |
 | **Sessions** | Short-lived access JWTs and refresh tokens, signed with `jose` — see [Sessions & JWT](/docs/sessions-jwt/) |
 | **Sign-in protection** | Rate limiting per client IP (from `X-Forwarded-For` — your proxy must set it); optional [SSO](/docs/sso/)-only sign-in |
+| **Request limits** | Queries (300 a minute), AI calls (60 a minute) and the rest of the API (1,000 a minute) are counted per user, whether they come from the browser or an API or MCP token; signed-out requests count per client IP. Each server replica keeps its own count |
 | **Permissions** | Every API, CLI and MCP request is checked against the caller's [permissions](/docs/permissions/), live |
 | **Data access** | SQL is parsed (`node-sql-parser`) and every database and table checked against the caller's [data access policies](/docs/data-access-rules/) |
 | **Schema preflight** | DDL that would break dependents is stopped unless someone with `schema:override` confirms |
