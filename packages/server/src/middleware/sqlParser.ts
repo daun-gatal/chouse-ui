@@ -54,8 +54,6 @@ export const SAFE_TABLE_FUNCTIONS: ReadonlySet<string> = new Set([
   'format',
 ]);
 
-export type AccessType = 'read' | 'write' | 'admin' | 'misc';
-
 /**
  * Split SQL query into individual statements
  * Uses proper SQL parsing to handle all edge cases
@@ -594,34 +592,4 @@ function extractCTENamesFallback(sql: string): Set<string> {
   }
 
   return cteNames;
-}
-
-/**
- * Convert parsed statement type to access type
- */
-export function getAccessTypeFromStatementType(statementType: ParsedStatement['type']): AccessType {
-  switch (statementType) {
-    case 'select':
-      return 'read';
-    case 'show':
-    case 'describe':
-    case 'use':
-    case 'set':
-    case 'explain':
-    case 'exists':
-    case 'check':
-    case 'kill':
-      return 'misc';
-    case 'insert':
-    case 'update':
-    case 'delete':
-      return 'write';
-    case 'create':
-    case 'drop':
-    case 'alter':
-    case 'truncate':
-      return 'admin';
-    default:
-      return 'misc'; // Default to misc instead of read for safety (unknown commands shouldn't query data)
-  }
 }

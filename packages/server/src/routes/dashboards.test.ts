@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun
 import { ClickHouseError } from "@clickhouse/client";
 import type { Hono } from "hono";
 import { sql } from "drizzle-orm";
+import { fakeExec } from "../middleware/sqlAccess/fixtures/fakeParser";
 
 interface SentQuery {
   connectionId: string;
@@ -26,6 +27,7 @@ let respond: (connectionId: string, query: string) => unknown = () => ROWS;
 
 mock.module("../services/scheduledQueries/chClient", () => ({
   clientForConnection: async (connectionId: string) => ({
+    exec: fakeExec,
     query: async (args: { query: string; query_params?: Record<string, unknown>; clickhouse_settings?: Record<string, unknown> }) => {
       sent.push({ connectionId, query: args.query, params: args.query_params ?? {}, settings: args.clickhouse_settings ?? {} });
       const result = respond(connectionId, args.query);

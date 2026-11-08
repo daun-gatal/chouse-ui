@@ -17,7 +17,7 @@
 
 import { ClickHouseError, type ClickHouseClient } from "@clickhouse/client";
 
-import { validateQueryAccess } from "../../middleware/dataAccess";
+import { accessDeniedError, validateQueryAccess } from "../../middleware/dataAccess";
 import { governAgentQuery, recordAgentQuery, type AgentContext } from "../agents/governance";
 import type { ConnectionResponse } from "../../rbac/services/connections";
 import { AppError } from "../../types";
@@ -132,8 +132,9 @@ export function compilePanel(query: PanelQuery, window: Window): Compiled {
 
 /** Step 4: the viewer's data-access rules for the compiled statement. */
 export async function assertDataAccess(viewer: Viewer, compiled: Compiled, connection: ConnectionResponse): Promise<void> {
-  const access = await validateQueryAccess(viewer.id, isAdmin(viewer), viewer.permissions, compiled.validationSql, connection.database ?? undefined, connection.id);
-  if (!access.allowed) throw AppError.forbidden(access.reason ?? "Access denied");
+  // ADR 0030: check exactly what runs — the compiled SQL with its bound parameters.
+  const access = await validateQueryAccess({ userId: viewer.id, isAdmin: isAdmin(viewer), permissions: viewer.permissions, sql: compiled.sql, params: compiled.params, connectionId: connection.id });
+  if (!access.allowed) throw accessDeniedError(access, "Access denied");
 }
 
 /** Step 1: the viewer's connection, or a refusal. */

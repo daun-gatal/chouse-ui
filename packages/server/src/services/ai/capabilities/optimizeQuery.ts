@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
-import { validateQueryAccess } from "../../../middleware/dataAccess";
+import { accessDeniedError, validateQueryAccess } from "../../../middleware/dataAccess";
 import type { StructuredCapability } from "../types";
 import { explainEstimate } from "./fleetShared";
 import {
@@ -63,18 +63,10 @@ export const optimizeQueryCapability: StructuredCapability<
         "AI optimizer only supports SELECT and WITH queries (read-only operations)",
       );
     }
-    const access = await validateQueryAccess(
-      ctx.userId,
-      ctx.isAdmin,
-      ctx.permissions,
-      input.query,
-      input.database ?? ctx.defaultDatabase,
-      ctx.connectionId,
-    );
-    if (!access.allowed) {
-      throw AppError.forbidden(access.reason || "Access denied to one or more tables in query");
-    }
-    return { query: input.query, additionalPrompt: input.additionalPrompt, warnings: access.warnings };
+    // ADR 0030: names resolve against the connection's own default database.
+    const access = await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: input.query, connectionId: ctx.connectionId });
+    if (!access.allowed) throw accessDeniedError(access);
+    return { query: input.query, additionalPrompt: input.additionalPrompt };
   },
 
   templateVariables(prepared) {
@@ -89,9 +81,14 @@ export const optimizeQueryCapability: StructuredCapability<
     // resolve under the connection's default DB) — same behavior as optimize-log.
     let estimate: QueryOptimization["estimate"];
     if (ctx.connectionId) {
+      // The rewrite comes from the model, so it is checked like any other SQL
+      // before ClickHouse plans it; a rewrite that reaches other tables gets no estimate.
+      const rewriteAllowed = optimizedQuery
+        ? (await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: optimizedQuery, connectionId: ctx.connectionId })).allowed
+        : false;
       const [before, after] = await Promise.all([
         explainEstimate(ctx.connectionId, prepared.query),
-        optimizedQuery ? explainEstimate(ctx.connectionId, optimizedQuery) : Promise.resolve(null),
+        rewriteAllowed ? explainEstimate(ctx.connectionId, optimizedQuery) : Promise.resolve(null),
       ]);
       if (before || after) estimate = { before: before ?? undefined, after: after ?? undefined };
     }

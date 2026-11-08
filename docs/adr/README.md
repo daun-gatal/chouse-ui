@@ -54,6 +54,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted |
 | [0028](0028-mcp-oauth.md) | Sign In to MCP with OAuth | Accepted |
 | [0029](0029-upgrade-check.md) | Upgrade Check: What a ClickHouse Upgrade Changes for Your Workload | Accepted |
+| [0030](0030-clickhouse-parses-sql-access-checks.md) | ClickHouse Parses the SQL That Data Access Rules Check | Accepted |
 
 ## Conventions
 

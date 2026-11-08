@@ -174,6 +174,16 @@ export function buildExecutableQuery(query: string): { sql: string; params: stri
   return { sql: rewritten, params: [...params] };
 }
 
+/**
+ * The executable SQL and placeholder values for its time parameters, for the
+ * access check (ADR 0030): it parses exactly the text that runs. The macros
+ * only ever become `DateTime64` parameters, so their values can't name a table.
+ */
+export function executableForAccessCheck(query: string): { sql: string; params: Record<string, string> } {
+  const { sql, params } = buildExecutableQuery(query);
+  return { sql, params: Object.fromEntries(params.map((name) => [name, toDateTime64Param(0)])) };
+}
+
 /** Render a UTC millisecond instant as a `DateTime64(3,'UTC')` literal value. */
 export function toDateTime64Param(ms: number): string {
   // `YYYY-MM-DD HH:MM:SS.mmm` in UTC — the form ClickHouse parses for DateTime64.

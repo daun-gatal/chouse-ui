@@ -46,6 +46,34 @@ Because the first match wins, a higher-priority allow beats a lower-priority den
 
 > **Note:** Queries against `system` and `information_schema` are allowed by default, so monitoring and metadata lookups keep working; those databases are hidden from the Explorer tree for non-admins. What a user sees in the Monitoring tabs is governed by the per-tab permissions (`logs:view`, `parts:view`, …).
 
+### What gets checked
+
+ClickHouse itself parses each query before it runs: the server asks the
+connection for `EXPLAIN AST`, which only parses and reads no data. Every table
+and database in the result is then checked against the rules: joins,
+subqueries, `UNION` arms, CTE bodies, `IN some_table`, `dictGet`/`joinGet`
+lookups, `INSERT … SELECT` sources and query parameters such as
+`{t:Identifier}`. An unqualified name is a table in the connection's default
+database. Write `system.parts`, not `parts`.
+
+For users who aren't admins, anything the check can't fully see is refused,
+with a message that says why:
+
+- statements other than SELECT, INSERT, CREATE/DROP/TRUNCATE of tables, views
+  and databases, common ALTER TABLE changes, DELETE/UPDATE, SHOW
+  TABLES/DATABASES/CREATE, DESCRIBE, EXISTS, CHECK, EXPLAIN, USE, SET and KILL
+  QUERY (for example OPTIMIZE, RENAME, SYSTEM, GRANT, SHOW COLUMNS);
+- table functions that reach other data (`remote`, `merge`, `url`, `s3`,
+  `file`, …), engines other than the local ones, `INTO OUTFILE`, a materialized
+  view with `TO`, and `CREATE TABLE … AS another_table`;
+- names written in backticks or double quotes that contain dots, spaces, quotes
+  or brackets;
+- `INSERT … VALUES` rows that contain a subquery or a dictionary lookup.
+
+Admins run all of these as before. If ClickHouse can't be reached, the query
+fails with "try again" rather than "access denied". A syntax error comes back as
+ClickHouse's own message.
+
 The rules apply wherever data is read: the SQL editor, the Explorer, exports, the [Data](/docs/data-observability/) page's lineage and incidents, and every API, CLI and MCP call. A table you can't read never shows up, not even as a lineage node.
 
 ## Create a policy

@@ -98,9 +98,8 @@ invariants or side effects change. `bun run check:contracts` validates them
 - Validation: Zod v4 (frontend and server)
 - Server routes: `rbacAuthMiddleware` + `requirePermission` middleware
 - Client: `PermissionGuard` component for UI gating
-- SQL injection prevention via `node-sql-parser` middleware
 - Never use `dangerouslySetInnerHTML` without DOMPurify
-- Data access rules are only as strong as the SQL parser: every table a statement touches (subqueries, UNION, INSERT/CREATE … SELECT, `dictGet`) must be checked, unknown shapes fail closed, and server-built DDL goes through `checkDatabaseAccess`/`checkTableAccess`
+- Data access rules rest on ClickHouse's own parse ([ADR 0030](docs/adr/0030-clickhouse-parses-sql-access-checks.md)): `validateQueryAccess` gets the exact text and params that run, everything is an allow-list, unknown shapes fail closed, and server-built DDL goes through `checkDatabaseAccess`/`checkTableAccess`
 - Server-built SQL: `escapeIdentifier` for names, `quoteStringLiteral` for strings (ClickHouse treats `\` as an escape), whole-string grammar checks for types/engines/key expressions
 - Never key a security limit on a client-controlled header (`X-Forwarded-For`); never send credentialed CORS for a wildcard origin
 - Full rules and the security review checklist: **[.rules/SECURITY.md](.rules/SECURITY.md)**

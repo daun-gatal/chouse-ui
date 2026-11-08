@@ -232,6 +232,16 @@ const LOCAL_TABLE_ENGINES = new Set([
 /** Database engines that keep tables locally (no MySQL/PostgreSQL/SQLite/… proxies). */
 const LOCAL_DATABASE_ENGINES = new Set(['Atomic', 'Ordinary', 'Lazy', 'Replicated', 'Memory']);
 
+/** True for a table engine that keeps data locally (see LOCAL_TABLE_ENGINES). */
+export function isLocalTableEngine(name: string): boolean {
+  return LOCAL_TABLE_ENGINES.has(name);
+}
+
+/** True for a database engine that keeps tables locally (see LOCAL_DATABASE_ENGINES). */
+export function isLocalDatabaseEngine(name: string): boolean {
+  return LOCAL_DATABASE_ENGINES.has(name);
+}
+
 function validateEngine(engine: string, allowed: ReadonlySet<string>, allowAnyEngine: boolean): boolean {
   if (!engine || typeof engine !== 'string') return false;
   const trimmed = engine.trim();

@@ -1,0 +1,2590 @@
+{
+ "SELECT * FROM public.t, secret.s SETTINGS max_threads=1": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s",
+    "     TableJoin",
+    "   Set"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s",
+    "     TableJoin",
+    "   Set"
+   ]
+  }
+ },
+ "SELECT 1 WHERE 1 IN secret.s": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_1",
+    "     Identifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_1",
+    "     Identifier secret.s"
+   ]
+  }
+ },
+ "SELECT joinGet(secret.j, 'v', 1)": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function joinGet (children 1)",
+    "     ExpressionList (children 3)",
+    "      Identifier secret.j",
+    "      Literal 'v'",
+    "      Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function joinGet (children 1)",
+    "     ExpressionList (children 3)",
+    "      Identifier secret.j",
+    "      Literal 'v'",
+    "      Literal UInt64_1"
+   ]
+  }
+ },
+ "SELECT dictGet('secret.d', 'v', toUInt64(1))": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function dictGet (children 1)",
+    "     ExpressionList (children 3)",
+    "      Literal 'secret.d'",
+    "      Literal 'v'",
+    "      Function toUInt64 (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function dictGet (children 1)",
+    "     ExpressionList (children 3)",
+    "      Literal 'secret.d'",
+    "      Literal 'v'",
+    "      Function toUInt64 (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_1"
+   ]
+  }
+ },
+ "SELECT * FROM {t:Identifier}\u0000{\"t\":\"secret.s\"}": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s"
+   ]
+  }
+ },
+ "INSERT INTO public.t VALUES ((SELECT max(v) FROM secret.s))": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "INSERT INTO public.t VALUES (dictGet('secret.d', 'v', 1))": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "CREATE VIEW public.v AS SELECT * FROM public.t": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public v (children 3)",
+    " Identifier public",
+    " Identifier v",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public v (children 3)",
+    " Identifier public",
+    " Identifier v",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t"
+   ]
+  }
+ },
+ "SELECT * FROM t /* FROM public.t */": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier t"
+   ]
+  }
+ },
+ "SELECT * FROM (WITH s AS (SELECT 1) SELECT * FROM s), s": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Subquery (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 3)",
+    "          ExpressionList (children 1)",
+    "           WithElement (children 1)",
+    "            Subquery (children 1)",
+    "             SelectWithUnionQuery (children 1)",
+    "              ExpressionList (children 1)",
+    "               SelectQuery (children 1)",
+    "                ExpressionList (children 1)",
+    "                 Literal UInt64_1",
+    "          ExpressionList (children 1)",
+    "           Asterisk",
+    "          TablesInSelectQuery (children 1)",
+    "           TablesInSelectQueryElement (children 1)",
+    "            TableExpression (children 1)",
+    "             TableIdentifier s",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier s",
+    "     TableJoin"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Subquery (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 3)",
+    "          ExpressionList (children 1)",
+    "           WithElement (children 1)",
+    "            Subquery (children 1)",
+    "             SelectWithUnionQuery (children 1)",
+    "              ExpressionList (children 1)",
+    "               SelectQuery (children 1)",
+    "                ExpressionList (children 1)",
+    "                 Literal UInt64_1",
+    "          ExpressionList (children 1)",
+    "           Asterisk",
+    "          TablesInSelectQuery (children 1)",
+    "           TablesInSelectQueryElement (children 1)",
+    "            TableExpression (children 1)",
+    "             TableIdentifier s",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier s",
+    "     TableJoin"
+   ]
+  }
+ },
+ "SELECT x FROM public.t WINDOW w AS (PARTITION BY x IN (SELECT y FROM secret.s)) ORDER BY count() OVER w": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 4)",
+    "   ExpressionList (children 1)",
+    "    Identifier x",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   ExpressionList (children 1)",
+    "    WindowListElement",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 4)",
+    "   ExpressionList (children 1)",
+    "    Identifier x",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   ExpressionList (children 1)",
+    "    WindowListElement",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList"
+   ]
+  }
+ },
+ "SELECT * FROM `a\n      TableIdentifier secret.s`": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier a",
+    "      TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier a",
+    "      TableIdentifier secret.s"
+   ]
+  }
+ },
+ "SELECT * FROM `secret.s`": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s"
+   ]
+  }
+ },
+ "SELECT * FROM {t:Identifier}\u0000{\"t\":\"a.b.c\"}": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier a.b.c"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier a.b.c"
+   ]
+  }
+ },
+ "CREATE MATERIALIZED VIEW public.mv TO secret.s AS SELECT * FROM public.t": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public mv (children 4)",
+    " Identifier public",
+    " Identifier mv",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t",
+    " ViewTargets"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public mv (children 3)",
+    " Identifier public",
+    " Identifier mv",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t"
+   ]
+  }
+ },
+ "ALTER TABLE public.t ATTACH PARTITION 1 FROM secret.s": {
+  "26.5": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand REPLACE_PARTITION (children 1)",
+    "   Partition (children 1)",
+    "    Literal UInt64_1",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand REPLACE_PARTITION (children 1)",
+    "   Partition (children 1)",
+    "    Literal UInt64_1",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "CREATE TABLE public.x AS secret.s": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public x (children 2)",
+    " Identifier public",
+    " Identifier x"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public x (children 2)",
+    " Identifier public",
+    " Identifier x"
+   ]
+  }
+ },
+ "SELECT * FROM remote('h', secret.s)": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function remote (children 1)",
+    "       ExpressionList (children 2)",
+    "        Literal 'h'",
+    "        Identifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function remote (children 1)",
+    "       ExpressionList (children 2)",
+    "        Literal 'h'",
+    "        Identifier secret.s"
+   ]
+  }
+ },
+ "SELECT * FROM view(SELECT * FROM secret.s)": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function view (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Asterisk",
+    "           TablesInSelectQuery (children 1)",
+    "            TablesInSelectQueryElement (children 1)",
+    "             TableExpression (children 1)",
+    "              TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function view (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Asterisk",
+    "           TablesInSelectQuery (children 1)",
+    "            TablesInSelectQueryElement (children 1)",
+    "             TableExpression (children 1)",
+    "              TableIdentifier secret.s"
+   ]
+  }
+ },
+ "DESC remote('h', secret.s)": {
+  "26.5": {
+   "lines": [
+    "DescribeQuery (children 1)",
+    " TableExpression (children 1)",
+    "  Function remote (children 1)",
+    "   ExpressionList (children 2)",
+    "    Literal 'h'",
+    "    Identifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DescribeQuery (children 1)",
+    " TableExpression (children 1)",
+    "  Function remote (children 1)",
+    "   ExpressionList (children 2)",
+    "    Literal 'h'",
+    "    Identifier secret.s"
+   ]
+  }
+ },
+ "INSERT INTO TABLE FUNCTION remote('h', public.t) VALUES (1)": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 1)",
+    " Function remote (children 1)",
+    "  ExpressionList (children 2)",
+    "   Literal 'h'",
+    "   Identifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 1)",
+    " Function remote (children 1)",
+    "  ExpressionList (children 2)",
+    "   Literal 'h'",
+    "   Identifier public.t"
+   ]
+  }
+ },
+ "CREATE TABLE public.x AS remote('h', secret.s)": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public x (children 3)",
+    " Identifier public",
+    " Identifier x",
+    " Function remote (children 1)",
+    "  ExpressionList (children 2)",
+    "   Literal 'h'",
+    "   Identifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public x (children 3)",
+    " Identifier public",
+    " Identifier x",
+    " Function remote (children 1)",
+    "  ExpressionList (children 2)",
+    "   Literal 'h'",
+    "   Identifier secret.s"
+   ]
+  }
+ },
+ "CREATE TABLE public.x (a UInt64) ENGINE = Merge(secret, '^s')": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public x (children 4)",
+    " Identifier public",
+    " Identifier x",
+    " Columns definition (children 1)",
+    "  ExpressionList (children 1)",
+    "   ColumnDeclaration a (children 1)",
+    "    DataType UInt64",
+    " Storage definition (children 1)",
+    "  Function Merge (children 1)",
+    "   ExpressionList (children 2)",
+    "    Identifier secret",
+    "    Literal '^s'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public x (children 4)",
+    " Identifier public",
+    " Identifier x",
+    " Columns definition (children 1)",
+    "  ExpressionList (children 1)",
+    "   ColumnDeclaration a (children 1)",
+    "    Function UInt64",
+    " Storage definition (children 1)",
+    "  Function Merge (children 1)",
+    "   ExpressionList (children 2)",
+    "    Identifier secret",
+    "    Literal '^s'"
+   ]
+  }
+ },
+ "CREATE DATABASE d3 ENGINE = MySQL('h:3306', 'd', 'u', 'p')": {
+  "26.5": {
+   "lines": [
+    "CreateQuery d3  (children 2)",
+    " Identifier d3",
+    " Storage definition (children 1)",
+    "  Function MySQL (children 1)",
+    "   ExpressionList (children 4)",
+    "    Literal 'h:3306'",
+    "    Literal 'd'",
+    "    Literal 'u'",
+    "    Literal 'p'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery d3  (children 2)",
+    " Identifier d3",
+    " Storage definition (children 1)",
+    "  Function MySQL (children 1)",
+    "   ExpressionList (children 4)",
+    "    Literal 'h:3306'",
+    "    Literal 'd'",
+    "    Literal 'u'",
+    "    Literal 'p'"
+   ]
+  }
+ },
+ "SELECT file('a.txt')": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function file (children 1)",
+    "     ExpressionList (children 1)",
+    "      Literal 'a.txt'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Function file (children 1)",
+    "     ExpressionList (children 1)",
+    "      Literal 'a.txt'"
+   ]
+  }
+ },
+ "SELECT * FROM public.t INTO OUTFILE 'x.csv'": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    " Literal 'x.csv'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    " Literal 'x.csv'"
+   ]
+  }
+ },
+ "SELECT 1; SELECT 2": {
+  "26.5": {
+   "code": "SQL_SYNTAX"
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "SELECT * FROM public.t WHERE x = {p:String}": {
+  "26.5": {
+   "code": "QUERY_PARAM_UNBOUND"
+  },
+  "23.8": {
+   "code": "QUERY_PARAM_UNBOUND"
+  }
+ },
+ "SELECT 1": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1"
+   ]
+  }
+ },
+ "SELECT 'a\nb (children 3)', 'x\\ny'": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 2)",
+    "    Literal 'a\\nb (children 3)'",
+    "    Literal 'x\\ny'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 2)",
+    "    Literal 'a\\nb (children 3)'",
+    "    Literal 'x\\ny'"
+   ]
+  }
+ },
+ "SELECT * FROM public.t AS a, secret.s SETTINGS max_threads=1 FORMAT JSON": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias a)",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s",
+    "     TableJoin",
+    "   Set",
+    " Identifier JSON"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias a)",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier secret.s",
+    "     TableJoin",
+    "   Set",
+    " Identifier JSON"
+   ]
+  }
+ },
+ "SELECT count() FROM public.t FINAL PREWHERE x=1 WHERE y>2 GROUP BY z WITH TOTALS HAVING count()>1 ORDER BY z DESC LIMIT 1 BY z LIMIT 10": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 10)",
+    "   ExpressionList (children 1)",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function equals (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Literal UInt64_1",
+    "   Function greater (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier y",
+    "     Literal UInt64_2",
+    "   ExpressionList (children 1)",
+    "    Identifier z",
+    "   Function greater (children 1)",
+    "    ExpressionList (children 2)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "     Literal UInt64_1",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 1)",
+    "     Identifier z",
+    "   Literal UInt64_1",
+    "   ExpressionList (children 1)",
+    "    Identifier z",
+    "   Literal UInt64_10"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 10)",
+    "   ExpressionList (children 1)",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function equals (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Literal UInt64_1",
+    "   Function greater (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier y",
+    "     Literal UInt64_2",
+    "   ExpressionList (children 1)",
+    "    Identifier z",
+    "   Function greater (children 1)",
+    "    ExpressionList (children 2)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "     Literal UInt64_1",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 1)",
+    "     Identifier z",
+    "   Literal UInt64_1",
+    "   ExpressionList (children 1)",
+    "    Identifier z",
+    "   Literal UInt64_10"
+   ]
+  }
+ },
+ "SELECT toStartOfHour(ts) AS h, count() FROM public.t GROUP BY h ORDER BY h WITH FILL STEP 3600": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 4)",
+    "   ExpressionList (children 2)",
+    "    Function toStartOfHour (alias h) (children 1)",
+    "     ExpressionList (children 1)",
+    "      Identifier ts",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   ExpressionList (children 1)",
+    "    Identifier h",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 2)",
+    "     Identifier h",
+    "     Literal UInt64_3600"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 4)",
+    "   ExpressionList (children 2)",
+    "    Function toStartOfHour (alias h) (children 1)",
+    "     ExpressionList (children 1)",
+    "      Identifier ts",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   ExpressionList (children 1)",
+    "    Identifier h",
+    "   ExpressionList (children 1)",
+    "    OrderByElement (children 1)",
+    "     Identifier h"
+   ]
+  }
+ },
+ "SELECT * FROM public.t SAMPLE 0.1 ARRAY JOIN arr AS a": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 2)",
+    "      TableIdentifier public.t",
+    "      SampleRatio 1 / 10",
+    "    TablesInSelectQueryElement (children 1)",
+    "     ArrayJoin (children 1)",
+    "      ExpressionList (children 1)",
+    "       Identifier arr (alias a)"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 2)",
+    "      TableIdentifier public.t",
+    "      SampleRatio 1 / 10",
+    "    TablesInSelectQueryElement (children 1)",
+    "     ArrayJoin (children 1)",
+    "      ExpressionList (children 1)",
+    "       Identifier arr (alias a)"
+   ]
+  }
+ },
+ "SELECT arrayMap(x -> x * 2, arr), [1,2], (1,'a'), CAST(x AS String), x::Int32, CASE WHEN x THEN 1 ELSE 2 END FROM public.t": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 6)",
+    "    Function arrayMap (children 1)",
+    "     ExpressionList (children 2)",
+    "      Function lambda (children 1)",
+    "       ExpressionList (children 2)",
+    "        Function tuple (children 1)",
+    "         ExpressionList (children 1)",
+    "          Identifier x",
+    "        Function multiply (children 1)",
+    "         ExpressionList (children 2)",
+    "          Identifier x",
+    "          Literal UInt64_2",
+    "      Identifier arr",
+    "    Literal Array_[UInt64_1, UInt64_2]",
+    "    Literal Tuple_(UInt64_1, 'a')",
+    "    Function CAST (children 1)",
+    "     ExpressionList (children 2)",
+    "      Identifier x",
+    "      Literal 'String'",
+    "    Function CAST (children 1)",
+    "     ExpressionList (children 2)",
+    "      Identifier x",
+    "      Literal 'Int32'",
+    "    Function multiIf (children 1)",
+    "     ExpressionList (children 3)",
+    "      Identifier x",
+    "      Literal UInt64_1",
+    "      Literal UInt64_2",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 6)",
+    "    Function arrayMap (children 1)",
+    "     ExpressionList (children 2)",
+    "      Function lambda (children 1)",
+    "       ExpressionList (children 2)",
+    "        Function tuple (children 1)",
+    "         ExpressionList (children 1)",
+    "          Identifier x",
+    "        Function multiply (children 1)",
+    "         ExpressionList (children 2)",
+    "          Identifier x",
+    "          Literal UInt64_2",
+    "      Identifier arr",
+    "    Literal Array_[UInt64_1, UInt64_2]",
+    "    Literal Tuple_(UInt64_1, 'a')",
+    "    Function CAST (children 1)",
+    "     ExpressionList (children 2)",
+    "      Identifier x",
+    "      Literal 'String'",
+    "    Function CAST (children 1)",
+    "     ExpressionList (children 2)",
+    "      Identifier x",
+    "      Literal 'Int32'",
+    "    Function multiIf (children 1)",
+    "     ExpressionList (children 3)",
+    "      Identifier x",
+    "      Literal UInt64_1",
+    "      Literal UInt64_2",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  }
+ },
+ "SELECT quantile(0.9)(x), uniqExact(x) OVER (PARTITION BY y ORDER BY z) FROM public.t": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 2)",
+    "    Function quantile (children 2)",
+    "     ExpressionList (children 1)",
+    "      Identifier x",
+    "     ExpressionList (children 1)",
+    "      Literal Float64_0.9",
+    "    Function uniqExact (children 2)",
+    "     ExpressionList (children 1)",
+    "      Identifier x",
+    "     WindowDefinition (children 2)",
+    "      ExpressionList (children 1)",
+    "       Identifier y",
+    "      ExpressionList (children 1)",
+    "       OrderByElement (children 1)",
+    "        Identifier z",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 2)",
+    "    Function quantile (children 2)",
+    "     ExpressionList (children 1)",
+    "      Identifier x",
+    "     ExpressionList (children 1)",
+    "      Literal Float64_0.9",
+    "    Function uniqExact (children 1)",
+    "     ExpressionList (children 1)",
+    "      Identifier x",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  }
+ },
+ "SELECT * FROM public.t a ANY LEFT JOIN public.u b ON a.id = b.id GLOBAL INNER JOIN public.v c USING (id)": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 3)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias a)",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.u (alias b)",
+    "     TableJoin (children 1)",
+    "      Function equals (children 1)",
+    "       ExpressionList (children 2)",
+    "        Identifier a.id",
+    "        Identifier b.id",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.v (alias c)",
+    "     TableJoin (children 1)",
+    "      ExpressionList (children 1)",
+    "       Identifier id"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 3)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias a)",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.u (alias b)",
+    "     TableJoin (children 1)",
+    "      Function equals (children 1)",
+    "       ExpressionList (children 2)",
+    "        Identifier a.id",
+    "        Identifier b.id",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.v (alias c)",
+    "     TableJoin (children 1)",
+    "      ExpressionList (children 1)",
+    "       Identifier id"
+   ]
+  }
+ },
+ "SELECT * FROM public.t WHERE x GLOBAL IN (SELECT y FROM public.s) AND z NOT IN (1,2) AND w IN public.q": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function and (children 1)",
+    "    ExpressionList (children 3)",
+    "     Function globalIn (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier x",
+    "       Subquery (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Identifier y",
+    "           TablesInSelectQuery (children 1)",
+    "            TablesInSelectQueryElement (children 1)",
+    "             TableExpression (children 1)",
+    "              TableIdentifier public.s",
+    "     Function notIn (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier z",
+    "       Literal Tuple_(UInt64_1, UInt64_2)",
+    "     Function in (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier w",
+    "       Identifier public.q"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function and (children 1)",
+    "    ExpressionList (children 3)",
+    "     Function globalIn (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier x",
+    "       Subquery (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Identifier y",
+    "           TablesInSelectQuery (children 1)",
+    "            TablesInSelectQueryElement (children 1)",
+    "             TableExpression (children 1)",
+    "              TableIdentifier public.s",
+    "     Function notIn (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier z",
+    "       Literal Tuple_(UInt64_1, UInt64_2)",
+    "     Function in (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier w",
+    "       Identifier public.q"
+   ]
+  }
+ },
+ "SELECT * FROM public.t WHERE x = ANY (SELECT y FROM public.s)": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Identifier y",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Identifier y",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s"
+   ]
+  }
+ },
+ "WITH c AS (SELECT * FROM secret.s) SELECT * FROM c": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier secret.s",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier secret.s",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  }
+ },
+ "WITH c AS ((SELECT * FROM public.s)) SELECT * FROM c": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  }
+ },
+ "WITH c AS (SELECT * FROM public.s), 1 AS one SELECT *, one FROM c": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 2)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s",
+    "    Literal UInt64_1 (alias one)",
+    "   ExpressionList (children 2)",
+    "    Asterisk",
+    "    Identifier one",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 2)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Asterisk",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier public.s",
+    "    Literal UInt64_1 (alias one)",
+    "   ExpressionList (children 2)",
+    "    Asterisk",
+    "    Identifier one",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier c"
+   ]
+  }
+ },
+ "WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM r WHERE n<3) SELECT * FROM r": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 2)",
+    "        SelectQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          Literal UInt64_1 (alias n)",
+    "        SelectQuery (children 3)",
+    "         ExpressionList (children 1)",
+    "          Function plus (children 1)",
+    "           ExpressionList (children 2)",
+    "            Identifier n",
+    "            Literal UInt64_1",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier r",
+    "         Function less (children 1)",
+    "          ExpressionList (children 2)",
+    "           Identifier n",
+    "           Literal UInt64_3",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier r"
+   ]
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "SELECT * FROM (SELECT * FROM public.s) AS sub UNION ALL SELECT * FROM public.u INTERSECT SELECT * FROM public.w": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 2)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Subquery (alias sub) (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 2)",
+    "          ExpressionList (children 1)",
+    "           Asterisk",
+    "          TablesInSelectQuery (children 1)",
+    "           TablesInSelectQueryElement (children 1)",
+    "            TableExpression (children 1)",
+    "             TableIdentifier public.s",
+    "  SelectIntersectExceptQuery (children 2)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.u",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.w"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 2)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Subquery (alias sub) (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 2)",
+    "          ExpressionList (children 1)",
+    "           Asterisk",
+    "          TablesInSelectQuery (children 1)",
+    "           TablesInSelectQueryElement (children 1)",
+    "            TableExpression (children 1)",
+    "             TableIdentifier public.s",
+    "  SelectIntersectExceptQuery (children 2)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.u",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.w"
+   ]
+  }
+ },
+ "SELECT COLUMNS('^a'), * EXCEPT (b), t.* FROM public.t AS t": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 3)",
+    "    ColumnsRegexpMatcher",
+    "    Asterisk (children 1)",
+    "     ColumnsTransformerList (children 1)",
+    "      ColumnsExceptTransformer (children 1)",
+    "       Identifier b",
+    "    QualifiedAsterisk (children 1)",
+    "     Identifier t",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias t)"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 3)",
+    "    ColumnsRegexpMatcher",
+    "    Asterisk (children 1)",
+    "     ColumnsTransformerList (children 1)",
+    "      ColumnsExceptTransformer (children 1)",
+    "       Identifier b",
+    "    QualifiedAsterisk (children 1)",
+    "     Identifier t",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t (alias t)"
+   ]
+  }
+ },
+ "SELECT * FROM numbers(10) n, generateRandom('a UInt8') LIMIT 1": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function numbers (alias n) (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_10",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      Function generateRandom (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal 'a UInt8'",
+    "     TableJoin",
+    "   Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 2)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Function numbers (alias n) (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_10",
+    "    TablesInSelectQueryElement (children 2)",
+    "     TableExpression (children 1)",
+    "      Function generateRandom (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal 'a UInt8'",
+    "     TableJoin",
+    "   Literal UInt64_1"
+   ]
+  }
+ },
+ "SELECT * FROM `my-db`.`ev-ents` LIMIT 100": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier my-db.ev-ents",
+    "   Literal UInt64_100"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier my-db.ev-ents",
+    "   Literal UInt64_100"
+   ]
+  }
+ },
+ "SELECT * FROM public.t -- trailing comment": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t"
+   ]
+  }
+ },
+ "SELECT * FROM public.t WHERE ts >= {from:DateTime64(3)}\u0000{\"from\":\"2026-01-01 00:00:00.000\"}": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function greaterOrEquals (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier ts",
+    "     Function _CAST (children 1)",
+    "      ExpressionList (children 2)",
+    "       Literal Decimal64_'1767225600.000'",
+    "       Literal 'DateTime64(3)'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.t",
+    "   Function greaterOrEquals (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier ts",
+    "     Function _CAST (children 1)",
+    "      ExpressionList (children 2)",
+    "       Literal Decimal64_'1767225600.000'",
+    "       Literal 'DateTime64(3)'"
+   ]
+  }
+ },
+ "INSERT INTO public.t (a, b) VALUES (1, 'x'), (2, now())": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 3)",
+    " Identifier public",
+    " Identifier t",
+    " ExpressionList (children 2)",
+    "  Identifier a",
+    "  Identifier b"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 3)",
+    " Identifier public",
+    " Identifier t",
+    " ExpressionList (children 2)",
+    "  Identifier a",
+    "  Identifier b"
+   ]
+  }
+ },
+ "INSERT INTO public.t SELECT * FROM secret.s": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 3)",
+    " Identifier public",
+    " Identifier t",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 3)",
+    " Identifier public",
+    " Identifier t",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier secret.s"
+   ]
+  }
+ },
+ "INSERT INTO t FORMAT CSV": {
+  "26.5": {
+   "lines": [
+    "InsertQuery   (children 1)",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "InsertQuery   (children 1)",
+    " Identifier t"
+   ]
+  }
+ },
+ "CREATE TABLE public.x (a UInt64 DEFAULT 1 COMMENT 'c', b Nullable(String) CODEC(ZSTD)) ENGINE = ReplacingMergeTree(a) PARTITION BY a ORDER BY a TTL now() + INTERVAL 1 DAY COMMENT 'x'": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public x (children 5)",
+    " Identifier public",
+    " Identifier x",
+    " Columns definition (children 1)",
+    "  ExpressionList (children 2)",
+    "   ColumnDeclaration a (children 3)",
+    "    DataType UInt64",
+    "    Literal UInt64_1",
+    "    Literal 'c'",
+    "   ColumnDeclaration b (children 2)",
+    "    DataType Nullable (children 1)",
+    "     ExpressionList (children 1)",
+    "      DataType String",
+    "    Function CODEC (children 1)",
+    "     ExpressionList (children 1)",
+    "      Function ZSTD",
+    " Storage definition (children 4)",
+    "  Function ReplacingMergeTree (children 1)",
+    "   ExpressionList (children 1)",
+    "    Identifier a",
+    "  Identifier a",
+    "  Identifier a",
+    "  ExpressionList (children 1)",
+    "   TTLElement (children 1)",
+    "    Function plus (children 1)",
+    "     ExpressionList (children 2)",
+    "      Function now (children 1)",
+    "       ExpressionList",
+    "      Function toIntervalDay (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_1",
+    " Literal 'x'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public x (children 5)",
+    " Identifier public",
+    " Identifier x",
+    " Columns definition (children 1)",
+    "  ExpressionList (children 2)",
+    "   ColumnDeclaration a (children 3)",
+    "    Function UInt64",
+    "    Literal UInt64_1",
+    "    Literal 'c'",
+    "   ColumnDeclaration b (children 2)",
+    "    Function Nullable (children 1)",
+    "     ExpressionList (children 1)",
+    "      Function String",
+    "    Function CODEC (children 1)",
+    "     ExpressionList (children 1)",
+    "      Function ZSTD",
+    " Storage definition (children 4)",
+    "  Function ReplacingMergeTree (children 1)",
+    "   ExpressionList (children 1)",
+    "    Identifier a",
+    "  Identifier a",
+    "  Identifier a",
+    "  ExpressionList (children 1)",
+    "   TTLElement (children 1)",
+    "    Function plus (children 1)",
+    "     ExpressionList (children 2)",
+    "      Function now (children 1)",
+    "       ExpressionList",
+    "      Function toIntervalDay (children 1)",
+    "       ExpressionList (children 1)",
+    "        Literal UInt64_1",
+    " Literal 'x'"
+   ]
+  }
+ },
+ "CREATE TABLE public.x ENGINE = MergeTree ORDER BY a AS SELECT * FROM public.s": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public x (children 4)",
+    " Identifier public",
+    " Identifier x",
+    " Storage definition (children 2)",
+    "  Function MergeTree",
+    "  Identifier a",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public x (children 4)",
+    " Identifier public",
+    " Identifier x",
+    " Storage definition (children 2)",
+    "  Function MergeTree",
+    "  Identifier a",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.s"
+   ]
+  }
+ },
+ "CREATE MATERIALIZED VIEW public.mv ENGINE = MergeTree ORDER BY a AS SELECT * FROM public.s": {
+  "26.5": {
+   "lines": [
+    "CreateQuery public mv (children 4)",
+    " Identifier public",
+    " Identifier mv",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.s",
+    " ViewTargets (children 1)",
+    "  Storage definition (children 2)",
+    "   Function MergeTree",
+    "   Identifier a"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery public mv (children 4)",
+    " Identifier public",
+    " Identifier mv",
+    " Storage definition (children 2)",
+    "  Function MergeTree",
+    "  Identifier a",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.s"
+   ]
+  }
+ },
+ "CREATE DATABASE d2 ENGINE = Atomic": {
+  "26.5": {
+   "lines": [
+    "CreateQuery d2  (children 2)",
+    " Identifier d2",
+    " Storage definition (children 1)",
+    "  Function Atomic"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateQuery d2  (children 2)",
+    " Identifier d2",
+    " Storage definition (children 1)",
+    "  Function Atomic"
+   ]
+  }
+ },
+ "ALTER TABLE public.t ADD COLUMN c UInt8 AFTER a, DROP COLUMN d, MODIFY COLUMN e String, RENAME COLUMN f TO g, COMMENT COLUMN a 'x'": {
+  "26.5": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 5)",
+    "  AlterCommand ADD_COLUMN (children 2)",
+    "   ColumnDeclaration c (children 1)",
+    "    DataType UInt8",
+    "   Identifier a",
+    "  AlterCommand DROP_COLUMN (children 1)",
+    "   Identifier d",
+    "  AlterCommand MODIFY_COLUMN (children 1)",
+    "   ColumnDeclaration e (children 1)",
+    "    DataType String",
+    "  AlterCommand RENAME_COLUMN (children 2)",
+    "   Identifier f",
+    "   Identifier g",
+    "  AlterCommand COMMENT_COLUMN (children 2)",
+    "   Identifier a",
+    "   Literal 'x'",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 5)",
+    "  AlterCommand ADD_COLUMN (children 2)",
+    "   ColumnDeclaration c (children 1)",
+    "    Function UInt8",
+    "   Identifier a",
+    "  AlterCommand DROP_COLUMN (children 1)",
+    "   Identifier d",
+    "  AlterCommand MODIFY_COLUMN (children 1)",
+    "   ColumnDeclaration e (children 1)",
+    "    Function String",
+    "  AlterCommand RENAME_COLUMN (children 2)",
+    "   Identifier f",
+    "   Identifier g",
+    "  AlterCommand COMMENT_COLUMN (children 2)",
+    "   Identifier a",
+    "   Literal 'x'",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "ALTER TABLE public.t DELETE WHERE x IN (SELECT y FROM secret.s)": {
+  "26.5": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand DELETE (children 1)",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Identifier y",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier secret.s",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand DELETE (children 1)",
+    "   Function in (children 1)",
+    "    ExpressionList (children 2)",
+    "     Identifier x",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 2)",
+    "         ExpressionList (children 1)",
+    "          Identifier y",
+    "         TablesInSelectQuery (children 1)",
+    "          TablesInSelectQueryElement (children 1)",
+    "           TableExpression (children 1)",
+    "            TableIdentifier secret.s",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "ALTER TABLE public.t MOVE PARTITION 4 TO TABLE secret.s": {
+  "26.5": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand MOVE_PARTITION (children 1)",
+    "   Partition (children 1)",
+    "    Literal UInt64_4",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "AlterQuery public t (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand MOVE_PARTITION (children 1)",
+    "   Partition (children 1)",
+    "    Literal UInt64_4",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "DELETE FROM public.t WHERE x = 1": {
+  "26.5": {
+   "lines": [
+    "DeleteQuery public t (children 3)",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier x",
+    "   Literal UInt64_1",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DeleteQuery public t (children 3)",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier x",
+    "   Literal UInt64_1",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "UPDATE public.t SET x = 1 WHERE y = 2": {
+  "26.5": {
+   "lines": [
+    "UpdateQuery public t (children 4)",
+    " Identifier public",
+    " Identifier t",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier y",
+    "   Literal UInt64_2",
+    " ExpressionList (children 1)",
+    "  Assignment x (children 1)",
+    "   Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "DROP TABLE IF EXISTS public.t SYNC": {
+  "26.5": {
+   "lines": [
+    "DropQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DropQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "DROP DATABASE d2": {
+  "26.5": {
+   "lines": [
+    "DropQuery d2  (children 1)",
+    " Identifier d2"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DropQuery d2  (children 1)",
+    " Identifier d2"
+   ]
+  }
+ },
+ "DROP DICTIONARY public.d": {
+  "26.5": {
+   "lines": [
+    "DropQuery public d (children 2)",
+    " Identifier public",
+    " Identifier d"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DropQuery public d (children 2)",
+    " Identifier public",
+    " Identifier d"
+   ]
+  }
+ },
+ "TRUNCATE TABLE IF EXISTS public.t": {
+  "26.5": {
+   "lines": [
+    "TruncateQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "TruncateQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "SHOW TABLES": {
+  "26.5": {
+   "lines": [
+    "ShowTables"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowTables"
+   ]
+  }
+ },
+ "SHOW TABLES FROM public LIKE '%a%'": {
+  "26.5": {
+   "lines": [
+    "ShowTables (children 1)",
+    " Identifier public"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowTables (children 1)",
+    " Identifier public"
+   ]
+  }
+ },
+ "SHOW DATABASES": {
+  "26.5": {
+   "lines": [
+    "ShowTables"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowTables"
+   ]
+  }
+ },
+ "SHOW CREATE TABLE secret.s": {
+  "26.5": {
+   "lines": [
+    "ShowCreateTableQuery secret s (children 2)",
+    " Identifier secret",
+    " Identifier s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowCreateTableQuery secret s (children 2)",
+    " Identifier secret",
+    " Identifier s"
+   ]
+  }
+ },
+ "DESCRIBE TABLE public.t": {
+  "26.5": {
+   "lines": [
+    "DescribeQuery (children 1)",
+    " TableExpression (children 1)",
+    "  TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "DescribeQuery (children 1)",
+    " TableExpression (children 1)",
+    "  TableIdentifier public.t"
+   ]
+  }
+ },
+ "EXISTS TABLE public.t": {
+  "26.5": {
+   "lines": [
+    "ExistsTableQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ExistsTableQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "EXPLAIN SELECT * FROM secret.s": {
+  "26.5": {
+   "lines": [
+    "Explain EXPLAIN (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier secret.s"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "Explain EXPLAIN (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier secret.s"
+   ]
+  }
+ },
+ "EXPLAIN ESTIMATE SELECT * FROM public.t": {
+  "26.5": {
+   "lines": [
+    "Explain EXPLAIN ESTIMATE (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "Explain EXPLAIN ESTIMATE (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.t"
+   ]
+  }
+ },
+ "CHECK TABLE public.t": {
+  "26.5": {
+   "lines": [
+    "CheckQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CheckQuery public t (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "KILL QUERY WHERE query_id = 'x'": {
+  "26.5": {
+   "lines": [
+    "KillQueryQuery Function_equals ASYNC (children 1)",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier query_id",
+    "   Literal 'x'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "KillQueryQuery Function_equals ASYNC (children 1)",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier query_id",
+    "   Literal 'x'"
+   ]
+  }
+ },
+ "SET max_threads = 1": {
+  "26.5": {
+   "lines": [
+    "Set"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "Set"
+   ]
+  }
+ },
+ "USE public": {
+  "26.5": {
+   "lines": [
+    "UseQuery public (children 1)",
+    " Identifier public"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "UseQuery public (children 1)",
+    " Identifier public"
+   ]
+  }
+ },
+ "OPTIMIZE TABLE public.t FINAL": {
+  "26.5": {
+   "lines": [
+    "OptimizeQuery public t_final (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "OptimizeQuery public t_final (children 2)",
+    " Identifier public",
+    " Identifier t"
+   ]
+  }
+ },
+ "RENAME TABLE public.a TO secret.b": {
+  "26.5": {
+   "lines": [
+    "Rename (children 4)",
+    " Identifier public",
+    " Identifier a",
+    " Identifier secret",
+    " Identifier b"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "Rename (children 4)",
+    " Identifier public",
+    " Identifier a",
+    " Identifier secret",
+    " Identifier b"
+   ]
+  }
+ },
+ "SYSTEM FLUSH LOGS": {
+  "26.5": {
+   "lines": [
+    "SYSTEM query"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SYSTEM query"
+   ]
+  }
+ },
+ "GRANT SELECT ON secret.* TO u": {
+  "26.5": {
+   "lines": [
+    "GrantQuery"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "GrantQuery"
+   ]
+  }
+ },
+ "SHOW COLUMNS FROM secret.s": {
+  "26.5": {
+   "lines": [
+    "ShowColumns"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowColumns"
+   ]
+  }
+ },
+ "SHOW PROCESSLIST": {
+  "26.5": {
+   "lines": [
+    "ShowProcesslistQuery"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "ShowProcesslistQuery"
+   ]
+  }
+ },
+ "CREATE USER u IDENTIFIED BY 'p'": {
+  "26.5": {
+   "lines": [
+    "CreateUserQuery (children 1)",
+    " AuthenticationData (children 1)",
+    "  Literal 'p'"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "CreateUserQuery (children 1)",
+    " AuthenticationData (children 1)",
+    "  Literal 'p'"
+   ]
+  }
+ }
+}

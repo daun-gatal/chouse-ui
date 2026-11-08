@@ -15,10 +15,9 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
-import { validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
-import { getConnectionById } from "../rbac/services/connections";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { getDoctorReport } from "../services/doctorReports";
 import { observeClient, selectRows } from "../services/observe/clickhouse";
@@ -115,9 +114,8 @@ async function runQueryCell(c: Context, notebook: notebooks.Notebook, statement:
   const validation = validateReadOnlySelect(statement);
   if (!validation.ok) throw AppError.badRequest(validation.error ?? "Only a single read-only SELECT is allowed");
   const user = getRbacUser(c);
-  const connection = await getConnectionById(connectionId);
-  const access = await validateQueryAccess(user.sub, isAdmin(c), user.permissions, statement, connection?.database ?? undefined, connectionId);
-  if (!access.allowed) throw AppError.forbidden(access.reason ?? "Access denied");
+  const access = await validateQueryAccess({ userId: user.sub, isAdmin: isAdmin(c), permissions: user.permissions, sql: statement, connectionId });
+  if (!access.allowed) throw accessDeniedError(access, "Access denied");
   const client = await observeClient(connectionId, "notebook");
   const rows = await selectRows<Record<string, unknown>>(client, statement, { maxExecutionTime: 30, maxResultRows: 200 });
   const columns = rows[0] ? Object.keys(rows[0]) : [];

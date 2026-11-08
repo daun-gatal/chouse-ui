@@ -13,14 +13,13 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { logger } from "../../utils/logger";
 import { validateQueryAccess } from "../../middleware/dataAccess";
 import { getUserPermissions, getUserRoles } from "../../rbac/services/rbac";
-import { getConnectionById } from "../../rbac/services/connections";
 import { SYSTEM_ROLES } from "../../rbac/schema/base";
 import { clientForConnection } from "./chClient";
 import * as store from "./store";
 import {
   buildExecutableQuery,
   toDateTime64Param,
-  toParseableSql,
+  executableForAccessCheck,
   validateReadOnlySelect,
 } from "./validation";
 import { describeSelectSchema, diffSchema, executeMaterialize } from "./materialize";
@@ -151,20 +150,13 @@ async function runSelect(
 async function ownerDataAccessDenial(job: ScheduledQueryRow): Promise<string | null> {
   const ownerId = job.createdBy;
   if (!ownerId) return null; // system/legacy job with no owner to evaluate
-  const [roles, permissions, conn] = await Promise.all([
+  const [roles, permissions] = await Promise.all([
     getUserRoles(ownerId),
     getUserPermissions(ownerId),
-    getConnectionById(job.connectionId),
   ]);
   const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
-  const result = await validateQueryAccess(
-    ownerId,
-    isAdmin,
-    permissions,
-    toParseableSql(job.query),
-    conn?.database ?? undefined,
-    job.connectionId,
-  );
+  const { sql, params } = executableForAccessCheck(job.query);
+  const result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params, connectionId: job.connectionId });
   return result.allowed ? null : (result.reason ?? "data access denied for one or more tables");
 }
 
