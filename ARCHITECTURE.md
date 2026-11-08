@@ -154,16 +154,7 @@ contract and remove its entry.
 
 | # | Issue | Where | Contract |
 |---|---|---|---|
-| 1 | The `/api/query/*` and `/api/ai/*` rate limiters key on `rbacUserId`. That isn't set yet when these app-level limiters run, so all callers share one bucket per pod | `packages/server/src/index.ts` | [server src](packages/server/src/README.md) |
 | 2 | A statement the SQL parser can't handle falls back to keyword and regex classification, and a statement with no detected tables is allowed. That falls short of "unknown shapes fail closed" | `packages/server/src/middleware/sqlParser.ts`, `dataAccess.ts` | [middleware](packages/server/src/middleware/README.md) |
-| 3 | `validateFormat` upper-cases its input but checks it against mixed-case names, so only `CSV`/`TSV`/`JSON`/`XML` pass. There are no live callers | `packages/server/src/utils/sqlIdentifier.ts`, `src/helpers/sqlUtils.ts` | [utils](packages/server/src/utils/README.md), [helpers](src/helpers/README.md) |
-| 4 | Explorer builds some SQL text with unescaped identifiers, column types and cluster names | `src/features/explorer/components/TreeNode.tsx`, `CreateTable.tsx` | [explorer components](src/features/explorer/components/README.md) |
-| 5 | The manual password "generate" buttons use `Math.random()` | `CreateUser`, `EditUser` | [CreateUser](src/features/admin/components/CreateUser/README.md), [EditUser](src/features/admin/components/EditUser/README.md) |
-| 6 | `gracefulShutdown` doesn't stop the approval sweeper, the triage runner or the Doctor scheduler | `packages/server/src/index.ts` | [server src](packages/server/src/README.md) |
-| 7 | `rbac/cli.ts reset` drops only 8 legacy tables | `packages/server/src/rbac/cli.ts` | [rbac](packages/server/src/rbac/README.md) |
-| 8 | Some landing-page links are hard-coded to `/docs/…` and ignore `VITE_BASE_PATH` | `docs/portfolio/src/components/` | [components](docs/portfolio/src/components/README.md) |
-| 9 | `useChReconnect` doesn't recognise `CONNECTION_CONTEXT_STALE` | `src/features/admin/components/clickhouse/useChReconnect.ts` | [clickhouse](src/features/admin/components/clickhouse/README.md) |
-| 10 | The `rbac.ts` transport ignores `VITE_API_URL` and sends no `credentials: 'include'` | `src/api/rbac.ts` | [api](src/api/README.md) |
 
 ## Verification
 
