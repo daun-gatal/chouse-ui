@@ -67,11 +67,9 @@ though every other feature would work.
   the connection dialog and list, and `chouse connection test` in the CLI,
   which prints the response as it is. Scripts on a personal access token that
   read `ok` see the new meaning; the release note says so.
-- The session's ClickHouse admin probe (`checkIsAdmin`) reads `system.grants`
-  and counts the user as admin only for a global `ALL`, `CREATE USER` or
-  `ACCESS MANAGEMENT` held directly. A user without access management was
-  already a non-admin there, so nothing changes; its one effect is Home's
-  recent-queries filter. Issue #422 removes that probe.
+- Nothing else reads these grants: the session's ClickHouse admin probe that
+  read `system.grants` was removed in #423 (issue #422), so CHouse UI
+  authorises only from its own RBAC.
 
 ## Alternatives considered
 
