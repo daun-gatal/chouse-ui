@@ -695,10 +695,13 @@ describe('rbacUserPreferencesApi onboarding', () => {
 describe('rbacConnectionsApi privilege check', () => {
   const REPORT = {
     ok: false,
+    complete: false,
     username: 'reader',
     database: 'analytics',
     missingCount: 1,
-    features: [{ id: 'query_control', name: 'Query control', description: 'Kill running queries', status: 'missing', missing: ['KILL QUERY ON *.*'], unavailable: [], errors: [], grants: ['GRANT KILL QUERY ON *.* TO reader;'] }],
+    optionalMissingCount: 0,
+    optionalGrantScript: '',
+    features: [{ id: 'query_control', name: 'Query control', description: 'Kill running queries', required: true, status: 'missing', missing: ['KILL QUERY ON *.*'], unavailable: [], errors: [], grants: ['GRANT KILL QUERY ON *.* TO reader;'] }],
     grantScript: 'GRANT KILL QUERY ON *.* TO reader;',
   };
 
@@ -734,6 +737,19 @@ describe('rbacConnectionsApi privilege check', () => {
     const error = await rbacConnectionsApi.create({ name: 'n', host: 'ch', username: 'reader' }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(privilegeReportFromError(error)).toEqual(REPORT);
+  });
+
+  it('returns the privilege report of a save that went through with optional features missing', async () => {
+    const warned = { ...REPORT, ok: true, missingCount: 0, grantScript: '', optionalMissingCount: 1, features: [] };
+    server.use(
+      http.post('/api/rbac/connections', () =>
+        HttpResponse.json({ success: true, data: { id: 'c1', name: 'n', privileges: warned } }, { status: 201 })
+      )
+    );
+
+    const saved = await rbacConnectionsApi.create({ name: 'n', host: 'ch', username: 'reader' });
+    expect(saved.id).toBe('c1');
+    expect(saved.privileges).toEqual(warned);
   });
 
   it('finds no report on other errors or malformed details', () => {

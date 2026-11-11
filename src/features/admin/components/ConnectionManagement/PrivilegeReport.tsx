@@ -1,7 +1,8 @@
 /**
  * What a connection's ClickHouse user is missing for each CHouse UI feature,
  * with the GRANT statements that fix it. Shown after Test connection, and in
- * place of the save when the server refused it (PRIVILEGES_MISSING).
+ * place of the save when the server refused it (PRIVILEGES_MISSING). Only
+ * required features block a save; optional ones only warn (ADR 0031).
  */
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
@@ -26,15 +27,26 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** One sentence on what is wrong, for the banner. */
+/** One sentence on what blocks the save (required features only), for the banner. */
 export function privilegeSummary(report: ConnectionPrivilegeReport): string {
-  const failing = report.features.filter((f) => f.status === "missing").length;
+  const failing = report.features.filter((f) => f.required && f.status === "missing").length;
   if (report.missingCount === 0) {
     return failing === 0
       ? `${report.username} has every privilege CHouse UI needs.`
       : `Some privileges for ${report.username} couldn't be checked. Check again.`;
   }
   return `${report.username} is missing ${plural(report.missingCount, "privilege", "privileges")} across ${plural(failing, "feature", "features")}.`;
+}
+
+/** One sentence on the optional features that won't work, or null when they all do. */
+export function optionalSummary(report: ConnectionPrivilegeReport): string | null {
+  const failing = report.features.filter((f) => !f.required && f.status === "missing");
+  if (failing.length === 0) return null;
+  const names = failing.map((f) => f.name).join(", ");
+  const unchecked = failing.every((f) => f.missing.length === 0);
+  return unchecked
+    ? `${names} couldn't be checked for ${report.username}; it may not work.`
+    : `${names} won't work: ${report.username} is missing ${plural(report.optionalMissingCount, "optional privilege", "optional privileges")}.`;
 }
 
 function CopyButton({ text, label }: { text: string; label: string }): ReactElement {
@@ -71,23 +83,36 @@ function CopyButton({ text, label }: { text: string; label: string }): ReactElem
 
 function FeatureRow({ feature, open, onToggle }: { feature: PrivilegeFeatureReport; open: boolean; onToggle: () => void }): ReactElement {
   const failing = feature.status === "missing";
+  // A missing optional feature is a warning, not a blocker.
+  const warning = failing && !feature.required;
   const count = feature.missing.length;
   const note = feature.unavailable.length > 0 ? `${feature.unavailable.join(", ")} not available on this server` : feature.description;
   const header = (
     <>
-      {failing ? (
+      {warning ? (
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+      ) : failing ? (
         <X className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" aria-hidden />
       ) : (
         <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
       )}
       <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className="text-[13px] font-medium text-paper">{feature.name}</span>
+        <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] font-medium text-paper">
+          {feature.name}
+          {!feature.required && (
+            <span className="font-mono text-[10px] font-normal uppercase tracking-[0.1em] text-paper-faint">Optional</span>
+          )}
+        </span>
         <span className="break-words text-[11px] leading-[1.45] text-paper-faint">{note}</span>
       </span>
       <span
         className={cn(
           "shrink-0 rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em]",
-          failing ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+          warning
+            ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+            : failing
+              ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
         )}
       >
         {failing ? (count > 0 ? `${count} missing` : "Not checked") : "Granted"}
@@ -119,7 +144,7 @@ function FeatureRow({ feature, open, onToggle }: { feature: PrivilegeFeatureRepo
             </div>
           )}
           {feature.errors.map((error) => (
-            <p key={error} className="font-mono text-[11px] leading-[1.5] text-red-700 dark:text-red-300">Couldn't check {error}</p>
+            <p key={error} className={cn("font-mono text-[11px] leading-[1.5]", warning ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300")}>Couldn't check {error}</p>
           ))}
         </div>
       )}
@@ -129,7 +154,7 @@ function FeatureRow({ feature, open, onToggle }: { feature: PrivilegeFeatureRepo
 
 export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs }: PrivilegeReportProps): ReactElement {
   const [open, setOpen] = useState<Set<string>>(() =>
-    new Set(blocked ? report.features.filter((f) => f.status === "missing").map((f) => f.id) : []),
+    new Set(blocked ? report.features.filter((f) => f.required && f.status === "missing").map((f) => f.id) : []),
   );
 
   const toggle = (id: string): void => {
@@ -142,6 +167,7 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
   };
 
   const connected = version ? `Connected to ClickHouse ${version}${latencyMs !== undefined ? ` in ${latencyMs}ms` : ""}` : "Connected";
+  const optional = optionalSummary(report);
 
   return (
     <section className="flex flex-col gap-2" aria-label="ClickHouse privileges">
@@ -156,15 +182,20 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
             {report.missingCount > 0 && " Run the grants below as a ClickHouse admin, then save again."}
           </p>
         </div>
-      ) : report.ok ? (
+      ) : report.ok && !optional ? (
         <p className="flex items-center gap-2 text-[12px] text-emerald-700 dark:text-emerald-300">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
           {connected}. Every feature is available.
         </p>
+      ) : report.ok ? (
+        <p className="flex items-start gap-2 text-[12px] leading-[1.5] text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>{connected}. You can save it. {optional}</span>
+        </p>
       ) : (
-        <p className="flex items-center gap-2 text-[12px] text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          {connected}, but {privilegeSummary(report).replace(/\.$/, "")}. Saving needs every feature granted.
+        <p className="flex items-start gap-2 text-[12px] leading-[1.5] text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>{connected}, but {privilegeSummary(report).replace(/\.$/, "")}. Saving needs every required feature granted.</span>
         </p>
       )}
 
@@ -174,12 +205,14 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
         ))}
       </div>
 
-      {report.grantScript && (
+      {(report.grantScript || report.optionalGrantScript) && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] leading-[1.5] text-paper-faint">
             If {report.username} gets its access through a role, grant these to the role instead.
           </p>
-          <CopyButton text={report.grantScript} label="Copy all grants" />
+          {report.grantScript && (
+            <CopyButton text={report.grantScript} label={report.optionalGrantScript ? "Copy required grants" : "Copy all grants"} />
+          )}
         </div>
       )}
     </section>
