@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConnectionPrivilegeReport, PrivilegeFeatureReport } from "@/api/rbac";
-import { PrivilegeReport, optionalSummary, privilegeSummary } from "./PrivilegeReport";
+import { PrivilegeReport, optionalSummary, otherDatabasesSummary, privilegeSummary } from "./PrivilegeReport";
 
 const toastError = vi.fn();
 vi.mock("sonner", () => ({ toast: { error: (...args: unknown[]) => toastError(...args) } }));
@@ -90,7 +90,52 @@ describe("optionalSummary", () => {
   });
 });
 
+const OTHER_DATABASES = {
+  total: 3,
+  databases: [
+    { name: "odd-db", query: "some" as const, edit: false },
+    { name: "raw", query: "all" as const, edit: false },
+    { name: "stage_eu", query: "all" as const, edit: true },
+  ],
+  grantScript: "GRANT SELECT, CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON `odd-db`.* TO reader;\nGRANT CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON raw.* TO reader;",
+};
+
+describe("otherDatabasesSummary", () => {
+  it("counts what the user can do in the other databases", () => {
+    expect(otherDatabasesSummary(OTHER_DATABASES)).toBe("3 other databases: change tables in 1, query only 1, some tables only 1.");
+    expect(otherDatabasesSummary({ total: 60, databases: [{ name: "a", query: "all", edit: true }], grantScript: "" })).toBe("60 other databases (first 1 shown): change tables in 1.");
+  });
+});
+
 describe("PrivilegeReport", () => {
+  it("lists the other databases as information, with grants to copy", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {});
+    mockClipboard(writeText);
+    render(<PrivilegeReport report={{ ...OPTIONAL_ONLY, otherDatabases: OTHER_DATABASES }} blocked={false} isEditing={false} />);
+
+    const row = screen.getByRole("button", { name: /Other databases/ });
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.textContent).toContain("3 other databases: change tables in 1, query only 1, some tables only 1.");
+    await user.click(row);
+    expect(screen.getByText(/Data editing is only required on the default database \(analytics\)/)).toBeTruthy();
+    expect(screen.getByText("Query and change")).toBeTruthy();
+    expect(screen.getByText("Query only")).toBeTruthy();
+    expect(screen.getByText("Some tables")).toBeTruthy();
+    const copies = screen.getAllByRole("button", { name: "Copy" });
+    await act(async () => {
+      copies[copies.length - 1].click();
+    });
+    expect(writeText).toHaveBeenLastCalledWith(OTHER_DATABASES.grantScript);
+  });
+
+  it("hides the other-databases row when there are none or the list couldn't be read", () => {
+    const { rerender } = render(<PrivilegeReport report={{ ...OPTIONAL_ONLY, otherDatabases: { total: 0, databases: [], grantScript: "" } }} blocked={false} isEditing={false} />);
+    expect(screen.queryByRole("button", { name: /Other databases/ })).toBeNull();
+    rerender(<PrivilegeReport report={{ ...OPTIONAL_ONLY, otherDatabases: { total: null, databases: [], grantScript: "" } }} blocked={false} isEditing={false} />);
+    expect(screen.queryByRole("button", { name: /Other databases/ })).toBeNull();
+  });
+
   it("after a test, shows the gap and keeps failing features closed", () => {
     render(<PrivilegeReport report={FAILING} blocked={false} isEditing={false} version="26.5.7" latencyMs={42} />);
 

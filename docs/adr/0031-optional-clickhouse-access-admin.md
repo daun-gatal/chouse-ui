@@ -49,7 +49,17 @@ though every other feature would work.
    with `403 CLICKHOUSE_ACCESS_DENIED`** and a message pointing at Test
    connection, instead of a `500` with the raw server text, since a saved
    connection may now lack those grants.
-6. Everything else in 0027 stands: the check itself, when an update is
+6. **The report says what the user can do in the other databases, as
+   information.** Data editing is only checked on the default database, so an
+   administrator who expects the user to work across several databases had no
+   signal. `otherDatabases` lists each database the user can see, other than
+   the default and `system`/`INFORMATION_SCHEMA` (the first 50 by name, with
+   the total), as query `all` or `some` and edit yes/no, plus GRANTs for full
+   access to those that lack it. It is worked out from the grants already
+   loaded; the only new query is `SELECT name FROM system.databases`, whose
+   failure just leaves the list empty. It never blocks or warns: narrow
+   access to other databases is often deliberate.
+7. Everything else in 0027 stands: the check itself, when an update is
    checked, and the saved-password rule.
 
 ## Consequences
@@ -72,6 +82,10 @@ though every other feature would work.
   authorises only from its own RBAC.
 
 ## Alternatives considered
+
+- **Check data editing on every database** — would block or warn on
+  connections that are narrow on purpose; information leaves the call to the
+  administrator.
 
 - **"Save anyway" for any missing feature** — rejected again for the reasons
   in 0027: a saved connection should support every feature that matters for

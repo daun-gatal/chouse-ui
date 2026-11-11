@@ -6,12 +6,12 @@
  */
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, Copy, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, Copy, Info, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ConnectionPrivilegeReport, PrivilegeFeatureReport } from "@/api/rbac";
+import type { ConnectionPrivilegeReport, OtherDatabasesReport, PrivilegeFeatureReport } from "@/api/rbac";
 
 interface PrivilegeReportProps {
   report: ConnectionPrivilegeReport;
@@ -152,6 +152,77 @@ function FeatureRow({ feature, open, onToggle }: { feature: PrivilegeFeatureRepo
   );
 }
 
+/** One line on the other databases, e.g. "4 other databases: change tables in 1, query only 2, some tables 1." */
+export function otherDatabasesSummary(other: OtherDatabasesReport): string {
+  const total = other.total ?? 0;
+  const edit = other.databases.filter((db) => db.edit).length;
+  const queryOnly = other.databases.filter((db) => !db.edit && db.query === "all").length;
+  const some = other.databases.filter((db) => !db.edit && db.query === "some").length;
+  const parts = [
+    edit > 0 ? `change tables in ${edit}` : "",
+    queryOnly > 0 ? `query only ${queryOnly}` : "",
+    some > 0 ? `some tables only ${some}` : "",
+  ].filter(Boolean);
+  const shown = other.databases.length < total ? ` (first ${other.databases.length} shown)` : "";
+  return `${plural(total, "other database", "other databases")}${shown}: ${parts.join(", ")}.`;
+}
+
+function accessLabel(db: OtherDatabasesReport["databases"][number]): string {
+  if (db.edit) return db.query === "all" ? "Query and change" : "Change, some tables queryable";
+  return db.query === "all" ? "Query only" : "Some tables";
+}
+
+/**
+ * Information only: data editing is checked on the default database, so say
+ * what the user can do in the others, with grants if more is wanted.
+ */
+function OtherDatabasesRow({ other, username, database, open, onToggle }: {
+  other: OtherDatabasesReport;
+  username: string;
+  database: string;
+  open: boolean;
+  onToggle: () => void;
+}): ReactElement {
+  return (
+    <div>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 px-3 py-2 hover:bg-ink-200">
+        <Info className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+        <span className="flex min-w-0 flex-1 flex-col text-left">
+          <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] font-medium text-paper">
+            Other databases
+            <span className="font-mono text-[10px] font-normal uppercase tracking-[0.1em] text-paper-faint">Info</span>
+          </span>
+          <span className="break-words text-[11px] leading-[1.45] text-paper-faint">{otherDatabasesSummary(other)}</span>
+        </span>
+        {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2 border-t border-ink-500 bg-ink-200 py-2 pl-9 pr-3">
+          <p className="text-[11px] leading-[1.5] text-paper-faint">
+            Data editing is only required on the default database ({database}). If people should query or change tables in others, grant {username} the same there.
+          </p>
+          <ul className="flex flex-col gap-1">
+            {other.databases.map((db) => (
+              <li key={db.name} className="flex items-center justify-between gap-2 text-[12px]">
+                <span className="min-w-0 break-all font-mono text-paper">{db.name}</span>
+                <span className={cn("shrink-0 font-mono text-[10px] uppercase tracking-[0.1em]", db.edit && db.query === "all" ? "text-emerald-700 dark:text-emerald-300" : "text-paper-dim")}>
+                  {accessLabel(db)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {other.grantScript && (
+            <div className="flex items-start justify-between gap-2">
+              <pre className="min-w-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.6] text-paper">{other.grantScript}</pre>
+              <CopyButton text={other.grantScript} label="Copy" />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs }: PrivilegeReportProps): ReactElement {
   const [open, setOpen] = useState<Set<string>>(() =>
     new Set(blocked ? report.features.filter((f) => f.required && f.status === "missing").map((f) => f.id) : []),
@@ -203,6 +274,15 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
         {report.features.map((feature) => (
           <FeatureRow key={feature.id} feature={feature} open={open.has(feature.id)} onToggle={() => toggle(feature.id)} />
         ))}
+        {report.otherDatabases && (report.otherDatabases.total ?? 0) > 0 && (
+          <OtherDatabasesRow
+            other={report.otherDatabases}
+            username={report.username}
+            database={report.database}
+            open={open.has("other_databases")}
+            onToggle={() => toggle("other_databases")}
+          />
+        )}
       </div>
 
       {(report.grantScript || report.optionalGrantScript) && (

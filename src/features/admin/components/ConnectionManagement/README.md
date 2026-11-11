@@ -11,6 +11,7 @@ CRUD for saved ClickHouse connections with a create/edit dialog that tests the c
 - `[PrivilegeReport.tsx:PrivilegeReport]` - blocked/ok/warn privilege report with copyable grants
 - `[PrivilegeReport.tsx:privilegeSummary]` - one-sentence summary of what blocks the save (required features)
 - `[PrivilegeReport.tsx:optionalSummary]` - one-sentence warning for optional features that are missing, or null
+- `[PrivilegeReport.tsx:otherDatabasesSummary]` - one-line count of access to the other databases (information row, never blocks)
 
 ## Invariants
 

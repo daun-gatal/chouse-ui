@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import type { ClickHouseClient } from "@clickhouse/client";
 
 import {
+  OTHER_DATABASES_LIMIT,
   PRIVILEGE_FEATURES,
   buildPrivilegeTree,
   checkConnectionPrivileges,
@@ -171,6 +172,8 @@ interface FakeServer {
   grants?: string[];
   roles?: Record<string, string[]>;
   privilegesTree?: PrivilegeTreeRow[] | "denied";
+  /** What `system.databases` lists; unset makes the query fail. */
+  databases?: string[];
 }
 
 class FakeClickHouseError extends Error {
@@ -204,6 +207,10 @@ function fakeClient(server: FakeServer): { client: ClickHouseClient; queries: st
       if (query === "SELECT role_name FROM system.enabled_roles") return respond(Object.keys(server.roles ?? {}), true);
       const role = /^SHOW GRANTS FOR (.+)$/.exec(query)?.[1];
       if (role) return respond(server.roles?.[role.replace(/`/g, "")] ?? [], true);
+      if (query === "SELECT name FROM system.databases ORDER BY name") {
+        if (!server.databases) throw new FakeClickHouseError("TIMEOUT_EXCEEDED", "Timeout exceeded");
+        return respond(server.databases, true);
+      }
       if (query.startsWith("SELECT privilege, aliases, level, parent_group FROM system.privileges")) {
         if (server.privilegesTree === "denied") throw new FakeClickHouseError("ACCESS_DENIED", "Not enough privileges");
         return respond(server.privilegesTree ?? TREE_ROWS);
@@ -356,6 +363,47 @@ describe("checkConnectionPrivileges", () => {
 
   it("marks only ClickHouse access admin optional", () => {
     expect(PRIVILEGE_FEATURES.filter((f) => !f.required).map((f) => f.id)).toEqual(["access_admin"]);
+  });
+
+  it("reports, for information, what the user can do in the other databases", async () => {
+    const { client } = fakeClient({
+      grantsFinal: [
+        "GRANT KILL QUERY ON *.* TO u",
+        "GRANT SELECT, CREATE TABLE, INSERT, ALTER, DROP ON analytics.* TO u",
+        "GRANT SELECT ON raw.* TO u",
+        "GRANT SELECT, CREATE TABLE, INSERT, ALTER, DROP ON `stage*`.* TO u",
+        "GRANT SELECT ON `odd-db`.events TO u",
+      ],
+      databases: ["INFORMATION_SCHEMA", "analytics", "information_schema", "odd-db", "raw", "stage_eu", "system"],
+    });
+    const report = await checkConnectionPrivileges(client, { username: "u", database: "analytics" });
+    expect(report.otherDatabases.total).toBe(3);
+    expect(report.otherDatabases.databases).toEqual([
+      { name: "odd-db", query: "some", edit: false },
+      { name: "raw", query: "all", edit: false },
+      { name: "stage_eu", query: "all", edit: true },
+    ]);
+    expect(report.otherDatabases.grantScript.split("\n")).toEqual([
+      "GRANT SELECT, CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON `odd-db`.* TO u;",
+      "GRANT CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON raw.* TO u;",
+    ]);
+    // Information only: read-only databases don't fail the save (only access admin, optional, is missing).
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(feature(report, "data_editing").status).toBe("granted");
+  });
+
+  it("caps the database list, and leaves it empty when it can't be read", async () => {
+    const many = Array.from({ length: OTHER_DATABASES_LIMIT + 5 }, (_, i) => `db${String(i).padStart(3, "0")}`);
+    const capped = await checkConnectionPrivileges(fakeClient({ grantsFinal: FULL_GRANTS, databases: ["default", ...many] }).client, { username: "u" });
+    expect(capped.otherDatabases.total).toBe(OTHER_DATABASES_LIMIT + 5);
+    expect(capped.otherDatabases.databases).toHaveLength(OTHER_DATABASES_LIMIT);
+    expect(capped.otherDatabases.databases.every((db) => db.query === "all" && db.edit)).toBe(true);
+    expect(capped.otherDatabases.grantScript).toBe("");
+
+    const unreadable = await checkConnectionPrivileges(fakeClient({ grantsFinal: FULL_GRANTS }).client, { username: "u" });
+    expect(unreadable.ok).toBe(true);
+    expect(unreadable.otherDatabases).toEqual({ total: null, databases: [], grantScript: "" });
   });
 
   it("still works when system.privileges is unreadable", async () => {

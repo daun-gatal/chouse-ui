@@ -1026,6 +1026,24 @@ export interface ConnectionPrivilegeReport {
   grantScript: string;
   /** GRANT statements for the optional features. */
   optionalGrantScript: string;
+  /** Information only: access to the server's other databases (data editing is only checked on the default one). */
+  otherDatabases?: OtherDatabasesReport;
+}
+
+export interface DatabaseAccess {
+  name: string;
+  /** `all`: the whole database; `some`: only some tables. */
+  query: 'all' | 'some';
+  edit: boolean;
+}
+
+export interface OtherDatabasesReport {
+  /** null when the database list couldn't be read. */
+  total: number | null;
+  /** The first 50 by name. */
+  databases: DatabaseAccess[];
+  /** GRANTs giving the listed databases full query and edit access. */
+  grantScript: string;
 }
 
 /** A created or updated connection, with the privilege check that ran for the save, if one did. */
