@@ -12,7 +12,7 @@ class that every route and service throws for HTTP-mapped failures.
   - `[index.ts:ErrorCategory]` - `connection | authentication | query | timeout | network | validation | permission | unknown`.
   - `[index.ts:requireParam]` - reads a Hono path param, throwing `AppError.badRequest` when absent.
 - Request schemas (Zod): `[index.ts:ConnectionConfigSchema]`, `[index.ts:QueryRequestSchema]`, `[index.ts:SavedQuerySchema]` and their inferred types `ConnectionConfig`, `QueryRequest`, `SavedQueryInput`.
-- Query and metadata shapes: `QueryResult`, `QueryStatistics`, `QueryMeta`, `TableInfo`, `DatabaseInfo`, `ColumnInfo`, `TableDetails`, `SavedQuery`, `Session`, `SessionInfo` `[index.ts]`.
+- Query and metadata shapes: `QueryResult`, `QueryStatistics`, `QueryMeta`, `TableInfo`, `DatabaseInfo`, `ColumnInfo`, `TableDetails`, `SavedQuery`, `Session` `[index.ts]`.
 - Monitoring shapes: `SystemStats`, `RecentQuery`, `ProductionMetrics`, `QueryLatencyMetrics`, `DiskMetrics`, `MergeMetrics`, `PartsPressureRow`, `DdlImpactEstimate`, `ReplicationMetrics`, `CacheMetrics`, `ResourceMetrics`, `ErrorMetrics`, `InsertThroughputMetrics`, `TopTableBySize`, `NetworkMetrics`, `*HistoryMetric`, `StorageCacheMetric`, `ConcurrencyMetric`, `ZooKeeperMetric`, `DetailedMemoryMetric` `[index.ts]`.
 - Envelopes: `[index.ts:ApiResponse]` (`success`, `data`, `error { code, message, details }`), `[index.ts:PaginatedResponse]`.
 

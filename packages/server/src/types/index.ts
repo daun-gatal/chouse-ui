@@ -18,19 +18,9 @@ export interface Session {
   connectionConfig: ConnectionConfig;
   createdAt: Date;
   lastUsedAt: Date;
-  isAdmin: boolean;
-  permissions: string[];
   version: string;
   rbacConnectionId?: string; // The RBAC connection ID this session is connected to
   rbacUserId?: string; // The RBAC user ID that owns this session (for session ownership validation)
-}
-
-export interface SessionInfo {
-  sessionId: string;
-  username: string;
-  isAdmin: boolean;
-  version: string;
-  expiresAt: Date;
 }
 
 // ============================================

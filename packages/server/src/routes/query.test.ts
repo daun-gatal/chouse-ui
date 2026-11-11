@@ -6,7 +6,6 @@ const mockExecuteQuery = mock();
 const mockGetIntellisenseData = mock();
 const mockClose = mock();
 const mockPing = mock();
-const mockCheckIsAdmin = mock();
 const mockGetVersion = mock();
 
 class MockClickHouseService {
@@ -14,7 +13,6 @@ class MockClickHouseService {
     getIntellisenseData = mockGetIntellisenseData;
     close = mockClose;
     ping = mockPing;
-    checkIsAdmin = mockCheckIsAdmin;
     getVersion = mockGetVersion;
 }
 
@@ -89,7 +87,6 @@ describe("Query Routes", () => {
 
         mockPing.mockResolvedValue(true);
         mockClose.mockResolvedValue(undefined);
-        mockCheckIsAdmin.mockResolvedValue({ isAdmin: false, permissions: [] });
         mockGetVersion.mockResolvedValue("24.1");
         mockGetUserConnections.mockResolvedValue([{ id: "conn1", isActive: true, isDefault: true }]);
         mockGetConnectionWithPassword.mockResolvedValue({

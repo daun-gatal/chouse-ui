@@ -1051,18 +1051,7 @@ export interface ConnectResult {
   port: number;
   username: string;
   database: string | null;
-  isAdmin: boolean;
-  permissions: string[];
   version: string;
-}
-
-export interface SessionStatus {
-  connected: boolean;
-  sessionId?: string;
-  username?: string;
-  isAdmin?: boolean;
-  permissions?: string[];
-  version?: string;
 }
 
 export const rbacConnectionsApi = {
@@ -1182,17 +1171,6 @@ export const rbacConnectionsApi = {
       method: 'POST',
       headers,
     });
-  },
-
-  /**
-   * Get current ClickHouse session status
-   */
-  async getSessionStatus(sessionId?: string): Promise<SessionStatus> {
-    const headers: Record<string, string> = {};
-    if (sessionId) {
-      headers['X-Session-ID'] = sessionId;
-    }
-    return rbacFetch('/connections/session', { headers });
   },
 };
 

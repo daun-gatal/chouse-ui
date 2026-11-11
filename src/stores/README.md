@@ -16,7 +16,7 @@ Zustand global state. Holds RBAC auth (user, roles, permissions, login/logout/SS
 ## Invariants
 - Client permission checks (`hasPermission`, `isAdmin`) only gate UI; `isAdmin` is true for the `super_admin` or `admin` role, `isSuperAdmin` only for `super_admin` [rbac.ts:isAdmin], [rbac.ts:isSuperAdmin].
 - `login` and SSO completions run in this order: `cleanupUserSession` for the previous user, the API call, `broadcastUserChange(newUserId)`, then `set(...)` of the new state (the broadcast goes out before the new state is set) [rbac.ts:login], [rbac.ts:completeSsoLogin].
-- `rbac-storage` persists only `user`, `roles`, `permissions` [rbac.ts:useRbacStore]; `connection-info-storage` persists connection display info but not `permissions` [auth.ts:useAuthStore].
+- `rbac-storage` persists only `user`, `roles`, `permissions` [rbac.ts:useRbacStore]; `connection-info-storage` persists only connection display info (`sessionId`, `username`, `url`, `version`, active connection id and name); it holds no ClickHouse privilege or admin flag, because the app authorises from RBAC alone (#422) [auth.ts:useAuthStore].
 - Persisted workspace tabs drop `result`, `isLoading`, and `error` [workspace.ts:useWorkspaceStore].
 - Workspace, explorer, AI-model, preferences, and Chobi state are stored per user (keys suffixed with the user id), so two users on one browser do not share state [workspace.ts:useWorkspaceStore], [chobi.ts:userScopedStorage], [aiModel.ts:createUserSpecificStorage].
 - The schema-preflight store is not persisted; a prompt lives only while its request waits [schemaPreflight.ts:useSchemaPreflightStore].

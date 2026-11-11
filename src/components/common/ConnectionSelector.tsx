@@ -187,8 +187,6 @@ export default function ConnectionSelector({
         username: result.username,
         url: connectionUrl,
         version: result.version,
-        isAdmin: result.isAdmin,
-        permissions: result.permissions,
         activeConnectionId: connection.id,
         activeConnectionName: connection.name,
       });

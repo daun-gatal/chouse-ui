@@ -29,11 +29,6 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from 
 import { createAuditLogWithContext, userHasPermission } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService } from '../../services/clickhouse';
-import { getConnectionId } from './clickhouseShared';
-import {
-  getConnectionFacts,
-  resolveRequestedConnection,
-} from '../../services/connectionResolver';
 import type { ConnectionConfig } from '../../types';
 
 const connectionsRoutes = new Hono();
@@ -663,11 +658,7 @@ connectionsRoutes.post(
         }, 503);
       }
 
-      // Get version and admin status
-      const [version, adminStatus] = await Promise.all([
-        testService.getVersion(),
-        testService.checkIsAdmin(),
-      ]);
+      const version = await testService.getVersion();
 
       // ADR 0010: no server-side session is created. The id below is an opaque
       // correlation handle for the client's logs/telemetry only — every
@@ -697,8 +688,6 @@ connectionsRoutes.post(
           port: connection.port,
           username: connection.username,
           database: connection.database,
-          isAdmin: adminStatus.isAdmin,
-          permissions: adminStatus.permissions,
           version,
         },
       });
@@ -735,50 +724,6 @@ connectionsRoutes.post(
         error: {
           code: 'DISCONNECT_FAILED',
           message: 'Failed to disconnect',
-        },
-      }, 500);
-    }
-  }
-);
-
-// Get current ClickHouse session status
-connectionsRoutes.get(
-  '/session',
-  rbacAuthMiddleware,
-  async (c) => {
-    try {
-      // ADR 0010: "connected" is now a property of the named connection, not of
-      // a session this particular replica happens to hold. Resolve and probe it
-      // the same way any other request would.
-      const user = getRbacUser(c);
-      const connectionId = getConnectionId(c);
-      if (!connectionId) {
-        return c.json({ success: true, data: { connected: false } });
-      }
-
-      const isSuperAdmin = (user.roles ?? []).includes('super_admin');
-      const resolved = await resolveRequestedConnection(user.sub, isSuperAdmin, connectionId);
-      const facts = await getConnectionFacts(resolved.service, connectionId, user.sub);
-
-      return c.json({
-        success: true,
-        data: {
-          connected: true,
-          sessionId: c.req.header('X-Session-ID') ?? null,
-          connectionId,
-          username: resolved.config.username,
-          isAdmin: facts.isAdmin,
-          permissions: facts.permissions,
-          version: facts.version,
-        },
-      });
-    } catch (error) {
-      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Session status error');
-      return c.json({
-        success: false,
-        error: {
-          code: 'SESSION_CHECK_FAILED',
-          message: 'Failed to check session status',
         },
       }, 500);
     }

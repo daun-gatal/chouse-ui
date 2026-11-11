@@ -113,10 +113,12 @@ func (a *App) newLogsCmd() *cobra.Command {
 	var user string
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Short: "Recent queries from system.query_log",
-		Long: `The most recent queries in ClickHouse's query log on the -c
-connection, newest first: when, how long, and whether they finished or
-failed. Filter by ClickHouse user with --user.`,
+		Short: "Recent queries on the connection",
+		Long: `The most recent queries on the -c connection, newest first: when,
+how long, and whether they finished or failed. With query:history:view:all
+you see everyone's, from ClickHouse's query log (last 7 days); otherwise only
+the queries you ran in CHouse UI. --user narrows the list to one ClickHouse
+user; it never shows more than you may see.`,
 		Example: `  chouse logs
   chouse logs --user etl --limit 50 -o csv`,
 		Args: cobra.NoArgs,
@@ -133,7 +135,7 @@ failed. Filter by ClickHouse user with --user.`,
 			if err != nil {
 				return err
 			}
-			return s.Print(got, view("", "TIME=event_time", "TYPE", "MS=query_duration_ms", "QUERY"))
+			return s.Print(got, view("", "TIME=time", "STATUS", "MS=duration", "QUERY"))
 		}),
 	}
 	cmd.Flags().IntVar(&limit, "limit", 20, "max rows (1-100)")

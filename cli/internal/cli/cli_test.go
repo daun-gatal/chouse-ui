@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,8 @@ func fakeServer(t *testing.T) (*httptest.Server, *seen) {
 				"data":       []any{map[string]any{"a": "x,y", "z": float64(1)}},
 				"statistics": map[string]any{"elapsed": 0.01, "rows_read": float64(1)},
 			})
+		case "/api/metrics/recent-queries":
+			ok(w, []any{map[string]any{"query": "SELECT 42", "duration": float64(7), "status": "Success", "time": "2026-11-11 09:00:00"}})
 		case "/api/metrics/ddl/simulate":
 			ok(w, map[string]any{"rowsAffected": float64(42)})
 		case "/api/rbac/auth/validate":
@@ -279,6 +282,30 @@ func TestLogsValidatesLimit(t *testing.T) {
 	srv, _ := fakeServer(t)
 	if res := run(t, srv, false, "", "logs", "--limit", "500"); res.code != api.ExitUsage {
 		t.Fatalf("--limit above 100: %+v", res)
+	}
+}
+
+func TestLogsShowsTheFieldsTheServerReturns(t *testing.T) {
+	srv, rec := fakeServer(t)
+	res := run(t, srv, false, "", "logs", "--user", "etl", "--limit", "5")
+	if res.code != 0 {
+		t.Fatalf("logs: %+v", res)
+	}
+	for _, want := range []string{"2026-11-11 09:00:00", "Success", "7", "SELECT 42"} {
+		if !strings.Contains(res.out, want) {
+			t.Fatalf("logs output misses %q: %q", want, res.out)
+		}
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	var query string
+	for _, r := range rec.requests {
+		if r.URL.Path == "/api/metrics/recent-queries" {
+			query = r.URL.RawQuery
+		}
+	}
+	if q, _ := url.ParseQuery(query); q.Get("username") != "etl" || q.Get("limit") != "5" {
+		t.Fatalf("logs query: %q", query)
 	}
 }
 

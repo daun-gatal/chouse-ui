@@ -303,15 +303,16 @@ const InlineLink: React.FC<{
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isAdmin, username, activeConnectionId, activeConnectionName, version } = useAuthStore();
+  const { activeConnectionId, activeConnectionName, version } = useAuthStore();
   const { favorites, recentItems, fetchFavorites, fetchRecentItems, expandNode, openUploadFileModal } = useExplorerStore();
   const { tabs, setActiveTab, addTab } = useWorkspaceStore();
   const { user: rbacUser } = useRbacStore();
 
   const { data: stats, isLoading: isStatsLoading } = useSystemStats();
   const { data: databaseList = [] } = useDatabases();
-  const usernameFilter = isAdmin ? undefined : username || undefined;
-  const { data: recentQueries = [], isLoading: isRecentLoading } = useRecentQueries(10, usernameFilter);
+  // The server decides whose queries come back (#422): everyone's with
+  // query:history:view:all, otherwise only the user's own.
+  const { data: recentQueries = [], isLoading: isRecentLoading } = useRecentQueries(10);
   const { data: savedQueries = [], isLoading: isSavedLoading } = useSavedQueries(activeConnectionId || undefined);
 
   const filteredSavedQueries = useMemo(

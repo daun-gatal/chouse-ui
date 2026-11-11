@@ -63,8 +63,6 @@ export async function activateConnection(opts: {
     username: result.username,
     url: `${result.host}:${result.port}`,
     version: result.version,
-    isAdmin: result.isAdmin,
-    permissions: result.permissions,
     activeConnectionId: opts.connectionId,
     activeConnectionName: result.connectionName ?? opts.connectionName,
   });

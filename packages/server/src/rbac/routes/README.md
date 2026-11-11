@@ -17,7 +17,7 @@ AI providers/models/configs, and SSO administration. Logic lives in
 - `users.ts`: CRUD plus `POST /:id/reset-password`, `POST /:id/assign-roles`, `GET /:id/identities`, `DELETE /:id/identities/:identityId`.
 - `roles.ts`: CRUD plus `GET /permissions/list`, `GET /permissions/by-category`.
 - `audit.ts`: `GET /`, `/actions`, `/metadata`, `/export`, `/stats`, `DELETE /`.
-- `connections.ts`: `GET /`, `/my`, `/default`, `/:id`, `/session`; `POST /`, `PATCH /:id`, `DELETE /:id`; `POST /test`, `/:id/test`, `/:id/connect`, `/disconnect`.
+- `connections.ts`: `GET /`, `/my`, `/default`, `/:id`; `POST /`, `PATCH /:id`, `DELETE /:id`; `POST /test`, `/:id/test`, `/:id/connect`, `/disconnect`.
 - `dataAccess.ts`: `POST /check`, `/filter/databases`, `/filter/tables`. `dataAccessPolicies.ts`: policy CRUD, `GET /role/:roleId`, `POST /role/:roleId` (replaces a role's policies; needs `data_access:assign`, audits `AUDIT_ACTIONS.DATA_ACCESS_ASSIGN`), `GET /:id/roles`, `GET /schema/:connectionId/databases|tables`.
 - `clickhouseUsers.ts`, `clickhouseRoles.ts`: list/get/create/patch/delete plus `generate-ddl` previews, `GET /clusters`, `GET /privileges`, `POST /:username/extract-role`, `POST /:name/disable|enable`. Shared helpers in `clickhouseShared.ts`: `[clickhouseShared.ts:getClickHouseService]`, `[clickhouseShared.ts:getConnectionId]`, `[clickhouseShared.ts:handleError]`, `grantSchema`, `grantsSchema`, `defaultRolesSchema`.
 - `userPreferences.ts`: `GET|POST|DELETE /favorites`, `DELETE /favorites/:id`, `GET /favorites/check`, `GET|POST|DELETE /recent`, `GET|PUT /preferences`, `GET|PATCH /preferences/onboarding` (onboarding progress is writable).
@@ -27,6 +27,7 @@ AI providers/models/configs, and SSO administration. Logic lives in
 ## Invariants
 - PAT CRUD, password change, and logout call `requireJwtSession`, so a personal access token cannot mint, rotate, or revoke credentials (ADR 0011) `[personalAccessTokens.ts]`, `[auth.ts]`.
 - When password login is disabled, `POST /login` rejects before checking credentials and audits `LOGIN_FAILED` with reason `password_login_disabled` `[auth.ts]`.
+- `POST /:id/connect` reports the connection's `version`, not whether its ClickHouse user is an admin; CHouse authorises from RBAC, and the required privileges are checked when a connection is saved [connections.ts:connectionsRoutes].
 - A connection is saved only if `testConnection` succeeds (else 400 `CONNECTION_TEST_FAILED`) and its user holds every required ClickHouse privilege (else 422 `PRIVILEGES_MISSING`); updates re-check only when credentials change `[connections.ts:verifyBeforeSave]`, `[connections.ts:changesCredentials]`.
 - Native ClickHouse user/role routes resolve the target `ClickHouseService` per request from the connection the client names, never from pod-local state (ADR 0010) `[clickhouseShared.ts:getClickHouseService]`.
 - SSO setting/provider mutations call `applySsoConfigChange` (bumping the shared generation) and are audited `[ssoAdmin.ts]`.

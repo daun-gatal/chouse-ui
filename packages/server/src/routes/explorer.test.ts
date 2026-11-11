@@ -9,7 +9,6 @@ const mockGetTableDetails = mock();
 const mockGetTableSample = mock();
 const mockClose = mock();
 const mockPing = mock();
-const mockCheckIsAdmin = mock();
 const mockGetVersion = mock();
 
 class MockClickHouseService {
@@ -19,7 +18,6 @@ class MockClickHouseService {
     getTableSample = mockGetTableSample;
     close = mockClose;
     ping = mockPing;
-    checkIsAdmin = mockCheckIsAdmin;
     getVersion = mockGetVersion;
 }
 
@@ -96,7 +94,6 @@ describe("Explorer Routes", () => {
         mockGetTableSample.mockClear();
         mockClose.mockClear();
         mockPing.mockClear();
-        mockCheckIsAdmin.mockClear();
         mockGetVersion.mockClear();
 
         mockGetUserConnections.mockClear();
@@ -115,7 +112,6 @@ describe("Explorer Routes", () => {
         // Default mock behaviors
         mockPing.mockResolvedValue(true);
         mockClose.mockResolvedValue(undefined);
-        mockCheckIsAdmin.mockResolvedValue({ isAdmin: false, permissions: [] });
         mockGetVersion.mockResolvedValue("24.1");
         mockGetUserConnections.mockResolvedValue([{ id: "conn1", isActive: true, isDefault: true }]);
         mockGetConnectionWithPassword.mockResolvedValue({

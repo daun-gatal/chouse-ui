@@ -5,7 +5,9 @@ import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
 } from "../middleware/connectionContext";
-import { AppError } from "../types";
+import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
+import { listQueryHistory } from "../services/queryHistory/store";
+import { AppError, type RecentQuery } from "../types";
 
 type Variables = ConnectionContextVariables;
 
@@ -87,10 +89,30 @@ metrics.get("/stats", async (c) => {
 });
 
 /**
+ * Other people's query text is shown only to users who may see all query
+ * history: the rule of `routes/observe/access.ts:canSeeAllQueryText`, read
+ * from the variables `optionalRbacMiddleware` sets for this router.
+ */
+function canSeeAllQueryText(c: Context<{ Variables: Variables }>): boolean {
+  if (c.get("isRbacAdmin")) return true;
+  return (c.get("rbacPermissions") ?? []).includes(PERMISSIONS.QUERY_HISTORY_VIEW_ALL);
+}
+
+/** `limit` query value as an integer in 1..100 (default 10). */
+function recentLimit(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed)) return 10;
+  return Math.min(100, Math.max(1, parsed));
+}
+
+/**
  * GET /metrics/recent-queries
- * Get recent queries from query log
- * @param limit - Number of queries to fetch
- * @param username - Optional username to filter by (for non-admin users)
+ * The newest queries on this connection, scoped on the server (#422):
+ * - admins and `query:history:view:all` get `system.query_log` (everyone's);
+ * - holders of `query:history:view` get only the queries they ran in
+ *   CHouse UI on this connection, from their own query history;
+ * - anyone else gets an empty list, so Home still renders.
+ * `username` (a ClickHouse user) can only narrow the result, never widen it.
  */
 metrics.get("/recent-queries", async (c) => {
   const rbacUserId = c.get("rbacUserId");
@@ -100,16 +122,33 @@ metrics.get("/recent-queries", async (c) => {
   // Check permission (basic metrics)
   await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, false);
 
-  const limit = parseInt(c.req.query("limit") || "10", 10);
-  const username = c.req.query("username");
-  const service = c.get("service");
+  const limit = recentLimit(c.req.query("limit"));
+  const username = c.req.query("username") || undefined;
 
-  const queries = await service.getRecentQueries(Math.min(limit, 100), username);
+  if (canSeeAllQueryText(c)) {
+    const queries = await c.get("service").getRecentQueries(limit, username);
+    return c.json({ success: true, data: queries });
+  }
 
-  return c.json({
-    success: true,
-    data: queries,
-  });
+  // Every query a user runs here goes out as the connection's ClickHouse user,
+  // so asking for a different ClickHouse user can only match nothing.
+  const session = c.get("session");
+  const connectionId = session?.rbacConnectionId ?? c.get("rbacConnectionId");
+  const canSeeOwn = (rbacPermissions ?? []).includes(PERMISSIONS.QUERY_HISTORY_VIEW);
+  if (!canSeeOwn || !rbacUserId || !connectionId || (username && username !== session?.connectionConfig.username)) {
+    return c.json({ success: true, data: [] });
+  }
+  const history = await listQueryHistory(rbacUserId, 100);
+  const queries: RecentQuery[] = history
+    .filter((item) => item.connectionId === connectionId)
+    .slice(0, limit)
+    .map((item) => ({
+      query: item.query,
+      duration: item.durationMs,
+      status: item.status === "success" ? "Success" : "Error",
+      time: new Date(item.executedAt).toISOString(),
+    }));
+  return c.json({ success: true, data: queries });
 });
 
 /**
@@ -431,6 +470,20 @@ metrics.get("/custom", async (c) => {
       success: false,
       error: { code: "BAD_REQUEST", message: "Only SELECT queries are allowed for metrics" },
     }, 400);
+  }
+
+  // The same data access rules as the SQL editor (ADR 0030): ClickHouse parses
+  // exactly this text, and every table it reads must be allowed for this user.
+  const access = await validateQueryAccess({
+    userId: rbacUserId,
+    isAdmin: isRbacAdmin,
+    permissions: rbacPermissions,
+    sql: query,
+    connectionId: c.get("session")?.rbacConnectionId ?? c.get("rbacConnectionId"),
+  });
+  if (!access.allowed) throw accessDeniedError(access);
+  if (access.statementType && access.statementType !== "select") {
+    throw AppError.badRequest("Only SELECT queries are allowed for metrics");
   }
 
   const result = await service.executeQuery(query);

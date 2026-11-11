@@ -32,6 +32,10 @@ describe('useQuery', () => {
       expect(typeof queryKeys.recentQueries).toBe('function');
     });
 
+    it('keys recent queries by limit and connection only (the server scopes them)', () => {
+      expect(queryKeys.recentQueries(10, 'conn-1')).toEqual(['recentQueries', 10, 'conn-1']);
+    });
+
     it('should define productionMetrics as function', () => {
       expect(queryKeys.productionMetrics).toBeDefined();
       expect(typeof queryKeys.productionMetrics).toBe('function');

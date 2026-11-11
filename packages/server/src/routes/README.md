@@ -26,6 +26,8 @@ and `packages/server/src/rbac/services`.
 - The protection layer only checks token prefixes (no DB I/O); validity is enforced by the per-route auth middleware `[index.ts:apiProtectionMiddleware]`.
 - User SQL passes `validateQueryAccess` and then `enforceSchemaPreflight` before it runs `[query.ts]`; explorer drops also go through `enforceSchemaPreflight` `[explorer.ts]`.
 - Uploads require write access to the target table via `checkTableAccess(..., "write")` and a format in `UPLOAD_FORMATS` `[upload.ts]`.
+- `GET /metrics/recent-queries` scopes on the server: RBAC admins and `query:history:view:all` get `system.query_log` (last 7 days); other holders of `query:history:view` get only their own CHouse query history on the current connection; anyone else gets `[]`. `username` only narrows `[metrics.ts:canSeeAllQueryText]`, `[metrics.ts:metrics]`.
+- `GET /metrics/custom` runs a SELECT only after `validateQueryAccess` allows that exact text, like the SQL editor `[metrics.ts:metrics]`.
 - Fleet metrics take a fixed metric enum, not raw SQL; metric SQL lives in `services/fleetMetrics.ts` `[fleet.ts]`.
 - Live queries from other users are filtered by ownership, and killing them is refused, unless the caller holds `live_queries:kill_all` (from the token or a DB re-check); there is no admin-role bypass, despite the file header `[live-queries.ts:liveQueries]`.
 - Integration callbacks are public but authenticate each request with its platform's signature or secret before parsing the body, then act as the mapped CHouse user `[integrations.ts]`.

@@ -46,7 +46,6 @@ const mockCHInstance = {
     ping: mock(),
     close: mock(),
     getVersion: mock(),
-    checkIsAdmin: mock()
 };
 const mockClickHouseService = mock().mockImplementation(() => mockCHInstance);
 
@@ -434,7 +433,6 @@ describe("RBAC Connections Routes", () => {
             // Mock CH behavior
             mockCHInstance.ping.mockResolvedValue(true);
             mockCHInstance.getVersion.mockResolvedValue("23.8");
-            mockCHInstance.checkIsAdmin.mockResolvedValue({ isAdmin: true, permissions: [] });
 
             const res = await app.request("/connections/c1/connect", {
                 method: "POST",
@@ -450,6 +448,10 @@ describe("RBAC Connections Routes", () => {
             const body = await res.json();
             expect(body.data.sessionId).toBeDefined();
             expect(body.data.connectionId).toBe("c1");
+            // #422: no ClickHouse admin probe, and no misleading flags in the response.
+            expect(body.data.version).toBe("23.8");
+            expect(body.data).not.toHaveProperty("isAdmin");
+            expect(body.data).not.toHaveProperty("permissions");
         });
 
         it("should deny access if not assigned (non-superadmin)", async () => {
