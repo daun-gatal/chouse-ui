@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.17.2] - 2026-11-11
+
+### Added
+- **Other databases in Test connection** — data editing is only checked on the connection's default database, so the privilege report now also lists, for information, what the user can do in each other database (query all or some tables, change tables or not) with the `GRANT` statements for full access. It never blocks a save.
+
+### Changed
+- **Connections save without ClickHouse access management** — a connection whose ClickHouse user lacks `CREATE USER`, `ALTER USER`, `DROP USER`, `CREATE ROLE`, `ALTER ROLE`, `DROP ROLE`, `ROLE ADMIN` (or reading `system.users`, `system.roles`, `system.grants`, `system.role_grants`) is now saved with a warning instead of being refused. Those grants only power Admin › ClickHouse users and roles, which say the connection's user isn't allowed (`403 CLICKHOUSE_ACCESS_DENIED`) until they are granted. In the privilege report, `ok` now means every *required* feature passes; the new `complete` means every feature does (ADR 0031).
+
+### Fixed
+- **No more `system.grants` probe on connect** — connecting no longer checks whether the connection's ClickHouse user is an admin. That check failed with `ACCESS_DENIED` (and logged "Failed to check admin status" about once a minute) on users without `SELECT ON system.grants`, and missed admin rights granted through roles. CHouse UI authorises from its own roles, so nothing depended on it (#422).
+- **Recent queries respect query history permissions** — the Home page and the command palette list everyone's recent queries only for admins and holders of `query:history:view:all`. Everyone else sees the queries they ran in CHouse UI on the current connection. The list now covers the last 7 days, so the log scan stays bounded.
+- **`GET /api/metrics/custom` follows data access rules** — the query is checked like one from the SQL editor before it runs, so it can no longer read tables the caller's rules deny.
+
+### Removed
+- **`isAdmin` and `permissions` in the connect response** — `POST /api/rbac/connections/:id/connect` no longer returns them; they described the ClickHouse user, not the CHouse user, and were often wrong.
+- **`GET /api/rbac/connections/session`** — the route was registered after `GET /:id`, so it always answered `404 Connection not found` and nothing called it.
+
 ## [v3.17.1] - 2026-11-08
 
 ### Changed
@@ -280,22 +297,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GitHub SSO login** — GitHub now sends an RFC 9207 `iss` parameter (`https://github.com/login/oauth`) that could never match the synthetic plain-OAuth2 issuer, rejecting every login. OAuth2 callbacks now ignore `iss` unless an explicit `issuer` is configured (which validates it strictly instead).
 - **SSO email auto-link** — GitHub logins using a verified `/user/emails` address now auto-link to the existing account when `auto_link_by_email` is enabled (previously failed with a duplicate-email error); email collisions without verification proof now return `409 Conflict` with an actionable message instead of a raw database error
 - **Container image vulnerabilities** — the published image no longer carries known CVEs from the server runtime or the Alpine base. Bumped `hono`, `nodemailer`, and `@xmldom/xmldom`, forced patched transitive `@xmldom/xmldom` and `uuid` through overrides that the production install honours, and pinned a minimum OpenSSL (`libcrypto3`/`libssl3`) version in the base image.
-
-## [v3.12.0] - 2026-08-02
-
-### Added
-- **`service.sessionAffinity` in the Helm chart** (default off). Not required for correctness any more — multi-replica is correct without stickiness — but available for operators who want it.
-- **[ADR 0010](../../docs/adr/0010-pod-local-state-and-multi-replica-correctness.md)** defining the pod-local state contract: a cache may hold state that is derivable and self-healing; nothing may hold state that is authoritative for answering a request.
-
-### Changed
-- **Unresolvable connection context now fails closed** — routes return `409 CONNECTION_CONTEXT_STALE` instead of quietly substituting a different connection; the client re-activates and retries once. Browsers holding a pre-upgrade bundle recover on reload.
-- **Five near-identical hybrid auth middlewares collapsed into one** shared per-request connection context used by explorer, query, metrics, live-queries, ai-chat and upload.
-
-### Fixed
-- **AI structured output on strict providers** — schemas for the Data Health promise recommendation, both query optimizers, and the fleet scan used optional fields that OpenAI-compatible providers reject in strict structured-output mode, so that fallback strategy failed on every call before a request was even sent. Optional output fields are now nullable.
-- **Schema-invalid AI responses** — when a model returns JSON that violates the output schema, Chouse AI now re-prompts once with the specific validation errors instead of failing the run outright.
-- **Wrong ClickHouse cluster served behind multiple replicas** — the selected connection was held in a per-pod in-memory session map, so a request routed to a pod that had never seen the session silently answered from the user's *default* connection with a 200. This showed up as the Data Health promise editor "losing" database and table names until you reloaded a few times. Connection identity now travels with each request (`X-Connection-Id`) and is authorised against the RBAC database on every call, so any replica can serve it.
-- **SAML login broken and replay protection ineffective across replicas** — the handoff codes, `InResponseTo` request ids, and the assertion replay cache were per-process Maps. SP-initiated login failed roughly (N-1)/N of the time, and the same assertion could be replayed successfully against a replica that had not seen it. All three now live in shared tables with atomic single-use claims.
-- **Auth config changes applied to only one pod** — disabling password login or changing SSO providers rebuilt the cache only on the replica that served the mutation, leaving every other pod serving the old answer indefinitely (there was no TTL). A shared generation counter now propagates changes within seconds.
-- **Alert storm after every rollout** — fleet breach latches were in memory, so poller-lease failover re-fired every still-breaching condition. Latches and the auto-RCA cooldown are now persisted.
 
