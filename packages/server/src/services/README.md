@@ -28,7 +28,7 @@ Business logic for the CHouse UI API server (`packages/server`). Route handlers 
 
 ## Invariants
 - Connection choice is authorised per request against the RBAC DB; nothing depends on which replica serves it (`[connectionResolver.ts:resolveRequestedConnection]`). Pooling happens in `[clientManager.ts:ClientManager]`, keyed by connection config with 10-minute idle eviction.
-- Saving a connection requires the privilege check to pass; missing privileges are reported as copyable GRANT statements (`[connectionPrivileges.ts:checkConnectionPrivileges]`).
+- Saving a connection requires every *required* feature of the privilege check to pass (`ok`); an optional feature (`required: false`, ClickHouse access admin) only warns and is reported apart (`complete`, `optionalMissingCount`, `optionalGrantScript`). Missing privileges are reported as copyable GRANT statements (`[connectionPrivileges.ts:checkConnectionPrivileges]`, ADR 0031).
 - Fleet alerts fire only on the healthy -> breach edge; the latch map is persisted so this holds across replicas and restarts (`[fleetAlerter.ts:processTick]`, `[fleetAlertLatchStore.ts:persistLatches]`).
 - Doctor scheduling is multi-instance safe: one atomic conditional UPDATE on `last_run_at` claims each slot (`[doctorScheduler.ts:claimScheduledSlot]`).
 - Doctor reports keep the newest `[doctorReports.ts:DOCTOR_REPORT_RETENTION]` (100) and prune the rest after each save.

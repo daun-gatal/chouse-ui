@@ -49,6 +49,12 @@ function isReadonlyStorageError(error: unknown): boolean {
   return message.includes('readonly') || message.includes('read-only') || message.includes('read only');
 }
 
+/** ClickHouse refused the statement for lack of a grant (code 497). */
+function isAccessDeniedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('ACCESS_DENIED') || /Not enough privileges/i.test(message);
+}
+
 function isRoleInUseError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return message.includes('still assigned to');
@@ -56,14 +62,24 @@ function isRoleInUseError(error: unknown): boolean {
 
 /**
  * Map an error to a `{ code, message, statusCode }` shape. Session, read-only
- * storage and role-in-use errors are user errors (400); anything else is 500.
+ * storage and role-in-use errors are user errors (400); a ClickHouse access
+ * denial is 403, since a connection may be saved without access management
+ * (ADR 0031); anything else is 500.
  */
 export function handleError(
   error: unknown,
   defaultCode: string,
   defaultMessage: string,
-): { code: string; message: string; statusCode: 400 | 500 } {
+): { code: string; message: string; statusCode: 400 | 403 | 500 } {
   const rawMessage = error instanceof Error ? error.message : defaultMessage;
+  if (isAccessDeniedError(error)) {
+    const detail = rawMessage.split('\n')[0].trim();
+    return {
+      code: 'CLICKHOUSE_ACCESS_DENIED',
+      message: `This connection's ClickHouse user isn't allowed to do this: ${detail} Test the connection in Admin › Connections to see the grants it needs.`,
+      statusCode: 403,
+    };
+  }
   if (isRoleInUseError(error)) {
     return { code: 'ROLE_IN_USE', message: rawMessage, statusCode: 400 };
   }

@@ -88,29 +88,36 @@ type SaveCheckFailure = {
   body: { success: false; error: { code: string; message: string; details?: { privileges: PrivilegeReport } } };
 };
 
+type SaveCheck = { failure: SaveCheckFailure } | { failure: null; privileges?: PrivilegeReport };
+
 /**
  * A connection is only saved once its user can log in and holds every
- * privilege CHouse UI's features need. Returns the error response to send,
- * or null when the connection may be saved.
+ * privilege CHouse UI's required features need (ADR 0027, 0031). Returns the
+ * error response to send, or the report so the save can warn about optional
+ * features that are missing.
  */
-async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheckFailure | null> {
+async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheck> {
   const result = await testConnection(input);
   if (!result.success) {
     return {
-      status: 400,
-      body: { success: false, error: { code: 'CONNECTION_TEST_FAILED', message: result.error || 'Could not connect to ClickHouse' } },
+      failure: {
+        status: 400,
+        body: { success: false, error: { code: 'CONNECTION_TEST_FAILED', message: result.error || 'Could not connect to ClickHouse' } },
+      },
     };
   }
   if (result.privileges && !result.privileges.ok) {
     return {
-      status: 422,
-      body: {
-        success: false,
-        error: { code: 'PRIVILEGES_MISSING', message: privilegeReportMessage(result.privileges), details: { privileges: result.privileges } },
+      failure: {
+        status: 422,
+        body: {
+          success: false,
+          error: { code: 'PRIVILEGES_MISSING', message: privilegeReportMessage(result.privileges), details: { privileges: result.privileges } },
+        },
       },
     };
   }
-  return null;
+  return { failure: null, privileges: result.privileges };
 }
 
 /** Whether an update changes anything the ClickHouse login or the privilege check depends on. */
@@ -317,8 +324,8 @@ connectionsRoutes.post(
       const user = getRbacUser(c);
       const input = c.req.valid('json');
 
-      const failure = await verifyBeforeSave(input);
-      if (failure) return c.json(failure.body, failure.status);
+      const check = await verifyBeforeSave(input);
+      if (check.failure) return c.json(check.failure.body, check.failure.status);
 
       const connection = await createConnection(input, user.sub);
 
@@ -336,7 +343,7 @@ connectionsRoutes.post(
 
       return c.json({
         success: true,
-        data: connection,
+        data: { ...connection, privileges: check.privileges },
       }, 201);
     } catch (error) {
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Create error');
@@ -374,6 +381,7 @@ connectionsRoutes.patch(
         }, 404);
       }
 
+      let privileges: PrivilegeReport | undefined;
       if (changesCredentials(existing, input)) {
         let password = input.password;
         if (password === undefined) {
@@ -388,7 +396,7 @@ connectionsRoutes.patch(
           }
           password = saved ?? undefined;
         }
-        const failure = await verifyBeforeSave({
+        const check = await verifyBeforeSave({
           name: input.name ?? existing.name,
           host: input.host ?? existing.host,
           port: input.port ?? existing.port,
@@ -397,7 +405,8 @@ connectionsRoutes.patch(
           database: input.database !== undefined ? input.database : existing.database,
           sslEnabled: input.sslEnabled ?? existing.sslEnabled,
         });
-        if (failure) return c.json(failure.body, failure.status);
+        if (check.failure) return c.json(check.failure.body, check.failure.status);
+        privileges = check.privileges;
       }
 
       const connection = await updateConnection(id, input);
@@ -426,7 +435,7 @@ connectionsRoutes.patch(
 
       return c.json({
         success: true,
-        data: connection,
+        data: { ...connection, privileges },
       });
     } catch (error) {
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Update error');

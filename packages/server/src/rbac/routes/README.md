@@ -28,7 +28,8 @@ AI providers/models/configs, and SSO administration. Logic lives in
 - PAT CRUD, password change, and logout call `requireJwtSession`, so a personal access token cannot mint, rotate, or revoke credentials (ADR 0011) `[personalAccessTokens.ts]`, `[auth.ts]`.
 - When password login is disabled, `POST /login` rejects before checking credentials and audits `LOGIN_FAILED` with reason `password_login_disabled` `[auth.ts]`.
 - `POST /:id/connect` reports the connection's `version`, not whether its ClickHouse user is an admin; CHouse authorises from RBAC, and the required privileges are checked when a connection is saved [connections.ts:connectionsRoutes].
-- A connection is saved only if `testConnection` succeeds (else 400 `CONNECTION_TEST_FAILED`) and its user holds every required ClickHouse privilege (else 422 `PRIVILEGES_MISSING`); updates re-check only when credentials change `[connections.ts:verifyBeforeSave]`, `[connections.ts:changesCredentials]`.
+- A connection is saved only if `testConnection` succeeds (else 400 `CONNECTION_TEST_FAILED`) and its user holds every privilege of the required features (else 422 `PRIVILEGES_MISSING`); optional features (ClickHouse access admin) never block. Create and update return the report as `data.privileges` when the check ran; updates re-check only when credentials change `[connections.ts:verifyBeforeSave]`, `[connections.ts:changesCredentials]`.
+- ClickHouse users/roles routes answer a ClickHouse access denial with 403 `CLICKHOUSE_ACCESS_DENIED` (ADR 0031) `[clickhouseShared.ts:handleError]`.
 - Native ClickHouse user/role routes resolve the target `ClickHouseService` per request from the connection the client names, never from pod-local state (ADR 0010) `[clickhouseShared.ts:getClickHouseService]`.
 - SSO setting/provider mutations call `applySsoConfigChange` (bumping the shared generation) and are audited `[ssoAdmin.ts]`.
 - `GET /health` is public; the raw driver error is logged, not returned `[index.ts]`.

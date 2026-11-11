@@ -71,15 +71,30 @@ mock.module("../services/jwt", () => ({
 import connectionsRoutes from "./connections";
 import { errorHandler } from "../../middleware/error";
 
-const PRIVILEGES_OK = { ok: true, username: "default", database: "default", missingCount: 0, features: [], grantScript: "" };
+const PRIVILEGES_OK = { ok: true, complete: true, username: "default", database: "default", missingCount: 0, optionalMissingCount: 0, features: [], grantScript: "", optionalGrantScript: "" };
 const PASSING_TEST = { success: true, version: "26.5", databases: ["default"], latencyMs: 5, privileges: PRIVILEGES_OK };
+const ACCESS_ADMIN_MISSING = {
+    id: "access_admin", name: "ClickHouse access admin", description: "ClickHouse users and roles pages", required: false, status: "missing",
+    missing: ["ROLE ADMIN ON *.*"], unavailable: [], errors: [], grants: ["GRANT ROLE ADMIN ON *.* TO reader;"],
+};
 const PRIVILEGES_MISSING = {
     ok: false,
+    complete: false,
     username: "reader",
     database: "analytics",
     missingCount: 1,
-    features: [{ id: "query_control", name: "Query control", description: "Kill running queries", status: "missing", missing: ["KILL QUERY ON *.*"], unavailable: [], errors: [], grants: ["GRANT KILL QUERY ON *.* TO reader;"] }],
+    optionalMissingCount: 1,
+    features: [
+        { id: "query_control", name: "Query control", description: "Kill running queries", required: true, status: "missing", missing: ["KILL QUERY ON *.*"], unavailable: [], errors: [], grants: ["GRANT KILL QUERY ON *.* TO reader;"] },
+        ACCESS_ADMIN_MISSING,
+    ],
     grantScript: "GRANT KILL QUERY ON *.* TO reader;",
+    optionalGrantScript: "GRANT ROLE ADMIN ON *.* TO reader;",
+};
+/** Only the optional access-admin feature is missing: the save goes through (ADR 0031). */
+const PRIVILEGES_OPTIONAL_MISSING = {
+    ...PRIVILEGES_OK, complete: false, username: "reader", optionalMissingCount: 1, features: [ACCESS_ADMIN_MISSING],
+    optionalGrantScript: "GRANT ROLE ADMIN ON *.* TO reader;",
 };
 const SAVED_PUBLIC = {
     id: "c1", name: "prod", host: "ch.internal", port: 8443, username: "reader",
@@ -211,6 +226,21 @@ describe("RBAC Connections Routes", () => {
 
             expect(res.status).toBe(201);
             expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({ host: "localhost", username: "default", password: "pw", database: "analytics" }));
+            expect((await res.json()).data).toEqual({ id: "c1", name: "test", host: "localhost", privileges: PRIVILEGES_OK });
+        });
+
+        it("saves a connection whose user lacks only the optional access-admin privileges, returning the report", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
+            mockCreateConnection.mockResolvedValue({ id: "c1", name: "test", host: "localhost" });
+            mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_OPTIONAL_MISSING });
+
+            const res = await app.request("/connections", jsonRequest("POST", { name: "test", host: "localhost", username: "reader" }));
+
+            expect(res.status).toBe(201);
+            const body = await res.json();
+            expect(body.data.privileges).toEqual(PRIVILEGES_OPTIONAL_MISSING);
+            expect(mockCreateConnection).toHaveBeenCalled();
+            expect(mockCreateAuditLog).toHaveBeenCalled();
         });
 
         it("refuses to save a connection whose login fails", async () => {
@@ -257,6 +287,18 @@ describe("RBAC Connections Routes", () => {
             expect(res.status).toBe(200);
             expect(mockTestConnection).not.toHaveBeenCalled();
             expect(mockGetConnectionWithPassword).not.toHaveBeenCalled();
+            expect(mockUpdateConnection).toHaveBeenCalled();
+            // No check ran, so no report: "not checked" rather than "fine".
+            expect((await res.json()).data).not.toHaveProperty("privileges");
+        });
+
+        it("saves new settings that lack only optional privileges, returning the report", async () => {
+            mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_OPTIONAL_MISSING });
+
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "reader2", password: "pw" }));
+
+            expect(res.status).toBe(200);
+            expect((await res.json()).data.privileges).toEqual(PRIVILEGES_OPTIONAL_MISSING);
             expect(mockUpdateConnection).toHaveBeenCalled();
         });
 

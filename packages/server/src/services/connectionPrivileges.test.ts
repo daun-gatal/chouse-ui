@@ -228,8 +228,11 @@ describe("checkConnectionPrivileges", () => {
     const { client } = fakeClient({ grantsFinal: FULL_GRANTS, tables: { crash_log: { type: "UNKNOWN_TABLE" }, distributed_ddl_queue: { type: "NO_ELEMENTS_IN_CONFIG" } } });
     const report = await checkConnectionPrivileges(client, { username: "chouse", database: "analytics" });
     expect(report.ok).toBe(true);
+    expect(report.complete).toBe(true);
     expect(report.missingCount).toBe(0);
+    expect(report.optionalMissingCount).toBe(0);
     expect(report.grantScript).toBe("");
+    expect(report.optionalGrantScript).toBe("");
     expect(feature(report, "monitoring").unavailable).toEqual(["system.distributed_ddl_queue", "system.crash_log"]);
     expect(report.features.map((f) => f.id)).toEqual(PRIVILEGE_FEATURES.map((f) => f.id));
   });
@@ -255,16 +258,24 @@ describe("checkConnectionPrivileges", () => {
       "GRANT SELECT ON system.users TO `chouse-ro`;",
       "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO `chouse-ro`;",
     ]);
-    expect(report.missingCount).toBe(13);
+    // Access admin is optional: counted and scripted apart from what blocks the save.
+    expect(feature(report, "access_admin").required).toBe(false);
+    expect(report.complete).toBe(false);
+    expect(report.missingCount).toBe(5);
+    expect(report.optionalMissingCount).toBe(8);
     expect(report.grantScript.split("\n")).toEqual([
       "GRANT SELECT ON system.processes TO `chouse-ro`;",
       "GRANT SELECT ON system.metric_log TO `chouse-ro`;",
       "GRANT KILL QUERY ON *.* TO `chouse-ro`;",
       "GRANT ALTER TABLE, DROP TABLE ON analytics.* TO `chouse-ro`;",
+    ]);
+    expect(report.optionalGrantScript.split("\n")).toEqual([
       "GRANT SELECT ON system.users TO `chouse-ro`;",
       "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO `chouse-ro`;",
     ]);
-    expect(privilegeReportMessage(report)).toStartWith("chouse-ro is missing 13 privileges across 5 features. Run as an admin, then save again:\nGRANT SELECT ON system.processes");
+    const message = privilegeReportMessage(report);
+    expect(message).toStartWith("chouse-ro is missing 5 privileges across 4 features. Run as an admin, then save again:\nGRANT SELECT ON system.processes");
+    expect(message).not.toContain("CREATE USER");
   });
 
   it("checks data editing on the default database when none is set, quoting odd names", async () => {
@@ -304,6 +315,47 @@ describe("checkConnectionPrivileges", () => {
     expect(feature(report, "monitoring").errors).toEqual(["system.replicas: Timeout exceeded: elapsed 5 seconds"]);
     expect(feature(report, "monitoring").grants).toEqual([]);
     expect(privilegeReportMessage(report)).toBe("Couldn't check every privilege for u: system.replicas: Timeout exceeded: elapsed 5 seconds. Try again.");
+  });
+
+  it("passes the save without access management, and says the report is incomplete", async () => {
+    const { client } = fakeClient({
+      grantsFinal: ["GRANT SELECT, KILL QUERY ON *.* TO reader", "GRANT CREATE TABLE, INSERT, ALTER, DROP ON default.* TO reader"],
+      tables: {
+        users: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        roles: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        grants: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        role_grants: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+      },
+    });
+    const report = await checkConnectionPrivileges(client, { username: "reader" });
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(report.missingCount).toBe(0);
+    expect(report.grantScript).toBe("");
+    expect(report.optionalMissingCount).toBe(11);
+    expect(report.optionalGrantScript.split("\n")).toEqual([
+      "GRANT SELECT ON system.users TO reader;",
+      "GRANT SELECT ON system.roles TO reader;",
+      "GRANT SELECT ON system.grants TO reader;",
+      "GRANT SELECT ON system.role_grants TO reader;",
+      "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO reader;",
+    ]);
+    expect(feature(report, "access_admin").status).toBe("missing");
+  });
+
+  it("doesn't block on a check that errored in an optional feature", async () => {
+    const { client } = fakeClient({ grantsFinal: FULL_GRANTS, tables: { role_grants: { type: "TIMEOUT_EXCEEDED", message: "Timeout exceeded" } } });
+    const report = await checkConnectionPrivileges(client, { username: "u" });
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(report.optionalMissingCount).toBe(0);
+    expect(feature(report, "access_admin").errors).toEqual(["system.role_grants: Timeout exceeded"]);
+    expect(report.grantScript).toBe("");
+    expect(report.optionalGrantScript).toBe("");
+  });
+
+  it("marks only ClickHouse access admin optional", () => {
+    expect(PRIVILEGE_FEATURES.filter((f) => !f.required).map((f) => f.id)).toEqual(["access_admin"]);
   });
 
   it("still works when system.privileges is unreadable", async () => {

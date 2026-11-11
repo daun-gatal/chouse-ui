@@ -1,7 +1,8 @@
 /**
  * What a connection's ClickHouse user must be able to do for every CHouse UI
  * feature to work, and a check that reports what is missing as copyable
- * GRANT statements. Saving a connection requires the check to pass.
+ * GRANT statements. Saving a connection requires every required feature to
+ * pass; an optional feature (ClickHouse access admin) only warns (ADR 0031).
  *
  * System tables are checked by reading them (`LIMIT 0`), which is exact for
  * grants inherited through roles and for partial revokes. Privileges that
@@ -30,6 +31,8 @@ export interface PrivilegeFeature {
   id: PrivilegeFeatureId;
   name: string;
   description: string;
+  /** Required features block a save when missing; optional ones only warn. */
+  required: boolean;
   systemTables: readonly string[];
   privileges: readonly RequiredPrivilege[];
 }
@@ -63,6 +66,7 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "core",
     name: "Core",
     description: "Connect, explorer, SQL editor",
+    required: true,
     systemTables: ["databases", "tables", "columns", "functions", "keywords"],
     privileges: [],
   },
@@ -70,6 +74,7 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "monitoring",
     name: "Monitoring and fleet",
     description: "Metrics, live queries, dashboards",
+    required: true,
     systemTables: MONITORING_TABLES,
     privileges: [],
   },
@@ -77,6 +82,7 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "observability",
     name: "Data health and observability",
     description: "Collectors, pipelines, Doctor, upgrades",
+    required: true,
     systemTables: [...new Set([...OBSERVED_SYSTEM_TABLES, "server_settings", "merge_tree_settings", "settings_profile_elements"])],
     privileges: [],
   },
@@ -84,6 +90,7 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "query_control",
     name: "Query control",
     description: "Kill running queries",
+    required: true,
     systemTables: [],
     privileges: [{ privilege: "KILL QUERY", scope: "global" }],
   },
@@ -91,6 +98,7 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "data_editing",
     name: "Data editing",
     description: "Create, import, alter and drop tables",
+    required: true,
     systemTables: [],
     privileges: [
       { privilege: "CREATE TABLE", scope: "database" },
@@ -103,6 +111,9 @@ export const PRIVILEGE_FEATURES: readonly PrivilegeFeature[] = [
     id: "access_admin",
     name: "ClickHouse access admin",
     description: "ClickHouse users and roles pages",
+    // Access management lets the user create other users; many teams won't give
+    // it to a UI's service account, and nothing else depends on it (ADR 0031).
+    required: false,
     systemTables: ["users", "roles", "grants", "role_grants"],
     privileges: [
       { privilege: "CREATE USER", scope: "global" },
@@ -133,6 +144,7 @@ export interface PrivilegeFeatureReport {
   id: PrivilegeFeatureId;
   name: string;
   description: string;
+  required: boolean;
   status: PrivilegeFeatureStatus;
   /** What is missing, e.g. "SELECT ON system.query_log", "KILL QUERY ON *.*". */
   missing: string[];
@@ -145,13 +157,21 @@ export interface PrivilegeFeatureReport {
 }
 
 export interface PrivilegeReport {
+  /** Every required feature is granted, so the connection may be saved. */
   ok: boolean;
+  /** Every feature, optional ones included, is granted. */
+  complete: boolean;
   username: string;
   database: string;
+  /** Distinct privileges missing across required features. */
   missingCount: number;
+  /** Distinct privileges missing across optional features. */
+  optionalMissingCount: number;
   features: PrivilegeFeatureReport[];
-  /** Every feature's GRANT statements, joined by newlines. */
+  /** The required features' GRANT statements, joined by newlines. */
   grantScript: string;
+  /** The optional features' GRANT statements, joined by newlines. */
+  optionalGrantScript: string;
 }
 
 // ============================================
@@ -549,6 +569,7 @@ export async function checkConnectionPrivileges(client: ClickHouseClient, input:
       id: feature.id,
       name: feature.name,
       description: feature.description,
+      required: feature.required,
       status: failed ? "missing" : "granted",
       missing,
       unavailable,
@@ -557,21 +578,29 @@ export async function checkConnectionPrivileges(client: ClickHouseClient, input:
     };
   });
 
-  const missingCount = new Set(features.flatMap((f) => f.missing)).size;
+  const required = features.filter((f) => f.required);
+  const optional = features.filter((f) => !f.required);
+  const requiredMissing = new Set(required.flatMap((f) => f.missing));
+  const requiredGrants = new Set(required.flatMap((f) => f.grants));
   return {
-    ok: features.every((f) => f.status === "granted"),
+    ok: required.every((f) => f.status === "granted"),
+    complete: features.every((f) => f.status === "granted"),
     username: input.username,
     database,
-    missingCount,
+    missingCount: requiredMissing.size,
+    // A privilege a required feature also needs is counted (and granted) there.
+    optionalMissingCount: new Set(optional.flatMap((f) => f.missing).filter((m) => !requiredMissing.has(m))).size,
     features,
-    grantScript: [...new Set(features.flatMap((f) => f.grants))].join("\n"),
+    grantScript: [...requiredGrants].join("\n"),
+    optionalGrantScript: [...new Set(optional.flatMap((f) => f.grants).filter((g) => !requiredGrants.has(g)))].join("\n"),
   };
 }
 
-/** One readable line for API clients that only show `error.message`. */
+/** One readable line for API clients that only show `error.message`; covers required features only. */
 export function privilegeReportMessage(report: PrivilegeReport): string {
-  const failing = report.features.filter((f) => f.status === "missing").length;
-  const errors = [...new Set(report.features.flatMap((f) => f.errors))];
+  const blocking = report.features.filter((f) => f.required);
+  const failing = blocking.filter((f) => f.status === "missing").length;
+  const errors = [...new Set(blocking.flatMap((f) => f.errors))];
   if (report.missingCount === 0 && errors.length > 0) {
     return `Couldn't check every privilege for ${report.username}: ${errors.join("; ")}. Try again.`;
   }
