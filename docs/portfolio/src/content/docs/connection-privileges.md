@@ -18,7 +18,7 @@ What a [connection](/docs/connections/)'s ClickHouse user must be able to do for
 
 **ClickHouse access admin** is optional: its privileges let the connection user create other users and hand out grants, which many teams keep away from a UI's service account. Without them the connection still saves, with a warning, and every other feature works; only the [ClickHouse users & roles](/docs/clickhouse-users-roles/) pages fail until you grant them.
 
-Data editing is checked on the connection's **default database** (`default` when none is set). Grant the same on any other database people should be able to change.
+Data editing is checked on the connection's **default database** (`default` when none is set). Grant the same on any other database people should be able to change. **Test connection** also lists, for information only, what the user can do in each other database it can see — query all or only some tables, and whether it can change tables — with the `GRANT` statements for full access; it never blocks the save.
 
 ## How the check works
 

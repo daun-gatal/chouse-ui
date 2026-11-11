@@ -43,6 +43,9 @@ When a required feature is missing, the dialog says **Can't create this connecti
 ![A connection that can't be saved yet, with the grants to run](/docs/img/app/admin-connection-privileges.jpg "The ClickHouse user is missing required privileges: each failing feature lists its GRANT statements, and the optional ClickHouse access admin is marked in amber")
 
 - **Editing** a connection checks again only when you change its host, port, user, password, SSL or default database; renaming it, or switching it on or off, doesn't. With the password field empty, the saved password is used — except when you change the host or port, or switch SSL off: then enter the password again, so the saved one never goes to another server.
+- **Other databases** (information only) lists what the user can do in each database other than the default one — *Query and change*, *Query only* or *Some tables* — with the `GRANT` statements for full access. Data editing is only required on the default database, so this never blocks the save; open it when the user should work across several databases.
+
+  ![Other databases, expanded](/docs/img/app/admin-connection-other-databases.jpg "Information only: what the user can do in each other database, with the grants for full access")
 - A table the server doesn't have is shown as *not available* and doesn't count. A check that fails for another reason, such as a timeout, blocks the save until **Check again** gets through — unless it is in an optional feature.
 - Existing connections keep working. **Test** on a row of the list warns when the user is missing something, optional features included.
 
