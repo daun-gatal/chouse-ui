@@ -11,7 +11,6 @@ import type {
 } from "../types";
 import { AppError } from "../types";
 import { logger } from "../utils/logger";
-import { quoteStringLiteral } from "../utils/sqlIdentifier";
 import { activeQueryObserver, jsonSize, reportQuery } from "./queryObserver";
 
 // ============================================
@@ -147,33 +146,6 @@ export class ClickHouseService {
       return response.data[0]?.["version()"] || "unknown";
     } catch (error) {
       throw this.handleError(error, "Failed to get version");
-    }
-  }
-
-  async checkIsAdmin(): Promise<{ isAdmin: boolean; permissions: string[] }> {
-    try {
-      const result = await this.client.query({
-        query: `SELECT access_type, database, table FROM system.grants WHERE user_name = currentUser()`,
-        format: "JSONEachRow",
-      });
-      // JSONEachRow format returns an array directly
-      const grants = await result.json() as { access_type: string; database?: string | null; table?: string | null }[];
-
-      const permissions = grants.map(g => g.access_type);
-
-      const isAdmin = grants.some(g => {
-        const isGlobal = (!g.database || g.database === "") && (!g.table || g.table === "");
-        if (g.access_type === "ALL" && isGlobal) return true;
-        if (g.access_type.includes("ALL") && isGlobal) return true;
-        if (g.access_type === "CREATE USER") return true;
-        if (g.access_type === "ACCESS MANAGEMENT") return true;
-        return false;
-      });
-
-      return { isAdmin, permissions };
-    } catch (error) {
-      logger.error({ module: "ClickHouse", err: error instanceof Error ? error.message : String(error) }, "Failed to check admin status");
-      return { isAdmin: false, permissions: [] };
     }
   }
 
@@ -851,25 +823,31 @@ export class ClickHouseService {
    * @param limit - Number of queries to fetch
    * @param username - Optional username to filter by (for non-admin users)
    */
+  /**
+   * Newest finished or failed queries in `system.query_log` from the last 7
+   * days, optionally only one ClickHouse user's. Callers decide who may see
+   * other people's queries (routes/metrics.ts). The date bound lets ClickHouse
+   * skip old partitions instead of sorting the whole log.
+   */
   async getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
+    const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit) || 10));
     try {
-      // Build user filter clause if username is provided
-      const userFilter = username ? `AND user = ${quoteStringLiteral(username)}` : '';
-
       const result = await this.client.query({
         query: `
-          SELECT 
-            query, 
-            query_duration_ms, 
-            type, 
-            event_time 
-          FROM system.query_log 
-          WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing') 
-          ${userFilter}
-          ORDER BY event_time DESC 
-          LIMIT ${limit}
+          SELECT
+            query,
+            query_duration_ms,
+            type,
+            event_time
+          FROM system.query_log
+          WHERE event_date >= today() - 7
+            AND type IN ('QueryFinish', 'ExceptionWhileProcessing')
+            ${username ? "AND user = {username:String}" : ""}
+          ORDER BY event_date DESC, event_time DESC
+          LIMIT ${boundedLimit}
         `,
         format: "JSONEachRow",
+        ...(username ? { query_params: { username } } : {}),
       });
 
       // JSONEachRow format returns an array directly

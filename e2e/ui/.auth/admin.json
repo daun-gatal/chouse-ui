@@ -26,7 +26,7 @@
         },
         {
           "name": "connection-info-storage",
-          "value": "{\"state\":{\"sessionId\":\"c3b06918-bc82-4b1b-bd62-3d4e764d15a5\",\"username\":\"default\",\"url\":\"http://opencode-dind-apps.kitty-barb.ts.net:3000\",\"version\":\"26.5.7.64\",\"isAdmin\":true,\"activeConnectionId\":\"475af2bb-8e08-439c-9f13-3c06abf0b9cd\",\"activeConnectionName\":\"e2e-clickhouse\"},\"version\":0}"
+          "value": "{\"state\":{\"sessionId\":\"c3b06918-bc82-4b1b-bd62-3d4e764d15a5\",\"username\":\"default\",\"url\":\"http://opencode-dind-apps.kitty-barb.ts.net:3000\",\"version\":\"26.5.7.64\",\"activeConnectionId\":\"475af2bb-8e08-439c-9f13-3c06abf0b9cd\",\"activeConnectionName\":\"e2e-clickhouse\"},\"version\":0}"
         },
         {
           "name": "rbac-storage",

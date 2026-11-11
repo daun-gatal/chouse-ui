@@ -1186,8 +1186,8 @@
     {
       "path": "chouse logs",
       "use": "chouse logs [flags]",
-      "short": "Recent queries from system.query_log",
-      "long": "The most recent queries in ClickHouse's query log on the -c\nconnection, newest first: when, how long, and whether they finished or\nfailed. Filter by ClickHouse user with --user.",
+      "short": "Recent queries on the connection",
+      "long": "The most recent queries on the -c connection, newest first: when,\nhow long, and whether they finished or failed. With query:history:view:all\nyou see everyone's, from ClickHouse's query log (last 7 days); otherwise only\nthe queries you ran in CHouse UI. --user narrows the list to one ClickHouse\nuser; it never shows more than you may see.",
       "example": "  chouse logs\n  chouse logs --user etl --limit 50 -o csv",
       "group": "ops",
       "runnable": true,

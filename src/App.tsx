@@ -140,8 +140,6 @@ export default function App() {
               username: result.username,
               url: `${result.host}:${result.port}`,
               version: result.version,
-              isAdmin: result.isAdmin,
-              permissions: result.permissions,
               activeConnectionId: activeConnectionId,
               activeConnectionName: result.connectionName,
             });

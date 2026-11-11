@@ -1128,11 +1128,13 @@ chouse live list -o json | jq -r '.queries[].query_id'
 
 ### chouse logs
 
-Recent queries from system.query_log.
+Recent queries on the connection.
 
-The most recent queries in ClickHouse's query log on the -c
-connection, newest first: when, how long, and whether they finished or
-failed. Filter by ClickHouse user with --user.
+The most recent queries on the -c connection, newest first: when,
+how long, and whether they finished or failed. With query:history:view:all
+you see everyone's, from ClickHouse's query log (last 7 days); otherwise only
+the queries you ran in CHouse UI. --user narrows the list to one ClickHouse
+user; it never shows more than you may see.
 
 ```bash
 chouse logs [flags]

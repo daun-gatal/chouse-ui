@@ -248,6 +248,49 @@ describe("ClickHouse Service", () => {
         });
     });
 
+    describe("getRecentQueries", () => {
+        const sentQuery = (): { query: string; query_params?: Record<string, string> } =>
+            (mockQueryFn as unknown as { mock: { calls: Array<[{ query: string; query_params?: Record<string, string> }]> } }).mock.calls[0][0];
+
+        it("reads only the last 7 days of query_log, newest first in the table's key order", async () => {
+            mockJsonFn.mockResolvedValue([
+                { query: "SELECT 1", query_duration_ms: 3, type: "QueryFinish", event_time: "2026-11-11 09:00:00" },
+                { query: "SELECT x", query_duration_ms: 4, type: "ExceptionWhileProcessing", event_time: "2026-11-11 08:00:00" },
+            ]);
+
+            const result = await service.getRecentQueries(10);
+
+            expect(result).toEqual([
+                { query: "SELECT 1", duration: 3, status: "Success", time: "2026-11-11 09:00:00" },
+                { query: "SELECT x", duration: 4, status: "Error", time: "2026-11-11 08:00:00" },
+            ]);
+            const sent = sentQuery();
+            expect(sent.query).toContain("event_date >= today() - 7");
+            expect(sent.query).toContain("ORDER BY event_date DESC, event_time DESC");
+            expect(sent.query).toContain("LIMIT 10");
+            expect(sent.query).not.toContain("user =");
+            expect(sent.query_params).toBeUndefined();
+        });
+
+        it("binds the ClickHouse user as a parameter instead of splicing it into the SQL", async () => {
+            mockJsonFn.mockResolvedValue([]);
+
+            await service.getRecentQueries(5, "o'brien");
+
+            const sent = sentQuery();
+            expect(sent.query).toContain("AND user = {username:String}");
+            expect(sent.query).not.toContain("o'brien");
+            expect(sent.query_params).toEqual({ username: "o'brien" });
+        });
+
+        it("keeps the limit within 1..100", async () => {
+            mockJsonFn.mockResolvedValue([]);
+
+            await service.getRecentQueries(1000);
+            expect(sentQuery().query).toContain("LIMIT 100");
+        });
+    });
+
     describe("getTopTablesBySize", () => {
         it("should return top tables from system.tables (non-system DBs only)", async () => {
             mockJsonFn.mockResolvedValue({

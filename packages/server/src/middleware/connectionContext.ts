@@ -112,8 +112,6 @@ export async function connectionContextMiddleware(
     connectionConfig: resolved.config,
     createdAt: new Date(),
     lastUsedAt: new Date(),
-    isAdmin: factsForConnection.isAdmin,
-    permissions: factsForConnection.permissions,
     version: factsForConnection.version,
     rbacConnectionId: resolved.connectionId,
     rbacUserId,

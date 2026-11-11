@@ -45,7 +45,7 @@ export const queryKeys = {
 
   // Metrics
   systemStats: (connectionId?: string) => ['systemStats', connectionId] as const,
-  recentQueries: (limit?: number, username?: string, connectionId?: string) => ['recentQueries', limit, username, connectionId] as const,
+  recentQueries: (limit?: number, connectionId?: string) => ['recentQueries', limit, connectionId] as const,
   productionMetrics: (interval: number, connectionId?: string) => ['productionMetrics', interval, connectionId] as const,
   topTables: (limit: number, connectionId?: string) => ['topTables', limit, connectionId] as const,
   partsPressure: (interval: number, connectionId?: string) => ['partsPressure', interval, connectionId] as const,
@@ -212,13 +212,13 @@ export function useSystemStats(
 
 /**
  * Hook to fetch recent queries
- * Only fetches when there's an active ClickHouse connection
+ * Only fetches when there's an active ClickHouse connection. The server decides
+ * whose queries come back: everyone's with query:history:view:all, otherwise
+ * only the caller's own.
  * @param limit - Number of queries to fetch
- * @param username - Optional username to filter by (for non-admin users)
  */
 export function useRecentQueries(
   limit: number = 10,
-  username?: string,
   options?: Partial<UseQueryOptions<RecentQuery[], Error>>
 ) {
   // Check if there's an active connection (both connection ID and session)
@@ -226,8 +226,8 @@ export function useRecentQueries(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: queryKeys.recentQueries(limit, username, activeConnectionId || undefined),
-    queryFn: () => metricsApi.getRecentQueries(limit, username),
+    queryKey: queryKeys.recentQueries(limit, activeConnectionId || undefined),
+    queryFn: () => metricsApi.getRecentQueries(limit),
     enabled: hasConnection, // Only fetch when connected
     refetchInterval: false,
     staleTime: 5000,

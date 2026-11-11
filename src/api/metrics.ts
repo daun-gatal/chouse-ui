@@ -296,9 +296,10 @@ export async function getSystemStats(): Promise<SystemStats> {
 }
 
 /**
- * Get recent queries from query log
+ * Get recent queries. The server scopes them: everyone's from query_log with
+ * query:history:view:all, otherwise only the caller's own CHouse queries.
  * @param limit - Number of queries to fetch
- * @param username - Optional username to filter by (for non-admin users)
+ * @param username - Optional ClickHouse user; it can only narrow the result
  */
 export async function getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
   return api.get<RecentQuery[]>('/metrics/recent-queries', {

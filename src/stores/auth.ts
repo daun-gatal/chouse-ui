@@ -20,8 +20,6 @@ export interface ConnectionInfoState {
   username: string | null;
   url: string | null;
   version: string | null;
-  isAdmin: boolean; // ClickHouse admin status (not RBAC admin)
-  permissions: string[]; // ClickHouse permissions (not RBAC permissions)
   
   // Active connection tracking
   activeConnectionId: string | null;
@@ -33,8 +31,6 @@ export interface ConnectionInfoState {
     username: string;
     url: string;
     version: string;
-    isAdmin: boolean;
-    permissions: string[];
     activeConnectionId: string;
     activeConnectionName: string;
   }) => void;
@@ -54,8 +50,6 @@ export const useAuthStore = create<ConnectionInfoState>()(
       username: null,
       url: null,
       version: null,
-      isAdmin: false,
-      permissions: [],
       activeConnectionId: null,
       activeConnectionName: null,
 
@@ -72,8 +66,6 @@ export const useAuthStore = create<ConnectionInfoState>()(
           username: info.username,
           url: info.url,
           version: info.version,
-          isAdmin: info.isAdmin,
-          permissions: info.permissions,
           activeConnectionId: info.activeConnectionId,
           activeConnectionName: info.activeConnectionName,
         });
@@ -89,8 +81,6 @@ export const useAuthStore = create<ConnectionInfoState>()(
           username: null,
           url: null,
           version: null,
-          isAdmin: false,
-          permissions: [],
           activeConnectionId: null,
           activeConnectionName: null,
         });
@@ -118,7 +108,6 @@ export const useAuthStore = create<ConnectionInfoState>()(
         username: state.username,
         url: state.url,
         version: state.version,
-        isAdmin: state.isAdmin,
         activeConnectionId: state.activeConnectionId,
         activeConnectionName: state.activeConnectionName,
       }),

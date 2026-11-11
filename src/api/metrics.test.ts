@@ -38,7 +38,7 @@ describe('Metrics API', () => {
             expect(Array.isArray(queries)).toBe(true);
         });
 
-        it('should filter by username', async () => {
+        it('passes username through as a narrowing filter', async () => {
             const queries = await getRecentQueries(10, 'testuser');
 
             expect(queries).toBeDefined();

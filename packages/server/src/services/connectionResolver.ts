@@ -15,10 +15,13 @@ import { getConnectionWithPassword, getUserConnections } from "../rbac/services/
 import { AppError, type ConnectionConfig } from "../types";
 import { logger } from "../utils/logger";
 
-/** Facts about a connection that cost a ClickHouse round-trip to learn. */
+/**
+ * Facts about a connection that cost a ClickHouse round-trip to learn. There is
+ * deliberately no "is this ClickHouse user an admin" fact: CHouse UI authorises
+ * from its own RBAC, and probing `system.grants` failed on narrow users and
+ * missed grants that come through roles (#422).
+ */
 export interface ConnectionFacts {
-  isAdmin: boolean;
-  permissions: string[];
   version: string;
 }
 
@@ -56,8 +59,8 @@ export function resetConnectionFactsCache(): void {
  * Forget a user's cached facts (logout, password change).
  *
  * Not a security boundary — authorisation is re-checked from the database on
- * every request, and these entries expire on their own. This just avoids
- * serving a stale admin flag to the next session on the same replica.
+ * every request, and these entries expire on their own. This just keeps a
+ * signed-out user's entries from lingering on the replica.
  */
 export function dropUserConnectionFacts(rbacUserId: string): void {
   for (const key of facts.keys()) {
@@ -75,15 +78,7 @@ export async function getConnectionFacts(
   const hit = facts.get(key);
   if (hit && hit.expiresAt > now) return hit.value;
 
-  const [version, adminStatus] = await Promise.all([
-    service.getVersion(),
-    service.checkIsAdmin(),
-  ]);
-  const value: ConnectionFacts = {
-    isAdmin: adminStatus.isAdmin,
-    permissions: adminStatus.permissions,
-    version,
-  };
+  const value: ConnectionFacts = { version: await service.getVersion() };
   facts.set(key, { value, expiresAt: now + FACTS_TTL_MS });
   return value;
 }
