@@ -46,7 +46,7 @@ import { BUILTIN_TOOLS } from "../../../packages/server/src/services/ai/registry
 import { SEED_AGENTS, SEED_BINDINGS, SEED_HARNESSES, SEED_SKILLS, type SeedAgent } from "../../../packages/server/src/services/ai/seeds";
 import type { AnyCapability } from "../../../packages/server/src/services/ai/types";
 import { CONTEXT_HINTS, CONTEXT_LABELS, SURFACE_LABELS, SURFACE_ORDER } from "../../../src/features/agents/assistant/lib";
-import { PRIVILEGE_FEATURES } from "../../../packages/server/src/services/connectionPrivileges";
+import { PRIVILEGE_FEATURES, type PrivilegeFeature } from "../../../packages/server/src/services/connectionPrivileges";
 import { CONFIG_KEYS, CONFIG_SECTIONS, IGNORED_ENV } from "../src/content/reference/config-keys";
 import { RELEASE } from "../src/content/release";
 import { slugify } from "../src/docs-site/lib";
@@ -231,6 +231,7 @@ ${table(["Area", "Actions"], rows)}
 function connectionPrivilegesPage(): string {
   const rows = PRIVILEGE_FEATURES.map((feature) => [
     `**${feature.name}**`,
+    feature.required ? "Yes" : "No — warns",
     cell(feature.description),
     feature.systemTables.length ? feature.systemTables.map((t) => code(`system.${t}`)).join(", ") : "—",
     (["global", "database"] as const)
@@ -241,30 +242,40 @@ function connectionPrivilegesPage(): string {
       .filter(Boolean)
       .join("; ") || "—",
   ]);
-  const tables = [...new Set(PRIVILEGE_FEATURES.flatMap((f) => f.systemTables))];
-  const byScope = (scope: "global" | "database"): string[] =>
-    [...new Set(PRIVILEGE_FEATURES.flatMap((f) => f.privileges.filter((p) => p.scope === scope).map((p) => p.privilege)))];
+  const required = PRIVILEGE_FEATURES.filter((f) => f.required);
+  const optional = PRIVILEGE_FEATURES.filter((f) => !f.required);
+  const requiredTables = new Set(required.flatMap((f) => f.systemTables));
+  const optionalTables = [...new Set(optional.flatMap((f) => f.systemTables))].filter((t) => !requiredTables.has(t));
+  const byScope = (features: readonly PrivilegeFeature[], scope: "global" | "database"): string[] =>
+    [...new Set(features.flatMap((f) => f.privileges.filter((p) => p.scope === scope).map((p) => p.privilege)))];
+  const grantLine = (privileges: string[], target: string): string[] => (privileges.length ? [`GRANT ${privileges.join(", ")} ON ${target} TO chouse_ui;`] : []);
   const script = [
     "CREATE USER chouse_ui IDENTIFIED BY 'change-me';",
     "-- What people query: repeat for each database",
     "GRANT SELECT ON analytics.* TO chouse_ui;",
-    ...tables.map((t) => `GRANT SELECT ON system.${t} TO chouse_ui;`),
-    `GRANT ${byScope("global").join(", ")} ON *.* TO chouse_ui;`,
+    ...[...requiredTables].map((t) => `GRANT SELECT ON system.${t} TO chouse_ui;`),
+    ...grantLine(byScope(required, "global"), "*.*"),
     "-- The connection's default database",
-    `GRANT ${byScope("database").join(", ")} ON analytics.* TO chouse_ui;`,
+    ...grantLine(byScope(required, "database"), "analytics.*"),
+    `-- Optional: ${optional.map((f) => f.name).join(", ")}`,
+    ...optionalTables.map((t) => `GRANT SELECT ON system.${t} TO chouse_ui;`),
+    ...grantLine(byScope(optional, "global"), "*.*"),
+    ...grantLine(byScope(optional, "database"), "analytics.*"),
   ].join("\n");
   return page(
     "PRIVILEGE_FEATURES in packages/server/src/services/connectionPrivileges.ts",
     `
 # ClickHouse privileges
 
-What a [connection](/docs/connections/)'s ClickHouse user must be able to do for every CHouse UI feature to work. **Test connection** checks the user against every feature below, and a connection is only saved once every check passes: **Create** and **Update** run the same check on the server first. Whatever is missing comes back as \`GRANT\` statements you can copy and run as a ClickHouse admin.
+What a [connection](/docs/connections/)'s ClickHouse user must be able to do for every CHouse UI feature to work. **Test connection** checks the user against every feature below, and a connection is only saved once every **required** feature passes: **Create** and **Update** run the same check on the server first. Whatever is missing comes back as \`GRANT\` statements you can copy and run as a ClickHouse admin.
 
 ## What each feature needs
 
-${table(["Feature", "Covers", "Read (\`SELECT\`)", "Privileges"], rows)}
+${table(["Feature", "Required to save", "Covers", "Read (\`SELECT\`)", "Privileges"], rows)}
 
-Data editing is checked on the connection's **default database** (\`default\` when none is set). Grant the same on any other database people should be able to change.
+${optional.map((f) => `**${f.name}** is optional`).join(", ")}: its privileges let the connection user create other users and hand out grants, which many teams keep away from a UI's service account. Without them the connection still saves, with a warning, and every other feature works; only the [ClickHouse users & roles](/docs/clickhouse-users-roles/) pages fail until you grant them.
+
+Data editing is checked on the connection's **default database** (\`default\` when none is set). Grant the same on any other database people should be able to change. **Test connection** also lists, for information only, what the user can do in each other database it can see — query all or only some tables, and whether it can change tables — with the \`GRANT\` statements for full access; it never blocks the save.
 
 ## How the check works
 
@@ -272,7 +283,7 @@ Data editing is checked on the connection's **default database** (\`default\` wh
 - **Other privileges** are checked against the user's own \`SHOW GRANTS\`, with roles expanded (\`SHOW GRANTS FINAL\` where the server supports it, each enabled role on older servers) and ClickHouse's privilege tree from \`system.privileges\`, so \`ALL\`, \`ACCESS MANAGEMENT\` or \`ALTER\` cover the privileges under them.
 - The check needs no privilege of its own and changes nothing on the server.
 
-Existing connections are never blocked: the check runs when you create one, change its host, port, user, password, SSL or default database, or press **Test**. **Test** on a row of the connection list warns when that connection's user is missing something.
+Existing connections are never blocked: the check runs when you create one, change its host, port, user, password, SSL or default database, or press **Test**. **Test** on a row of the connection list warns when that connection's user is missing something. A check that fails for another reason, such as a timeout, blocks the save only for a required feature.
 
 ## A user with everything
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import type { ClickHouseClient } from "@clickhouse/client";
 
 import {
+  OTHER_DATABASES_LIMIT,
   PRIVILEGE_FEATURES,
   buildPrivilegeTree,
   checkConnectionPrivileges,
@@ -171,6 +172,8 @@ interface FakeServer {
   grants?: string[];
   roles?: Record<string, string[]>;
   privilegesTree?: PrivilegeTreeRow[] | "denied";
+  /** What `system.databases` lists; unset makes the query fail. */
+  databases?: string[];
 }
 
 class FakeClickHouseError extends Error {
@@ -204,6 +207,10 @@ function fakeClient(server: FakeServer): { client: ClickHouseClient; queries: st
       if (query === "SELECT role_name FROM system.enabled_roles") return respond(Object.keys(server.roles ?? {}), true);
       const role = /^SHOW GRANTS FOR (.+)$/.exec(query)?.[1];
       if (role) return respond(server.roles?.[role.replace(/`/g, "")] ?? [], true);
+      if (query === "SELECT name FROM system.databases ORDER BY name") {
+        if (!server.databases) throw new FakeClickHouseError("TIMEOUT_EXCEEDED", "Timeout exceeded");
+        return respond(server.databases, true);
+      }
       if (query.startsWith("SELECT privilege, aliases, level, parent_group FROM system.privileges")) {
         if (server.privilegesTree === "denied") throw new FakeClickHouseError("ACCESS_DENIED", "Not enough privileges");
         return respond(server.privilegesTree ?? TREE_ROWS);
@@ -228,8 +235,11 @@ describe("checkConnectionPrivileges", () => {
     const { client } = fakeClient({ grantsFinal: FULL_GRANTS, tables: { crash_log: { type: "UNKNOWN_TABLE" }, distributed_ddl_queue: { type: "NO_ELEMENTS_IN_CONFIG" } } });
     const report = await checkConnectionPrivileges(client, { username: "chouse", database: "analytics" });
     expect(report.ok).toBe(true);
+    expect(report.complete).toBe(true);
     expect(report.missingCount).toBe(0);
+    expect(report.optionalMissingCount).toBe(0);
     expect(report.grantScript).toBe("");
+    expect(report.optionalGrantScript).toBe("");
     expect(feature(report, "monitoring").unavailable).toEqual(["system.distributed_ddl_queue", "system.crash_log"]);
     expect(report.features.map((f) => f.id)).toEqual(PRIVILEGE_FEATURES.map((f) => f.id));
   });
@@ -255,16 +265,24 @@ describe("checkConnectionPrivileges", () => {
       "GRANT SELECT ON system.users TO `chouse-ro`;",
       "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO `chouse-ro`;",
     ]);
-    expect(report.missingCount).toBe(13);
+    // Access admin is optional: counted and scripted apart from what blocks the save.
+    expect(feature(report, "access_admin").required).toBe(false);
+    expect(report.complete).toBe(false);
+    expect(report.missingCount).toBe(5);
+    expect(report.optionalMissingCount).toBe(8);
     expect(report.grantScript.split("\n")).toEqual([
       "GRANT SELECT ON system.processes TO `chouse-ro`;",
       "GRANT SELECT ON system.metric_log TO `chouse-ro`;",
       "GRANT KILL QUERY ON *.* TO `chouse-ro`;",
       "GRANT ALTER TABLE, DROP TABLE ON analytics.* TO `chouse-ro`;",
+    ]);
+    expect(report.optionalGrantScript.split("\n")).toEqual([
       "GRANT SELECT ON system.users TO `chouse-ro`;",
       "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO `chouse-ro`;",
     ]);
-    expect(privilegeReportMessage(report)).toStartWith("chouse-ro is missing 13 privileges across 5 features. Run as an admin, then save again:\nGRANT SELECT ON system.processes");
+    const message = privilegeReportMessage(report);
+    expect(message).toStartWith("chouse-ro is missing 5 privileges across 4 features. Run as an admin, then save again:\nGRANT SELECT ON system.processes");
+    expect(message).not.toContain("CREATE USER");
   });
 
   it("checks data editing on the default database when none is set, quoting odd names", async () => {
@@ -304,6 +322,88 @@ describe("checkConnectionPrivileges", () => {
     expect(feature(report, "monitoring").errors).toEqual(["system.replicas: Timeout exceeded: elapsed 5 seconds"]);
     expect(feature(report, "monitoring").grants).toEqual([]);
     expect(privilegeReportMessage(report)).toBe("Couldn't check every privilege for u: system.replicas: Timeout exceeded: elapsed 5 seconds. Try again.");
+  });
+
+  it("passes the save without access management, and says the report is incomplete", async () => {
+    const { client } = fakeClient({
+      grantsFinal: ["GRANT SELECT, KILL QUERY ON *.* TO reader", "GRANT CREATE TABLE, INSERT, ALTER, DROP ON default.* TO reader"],
+      tables: {
+        users: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        roles: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        grants: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+        role_grants: { type: "ACCESS_DENIED", message: "Not enough privileges" },
+      },
+    });
+    const report = await checkConnectionPrivileges(client, { username: "reader" });
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(report.missingCount).toBe(0);
+    expect(report.grantScript).toBe("");
+    expect(report.optionalMissingCount).toBe(11);
+    expect(report.optionalGrantScript.split("\n")).toEqual([
+      "GRANT SELECT ON system.users TO reader;",
+      "GRANT SELECT ON system.roles TO reader;",
+      "GRANT SELECT ON system.grants TO reader;",
+      "GRANT SELECT ON system.role_grants TO reader;",
+      "GRANT CREATE USER, ALTER USER, DROP USER, CREATE ROLE, ALTER ROLE, DROP ROLE, ROLE ADMIN ON *.* TO reader;",
+    ]);
+    expect(feature(report, "access_admin").status).toBe("missing");
+  });
+
+  it("doesn't block on a check that errored in an optional feature", async () => {
+    const { client } = fakeClient({ grantsFinal: FULL_GRANTS, tables: { role_grants: { type: "TIMEOUT_EXCEEDED", message: "Timeout exceeded" } } });
+    const report = await checkConnectionPrivileges(client, { username: "u" });
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(report.optionalMissingCount).toBe(0);
+    expect(feature(report, "access_admin").errors).toEqual(["system.role_grants: Timeout exceeded"]);
+    expect(report.grantScript).toBe("");
+    expect(report.optionalGrantScript).toBe("");
+  });
+
+  it("marks only ClickHouse access admin optional", () => {
+    expect(PRIVILEGE_FEATURES.filter((f) => !f.required).map((f) => f.id)).toEqual(["access_admin"]);
+  });
+
+  it("reports, for information, what the user can do in the other databases", async () => {
+    const { client } = fakeClient({
+      grantsFinal: [
+        "GRANT KILL QUERY ON *.* TO u",
+        "GRANT SELECT, CREATE TABLE, INSERT, ALTER, DROP ON analytics.* TO u",
+        "GRANT SELECT ON raw.* TO u",
+        "GRANT SELECT, CREATE TABLE, INSERT, ALTER, DROP ON `stage*`.* TO u",
+        "GRANT SELECT ON `odd-db`.events TO u",
+      ],
+      databases: ["INFORMATION_SCHEMA", "analytics", "information_schema", "odd-db", "raw", "stage_eu", "system"],
+    });
+    const report = await checkConnectionPrivileges(client, { username: "u", database: "analytics" });
+    expect(report.otherDatabases.total).toBe(3);
+    expect(report.otherDatabases.databases).toEqual([
+      { name: "odd-db", query: "some", edit: false },
+      { name: "raw", query: "all", edit: false },
+      { name: "stage_eu", query: "all", edit: true },
+    ]);
+    expect(report.otherDatabases.grantScript.split("\n")).toEqual([
+      "GRANT SELECT, CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON `odd-db`.* TO u;",
+      "GRANT CREATE TABLE, INSERT, ALTER TABLE, DROP TABLE ON raw.* TO u;",
+    ]);
+    // Information only: read-only databases don't fail the save (only access admin, optional, is missing).
+    expect(report.ok).toBe(true);
+    expect(report.complete).toBe(false);
+    expect(feature(report, "data_editing").status).toBe("granted");
+  });
+
+  it("caps the database list, and leaves it empty when it can't be read", async () => {
+    const many = Array.from({ length: OTHER_DATABASES_LIMIT + 5 }, (_, i) => `db${String(i).padStart(3, "0")}`);
+    const capped = await checkConnectionPrivileges(fakeClient({ grantsFinal: FULL_GRANTS, databases: ["default", ...many] }).client, { username: "u" });
+    expect(capped.otherDatabases.total).toBe(OTHER_DATABASES_LIMIT + 5);
+    expect(capped.otherDatabases.databases).toHaveLength(OTHER_DATABASES_LIMIT);
+    expect(capped.otherDatabases.databases.every((db) => db.query === "all" && db.edit)).toBe(true);
+    expect(capped.otherDatabases.grantScript).toBe("");
+
+    const unreadable = await checkConnectionPrivileges(fakeClient({ grantsFinal: FULL_GRANTS }).client, { username: "u" });
+    expect(unreadable.ok).toBe(true);
+    expect(unreadable.otherDatabases).toEqual({ total: null, databases: [], grantScript: "" });
   });
 
   it("still works when system.privileges is unreadable", async () => {

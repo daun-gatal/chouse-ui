@@ -83,7 +83,7 @@ import { ConnectionObservability } from '@/features/observe/ConnectionObservabil
 import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PrivilegeReport, privilegeSummary } from './PrivilegeReport';
+import { PrivilegeReport, optionalSummary, privilegeSummary } from './PrivilegeReport';
 
 // ============================================
 // Validation Schema
@@ -246,8 +246,11 @@ function ConnectionFormDialog({
       if (result.success && result.privileges) {
         setTestResult(null);
         showPrivileges(result.privileges, wasBlocked && !result.privileges.ok, result);
-        if (result.privileges.ok) {
+        const optional = optionalSummary(result.privileges);
+        if (result.privileges.ok && !optional) {
           toast.success('Connection successful', { description: 'Every feature is available.' });
+        } else if (result.privileges.ok) {
+          toast.warning('Connected; some optional features are missing', { description: `${optional} You can still save it.` });
         } else {
           toast.warning('Connected, but privileges are missing', { description: privilegeSummary(result.privileges) });
         }
@@ -271,6 +274,13 @@ function ConnectionFormDialog({
     }
   };
 
+  /** Saved; still say so when an optional feature (ClickHouse access admin) isn't granted. */
+  const notifySaved = (title: string, report: ConnectionPrivilegeReport | undefined): void => {
+    const optional = report ? optionalSummary(report) : null;
+    if (optional) toast.warning(title, { description: `${optional} Test the connection to see the grants.` });
+    else toast.success(title);
+  };
+
   const onSubmit = async (values: ConnectionFormData) => {
     setIsSubmitting(true);
 
@@ -289,12 +299,12 @@ function ConnectionFormDialog({
         if (values.password) {
           updateData.password = values.password;
         }
-        await rbacConnectionsApi.update(connection.id, updateData);
-        toast.success('Connection updated successfully');
+        const saved = await rbacConnectionsApi.update(connection.id, updateData);
+        notifySaved('Connection updated successfully', saved.privileges);
       } else {
         const { environment, ...rest } = values;
-        await rbacConnectionsApi.create({ ...rest, metadata: metadataWithEnvironment(null, environment) });
-        toast.success('Connection created successfully');
+        const saved = await rbacConnectionsApi.create({ ...rest, metadata: metadataWithEnvironment(null, environment) });
+        notifySaved('Connection created successfully', saved.privileges);
       }
       onSuccess();
       onClose();
@@ -709,6 +719,10 @@ export default function ConnectionManagement() {
       if (result.success && result.privileges && !result.privileges.ok) {
         toast.warning(`"${connection.name}" is reachable, but privileges are missing`, {
           description: `${privilegeSummary(result.privileges)} Open Edit and test it to see the grants.`,
+        });
+      } else if (result.success && result.privileges && optionalSummary(result.privileges)) {
+        toast.warning(`"${connection.name}" is reachable`, {
+          description: `${optionalSummary(result.privileges)} Open Edit and test it to see the grants.`,
         });
       } else if (result.success) {
         toast.success(`"${connection.name}" is reachable`, {

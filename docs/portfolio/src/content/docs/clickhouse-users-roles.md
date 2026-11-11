@@ -9,7 +9,7 @@ These two Admin tabs manage **real ClickHouse accounts and roles** on the active
 
 Use them when people or services connect to ClickHouse directly (BI tools, applications, `clickhouse-client`) and you want to manage those accounts from one place.
 
-> **Note:** Changes run as the active connection's ClickHouse user, so that user needs access-management rights in ClickHouse (`access_management` or the matching `GRANT`s). Users and roles defined in ClickHouse's XML/YAML config show as **Managed in ClickHouse config (read-only)** and can't be edited here.
+> **Note:** Changes run as the active connection's ClickHouse user, so that user needs access-management rights in ClickHouse (`access_management` or the matching `GRANT`s). They are [optional](/docs/connection-privileges/) when you save a connection: without them the connection still works everywhere else, and these two tabs say the connection's user isn't allowed until you grant them. Users and roles defined in ClickHouse's XML/YAML config show as **Managed in ClickHouse config (read-only)** and can't be edited here.
 
 ## ClickHouse users
 

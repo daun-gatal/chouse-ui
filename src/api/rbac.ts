@@ -1000,6 +1000,8 @@ export interface PrivilegeFeatureReport {
   id: PrivilegeFeatureId;
   name: string;
   description: string;
+  /** Required features block a save when missing; optional ones only warn (ADR 0031). */
+  required: boolean;
   status: 'granted' | 'missing';
   missing: string[];
   unavailable: string[];
@@ -1009,12 +1011,44 @@ export interface PrivilegeFeatureReport {
 
 /** What a connection's ClickHouse user is missing for each CHouse UI feature. */
 export interface ConnectionPrivilegeReport {
+  /** Every required feature is granted: the connection can be saved. */
   ok: boolean;
+  /** Every feature, optional ones included, is granted. */
+  complete: boolean;
   username: string;
   database: string;
+  /** Privileges missing across required features. */
   missingCount: number;
+  /** Privileges missing across optional features. */
+  optionalMissingCount: number;
   features: PrivilegeFeatureReport[];
+  /** GRANT statements for the required features. */
   grantScript: string;
+  /** GRANT statements for the optional features. */
+  optionalGrantScript: string;
+  /** Information only: access to the server's other databases (data editing is only checked on the default one). */
+  otherDatabases?: OtherDatabasesReport;
+}
+
+export interface DatabaseAccess {
+  name: string;
+  /** `all`: the whole database; `some`: only some tables. */
+  query: 'all' | 'some';
+  edit: boolean;
+}
+
+export interface OtherDatabasesReport {
+  /** null when the database list couldn't be read. */
+  total: number | null;
+  /** The first 50 by name. */
+  databases: DatabaseAccess[];
+  /** GRANTs giving the listed databases full query and edit access. */
+  grantScript: string;
+}
+
+/** A created or updated connection, with the privilege check that ran for the save, if one did. */
+export interface SavedConnection extends ClickHouseConnection {
+  privileges?: ConnectionPrivilegeReport;
 }
 
 export interface TestConnectionResult {
@@ -1105,7 +1139,7 @@ export const rbacConnectionsApi = {
   /**
    * Create a new connection
    */
-  async create(input: CreateConnectionInput): Promise<ClickHouseConnection> {
+  async create(input: CreateConnectionInput): Promise<SavedConnection> {
     return rbacFetch('/connections', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -1115,7 +1149,7 @@ export const rbacConnectionsApi = {
   /**
    * Update a connection
    */
-  async update(id: string, input: UpdateConnectionInput): Promise<ClickHouseConnection> {
+  async update(id: string, input: UpdateConnectionInput): Promise<SavedConnection> {
     return rbacFetch(`/connections/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(input),
