@@ -18,7 +18,7 @@ A **connection** is a ClickHouse server CHouse UI talks to. You can register man
    - **Default database** (optional) — empty uses the server's default
    - **SSL / TLS** — connect over HTTPS
    - **Environment** (optional) — see [below](#environment)
-3. **Test connection** shows the server version and latency, and checks the ClickHouse user against [every feature](#required-clickhouse-privileges). **Create** saves it once every check passes.
+3. **Test connection** shows the server version and latency, and checks the ClickHouse user against [every feature](#required-clickhouse-privileges). **Create** saves it once every required check passes.
 
 `CLICKHOUSE_DEFAULT_URL`, `CLICKHOUSE_DEFAULT_USER` and `CLICKHOUSE_PRESET_URLS` pre-fill the form — see [Environment variables](/docs/configuration-env/#clickhouse-connection-defaults).
 
@@ -34,15 +34,17 @@ A new connection is invisible to non-admins until a [data access policy](/docs/d
 
 ## Required ClickHouse privileges
 
-**Test connection** checks the connection's ClickHouse user against what every feature needs — the explorer and editor, monitoring, Data Health, killing queries, changing tables in the default database, and ClickHouse users and roles — and lists each feature as granted or missing. **Create** and **Update** run the same check on the server, and save only when every feature is granted.
+**Test connection** checks the connection's ClickHouse user against what every feature needs — the explorer and editor, monitoring, Data Health, killing queries, changing tables in the default database, and ClickHouse users and roles — and lists each feature as granted or missing. **Create** and **Update** run the same check on the server, and save only when every required feature is granted.
 
-When something is missing, the dialog says **Can't create this connection yet** (or **Can't save these changes yet**), opens each failing feature with its `GRANT` statements and a **Copy** button, and highlights the username. **Copy all grants** copies the whole script. Run it as a ClickHouse admin — or grant it to a role the user has — and press **Check again**; once every feature passes, save.
+When a required feature is missing, the dialog says **Can't create this connection yet** (or **Can't save these changes yet**), opens each failing feature with its `GRANT` statements and a **Copy** button, and highlights the username. **Copy all grants** (**Copy required grants** when an optional feature is missing too) copies the script for the required features. Run it as a ClickHouse admin — or grant it to a role the user has — and press **Check again**; once every required feature passes, save.
 
-![A connection that can't be saved yet, with the grants to run](/docs/img/app/admin-connection-privileges.jpg "The ClickHouse user is missing privileges: each failing feature lists its GRANT statements")
+**ClickHouse access admin** (`CREATE USER`, `ALTER USER`, `DROP USER`, `CREATE ROLE`, `ALTER ROLE`, `DROP ROLE`, `ROLE ADMIN` and reading `system.users`, `system.roles`, `system.grants`, `system.role_grants`) is **optional**: those grants let the user create other users, so you may not want to give them to CHouse UI. Without them the feature is marked *Optional* in amber, the connection saves with a warning, and only [ClickHouse users & roles](/docs/clickhouse-users-roles/) won't work until you grant them.
+
+![A connection that can't be saved yet, with the grants to run](/docs/img/app/admin-connection-privileges.jpg "The ClickHouse user is missing required privileges: each failing feature lists its GRANT statements, and the optional ClickHouse access admin is marked in amber")
 
 - **Editing** a connection checks again only when you change its host, port, user, password, SSL or default database; renaming it, or switching it on or off, doesn't. With the password field empty, the saved password is used — except when you change the host or port, or switch SSL off: then enter the password again, so the saved one never goes to another server.
-- A table the server doesn't have is shown as *not available* and doesn't count. A check that fails for another reason, such as a timeout, blocks the save until **Check again** gets through.
-- Existing connections keep working. **Test** on a row of the list warns when the user is missing something.
+- A table the server doesn't have is shown as *not available* and doesn't count. A check that fails for another reason, such as a timeout, blocks the save until **Check again** gets through — unless it is in an optional feature.
+- Existing connections keep working. **Test** on a row of the list warns when the user is missing something, optional features included.
 
 The full list, how the check works and a script for a user that has everything are on [ClickHouse privileges](/docs/connection-privileges/).
 
