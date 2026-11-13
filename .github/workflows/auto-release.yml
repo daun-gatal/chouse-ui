@@ -146,6 +146,20 @@ jobs:
             echo "(nothing has been committed yet)."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ── Step 0b (parallel with the approval gate): lab smoke test ─────────────
+  # Starts the Codespaces lab (.devcontainer/lab, ADR 0032) on the pre-release
+  # image, so a release that would break the README's "Open in Codespaces"
+  # button shows red here before anyone approves it. Informational: no job
+  # waits on it, so a red result marks the run but never stops the release.
+  lab-smoke:
+    name: Lab smoke test (pre-release image)
+    needs: prerelease
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lab.yml
+    with:
+      image: ghcr.io/${{ github.repository }}:v${{ needs.prerelease.outputs.version }}-pre
+
   # ── Step 1: assemble changelog + bump versions (no push to main yet) ──────
   assemble:
     name: Assemble Changelog
