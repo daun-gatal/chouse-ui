@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Github, Terminal } from "lucide-react";
+import { ArrowUpRight, FlaskConical, Github, Terminal } from "lucide-react";
 import { motion } from "framer-motion";
 import { Container, PrimaryAction, SecondaryAction } from "./Section";
 import ReleaseBanner from "./ReleaseBanner";
+import { LAB_NOTE, LAB_URL } from "@/content/lab";
+import { resolveHref } from "../docs-site/lib";
 
 /**
  * Editorial hero — Linear/Vercel-influenced.
@@ -131,6 +133,10 @@ export default function Hero() {
                 Deploy in 5 minutes
                 <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </PrimaryAction>
+              <SecondaryAction href={LAB_URL} target="_blank" rel="noopener noreferrer">
+                <FlaskConical className="h-4 w-4" aria-hidden />
+                Run your own lab
+              </SecondaryAction>
               <SecondaryAction
                 href="https://github.com/daun-gatal/chouse-ui"
                 target="_blank"
@@ -140,6 +146,12 @@ export default function Hero() {
                 View source
               </SecondaryAction>
             </motion.div>
+            <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+              Lab: {LAB_NOTE} ·{" "}
+              <a href={resolveHref("/docs/try-the-lab/")} className="whitespace-nowrap underline decoration-ink-700 underline-offset-4 hover:text-paper-muted">
+                how it works
+              </a>
+            </p>
           </div>
 
           {/* Terminal column */}

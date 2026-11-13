@@ -53,6 +53,7 @@ export const DOC_SECTIONS: DocSection[] = [
         pages: [
           { slug: "overview", title: "Introduction", description: "What CHouse UI is, the full capability matrix, and how this documentation is organized." },
           { slug: "quick-start", title: "Quick start", description: "Run CHouse UI with Docker Compose in under five minutes — UI on port 5521, ClickHouse on 8123, default admin login." },
+          { slug: "try-the-lab", title: "Try the lab", description: "A private CHouse UI with sample data in your own GitHub Codespace: what it costs, what's inside, how to turn on AI and how to delete it." },
           { slug: "first-login", title: "First login", description: "Sign in with the seeded admin account, rotate the password, and take the first-run tour." },
           { slug: "concepts", title: "Core concepts", description: "The six ideas behind everything else: own users and roles, connections, the server proxy, metadata-based observation, approved fixes and governed agents." },
           { slug: "whats-new", title: `What's new in ${RELEASE.version}`, description: "AI agents sign in to CHouse MCP with OAuth, and Upgrades checks what a ClickHouse upgrade changes for your workload — and what to change when you upgrade." },

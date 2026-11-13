@@ -11,6 +11,7 @@
 <p align="center">
   <a href="https://chouse-ui.com">Website</a> •
   <a href="https://chouse-ui.com/docs/">Documentation</a> •
+  <a href="#try-it">Try it</a> •
   <a href="#quick-start">Quick start</a> •
   <a href="ARCHITECTURE.md">Architecture</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -21,6 +22,10 @@
   <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/auto-release.yml"><img src="https://img.shields.io/github/actions/workflow/status/daun-gatal/chouse-ui/auto-release.yml?label=Release" alt="Release" /></a>
   <a href="https://github.com/daun-gatal/chouse-ui/releases"><img src="https://img.shields.io/github/v/release/daun-gatal/chouse-ui?label=Version" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+</p>
+
+<p align="center">
+  <a href="https://codespaces.new/daun-gatal/chouse-ui?devcontainer_path=.devcontainer%2Flab%2Fdevcontainer.json&quickstart=1"><img src="https://github.com/codespaces/badge.svg" alt="Open the CHouse UI lab in GitHub Codespaces" height="32" /></a>
 </p>
 
 <p align="center">
@@ -58,6 +63,18 @@ It is open source under Apache 2.0.
 
 See the [full feature tour](https://chouse-ui.com/docs/overview/) and
 [what's new](https://chouse-ui.com/docs/whats-new/).
+
+## Try it
+
+Open a private CHouse UI lab in your own GitHub Codespace. It's a full copy
+with sample data and example content in every area, and you are the admin:
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/daun-gatal/chouse-ui?devcontainer_path=.devcontainer%2Flab%2Fdevcontainer.json&quickstart=1)
+
+It takes about 3 minutes to start and runs on your free Codespaces quota. The
+sign-in is printed in the terminal when it's ready. AI features need your own
+key, added as a Codespaces secret. See [Try the lab](https://chouse-ui.com/docs/try-the-lab/)
+for what's inside and how to delete it.
 
 ## Quick start
 
