@@ -1,0 +1,54 @@
+{
+  // CHouse UI lab: a private copy of CHouse UI with sample data, in the
+  // visitor's own GitHub Codespace. Opened from the README badge and the
+  // "Run your own lab" button:
+  // https://codespaces.new/daun-gatal/chouse-ui?devcontainer_path=.devcontainer/lab/devcontainer.json&quickstart=1
+  // The editor is only the host: everything runs in Docker inside it (up.sh).
+  "name": "CHouse UI lab",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true,
+      "installDockerBuildx": false
+    }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "forwardPorts": [5521],
+  "portsAttributes": {
+    "5521": {
+      "label": "CHouse UI",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+  "secrets": {
+    "OPENAI_API_KEY": {
+      "description": "Optional. Turns on the AI features in your lab with your own OpenAI key (billed to you). Leave empty to run without AI.",
+      "documentationUrl": "https://chouse-ui.com/docs/try-the-lab/"
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "Optional. Turns on the AI features in your lab with your own Anthropic key (billed to you). Used instead of OpenAI when both are set.",
+      "documentationUrl": "https://chouse-ui.com/docs/try-the-lab/"
+    }
+  },
+  // Runs on the first start and every restart; up.sh is safe to run again.
+  "postStartCommand": "bash .devcontainer/lab/up.sh",
+  "postAttachCommand": "cat .devcontainer/lab/.state/banner.txt 2>/dev/null || true",
+  "customizations": {
+    "codespaces": {
+      "openFiles": [".devcontainer/lab/WELCOME.md"]
+    },
+    "vscode": {
+      "settings": {
+        "workbench.startupEditor": "none",
+        "markdown.preview.openMarkdownLinks": "inEditor"
+      }
+    }
+  }
+}

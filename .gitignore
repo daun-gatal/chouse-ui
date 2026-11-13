@@ -59,3 +59,6 @@ docs/portfolio/public/docs/img/app/_debug.*
 # EGM working files (concept briefs, design drafts, review and drift reports).
 # Only finished designs are committed, as ADRs in docs/adr/. See .rules/EGM.md.
 .egm/
+
+# CHouse UI lab (Codespaces): generated secrets and run state
+.devcontainer/lab/.state/
