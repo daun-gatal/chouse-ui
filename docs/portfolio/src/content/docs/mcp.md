@@ -216,10 +216,6 @@ curl -s https://chouse.corp/mcp \
 
 Requests without an `Origin` header (curl, the CLI, desktop agents) always pass the origin check; requests that carry one must match an allowed origin (DNS-rebinding protection).
 
-## Try the hosted lab
-
-**https://lab.chouse-ui.com/mcp** is a hosted instance you can point any client at without deploying anything. Create a token in the lab's UI (same **Preferences** flow) and use the token setup above. The lab keeps the default-safe policy — read tools only, sign-in for agents off — so it is safe to experiment with; to try sign-in, turn it on in your own deployment.
-
 ## Tools
 
 Every tool's description, access level, required permissions and parameters are on the [MCP tool catalog](/docs/mcp-tools/), generated from the server, and in **AI Governance › MCP**. There you switch each tool, or a whole category, on or off:
