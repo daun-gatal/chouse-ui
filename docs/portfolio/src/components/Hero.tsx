@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Github, Terminal, FlaskConical } from "lucide-react";
+import { ArrowUpRight, Github, Terminal } from "lucide-react";
 import { motion } from "framer-motion";
 import { Container, PrimaryAction, SecondaryAction } from "./Section";
 import ReleaseBanner from "./ReleaseBanner";
@@ -127,15 +127,10 @@ export default function Hero() {
               transition={{ duration: 0.6, delay: 0.16, ease: [0.16, 1, 0.3, 1] }}
               className="mt-10 flex flex-wrap items-center gap-3"
             >
-              <PrimaryAction href="#try-lab">
-                <FlaskConical className="h-4 w-4" aria-hidden />
-                Try the lab
-                <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </PrimaryAction>
-              <SecondaryAction href="#quick-start">
+              <PrimaryAction href="#quick-start">
                 Deploy in 5 minutes
                 <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </SecondaryAction>
+              </PrimaryAction>
               <SecondaryAction
                 href="https://github.com/daun-gatal/chouse-ui"
                 target="_blank"

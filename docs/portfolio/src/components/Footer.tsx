@@ -2,11 +2,10 @@ import { Github } from "lucide-react";
 import { Container } from "./Section";
 import { resolveHref } from "../docs-site/lib";
 
-// Mirrors the primary navbar (Docs · Features · Try Lab · FAQ).
+// Mirrors the primary navbar (Docs · Features · FAQ).
 const NAV = [
   { label: "Docs", href: "/docs/" },
   { label: "Features", href: "#features" },
-  { label: "Try Lab", href: "#try-lab" },
   { label: "FAQ", href: "#faq" },
 ];
 

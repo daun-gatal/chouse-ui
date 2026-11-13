@@ -3,7 +3,6 @@ import Hero from './components/Hero';
 import WhatsNew from './components/WhatsNew';
 import Features from './components/Features';
 import ClosedLoop from './components/ClosedLoop';
-import TryLab from './components/TryLab';
 import QuickStart from './components/QuickStart';
 import Automate from './components/Automate';
 import DockerDeploy from './components/DockerDeploy';
@@ -20,7 +19,6 @@ function App() {
       <WhatsNew />
       <ClosedLoop />
       <Features />
-      <TryLab />
       <QuickStart />
       <Automate />
       <DockerDeploy />
