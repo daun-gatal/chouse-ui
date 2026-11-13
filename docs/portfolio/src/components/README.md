@@ -6,7 +6,7 @@ React sections of the single-page marketing site (landing page), composed in ord
 
 ## Interface
 
-- Sections (default exports): `[Navbar.tsx:Navbar]`, `[Hero.tsx:Hero]`, `[WhatsNew.tsx:WhatsNew]`, `[ClosedLoop.tsx:ClosedLoop]`, `[Features.tsx:Features]`, `[TryLab.tsx:TryLab]`, `[QuickStart.tsx:QuickStart]`, `[Automate.tsx:Automate]`, `[DockerDeploy.tsx:DockerDeploy]`, `[Sso.tsx:Sso]`, `[FAQ.tsx:FAQ]`, `[Changelog.tsx:Changelog]`, `[Footer.tsx:Footer]`.
+- Sections (default exports): `[Navbar.tsx:Navbar]`, `[Hero.tsx:Hero]`, `[WhatsNew.tsx:WhatsNew]`, `[ClosedLoop.tsx:ClosedLoop]`, `[Features.tsx:Features]`, `[QuickStart.tsx:QuickStart]`, `[Automate.tsx:Automate]`, `[DockerDeploy.tsx:DockerDeploy]`, `[Sso.tsx:Sso]`, `[FAQ.tsx:FAQ]`, `[Changelog.tsx:Changelog]`, `[Footer.tsx:Footer]`.
 - `[ReleaseBanner.tsx:ReleaseBanner]` - "New in X.Y" banner driven by `src/content/release.ts` (also shown on the docs home).
 - Primitives `[Section.tsx]`: `Section`, `Container`, `Eyebrow`, `SectionHeader`, `PrimaryAction`, `SecondaryAction`, `Card`, `CodeBlock`, `Tag`.
 

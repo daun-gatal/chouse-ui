@@ -7,7 +7,7 @@ Source of the CHouse UI website: a React 19 single-page landing page (bootstrapp
 ## Interface
 
 - `[main.tsx]` - mounts `<App />` under `React.StrictMode` into `#root` and loads `index.css`.
-- `[App.tsx:App]` - default export composing the landing sections in order: Navbar, Hero, WhatsNew, ClosedLoop, Features, TryLab, QuickStart, Automate, DockerDeploy, Sso, FAQ, Changelog, Footer.
+- `[App.tsx:App]` - default export composing the landing sections in order: Navbar, Hero, WhatsNew, ClosedLoop, Features, QuickStart, Automate, DockerDeploy, Sso, FAQ, Changelog, Footer.
 - components: [./components/README.md](./components/README.md) - landing page sections and layout primitives.
 - content: [./content/README.md](./content/README.md) - release announcement, markdown docs pages, reference data.
 - docs-site: [./docs-site/README.md](./docs-site/README.md) - static `/docs` generator library and authoring guide.

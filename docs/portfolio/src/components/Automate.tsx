@@ -23,19 +23,18 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 
 const MCP_REFERENCE_URL = "/docs/mcp/";
 const CLI_REFERENCE_URL = "/docs/cli/";
-const MCP_LAB_UI_URL = "https://lab.chouse-ui.com";
 
 const CLI_INSTALL = `curl -sSL https://github.com/daun-gatal/chouse-ui/releases/latest/download/install-cli.sh | bash
 chouse auth login --server https://chouse.your-company.com   # prompts for the token`;
 
 const MCP_CLAUDE = `claude mcp add --transport http chouse \\
-  https://lab.chouse-ui.com/mcp \\
+  https://chouse.your-company.com/mcp \\
   --header "Authorization: Bearer ch_pat_…"`;
 
-const MCP_CODEX = `codex mcp add chouse --url https://lab.chouse-ui.com/mcp \\
+const MCP_CODEX = `codex mcp add chouse --url https://chouse.your-company.com/mcp \\
   --bearer-token-env-var CH_HOUSE_PAT`;
 
-// Sign-in is off until an administrator turns it on, so these point at your own deployment, not the lab.
+// Sign-in is off until an administrator turns it on.
 const MCP_CLAUDE_SIGN_IN = `claude mcp add --transport http chouse \\
   https://chouse.your-company.com/mcp
 # then run /mcp in Claude Code › chouse › Authenticate`;
@@ -167,8 +166,7 @@ const STEPS: Step[] = [
         address, turned on tool by tool in AI Governance › MCP — reads on, everything
         else off — with budgets, health notices and a pause switch for every
         agent. Agents that support MCP sign-in connect with the URL alone and
-        ask you to approve them in the browser; the rest use the token. Try it
-        on the hosted lab below, or your own deployment.
+        ask you to approve them in the browser; the rest use the token.
       </>
     ),
     body: (
@@ -176,106 +174,21 @@ const STEPS: Step[] = [
         <TabbedCode
           title="Claude Code"
           tabs={[
-            { id: "token", label: "Token · lab", code: MCP_CLAUDE },
+            { id: "token", label: "Token", code: MCP_CLAUDE },
             { id: "sign-in", label: "Sign-in", code: MCP_CLAUDE_SIGN_IN, note: SIGN_IN_NOTE },
           ]}
         />
         <TabbedCode
           title="Codex CLI"
           tabs={[
-            { id: "token", label: "Token · lab", code: MCP_CODEX },
+            { id: "token", label: "Token", code: MCP_CODEX },
             { id: "sign-in", label: "Sign-in", code: MCP_CODEX_SIGN_IN, note: SIGN_IN_NOTE },
           ]}
         />
-        <McpLabCard />
       </div>
     ),
   },
 ];
-
-const MCP_LAB_STEPS = [
-  {
-    number: "01",
-    label: "Sign in to the lab",
-    link: true,
-    body: "Account-less guest session, no deployment.",
-  },
-  {
-    number: "02",
-    label: "Mint a token",
-    link: false,
-    body: "Preferences → Personal access tokens.",
-  },
-  {
-    number: "03",
-    label: "Point your agent at the endpoint",
-    link: false,
-    body: null,
-  },
-] as const;
-
-function McpLabCard() {
-  return (
-    <div className="mt-3 rounded-md border border-accent/30 bg-accent/[0.04] p-5">
-      <p className="text-[15px] font-semibold text-paper">
-        Want to try MCP without installing anything?
-      </p>
-
-      <div className="mt-5 flex flex-col">
-        {MCP_LAB_STEPS.map((step, idx) => {
-          const isLast = idx === MCP_LAB_STEPS.length - 1;
-          return (
-            <div
-              key={step.number}
-              className="relative grid grid-cols-[auto_1fr] gap-x-4"
-              style={isLast ? undefined : { paddingBottom: "1.25rem" }}
-            >
-              <div className="flex flex-col items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 font-mono text-[10px] text-paper">
-                  {step.number}
-                </span>
-                {!isLast && <span className="w-px flex-1 bg-ink-500" aria-hidden />}
-              </div>
-              <div className="flex min-w-0 flex-col gap-1 pt-0.5">
-                <span className="text-[14px] font-semibold text-paper">
-                  {step.link ? (
-                    <a
-                      href={MCP_LAB_UI_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group inline-flex items-center gap-1.5 underline decoration-ink-700 underline-offset-4 transition-colors hover:decoration-accent"
-                    >
-                      {step.label}
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </a>
-                  ) : (
-                    step.label
-                  )}
-                </span>
-                {step.body && (
-                  <p className="text-[12.5px] text-paper-muted">{step.body}</p>
-                )}
-                {step.number === "03" && (
-                  <CodeBlock
-                    language="bash"
-                    filename="agent config"
-                    code={MCP_CLAUDE}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <p className="mt-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
-        Read-only by default. Revoke the token when you're done.
-      </p>
-    </div>
-  );
-}
 
 export default function Automate() {
   return (
