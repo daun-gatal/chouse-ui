@@ -80,6 +80,7 @@ Design decisions are recorded as ADRs in [docs/adr/](docs/adr/README.md).
 | `scripts/` | Release helpers, CLI build and installer, isolated test runners, Docker e2e suites, `verify-all.sh`, `check-contracts.ts` | [scripts](scripts/README.md) |
 | `charts/chouse-ui/` | Production Helm chart, published as an OCI artifact | [chart README](charts/chouse-ui/README.md) (generated) |
 | `changelogs/` | Release-note fragments. Never edit `CHANGELOG.md` by hand | [fragments](changelogs/unreleased/README.md) |
+| `.devcontainer/lab/` | The "Run your own lab" Codespaces lab: compose stack, start script, sample-data loader and smoke check (ADR 0032) | [lab](.devcontainer/lab/README.md) → [seed](.devcontainer/lab/seed/README.md) |
 | `e2e/`, `testbed/` | Browser and Docker end-to-end harnesses | — |
 
 At the root, only configuration remains: `vite.config.ts` sets the `@` → `src`

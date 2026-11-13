@@ -1,0 +1,135 @@
+name: Lab
+
+# Starts the CHouse UI lab (.devcontainer/lab, ADR 0032) exactly as a visitor's
+# codespace does, runs the loader a second time (it must change nothing) and
+# runs the smoke check. Fails when the "Run your own lab" button would land a
+# visitor on a broken lab.
+#
+#   - PRs that touch the lab, or the server or image it depends on. Server
+#     changes build the image from the PR, so a breaking API change fails here
+#     and not after the release.
+#   - Nightly against the published :latest image.
+#   - From auto-release.yml against the pre-release image, before the release
+#     is approved.
+
+on:
+  pull_request:
+    branches:
+      - preview
+    paths:
+      - ".devcontainer/lab/**"
+      - ".github/workflows/lab.yml"
+      - "Dockerfile"
+      - "packages/server/**"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "CHouse UI image to test (default: ghcr.io/daun-gatal/chouse-ui:latest)"
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      image:
+        description: "CHouse UI image to test"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-${{ github.workflow }}-${{ github.ref }}-${{ inputs.image || 'default' }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Lab smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Loader unit tests and types
+        run: |
+          bun install --frozen-lockfile
+          bunx vitest run .devcontainer/lab/seed
+          bunx tsc -p .devcontainer/lab/seed/tsconfig.json
+
+      - name: Choose the CHouse UI image
+        id: image
+        env:
+          INPUT_IMAGE: ${{ inputs.image }}
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$INPUT_IMAGE" ]; then
+            echo "image=$INPUT_IMAGE" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "pull_request" ] && git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(Dockerfile|packages/server/)'; then
+            echo "image=chouse-ui:lab-pr" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=ghcr.io/daun-gatal/chouse-ui:latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the image from this PR
+        if: steps.image.outputs.build == 'true'
+        run: docker build -t chouse-ui:lab-pr .
+
+      - name: Start the lab
+        env:
+          CHOUSE_IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          echo "Testing $CHOUSE_IMAGE"
+          bash .devcontainer/lab/up.sh
+
+      - name: Every loader step passed
+        run: |
+          python3 - <<'EOF'
+          import json
+          report = json.load(open(".devcontainer/lab/.state/seed.json"))
+          failed = [s for s in report["steps"] if not s["ok"]]
+          for s in failed:
+              print(f"::error::loader step '{s['step']}' failed: {s['detail']}")
+          raise SystemExit(1 if failed else 0)
+          EOF
+
+      - name: Run the loader again (must change nothing)
+        env:
+          CHOUSE_IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          docker compose -p chouse-lab -f .devcontainer/lab/compose.yml run --rm -T seed > second.json
+          python3 - <<'EOF'
+          import json
+          report = json.load(open("second.json"))
+          # Every step except the login reports that it found its work done.
+          bad = [s for s in report["steps"] if not s["ok"] or (s["step"] != "admin login" and not any(w in s["detail"] for w in ("already", "off (")))]
+          for s in bad:
+              print(f"::error::second run of '{s['step']}' was not a no-op: {s['detail']}")
+          raise SystemExit(1 if bad else 0)
+          EOF
+
+      - name: Smoke check
+        env:
+          CHOUSE_IMAGE: ${{ steps.image.outputs.image }}
+        run: docker compose -p chouse-lab -f .devcontainer/lab/compose.yml run --rm -T seed /lab/smoke.ts
+
+      - name: Logs
+        if: failure()
+        run: |
+          docker compose -p chouse-lab -f .devcontainer/lab/compose.yml ps
+          docker compose -p chouse-lab -f .devcontainer/lab/compose.yml logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p chouse-lab -f .devcontainer/lab/compose.yml down -v || true

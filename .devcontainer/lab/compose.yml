@@ -1,0 +1,161 @@
+# CHouse UI lab: one CHouse UI, one memory-capped ClickHouse, a light query
+# load and a sample-data loader. Started by up.sh, which writes the .env file
+# this stack reads (random secrets per lab; there are deliberately no
+# defaults here). The same file runs in GitHub Codespaces, in CI
+# (.github/workflows/lab.yml) and locally:
+#
+#   bash .devcontainer/lab/up.sh       # start, load sample data, print the login
+#   docker compose -f .devcontainer/lab/compose.yml down -v   # remove everything
+
+name: chouse-lab
+
+services:
+  chouse-ui:
+    image: ${CHOUSE_IMAGE:-ghcr.io/daun-gatal/chouse-ui:latest}
+    restart: unless-stopped
+    ports:
+      - "5521:5521"
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?run up.sh to generate the lab secrets}
+      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:?run up.sh to generate the lab secrets}
+      RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT:?run up.sh to generate the lab secrets}
+      RBAC_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:?run up.sh to generate the lab secrets}
+      CORS_ORIGIN: ${CORS_ORIGIN:?run up.sh to set the lab origin}
+      OBSERVE_FLEET_INTERVAL: "30"
+    volumes:
+      - chouse-data:/app/data
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "--spider", "http://localhost:5521/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.5-alpine}
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
+      # Lets the lab admin manage ClickHouse users and roles from CHouse UI.
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    # Sized for the 2-core / 8 GB codespace; the caps below keep ClickHouse
+    # well inside this limit.
+    mem_limit: 2560m
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user admin --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    configs:
+      - source: clickhouse_low_memory
+        target: /etc/clickhouse-server/config.d/zz-lab.xml
+    logging: *logging
+
+  # Light, steady activity so Monitoring, Fleet and query history have
+  # something to show. Talks to ClickHouse directly (never through the CHouse
+  # API, which is rate limited and audited). Started by up.sh after the
+  # sample data exists.
+  load:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.5-alpine}
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
+    entrypoint: ["/bin/sh", "/lab/load.sh"]
+    configs:
+      - source: load_script
+        target: /lab/load.sh
+    mem_limit: 256m
+    logging: *logging
+
+  # One-shot loader (sample data plus example content for every area) and smoke check. Runs on the Bun that ships in
+  # the CHouse image, so the lab pulls no extra image. Not started by `up`;
+  # up.sh and CI run it with `docker compose run --rm seed`.
+  seed:
+    image: ${CHOUSE_IMAGE:-ghcr.io/daun-gatal/chouse-ui:latest}
+    profiles: ["tools"]
+    depends_on:
+      chouse-ui:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    entrypoint: ["bun", "run"]
+    command: ["/lab/seed.ts"]
+    working_dir: /lab
+    environment:
+      LAB_CHOUSE_URL: http://chouse-ui:5521
+      LAB_CLICKHOUSE_URL: http://clickhouse:8123
+      LAB_CLICKHOUSE_HOST: ${LAB_CLICKHOUSE_HOST:-clickhouse}
+      LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:?run up.sh to generate the lab secrets}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
+      # Optional; empty means "AI off". Passed through from the codespace's
+      # secrets by up.sh, never written to .env.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LAB_AI_MODEL: ${LAB_AI_MODEL:-}
+    configs:
+      - source: seed_lib
+        target: /lab/lib.ts
+      - source: seed_main
+        target: /lab/seed.ts
+      - source: seed_smoke
+        target: /lab/smoke.ts
+      - source: seed_showcase
+        target: /lab/showcase.ts
+    logging: *logging
+
+volumes:
+  chouse-data:
+  clickhouse-data:
+
+configs:
+  load_script:
+    file: ./load.sh
+  seed_lib:
+    file: ./seed/lib.ts
+  seed_main:
+    file: ./seed/seed.ts
+  seed_smoke:
+    file: ./seed/smoke.ts
+  seed_showcase:
+    file: ./seed/showcase.ts
+  clickhouse_low_memory:
+    content: |
+      <clickhouse>
+          <!-- Log to stdout so `docker compose logs clickhouse` shows the server log. -->
+          <logger>
+              <console>1</console>
+              <level>warning</level>
+          </logger>
+          <!-- ClickHouse reads the container's mem_limit, not the host's RAM. -->
+          <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+          <!-- The stock caches are several GB each; a lab needs very little. -->
+          <mark_cache_size>134217728</mark_cache_size>
+          <uncompressed_cache_size>67108864</uncompressed_cache_size>
+          <mlock_executable>false</mlock_executable>
+          <max_concurrent_queries>16</max_concurrent_queries>
+          <!-- Off by default. CHouse UI's Data view reads it to learn how often
+               each table is written, so the tables can earn a trust status. -->
+          <part_log>
+              <database>system</database>
+              <table>part_log</table>
+              <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+          </part_log>
+      </clickhouse>

@@ -12,7 +12,7 @@ React sections of the single-page marketing site (landing page), composed in ord
 
 ## Invariants
 
-- Changelog and logo URLs use Vite's `BASE_URL` `[Hero.tsx:Hero]`, `[Changelog.tsx:Changelog]`, `[Navbar.tsx:Navbar]`, `[Footer.tsx:Footer]`, and the release links go through `withBase` `[WhatsNew.tsx:WhatsNew]`, `[ReleaseBanner.tsx:ReleaseBanner]`. Every other internal link goes through `resolveHref`, so it respects `VITE_BASE_PATH`: `PrimaryAction`/`SecondaryAction` resolve their `href` `[Section.tsx:SecondaryAction]`, and so do the FAQ, Footer, Features and SSO doc links and the Navbar home link and page links `[FAQ.tsx:FAQ]`, `[Footer.tsx:Footer]`, `[Features.tsx:Features]`, `[Sso.tsx:Sso]`, `[Navbar.tsx:Navbar]`.
+- Changelog and logo URLs use Vite's `BASE_URL` `[Hero.tsx:Hero]`, `[Changelog.tsx:Changelog]`, `[Navbar.tsx:Navbar]`, `[Footer.tsx:Footer]`, and the release links go through `withBase` `[WhatsNew.tsx:WhatsNew]`, `[ReleaseBanner.tsx:ReleaseBanner]`. Every other internal link goes through `resolveHref`, so it respects `VITE_BASE_PATH`: `PrimaryAction`/`SecondaryAction` resolve their `href` `[Section.tsx:SecondaryAction]`, and so do the Hero's lab docs link, the FAQ, Footer, Features and SSO doc links and the Navbar home link and page links `[FAQ.tsx:FAQ]`, `[Footer.tsx:Footer]`, `[Features.tsx:Features]`, `[Sso.tsx:Sso]`, `[Navbar.tsx:Navbar]`.
 - Internal links and anchors in these files are validated by the docs build (`LANDING_DIR` in `scripts/build-docs.ts`) `[../../scripts/build-docs.ts:checkLinks]`.
 - A failed changelog fetch in `Hero` is silent: the version badge simply does not render `[Hero.tsx:Hero]`.
 
