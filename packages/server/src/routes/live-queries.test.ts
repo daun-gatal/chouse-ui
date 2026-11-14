@@ -277,6 +277,12 @@ describe("Live Queries Routes", () => {
     });
 
     describe("POST /live-queries/kill", () => {
+        const killRequest = (queryId: string): Promise<Response> => app.request("/live-queries/kill", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer token", "X-Connection-Id": "conn1", "X-Requested-With": "XMLHttpRequest" },
+            body: JSON.stringify({ queryId }),
+        });
+
         it("should kill query and return success", async () => {
             mockExecuteQuery
                 .mockResolvedValueOnce({
@@ -388,6 +394,51 @@ describe("Live Queries Routes", () => {
             expect(res.status).toBe(403);
             const body = await res.json();
             expect(body.error.message).toContain("own queries");
+        });
+
+        it("refuses when the owner cannot be confirmed: the query is not in system.processes", async () => {
+            mockRbacConfig = { userId: "user1", roles: ["developer"], permissions: ["live_queries:view", "live_queries:kill"], isRbacAdmin: false };
+            mockExecuteQuery.mockResolvedValueOnce({ data: [], meta: [], statistics: {}, rows: 0 });
+
+            const res = await killRequest("query-gone");
+
+            expect(res.status).toBe(404);
+            expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
+            expect(mockExecuteQuery.mock.calls.some(([sql]) => String(sql).includes("KILL QUERY"))).toBe(false);
+        });
+
+        it("refuses when the owner cannot be confirmed: the lookup itself fails", async () => {
+            mockRbacConfig = { userId: "user1", roles: ["developer"], permissions: ["live_queries:view", "live_queries:kill"], isRbacAdmin: false };
+            mockExecuteQuery.mockRejectedValueOnce(new Error("system.processes unavailable"));
+
+            const res = await killRequest("query-unknown");
+
+            expect(res.status).toBe(404);
+            expect(mockExecuteQuery.mock.calls.some(([sql]) => String(sql).includes("KILL QUERY"))).toBe(false);
+        });
+
+        it("refuses a query with no recorded owner for a caller without kill_all", async () => {
+            mockRbacConfig = { userId: "user1", roles: ["developer"], permissions: ["live_queries:view", "live_queries:kill"], isRbacAdmin: false };
+            mockExecuteQuery.mockResolvedValueOnce({
+                data: [{ query_id: "query-ext", user: "etl", query: "INSERT INTO t SELECT 1", elapsed_seconds: 2, log_comment_json: "" }],
+                meta: [], statistics: {}, rows: 1,
+            });
+
+            const res = await killRequest("query-ext");
+
+            expect(res.status).toBe(403);
+            expect(mockExecuteQuery.mock.calls.some(([sql]) => String(sql).includes("KILL QUERY"))).toBe(false);
+        });
+
+        it("still sends the kill for a kill_all holder when the query is no longer listed", async () => {
+            mockExecuteQuery
+                .mockResolvedValueOnce({ data: [], meta: [], statistics: {}, rows: 0 })
+                .mockResolvedValueOnce({ data: [], meta: [], statistics: {}, rows: 0 });
+
+            const res = await killRequest("query-gone");
+
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery.mock.calls.some(([sql]) => String(sql).includes("KILL QUERY"))).toBe(true);
         });
 
         it("should allow admin with kill_all to kill another user's query", async () => {

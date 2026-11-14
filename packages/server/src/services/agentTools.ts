@@ -17,6 +17,7 @@ import {
 } from "../middleware/dataAccess";
 import { parseStatement } from "../middleware/sqlParser";
 import { analyzeQuery } from "./queryAnalyzer";
+import { quoteStringLiteral } from "../utils/sqlIdentifier";
 
 const zodSchema = <T>(schema: T): T => schema;
 
@@ -603,7 +604,9 @@ export function createCoreTools(ctx: AgentToolContext) {
       inputSchema: zodSchema(z.object({})),
       execute: async (): Promise<Record<string, unknown>> => {
         try {
-          const filter = ctx.isAdmin ? "" : `WHERE user = currentUser()`;
+          // Everyone shares the connection's ClickHouse user, so "own queries"
+          // is decided from the CHouse account recorded on each query.
+          const filter = ctx.isAdmin ? "" : `WHERE JSONExtractString(Settings['log_comment'], 'rbac_user_id') = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT 
                 query_id, user, query, elapsed, read_rows, 
@@ -890,7 +893,7 @@ export function createCoreTools(ctx: AgentToolContext) {
         minDurationMs?: number;
       }): Promise<Record<string, unknown>> => {
         try {
-          const filter = ctx.isAdmin ? "" : "AND user = currentUser()";
+          const filter = ctx.isAdmin ? "" : `AND JSONExtractString(log_comment, 'rbac_user_id') = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT
                 query_id,

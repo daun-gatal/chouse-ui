@@ -5,13 +5,17 @@ import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
 } from "../middleware/connectionContext";
-import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, filterTables, validateQueryAccess } from "../middleware/dataAccess";
+import { mutationCountStatement, parseMutationStatement } from "../services/ddlSimulator";
 import { listQueryHistory } from "../services/queryHistory/store";
-import { AppError, type RecentQuery } from "../types";
+import { AppError, type ErrorMetrics, type RecentQuery, type TopTableBySize } from "../types";
 
 type Variables = ConnectionContextVariables;
 
 const metrics = new Hono<{ Variables: Variables }>();
+
+/** How many of the largest tables a non-admin's top-tables page is filtered from. */
+const TOP_TABLES_SCAN_LIMIT = 1000;
 
 // Every route resolves its ClickHouse connection per request (ADR 0010).
 metrics.use("*", connectionContextMiddleware);
@@ -98,6 +102,52 @@ function canSeeAllQueryText(c: Context<{ Variables: Variables }>): boolean {
   return (c.get("rbacPermissions") ?? []).includes(PERMISSIONS.QUERY_HISTORY_VIEW_ALL);
 }
 
+interface TableRow {
+  database: string;
+  table: string;
+}
+
+/**
+ * Keep the rows whose table the caller's data access rules allow. Admins keep
+ * every row. Monitoring pages name tables, so each one filters through here.
+ */
+async function visibleTableRows<T extends TableRow>(c: Context<{ Variables: Variables }>, rows: T[]): Promise<T[]> {
+  if (c.get("isRbacAdmin")) return rows;
+  const rbacUserId = c.get("rbacUserId");
+  const connectionId = c.get("session")?.rbacConnectionId ?? c.get("rbacConnectionId");
+  const namesByDatabase = new Map<string, string[]>();
+  for (const row of rows) {
+    const names = namesByDatabase.get(row.database) ?? [];
+    names.push(row.table);
+    namesByDatabase.set(row.database, names);
+  }
+  const allowedByDatabase = new Map<string, Set<string>>();
+  for (const [database, names] of namesByDatabase) {
+    allowedByDatabase.set(database, new Set(await filterTables(rbacUserId, false, database, names, connectionId)));
+  }
+  return rows.filter((row) => allowedByDatabase.get(row.database)?.has(row.table));
+}
+
+/**
+ * The largest tables this caller may see. For non-admins the scan is wider
+ * than the page, so that filtering does not leave the page short.
+ */
+async function visibleTopTables(c: Context<{ Variables: Variables }>, limit: number): Promise<TopTableBySize[]> {
+  const service = c.get("service");
+  if (c.get("isRbacAdmin")) return service.getTopTablesBySize(limit);
+  const candidates = await service.getTopTablesBySize(TOP_TABLES_SCAN_LIMIT);
+  return (await visibleTableRows(c, candidates)).slice(0, limit);
+}
+
+/**
+ * A sample error is the exception text of someone's query. It is shown only to
+ * callers who may read everyone's query text.
+ */
+function visibleErrors(c: Context<{ Variables: Variables }>, errors: ErrorMetrics[]): ErrorMetrics[] {
+  if (canSeeAllQueryText(c)) return errors;
+  return errors.map((error) => ({ ...error, sample_error: "" }));
+}
+
 /** `limit` query value as an integer in 1..100 (default 10). */
 function recentLimit(raw: string | undefined): number {
   const parsed = Number.parseInt(raw ?? "", 10);
@@ -171,7 +221,14 @@ metrics.get("/production", async (c) => {
 
   return c.json({
     success: true,
-    data: productionMetrics,
+    data: isRbacAdmin
+      ? productionMetrics
+      : {
+          ...productionMetrics,
+          replication: await visibleTableRows(c, productionMetrics.replication),
+          topTables: await visibleTopTables(c, 10),
+          errors: visibleErrors(c, productionMetrics.errors),
+        },
   });
 });
 
@@ -262,7 +319,7 @@ metrics.get("/replication", async (c) => {
 
   return c.json({
     success: true,
-    data: replication,
+    data: await visibleTableRows(c, replication),
   });
 });
 
@@ -331,7 +388,7 @@ metrics.get("/errors", async (c) => {
 
   return c.json({
     success: true,
-    data: errors,
+    data: visibleErrors(c, errors),
   });
 });
 
@@ -380,7 +437,7 @@ metrics.get("/parts-pressure", async (c) => {
 
   return c.json({
     success: true,
-    data: partsPressure,
+    data: await visibleTableRows(c, partsPressure),
   });
 });
 
@@ -403,13 +460,32 @@ metrics.post("/ddl/simulate", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const statement = typeof body?.statement === "string" ? body.statement : "";
 
-  const { parseMutationStatement } = await import("../services/ddlSimulator");
   const parsed = parseMutationStatement(statement);
   if (!parsed.ok) {
     throw AppError.badRequest(parsed.error);
   }
 
   const service = c.get("service");
+  const count = mutationCountStatement(parsed.value, service.defaultDatabase);
+  if (!count) {
+    throw AppError.badRequest("Invalid table reference.");
+  }
+
+  // The estimate counts rows of the caller's table with the caller's own
+  // predicate, so it is checked like a SELECT they typed (ADR 0030): ClickHouse
+  // parses exactly the text that runs, and every table it reads must be allowed.
+  const access = await validateQueryAccess({
+    userId: rbacUserId,
+    isAdmin: isRbacAdmin,
+    permissions: rbacPermissions,
+    sql: count.sql,
+    connectionId: c.get("session")?.rbacConnectionId ?? c.get("rbacConnectionId"),
+  });
+  if (!access.allowed) throw accessDeniedError(access);
+  if (access.statementType && access.statementType !== "select") {
+    throw AppError.badRequest("The predicate must be a plain filter on the table.");
+  }
+
   const estimate = await service.getDdlImpact(parsed.value, service.defaultDatabase);
 
   return c.json({
@@ -431,14 +507,12 @@ metrics.get("/top-tables", async (c) => {
   // Check permission (basic metrics)
   await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, false);
 
-  const limit = parseInt(c.req.query("limit") || "10", 10);
-  const service = c.get("service");
-
-  const tables = await service.getTopTablesBySize(Math.min(limit, 50));
+  const requested = Number.parseInt(c.req.query("limit") || "10", 10);
+  const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 50) : 10;
 
   return c.json({
     success: true,
-    data: tables,
+    data: await visibleTopTables(c, limit),
   });
 });
 

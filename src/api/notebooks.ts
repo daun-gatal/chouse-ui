@@ -85,3 +85,8 @@ export function querySnapshot(cell: NotebookCell): QuerySnapshot | null {
   const s = snapshot as Partial<QuerySnapshot>;
   return Array.isArray(s.columns) && Array.isArray(s.rows) && typeof s.ranAt === "number" ? { columns: s.columns, rows: s.rows, ranAt: s.ranAt } : null;
 }
+
+/** True when the server kept back a query cell's rows because the reader's data access rules don't cover its statement. */
+export function snapshotWithheld(cell: NotebookCell): boolean {
+  return cell.content.snapshotWithheld === true;
+}

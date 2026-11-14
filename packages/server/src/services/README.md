@@ -32,7 +32,7 @@ Business logic for the CHouse UI API server (`packages/server`). Route handlers 
 - Fleet alerts fire only on the healthy -> breach edge; the latch map is persisted so this holds across replicas and restarts (`[fleetAlerter.ts:processTick]`, `[fleetAlertLatchStore.ts:persistLatches]`).
 - Doctor scheduling is multi-instance safe: one atomic conditional UPDATE on `last_run_at` claims each slot (`[doctorScheduler.ts:claimScheduledSlot]`).
 - Doctor reports keep the newest `[doctorReports.ts:DOCTOR_REPORT_RETENTION]` (100) and prune the rest after each save.
-- Agent tools are read-only and pass through data-access validation (`[agentTools.ts:createCoreTools]`, `validateQueryAccess`).
+- Agent tools are read-only and pass through data-access validation (`[agentTools.ts:createCoreTools]`, `validateQueryAccess`). The tools that list running and slow queries limit a non-admin to the queries recorded for their own CHouse account, not to the connection's ClickHouse user, which everyone shares.
 - Chat threads are listed for the last 7 days by default (`[chatHistory.ts:listThreads]`).
 
 ## Side Effects

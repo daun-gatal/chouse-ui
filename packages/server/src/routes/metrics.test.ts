@@ -15,6 +15,8 @@ const mockGetResourceMetrics = mock();
 const mockGetErrorMetrics = mock();
 const mockGetInsertThroughput = mock();
 const mockGetTopTablesBySize = mock();
+const mockGetPartsPressure = mock();
+const mockGetDdlImpact = mock();
 const mockExecuteQuery = mock();
 const mockClose = mock();
 const mockPing = mock();
@@ -33,6 +35,9 @@ class MockClickHouseService {
     getErrorMetrics = mockGetErrorMetrics;
     getInsertThroughput = mockGetInsertThroughput;
     getTopTablesBySize = mockGetTopTablesBySize;
+    getPartsPressure = mockGetPartsPressure;
+    getDdlImpact = mockGetDdlImpact;
+    defaultDatabase = "default";
     executeQuery = mockExecuteQuery;
     close = mockClose;
     ping = mockPing;
@@ -74,6 +79,10 @@ const identity: { roles: string[]; permissions: string[]; isAdmin: boolean } = {
     roles: ["admin"], permissions: [], isAdmin: true,
 };
 const mockValidateQueryAccess = mock();
+// Tables the non-admin caller's data access rules allow, as "database.table".
+const allowedTables = new Set<string>();
+const mockFilterTables = mock(async (_userId: string | undefined, _isAdmin: boolean | undefined, database: string, tables: string[]) =>
+    tables.filter((table) => allowedTables.has(`${database}.${table}`)));
 
 mock.module("../middleware/dataAccess", () => ({
     optionalRbacMiddleware: mock(async (c, next) => {
@@ -87,6 +96,7 @@ mock.module("../middleware/dataAccess", () => ({
         await next();
     }),
     validateQueryAccess: mockValidateQueryAccess,
+    filterTables: mockFilterTables,
     accessDeniedError: (result: { reason?: string }) => AppError.forbidden(result.reason ?? "Access denied"),
 }));
 
@@ -98,6 +108,19 @@ mock.module("../services/queryHistory/store", () => ({
 import metricsRoutes from "./metrics";
 import { errorHandler } from "../middleware/error";
 import { AppError } from "../types";
+
+const AUTH = { "Authorization": "Bearer token" };
+
+function tableRow(database: string, table: string): { database: string; table: string } {
+    return { database, table };
+}
+
+/** Make the caller a non-admin holding these permissions. */
+function asViewer(permissions: string[] = ["metrics:view"]): void {
+    identity.roles = ["viewer"];
+    identity.permissions = permissions;
+    identity.isAdmin = false;
+}
 
 describe("Metrics Routes", () => {
     let app: Hono;
@@ -115,7 +138,14 @@ describe("Metrics Routes", () => {
         identity.roles = ["admin"];
         identity.permissions = [];
         identity.isAdmin = true;
-        mockGetTopTablesBySize.mockClear();
+        mockGetTopTablesBySize.mockReset();
+        mockGetPartsPressure.mockReset();
+        mockGetDdlImpact.mockReset();
+        mockGetReplicationMetrics.mockReset();
+        mockGetErrorMetrics.mockReset();
+        mockGetProductionMetrics.mockReset();
+        mockFilterTables.mockClear();
+        allowedTables.clear();
         mockExecuteQuery.mockClear();
         mockClose.mockClear();
 
@@ -269,6 +299,183 @@ describe("Metrics Routes", () => {
             expect(body.data[0].table).toBe("viz_test");
             expect(body.data[0].parts_count).toBe(0);
             expect(mockGetTopTablesBySize).toHaveBeenCalledWith(5);
+        });
+
+        it("gives a non-admin only the tables their data access rules allow", async () => {
+            asViewer();
+            allowedTables.add("pub.events");
+            mockGetTopTablesBySize.mockResolvedValue([tableRow("finance", "salaries"), tableRow("pub", "events"), tableRow("hr", "people")]);
+
+            const res = await app.request("/metrics/top-tables?limit=5", { headers: AUTH });
+
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.data.map((t: { database: string; table: string }) => `${t.database}.${t.table}`)).toEqual(["pub.events"]);
+            expect(JSON.stringify(body)).not.toContain("salaries");
+        });
+
+        it("applies the limit after filtering, from a scan wider than the page", async () => {
+            asViewer();
+            for (let i = 0; i < 6; i++) allowedTables.add(`pub.t${i}`);
+            mockGetTopTablesBySize.mockResolvedValue([
+                tableRow("finance", "a"), tableRow("finance", "b"), tableRow("finance", "c"),
+                ...Array.from({ length: 6 }, (_v, i) => tableRow("pub", `t${i}`)),
+            ]);
+
+            const res = await app.request("/metrics/top-tables?limit=2", { headers: AUTH });
+
+            const body = await res.json();
+            expect(body.data.map((t: { table: string }) => t.table)).toEqual(["t0", "t1"]);
+            expect(mockGetTopTablesBySize).toHaveBeenCalledWith(1000);
+        });
+
+        it("falls back to 10 for a junk limit", async () => {
+            mockGetTopTablesBySize.mockResolvedValue([]);
+            for (const limit of ["abc", "0", "-3"]) {
+                await app.request(`/metrics/top-tables?limit=${limit}`, { headers: AUTH });
+            }
+            expect(mockGetTopTablesBySize.mock.calls.map((call) => call[0])).toEqual([10, 10, 10]);
+        });
+    });
+
+    describe("table names on other monitoring routes", () => {
+        it("filters /metrics/replication for a non-admin and not for an admin", async () => {
+            mockGetReplicationMetrics.mockResolvedValue([tableRow("finance", "salaries"), tableRow("pub", "events")]);
+
+            const admin = await (await app.request("/metrics/replication", { headers: AUTH })).json();
+            expect(admin.data).toHaveLength(2);
+
+            asViewer();
+            allowedTables.add("pub.events");
+            const viewer = await (await app.request("/metrics/replication", { headers: AUTH })).json();
+            expect(viewer.data).toEqual([tableRow("pub", "events")]);
+        });
+
+        it("filters /metrics/parts-pressure for a non-admin", async () => {
+            asViewer();
+            allowedTables.add("pub.events");
+            mockGetPartsPressure.mockResolvedValue([tableRow("finance", "salaries"), tableRow("pub", "events")]);
+
+            const body = await (await app.request("/metrics/parts-pressure", { headers: AUTH })).json();
+
+            expect(body.data).toEqual([tableRow("pub", "events")]);
+        });
+
+        it("filters the table lists inside /metrics/production for a non-admin", async () => {
+            asViewer();
+            allowedTables.add("pub.events");
+            mockGetProductionMetrics.mockResolvedValue({
+                replication: [tableRow("finance", "salaries"), tableRow("pub", "events")],
+                topTables: [tableRow("finance", "salaries")],
+                errors: [{ exception_code: 60, exception_name: "UNKNOWN_TABLE", count: 1, sample_error: "Table finance.salaries does not exist", last_occurred: "" }],
+                latency: { p50: 1 },
+            });
+            mockGetTopTablesBySize.mockResolvedValue([tableRow("finance", "salaries"), tableRow("pub", "events")]);
+
+            const body = await (await app.request("/metrics/production", { headers: AUTH })).json();
+
+            expect(body.data.replication).toEqual([tableRow("pub", "events")]);
+            expect(body.data.topTables).toEqual([tableRow("pub", "events")]);
+            expect(body.data.errors[0].sample_error).toBe("");
+            expect(body.data.latency).toEqual({ p50: 1 });
+            expect(JSON.stringify(body)).not.toContain("salaries");
+        });
+
+        it("returns /metrics/production untouched to an admin", async () => {
+            const metrics = { replication: [tableRow("finance", "salaries")], topTables: [tableRow("finance", "salaries")], errors: [] };
+            mockGetProductionMetrics.mockResolvedValue(metrics);
+
+            const body = await (await app.request("/metrics/production", { headers: AUTH })).json();
+
+            expect(body.data).toEqual(metrics);
+            expect(mockFilterTables).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("GET /metrics/errors", () => {
+        const errors = [{ exception_code: 60, exception_name: "UNKNOWN_TABLE", count: 3, sample_error: "Table finance.salaries does not exist", last_occurred: "" }];
+
+        it("keeps the sample error text for admins and query:history:view:all holders", async () => {
+            mockGetErrorMetrics.mockResolvedValue(errors);
+            expect((await (await app.request("/metrics/errors", { headers: AUTH })).json()).data).toEqual(errors);
+
+            asViewer(["metrics:view", "query:history:view:all"]);
+            expect((await (await app.request("/metrics/errors", { headers: AUTH })).json()).data).toEqual(errors);
+        });
+
+        it("blanks the sample error text for everyone else and keeps the counts", async () => {
+            asViewer();
+            mockGetErrorMetrics.mockResolvedValue(errors);
+
+            const body = await (await app.request("/metrics/errors", { headers: AUTH })).json();
+
+            expect(body.data).toEqual([{ ...errors[0], sample_error: "" }]);
+        });
+    });
+
+    describe("POST /metrics/ddl/simulate", () => {
+        const simulate = (statement: string): Promise<Response> => app.request("/metrics/ddl/simulate", {
+            method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify({ statement }),
+        });
+
+        it("checks the exact count it will run against the caller's data access rules", async () => {
+            asViewer();
+            mockGetDdlImpact.mockResolvedValue({ affected_rows: 1 });
+
+            const res = await simulate("ALTER TABLE finance.salaries DELETE WHERE amount > 10");
+
+            expect(res.status).toBe(200);
+            expect(mockValidateQueryAccess).toHaveBeenCalledWith({
+                userId: "user1", isAdmin: false, permissions: ["metrics:view"],
+                sql: "SELECT count() AS c FROM `finance`.`salaries` WHERE amount > 10 SETTINGS max_execution_time = 15",
+                connectionId: "conn1",
+            });
+        });
+
+        it("refuses a table the rules deny, without counting anything", async () => {
+            asViewer();
+            mockValidateQueryAccess.mockResolvedValue({ allowed: false, code: "TABLE_DENIED", reason: "Access denied to finance.salaries", status: 403 });
+
+            const res = await simulate("ALTER TABLE finance.salaries DELETE WHERE amount > 10");
+
+            expect(res.status).toBe(403);
+            expect(mockGetDdlImpact).not.toHaveBeenCalled();
+        });
+
+        it("checks a predicate that reads another table as part of the same statement", async () => {
+            asViewer();
+            mockValidateQueryAccess.mockResolvedValue({ allowed: false, code: "TABLE_DENIED", reason: "Access denied to finance.salaries", status: 403 });
+
+            const res = await simulate("ALTER TABLE pub.events DELETE WHERE id IN (SELECT id FROM finance.salaries)");
+
+            expect(res.status).toBe(403);
+            expect(mockValidateQueryAccess.mock.calls[0][0].sql).toContain("FROM `pub`.`events` WHERE id IN (SELECT id FROM finance.salaries)");
+            expect(mockGetDdlImpact).not.toHaveBeenCalled();
+        });
+
+        it("resolves an unqualified table against the connection's default database before checking", async () => {
+            asViewer();
+            mockGetDdlImpact.mockResolvedValue({ affected_rows: 0 });
+
+            await simulate("ALTER TABLE events UPDATE a = 1 WHERE 1");
+
+            expect(mockValidateQueryAccess.mock.calls[0][0].sql).toBe("SELECT count() AS c FROM `default`.`events` WHERE 1 SETTINGS max_execution_time = 15");
+        });
+
+        it("refuses a predicate that ClickHouse parses as something other than a SELECT", async () => {
+            mockValidateQueryAccess.mockResolvedValue({ allowed: true, statementType: "insert" });
+
+            const res = await simulate("ALTER TABLE pub.events DELETE WHERE 1");
+
+            expect(res.status).toBe(400);
+            expect(mockGetDdlImpact).not.toHaveBeenCalled();
+        });
+
+        it("still rejects anything that is not an UPDATE or DELETE mutation", async () => {
+            const res = await simulate("DROP TABLE pub.events");
+
+            expect(res.status).toBe(400);
+            expect(mockValidateQueryAccess).not.toHaveBeenCalled();
         });
     });
 
