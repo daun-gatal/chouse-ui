@@ -71,6 +71,33 @@ async function guardNotebook(c: Context, id: string): Promise<notebooks.Notebook
   return notebook;
 }
 
+/**
+ * The cells of a notebook as this reader may see them. A query cell keeps the
+ * rows its author saw, so its rows go only to a reader whose own data access
+ * rules allow the cell's statement; for anyone else the rows are withheld and
+ * the cell says so. A check that cannot run withholds too.
+ */
+async function cellsFor(c: Context, notebook: notebooks.Notebook): Promise<notebooks.NotebookCell[]> {
+  const cells = await notebooks.listCells(notebook.id);
+  if (isAdmin(c)) return cells;
+  const user = getRbacUser(c);
+  const verdicts = new Map<string, Promise<boolean>>();
+  const mayRead = (statement: string): Promise<boolean> => {
+    let verdict = verdicts.get(statement);
+    if (!verdict) {
+      verdict = validateQueryAccess({ userId: user.sub, isAdmin: false, permissions: user.permissions, sql: statement, connectionId: notebook.connectionId ?? undefined })
+        .then((access) => access.allowed && (!access.statementType || access.statementType === "select"), () => false);
+      verdicts.set(statement, verdict);
+    }
+    return verdict;
+  };
+  return Promise.all(cells.map(async (cell) => {
+    if (cell.kind !== "query" || !cell.content.snapshot) return cell;
+    if (await mayRead(String(cell.content.sql ?? ""))) return cell;
+    return { ...cell, content: { ...cell.content, snapshot: null, snapshotWithheld: true } };
+  }));
+}
+
 notebooksRoute.post(
   "/ensure",
   zValidator("json", z.object({ kind: z.enum(ATTACHMENTS), ref: z.string().min(1).max(100), title: z.string().max(MAX_TITLE_INPUT).optional() })),
@@ -79,7 +106,7 @@ notebooksRoute.post(
     const connectionId = await guardAttachment(c, kind as Attachment, ref);
     if (kind === "doctor_report" && !(await getDoctorReport(ref))) throw AppError.notFound("Doctor report not found");
     const notebook = await notebooks.ensureNotebook(kind as Attachment, ref, title ?? "", getRbacUser(c).sub, connectionId);
-    return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
+    return ok(c, { notebook, cells: await cellsFor(c, notebook) });
   },
 );
 
@@ -92,17 +119,17 @@ notebooksRoute.get("/attached/:kind/:ref", async (c) => {
   await guardAttachment(c, kind, ref);
   const notebook = await notebooks.findByAttachment(kind, ref);
   if (!notebook) throw AppError.notFound("This incident or report has no notebook yet");
-  return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
+  return ok(c, { notebook, cells: await cellsFor(c, notebook) });
 });
 
 notebooksRoute.get("/:id", async (c) => {
   const notebook = await guardNotebook(c, requireParam(c, "id"));
-  return ok(c, { notebook, cells: await notebooks.listCells(notebook.id) });
+  return ok(c, { notebook, cells: await cellsFor(c, notebook) });
 });
 
 notebooksRoute.get("/:id/export", async (c) => {
   const notebook = await guardNotebook(c, requireParam(c, "id"));
-  const markdown = notebooks.toMarkdown(notebook, await notebooks.listCells(notebook.id));
+  const markdown = notebooks.toMarkdown(notebook, await cellsFor(c, notebook));
   return c.body(markdown, 200, { "Content-Type": "text/markdown; charset=utf-8", "Content-Disposition": `attachment; filename="postmortem-${notebook.id}.md"` });
 });
 

@@ -294,8 +294,12 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
         // SECURITY: Ownership check for non-admin users
         // Users with only live_queries:kill can only kill their own queries
-        if (!hasKillAll && queryInfo) {
-            if (queryInfo.rbac_user_id !== rbacUserId) {
+        if (!hasKillAll) {
+            // A query that cannot be looked up cannot be shown to be the caller's.
+            if (!queryInfo) {
+                throw AppError.notFound("That query is not running, or its owner could not be confirmed.");
+            }
+            if (!rbacUserId || queryInfo.rbac_user_id !== rbacUserId) {
                 throw AppError.forbidden("You can only kill your own queries. Permission 'live_queries:kill_all' is required to kill other users' queries.");
             }
         }

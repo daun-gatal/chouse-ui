@@ -164,6 +164,7 @@ export function toMarkdown(notebook: Notebook, cells: NotebookCell[], extra: { h
       lines.push("```sql", String(c.sql ?? ""), "```");
       const snapshot = c.snapshot as { columns?: string[]; rows?: unknown[][] } | undefined;
       if (snapshot?.columns) lines.push("", mdTable(snapshot.columns, snapshot.rows ?? []));
+      if (c.snapshotWithheld) lines.push("", "_Rows withheld: your data access rules do not cover this query._");
     }
     if (cell.kind === "chart") lines.push(`Chart: ${String(c.title ?? "")} (${Array.isArray(c.series) ? c.series.length : 0} points)`);
     if (cell.kind === "action") lines.push(`Remediation action ${String(c.actionId ?? "")}`);
