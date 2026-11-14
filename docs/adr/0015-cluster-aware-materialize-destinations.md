@@ -1,6 +1,6 @@
 # 0015 — Cluster-Aware Materialize Destinations for Scheduled Queries
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-10-03
 - **Amends:** [0002](0002-scheduled-queries.md) D4b (create-if-missing, staging) — every other decision in 0002 stands.
 - **Builds on:** [0002](0002-scheduled-queries.md) (materialize writer, D3a idempotency), [0007](0007-clear-and-rerun-for-scheduled-jobs-and-data-health.md) (clear & rerun relies on slot-scoped idempotency)

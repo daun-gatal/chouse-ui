@@ -1,6 +1,6 @@
 # 0030 — ClickHouse Parses the SQL That Data Access Rules Check
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-11-08
 - **Closes:** [ARCHITECTURE.md › Known issues](../../ARCHITECTURE.md#known-issues) #2
 - **Scope:** `packages/server/src/middleware/sqlAccess/` (new), `middleware/dataAccess.ts`, every caller of `validateQueryAccess`, `.rules/SECURITY.md` §3, the middleware contract. One PR.

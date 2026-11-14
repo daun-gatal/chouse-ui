@@ -1,6 +1,6 @@
 # 0011 — Personal Access Tokens for CLI and MCP Machine Auth
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-09-11
 - **Implementation:** follow-up PR(s) referencing this ADR (backend, then frontend, then E2E). Acceptance is separate from shipping.
 

@@ -35,29 +35,29 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0008](0008-helm-chart-and-oci-distribution.md) | Production Helm Chart and OCI Distribution | Accepted (amended by 0009, 0010) |
 | [0009](0009-bundled-evaluation-databases.md) | Bundled Evaluation Databases in the Helm Chart | Accepted |
 | [0010](0010-pod-local-state-and-multi-replica-correctness.md) | Pod-local State and Multi-Replica Correctness | Accepted |
-| [0011](0011-personal-access-tokens.md) | Personal Access Tokens for CLI and MCP Machine Auth | Accepted |
+| [0011](0011-personal-access-tokens.md) | Personal Access Tokens for CLI and MCP Machine Auth | Accepted (amended by 0033) |
 | [0012](0012-chouse-cli.md) | CHouse CLI: Safe Browserless Operations with Go Binary Distribution | Accepted (amended by 0018) |
 | [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017, 0028) |
 | [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted (amended by 0017) |
-| [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
+| [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted (amended by 0033) |
 | [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted (amended by 0027, 0029) |
 | [0017](0017-mcp-managed-in-the-ui.md) | MCP Served on the Web Port and Managed in the UI | Accepted |
 | [0018](0018-cli-1-0.md) | CLI 1.0: One Tool for People and Scripts | Accepted |
 | [0019](0019-deepagents-managed-in-the-ui.md) | DeepAgents Managed in the UI: Agent Registry for Every AI Feature, Multi-Agent Chat, Read-Only CHouse Management Agent | Accepted |
 | [0020](0020-ai-usage-and-data-egress-tracking.md) | AI Usage and Data Egress Tracking for CHouse's Own AI Agents | Accepted |
-| [0021](0021-custom-dashboards.md) | Custom Dashboards and AI-Drafted Dashboards | Proposed |
+| [0021](0021-custom-dashboards.md) | Custom Dashboards and AI-Drafted Dashboards | Proposed (amended by 0033) |
 | [0022](0022-ai-guardrails.md) | AI Guardrails for CHouse's Own Agents and MCP | Proposed |
 | [0023](0023-dashboards-v2.md) | Dashboards v2: Canvas, Intent-Based AI Layout, Context, Baselines and Production Features | Proposed |
 | [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Accepted |
 | [0025](0025-ai-write-tiers-assistant-v3-chobi.md) | AI Write Tiers, CHouse Assistant v3 and Chobi | Accepted |
 | [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
-| [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted (amended by 0031) |
+| [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted (amended by 0031, 0033) |
 | [0028](0028-mcp-oauth.md) | Sign In to MCP with OAuth | Accepted |
 | [0029](0029-upgrade-check.md) | Upgrade Check: What a ClickHouse Upgrade Changes for Your Workload | Accepted |
-| [0030](0030-clickhouse-parses-sql-access-checks.md) | ClickHouse Parses the SQL That Data Access Rules Check | Accepted |
-| [0031](0031-optional-clickhouse-access-admin.md) | ClickHouse Access Admin Is Optional When Saving a Connection | Accepted |
+| [0030](0030-clickhouse-parses-sql-access-checks.md) | ClickHouse Parses the SQL That Data Access Rules Check | Accepted (amended by 0033) |
+| [0031](0031-optional-clickhouse-access-admin.md) | ClickHouse Access Admin Is Optional When Saving a Connection | Accepted (amended by 0033) |
 | [0032](0032-codespaces-lab.md) | A Private Lab in the Visitor's Own GitHub Codespace | Accepted |
-| [0033](0033-every-statement-gets-a-clickhouse-identity.md) | Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections | Proposed |
+| [0033](0033-every-statement-gets-a-clickhouse-identity.md) | Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections | Accepted |
 
 ## Conventions
 

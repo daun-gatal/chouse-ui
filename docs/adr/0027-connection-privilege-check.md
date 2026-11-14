@@ -1,6 +1,6 @@
 # 0027 — Save a Connection Only When Its ClickHouse User Has Every Privilege
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-10-25
 - **Amends:** [0016](0016-data-observability-platform.md) §1 (*Privileges*: "the save always succeeds") and the *Connections* row of §18
 - **Scope:** `services/connectionPrivileges.ts`, the connection routes (`/api/rbac/connections` create, update and test), Admin › Connections, the docs. One PR.
