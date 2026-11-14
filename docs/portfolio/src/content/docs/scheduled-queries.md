@@ -67,7 +67,9 @@ You see your own jobs; `scheduled_queries:view_all` shows and acts on everyone's
 
 ## Who a job runs as
 
-A job runs on its connection's ClickHouse credentials, but CHouse UI checks the job **owner's** current permissions and [data access](/docs/data-access-rules/) before every run. If the owner loses access to a table, the job stops reading it. Each query is tagged in `log_comment` with the job and owner, so `system.query_log` attributes it.
+A job runs on its connection's ClickHouse credentials, but CHouse UI checks the job **owner's** current permissions and [data access](/docs/data-access-rules/) before every run. If the owner loses access to a table, the job stops reading it. Each query carries the owner's account in its `query_id` and the job in its `log_comment`, so `system.query_log` attributes it (see [Who a statement runs as](/docs/security/#who-a-statement-runs-as)).
+
+A job with no owner does not run: its runs fail with a message saying so. This happens when the owner's account was deleted. To fix it, open the job as someone who can see every job and save it: you become its owner, and its next run is checked against your access. Before 3.18 such a job ran with no access check at all.
 
 ## Promises use the same engine
 

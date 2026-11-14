@@ -28,14 +28,13 @@ export interface Release {
 }
 
 export const RELEASE: Release = {
-  version: "3.17",
+  version: "3.18",
   kind: "minor",
-  summary: "AI agents sign in to CHouse MCP with only the URL, and Upgrades shows what a ClickHouse upgrade changes for your workload.",
+  summary: "Every statement CHouse UI sends to ClickHouse now says which account it is for, and EXECUTE AS is refused for everyone.",
   highlights: [
-    { label: "Sign in to MCP", href: "/docs/mcp/#sign-in-with-oauth" },
-    { label: "Connected apps", href: "/docs/personal-access-tokens/#connected-apps" },
-    { label: "Check an upgrade", href: "/docs/monitoring-upgrades/#check-an-upgrade" },
-    { label: "Connect an agent", href: "/docs/guide-connect-an-agent/" },
+    { label: "Who a statement runs as", href: "/docs/security/#who-a-statement-runs-as" },
+    { label: "Who a job runs as", href: "/docs/scheduled-queries/#who-a-job-runs-as" },
+    { label: "Killing queries", href: "/docs/monitoring-live-queries/#killing-queries" },
   ],
 };
 

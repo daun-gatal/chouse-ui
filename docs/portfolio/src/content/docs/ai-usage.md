@@ -77,7 +77,7 @@ Click a request to open it. Its steps read from **Start** at the top to **Finish
 ### How it is measured
 
 - **Tokens** are what the provider reports for each call. A call that times out, is stopped, or gets no usage from the provider counts no tokens; the request then shows `≥` and a note says the totals are a lower bound.
-- **ClickHouse cost** comes from each query's own statistics as it finishes, so it needs no access to `system.query_log`. Every query the AI runs gets a `query_id` starting `chouse-ai-` and an `ai_request_id` in its `log_comment`, so `system.query_log` ties it to the request too.
+- **ClickHouse cost** comes from each query's own statistics as it finishes, so it needs no access to `system.query_log`. Every query the AI runs gets a `query_id` of the form `chouse:p:<account id>:chouse-ai-<request id>-<n>` and an `ai_request_id` in its `log_comment`, so `system.query_log` ties it to the request and to the account too.
 - **Data sent** is everything a tool returned to the model, counted once per tool call. Sending the growing conversation back on later turns is already in the input tokens.
 
 ## From agents, the CLI and the chat

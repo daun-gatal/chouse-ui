@@ -62,12 +62,27 @@ this endpoint, parameter or SQL shape?
 ## 3. Data access rules and SQL
 
 Data access rules are enforced by having **ClickHouse itself parse** each
-non-admin statement (`EXPLAIN AST` on the request's own connection) and checking
-every table and database the printout shows
+statement (`EXPLAIN AST` on the request's own connection) and, for everyone who
+is not an admin, checking every table and database the printout shows
 ([ADR 0030](../docs/adr/0030-clickhouse-parses-sql-access-checks.md),
 `middleware/sqlAccess/` → `middleware/dataAccess.ts:validateQueryAccess`).
 `node-sql-parser` (`middleware/sqlParser.ts`) is a hint for read-only checks,
 never the access decision.
+
+Two rules hold for every caller, admins included
+([ADR 0033](../docs/adr/0033-every-statement-gets-a-clickhouse-identity.md) §2, §3):
+
+- **Only the statement executor talks to ClickHouse.** Server code gets a handle
+  from `services/chExecutor/` for a connection and an actor (a person, or a named
+  service purpose). The handle sets the query id, `log_comment` and the quota key;
+  a call cannot set a session, a role, credentials or headers. No other file may
+  import `@clickhouse/client` or the client pool (`bun run check:clickhouse-access`).
+  A query id proves who sent a statement only on rows whose ClickHouse `user` is the
+  connection's own login, and `log_comment` proves nothing: a statement can overwrite it.
+- **`EXECUTE AS` is refused, and admins are parsed.** `validateQueryAccess` asks
+  ClickHouse to parse an admin's statement too and refuses any printout that holds
+  an `ExecuteAsQuery` node, wherever it sits. Read the parse, never the text. An
+  admin's statement is refused when the parse cannot run.
 
 - **Check exactly what runs.** Pass `validateQueryAccess` the text and
   `query_params` that will execute, after any `LIMIT`/`EXPLAIN` you add. Never
@@ -371,6 +386,9 @@ ArtifactHub scans the published image with Trivy, and CI gates on it
 Use this alongside [CODE_REVIEWER.md](CODE_REVIEWER.md) for any change in the
 areas above.
 
+- [ ] ClickHouse is reached only through `services/chExecutor/`, with the right
+      actor: the signed-in person for anything a person asked for, a named
+      service purpose only for work CHouse does on its own
 - [ ] Restricted-user test: could a user limited to one database reach another
       through this change (SQL shape, button, upload, AI tool, export,
       schedule)?

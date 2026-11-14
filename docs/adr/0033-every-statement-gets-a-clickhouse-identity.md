@@ -132,8 +132,8 @@ Each goal names how it is checked.
 
 1. **One path to ClickHouse.** Every statement the server sends goes through
    one executor, and the call must state who it acts for. *Check:* a CI step
-   fails when any other file obtains a ClickHouse client or reads a stored
-   ClickHouse password.
+   fails when any other file imports the ClickHouse client library or its
+   pool, or reads the remediation login.
 2. **A statement sent through a read path, or by a person without write
    permission, cannot change data.** This holds on shared-login connections
    even when CHouse classifies the statement wrongly, and for every caller,
@@ -352,11 +352,13 @@ during an update, have no such id and are attributed from `log_comment` as
 today.
 
 **Enforced by CI.** A check in the style of `bun run check:contracts` fails
-when any file outside the executor imports `@clickhouse/client`, uses the
-client pool, or reads a stored ClickHouse password. This catches a path that
-obtains a client outside the executor. Together with the checked statement
-it means a path cannot send typed text without naming an actor and passing
-the access check.
+when any file outside the executor imports `@clickhouse/client`, imports the
+client pool, or reads the remediation login. This catches a path that obtains
+a client outside the executor. It does not police reads of the connection's
+own stored password by name, because the same lookup also returns host and
+port; a file can only use that password by building a client, which the
+check catches. Together with the checked statement it means a path cannot
+send typed text without naming an actor and passing the access check.
 
 **Pooled clients.** One pooled client per connection and credential, and a
 second small one for parse, stop and health checks, so they do not wait
@@ -364,12 +366,16 @@ behind long statements. Identity is passed on each request. The pool key no
 longer holds the password or the `log_comment`. The pool entry is dropped
 when a connection's login or kind changes.
 
-**The move changes no behaviour by itself.** Delivery 2 is built in two
-steps inside one pull request. The first step moves every call behind the
-executor and records, for each moved route, the statement, settings and
-credential it sends; tests assert these equal what the route sent before.
-The second step applies §3 and §4, and each change there is asserted as a
-stated difference from that recording.
+**Two pull requests.** Delivery 2 ships as 2a and 2b.
+
+- **2a** moves every call behind the executor and gives every request its
+  identity: the query id, `log_comment` and the quota key. It also ships §3
+  and refuses a scheduled job with no owner. In 2a the executor's calls have
+  the shape of the ClickHouse client's (`query`, `command`, `exec`,
+  `insert`), minus the fields only the executor may set, so that about 95
+  call sites move without being rewritten.
+- **2b** ships the rest of §4 and §8, and narrows typed text to the checked
+  statement described above.
 
 ### 3. Typed text is parsed for everyone (delivery 2)
 
@@ -878,7 +884,8 @@ Conventions in this section:
 | # | Contents | Branch | Changelog fragment | Migration |
 | --- | --- | --- | --- | --- |
 | 1 | Fixes for gaps in today's model. No ADR. Shipped separately. | `fix/access-check-gaps` | patch | none |
-| 2 | The executor (§2), parsing for everyone (§3), the every-connection changes (§4), the classifier rows of §8 that exist on `shared` connections | `feat/statement-executor` | minor | 1.76.0 |
+| 2a | The executor and the identity it sets on every request (§2), parsing for everyone (§3), no run for a job with no owner | `feat/statement-executor` | minor | none |
+| 2b | The rest of §4, the checked statement (§2), the classifier rows of §8 that exist on `shared` connections | `feat/checked-statements` | minor | 1.76.0 |
 | 3 | Connection kinds, checks, health, switching (§5), the role ceiling (§6), the access contact | `feat/role-ceiling` | minor | 1.77.0 |
 | 4 | Personal connections and bindings (§7) | `feat/personal-connections` | minor | 1.78.0 |
 
@@ -886,10 +893,24 @@ Each delivery is one pull request against `preview`, the branch every pull
 request in this repository targets. Each minor fragment also updates
 `docs/portfolio/src/content/release.ts` and
 `docs/portfolio/src/content/docs/whats-new.md`. This ADR ships with delivery
-2, with its status set to `Accepted` and its index row updated. Each
+2a, with its status set to `Accepted` and its index row updated. Each
 delivery sets `APP_VERSION` to its migration's version.
 
 #### 10.2 Delivery 2: the executor and the every-connection changes
+
+**What 2a built, and what is left for 2b.** 2a created
+`S/services/chExecutor/` (`executor.ts`, `clientPool.ts`, `queryId.ts`,
+`session.ts`, `types.ts`), moved every call site in the tables below behind
+it, added `scripts/check-clickhouse-access.ts`, the `EXECUTE AS` refusal, the
+admin parse and the typed `KILL QUERY` permission. Its handle is
+`ChExecutor` in `types.ts`: `query`, `command`, `exec`, `insert`, `ping`,
+`session`, `queryIdFor`, `withContext`, `onServiceLane`. The service purposes
+in code also include `access-parse` and `remediation`. Table profiling, the
+upgrade check and the AI fleet tools send as a service purpose in 2a; 2b
+makes them send as the person, as the tables below say. Everything else in
+this section that 2a did not build is 2b: the interface below, `readonly`,
+the classifier, the system-table rule, the forced-allow hook, ownership and
+its migration, and the frontend rows.
 
 **The executor's interface** (`S/services/chExecutor/types.ts`, `index.ts`).
 
@@ -1301,7 +1322,7 @@ desktop and narrow width for each changed screen.
 
 | Delivery | What must pass |
 | --- | --- |
-| 2 | **The move:** for every moved route, the recorded statement text and credential equal what the route sent before, and the settings are equal except `readonly`, the query id, `log_comment` content and the quota header, each asserted on its own. **On a real server, 23.8 and 26.5** (`shared.e2e.test.ts`): a forced-allow `INSERT` from a read-only person, and one in a dashboard panel viewed by an admin, are refused with 164 (goal 2); a forged `log_comment` does not change the reported account, and the quota header is counted by a keyed quota (goal 3); a restricted `SELECT` from `system.query_log` is refused and one from `system.parts` is not (goal 4); an admin's `EXECUTE AS` is refused as root, behind a comment and under `PARALLEL WITH`, and an admin's other statement kinds still run (CUJ 7); an admin gets 503 when the parse is unavailable; a job with no owner is refused, and a job edited by a second person runs as that person (goal 10); a typed `KILL QUERY` without `live_queries:kill_all` is refused. The new CI check fails on a planted import. The migration data test. |
+| 2a and 2b | **The move (2a):** for every moved route, the recorded statement text and credential equal what the route sent before, and the settings are equal except `readonly`, the query id, `log_comment` content and the quota header, each asserted on its own. **On a real server, 23.8 and 26.5** (`shared.e2e.test.ts`): a forced-allow `INSERT` from a read-only person, and one in a dashboard panel viewed by an admin, are refused with 164 (goal 2); a forged `log_comment` does not change the reported account, and the quota header is counted by a keyed quota (goal 3); a restricted `SELECT` from `system.query_log` is refused and one from `system.parts` is not (goal 4); an admin's `EXECUTE AS` is refused as root, behind a comment and under `PARALLEL WITH`, and an admin's other statement kinds still run (CUJ 7); an admin gets 503 when the parse is unavailable; a job with no owner is refused, and a job edited by a second person runs as that person (goal 10); a typed `KILL QUERY` without `live_queries:kill_all` is refused. The new CI check fails on a planted import. The migration data test. |
 | 3 | **On 24.3.18.7, 24.4.4.113 and 26.5.7.64:** the switch is refused while the new login holds a direct grant or a default role, and while a bare request can read `system.processes`; a table outside the mapped role gives 497 with the table check forced to allow, for a restricted person and for an admin (goals 5 and 11); a bare request reads no data (goal 9); 24.3 fails closed with 115; an account with no mapping or two roles is refused; an `admin` cannot edit the role map, cannot assign a mapped role, and cannot edit the login of a ceiling connection; a failing or 15-minute-old verdict makes every replica refuse; connections seeded at 1.76.0 become `shared` and behave as before (goal 12). |
 | 4 | **On 26.3.63.123, 25.10.7.6 and 26.5.7.64:** the forced-allow suite through editor, explorer, dashboard, saved query, notebook, schedule, alert, token and MCP (goal 6); `query_log.user` is the person, and for an import it is the service login (goal 7); no route or column takes a ClickHouse password (goal 8); the self-test passes on 26.3.63.123 and refuses the other two, and refuses when the role lacks the self grant; a binding goes pending grant, active; a dropped and recreated user disables it; a user who gains a user-management grant is disabled; a password reset, an email change and an identity-link change by someone else each suspend it; an `admin` cannot create, change or confirm a binding (goal 11); a job whose owner lost the binding is refused and shown (CUJ 5); someone else's panel that writes is refused with 164; import of a 5 MB file works and is refused without the `INSERT` grant; CHouse built from the delivery 2 release tag, pointed at the connection, reads no data (CUJ 8). |
 
@@ -1603,10 +1624,11 @@ in the repository.
 - **One pull request for everything.** The project default. *Rejected:*
   delivery 4 changes roughly as many files as deliveries 2 and 3 together
   (§10), and each stage is useful without the next.
-- **Split delivery 2 into the move and the behaviour changes.** Two smaller
-  pull requests. *Rejected:* the move alone ships nothing a user can see and
-  would sit unreleased. The two steps are separate commits in one pull
-  request, with the comparison tests recorded after the first (§2).
+- **One pull request for all of delivery 2, as two commits.** Keeps the
+  move and its behaviour changes together. *Rejected during the build:* the
+  move touches about 100 files, and its tests are clearer when the only
+  differences they must allow are the three identity fields. The split is 2a
+  and 2b in §2.
 - **One ADR per stage.** Smaller documents that can be accepted one at a
   time. *Rejected:* the kinds share the executor, the empty-login rule, the
   switch and the checks, and a reader deciding on one needs the other two.
