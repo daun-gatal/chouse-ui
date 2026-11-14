@@ -1,5 +1,5 @@
 
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { afterEach, describe, it, expect, mock, beforeEach } from "bun:test";
 import {
     checkDatabaseAccess,
     checkTableAccess,
@@ -7,9 +7,12 @@ import {
     filterTables,
     validateQueryAccess,
     accessDeniedStatus,
+    checkedOf,
+    setAccessOverrideForTests,
 } from "./dataAccess";
+import { CheckedStatement } from "../services/chExecutor/checked";
 import { CASES } from "./sqlAccess/fixtures/cases";
-import { fixtureParser, linesParser } from "./sqlAccess/fixtures/fakeParser";
+import { fakeExplainPrintout, fixtureParser, linesParser } from "./sqlAccess/fixtures/fakeParser";
 
 // Mock dependencies
 const mockRbacService = {
@@ -147,7 +150,7 @@ describe("validateQueryAccess", () => {
     it("checks databases as a whole for CREATE/DROP DATABASE, SHOW TABLES and USE", async () => {
         await check("SHOW TABLES");
         expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db", null, "misc", "conn-1");
-        expect(await check("DROP DATABASE d2")).toEqual({ allowed: true, statementType: "drop" });
+        expect(await check("DROP DATABASE d2")).toMatchObject({ allowed: true, statementType: "drop" });
         mockRbacService.checkUserAccess.mockImplementation(async () => ({ allowed: false }));
         expect(await check("USE public")).toMatchObject({ allowed: false, code: "TABLE_DENIED", reason: "Access denied to database public" });
     });
@@ -204,13 +207,27 @@ describe("validateQueryAccess", () => {
         });
 
         it("does not mistake a string or an alias that spells the node name", async () => {
-            expect(await asAdmin("SELECT 'ExecuteAsQuery' AS ExecuteAsQuery")).toEqual({ allowed: true });
+            expect(await asAdmin("SELECT 'ExecuteAsQuery' AS ExecuteAsQuery")).toMatchObject({ allowed: true });
         });
 
         it("keeps the bypass of permissions and data access rules for every other statement", async () => {
             for (const sql of ["DROP DATABASE d2", "SELECT * FROM public.t, secret.s SETTINGS max_threads=1", "KILL QUERY WHERE query_id = 'x'"]) {
-                expect(await asAdmin(sql)).toEqual({ allowed: true });
+                expect(await asAdmin(sql)).toMatchObject({ allowed: true });
             }
+        });
+
+        it("reads the statement's kind from the same parse, so an admin's read is sent read-only", async () => {
+            const read = await asAdmin("SELECT * FROM public.t, secret.s SETTINGS max_threads=1");
+            expect(read.statement).toMatchObject({ isRead: true, mayWrite: true, accountId: userId, connectionId: "c" });
+            expect((await asAdmin("DROP DATABASE d2")).statement).toMatchObject({ isRead: false, mayWrite: true });
+            // A shape the policy does not know is not a refusal for an admin; it is sent as a possible write.
+            const unknown = await asAdmin("CREATE MATERIALIZED VIEW public.mv TO secret.s AS SELECT * FROM public.t");
+            expect(unknown).toMatchObject({ allowed: true });
+            expect(unknown.statement?.isRead).toBe(false);
+        });
+
+        it("refuses an admin with no account, since a statement is sent for an account", async () => {
+            expect(await validateQueryAccess({ userId: undefined, isAdmin: true, permissions: [], sql: "SELECT 1", connectionId: "c", parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "PERMISSION_DENIED" });
         });
 
         it("asks ClickHouse once per statement", async () => {
@@ -227,7 +244,86 @@ describe("validateQueryAccess", () => {
         });
 
         it("has nothing to check in an empty statement", async () => {
-            expect(await asAdmin("  ")).toEqual({ allowed: true });
+            expect(await asAdmin("  ")).toMatchObject({ allowed: true });
+        });
+    });
+
+    describe("the checked statement (ADR 0033 §2)", () => {
+        it("holds exactly what was checked", async () => {
+            mockRbacService.checkUserAccess.mockImplementation(async () => ({ allowed: true }));
+            const result = await check("SELECT * FROM {t:Identifier}", { params: { t: "secret.s" } });
+            expect(result.allowed).toBe(true);
+            const statement = checkedOf(result);
+            expect(statement).toBeInstanceOf(CheckedStatement);
+            expect(statement).toMatchObject({ sql: "SELECT * FROM {t:Identifier}", params: { t: "secret.s" }, connectionId: "conn-1", accountId: userId, isRead: true });
+            expect(Object.isFrozen(statement)).toBe(true);
+        });
+
+        it("is absent from a refusal, and asking for it throws", async () => {
+            const result = await check("SELECT 1 WHERE 1 IN secret.s");
+            expect(result.statement).toBeUndefined();
+            expect(() => checkedOf(result)).toThrow();
+        });
+
+        it("marks a write as a write, and a person who may write nothing as read-only whatever the statement", async () => {
+            expect(checkedOf(await check("INSERT INTO public.t (a, b) VALUES (1, 'x'), (2, now())"))).toMatchObject({ isRead: false, mayWrite: true });
+            expect(checkedOf(await check("SELECT 1", { permissions: ["table:select"] }))).toMatchObject({ isRead: true, mayWrite: false });
+            expect(checkedOf(await check("SELECT 1", { permissions: ["table:select", "table:insert"] })).mayWrite).toBe(true);
+        });
+
+    });
+
+    describe("system tables that show other people's work (ADR 0033 §4)", () => {
+        const system = (sql: string, permissions: string[]) => check(sql, { permissions, parser: { calls: 0, explainAst: async (text: string) => ({ ok: true as const, lines: fakeExplainPrintout(text) }), defaultDatabase: async () => "db" } });
+
+        it("needs query:history:view:all for the statement logs, including a rotated log table", async () => {
+            for (const table of ["query_log", "processes", "text_log", "query_log_3", "QUERY_LOG"]) {
+                expect(await system(`SELECT * FROM system.${table}`, ["table:select"])).toMatchObject({ allowed: false, code: "TABLE_DENIED", status: 403 });
+                expect(await system(`SELECT * FROM system.${table}`, ["table:select", "query:history:view:all"])).toMatchObject({ allowed: true });
+            }
+            const refused = await system("SELECT * FROM system.query_log", ["table:select"]);
+            expect(refused.reason).toContain("query:history:view:all");
+        });
+
+        it("needs clickhouse:users:view for the access tables", async () => {
+            expect(await system("SELECT * FROM system.users", ["table:select", "query:history:view:all"])).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await system("SELECT * FROM system.grants", ["table:select", "clickhouse:users:view"])).toMatchObject({ allowed: true });
+        });
+
+        it("finds the table behind a join, and leaves every other system table open", async () => {
+            expect(await system("SELECT * FROM system.parts JOIN system.query_log ON 1", ["table:select"])).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await system("SELECT * FROM system.parts", ["table:select"])).toMatchObject({ allowed: true });
+            expect(await system("SELECT * FROM system.tables", ["table:select"])).toMatchObject({ allowed: true });
+        });
+    });
+
+    describe("the forced-allow hook for real-server tests", () => {
+        afterEach(() => setAccessOverrideForTests(null));
+
+        it("skips only the stage it names", async () => {
+            setAccessOverrideForTests((stage) => stage === "permission");
+            expect(await check("INSERT INTO public.t (a, b) VALUES (1, 'x'), (2, now())", { permissions: ["table:select"] })).toMatchObject({ allowed: true });
+            expect(await check("SELECT 1 WHERE 1 IN secret.s", { permissions: ["table:select"] })).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            setAccessOverrideForTests((stage) => stage === "table");
+            expect(await check("SELECT 1 WHERE 1 IN secret.s", { permissions: ["table:select"] })).toMatchObject({ allowed: true });
+            expect(await check("INSERT INTO public.t (a, b) VALUES (1, 'x'), (2, now())", { permissions: ["table:select"] })).toMatchObject({ allowed: false, code: "PERMISSION_DENIED" });
+        });
+
+        it("never skips the parse or the EXECUTE AS refusal, and a forced write from a read-only person is still sent read-only", async () => {
+            setAccessOverrideForTests(() => true);
+            expect(await check("EXECUTE AS default SELECT 1")).toMatchObject({ allowed: false, code: "IMPERSONATION" });
+            expect(await check("SELECT 1; SELECT 2")).toMatchObject({ allowed: false, code: "SQL_SYNTAX" });
+            expect(checkedOf(await check("INSERT INTO public.t (a, b) VALUES (1, 'x'), (2, now())", { permissions: ["table:select"] }))).toMatchObject({ isRead: false, mayWrite: false });
+        });
+
+        it("refuses to be set outside a test run", () => {
+            const previous = process.env.NODE_ENV;
+            process.env.NODE_ENV = "production";
+            try {
+                expect(() => setAccessOverrideForTests(() => true)).toThrow();
+            } finally {
+                process.env.NODE_ENV = previous;
+            }
         });
     });
 

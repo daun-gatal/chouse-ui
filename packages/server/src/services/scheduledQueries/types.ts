@@ -103,7 +103,10 @@ export interface ScheduledQueryRow {
   lastRunBy: string | null;
   maxAttempts: number;
   retentionDays: number;
+  /** Who created the job. Decides who sees it, together with `ownerId`. */
   createdBy: string | null;
+  /** The account the job runs as (ADR 0033 §4): whoever last saved a change to what it does. Null: it cannot run. */
+  ownerId: string | null;
   createdAt: number;
   updatedAt: number;
 }

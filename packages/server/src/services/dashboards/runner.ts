@@ -15,9 +15,9 @@
  * replaced by an empty result.
  */
 
-import { ClickHouseError, executorForConnection, personActor, type ChExecutor } from "../chExecutor";
+import { ClickHouseError, executorForConnection, personActor, type ChExecutor, type CheckedStatement } from "../chExecutor";
 
-import { accessDeniedError, validateQueryAccess } from "../../middleware/dataAccess";
+import { accessDeniedError, checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import { governAgentQuery, recordAgentQuery, type AgentContext } from "../agents/governance";
 import type { ConnectionResponse } from "../../rbac/services/connections";
 import { AppError } from "../../types";
@@ -130,10 +130,11 @@ export function compilePanel(query: PanelQuery, window: Window): Compiled {
 }
 
 /** Step 4: the viewer's data-access rules for the compiled statement. */
-export async function assertDataAccess(viewer: Viewer, compiled: Compiled, connection: ConnectionResponse): Promise<void> {
+export async function assertDataAccess(viewer: Viewer, compiled: Compiled, connection: ConnectionResponse): Promise<CheckedStatement> {
   // ADR 0030: check exactly what runs — the compiled SQL with its bound parameters.
   const access = await validateQueryAccess({ userId: viewer.id, isAdmin: isAdmin(viewer), permissions: viewer.permissions, sql: compiled.sql, params: compiled.params, connectionId: connection.id });
   if (!access.allowed) throw accessDeniedError(access, "Access denied");
+  return checkedOf(access);
 }
 
 /** Step 1: the viewer's connection, or a refusal. */
@@ -196,18 +197,17 @@ function estimator(accountId: string, connectionId: string): { executeQuery<T>(q
   };
 }
 
-/** Step 6: run a compiled statement with the dashboard caps. */
-export async function execute(accountId: string, connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS, connectionName: string | null = null): Promise<PanelData> {
+/** Step 6: run the checked statement with the dashboard caps, read-only for every viewer. */
+export async function execute(statement: CheckedStatement, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS, connectionName: string | null = null): Promise<PanelData> {
   const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
-    const client = await connectionClient(accountId, connectionId, tags);
-    const result = await client.query({
-      query: compiled.sql,
-      query_params: compiled.params,
+    if (!statement.connectionId) throw AppError.internal("A panel statement must be checked for a connection");
+    const client = await connectionClient(statement.accountId, statement.connectionId, tags);
+    const result = await client.queryChecked(statement, {
       format: "JSON",
       abort_signal: deadline,
+      readOnlyFeature: 1,
       clickhouse_settings: {
-        readonly: "1",
         max_execution_time: MAX_EXECUTION_SECONDS,
         max_result_rows: String(maxRows),
         result_overflow_mode: "throw",
@@ -234,7 +234,7 @@ export async function execute(accountId: string, connectionId: string, compiled:
 
 async function runOn(viewer: Viewer, connection: ConnectionResponse, query: PanelQuery, window: Window, agentFor: AgentFor, resultCache: ResultCache<PanelData> = cache): Promise<{ data: PanelData; cached: boolean }> {
   const compiled = compilePanel(query, window);
-  await assertDataAccess(viewer, compiled, connection);
+  const statement = await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
   const governance = agent ? await governAgentQuery(agent, compiled.validationSql, estimator(viewer.id, connection.id)) : null;
   if (governance?.decision.decision === "block") {
@@ -243,7 +243,7 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   let outcome: Cached<PanelData>;
   try {
     outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
-      const data = await semaphore.run(connection.id, () => execute(viewer.id, connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
+      const data = await semaphore.run(connection.id, () => execute(statement, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
   } catch (error) {
@@ -311,7 +311,7 @@ export async function runOptions(viewer: Viewer, connectionId: string, sql: stri
   const readOnly = validateReadOnlySelect(sql);
   if (!readOnly.ok) throw AppError.badRequest(readOnly.error ?? "Only a single read-only SELECT is allowed");
   const compiled: Compiled = { sql, params: {}, validationSql: sql };
-  await assertDataAccess(viewer, compiled, connection);
+  const statement = await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
   const governance = agent ? await governAgentQuery(agent, sql, estimator(viewer.id, connection.id)) : null;
   if (governance?.decision.decision === "block") {
@@ -319,7 +319,7 @@ export async function runOptions(viewer: Viewer, connectionId: string, sql: stri
   }
   let data: PanelData;
   try {
-    data = await semaphore.run(connection.id, () => execute(viewer.id, connection.id, compiled, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS, connection.name));
+    data = await semaphore.run(connection.id, () => execute(statement, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS, connection.name));
   } catch (error) {
     if (agent && governance) await recordAgentQuery(agent, governance, sql, "error", 0, error instanceof Error ? error.message : String(error));
     throw error;

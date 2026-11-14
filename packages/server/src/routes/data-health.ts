@@ -463,7 +463,8 @@ dataHealth.post(
     if (body.expiresAt != null) await assertWatchAllowed(user.sub, body.connectionId, body.expiresAt);
     // A watch is always its creator's: it is how they asked to be told.
     const ownerId = body.expiresAt == null && canViewAll(c) ? body.ownerId ?? user.sub : user.sub;
-    const jobId = await scheduledStore.createJob(jobInput(body, compiled.sql), ownerId, "data_health_check");
+    // The check runs as the person saving it: its SQL was checked against their access (ADR 0033 §4).
+    const jobId = await scheduledStore.createJob(jobInput(body, compiled.sql), ownerId, "data_health_check", user.sub);
 
     let promiseId: string;
     try {
@@ -632,8 +633,10 @@ dataHealth.patch(
     const ownerId = canViewAll(c) && promise.expiresAt == null ? body.ownerId ?? promise.ownerId ?? user.sub : promise.ownerId ?? user.sub;
     try {
       await scheduledStore.updateJob(existingJob.id, jobInput(body, compiled.sql));
-      // The backing job may have lost its owner; the saver takes it so the check can run.
-      await scheduledStore.adoptOwnerlessJob(existingJob.id, user.sub);
+      // The check runs as whoever last changed what it does (ADR 0033 §4), and
+      // a check whose job has no owner is taken by anyone who saves it.
+      const changesWork = existingJob.query !== compiled.sql || oldChannels.length !== body.channelIds.length || oldChannels.some((id) => !body.channelIds.includes(id));
+      if (changesWork || !existingJob.ownerId) await scheduledStore.setJobOwner(existingJob.id, user.sub);
       await healthStore.updatePromiseMetadata(promise.id, metadataInput(body, existingJob.id, ownerId, promise.createdBy ?? user.sub, eventTimeType));
       await healthStore.replaceChecks(promise.id, body.checks);
       await scheduledStore.setJobChannels(existingJob.id, body.channelIds);

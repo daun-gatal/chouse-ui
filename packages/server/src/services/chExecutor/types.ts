@@ -18,7 +18,9 @@ import type {
 import type Stream from "node:stream";
 
 import type { ConnectionConfig } from "../../types";
+import type { CheckedStatement } from "./checked";
 import type { ChSession } from "./session";
+import type { ReadOnlyLevel } from "./settings";
 
 /** Work CHouse does on its own account, by name. The list is closed. */
 export const SERVICE_PURPOSES = [
@@ -61,6 +63,15 @@ export type CommandArgs = Omit<CommandParams, Owned>;
 export type ExecArgs = Omit<ExecParams, Owned>;
 export type InsertArgs<T> = Omit<InsertParams<Stream.Readable, T>, Owned>;
 
+/** What a call may still choose for a checked statement: the text and its parameters come from the statement. */
+type CheckedOwned = "query" | "query_params";
+interface CheckedExtras {
+  /** Set by a feature that only reads (dashboards, data health); the level it sends for every person. */
+  readOnlyFeature?: ReadOnlyLevel;
+}
+export type CheckedQueryArgs<Format extends DataFormat = "JSON"> = Omit<QueryArgs<Format>, CheckedOwned> & CheckedExtras;
+export type CheckedCommandArgs = Omit<CommandArgs, CheckedOwned> & CheckedExtras;
+
 /**
  * A handle for one connection, actor and login. Its methods have the shape of
  * the ClickHouse client's, minus the fields in `Owned`. `query_id` is treated
@@ -73,6 +84,14 @@ export interface ChExecutor {
   command(args: CommandArgs): Promise<CommandResult>;
   exec(args: ExecArgs): Promise<ExecResult<Stream.Readable>>;
   insert<T>(args: InsertArgs<T>): Promise<InsertResult>;
+  /**
+   * Run typed text. It takes only a checked statement, made for this handle's
+   * person, and decides `readonly` itself (`settings.ts`); a `readonly` in
+   * `clickhouse_settings` is ignored.
+   */
+  queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args?: CheckedQueryArgs<Format>): Promise<ResultSet<Format>>;
+  /** As `queryChecked`, for typed text that returns no rows. */
+  commandChecked(statement: CheckedStatement, args?: CheckedCommandArgs): Promise<CommandResult>;
   ping(): Promise<boolean>;
   /**
    * Statements as a sequence. With a `sessionId` every statement runs in that one

@@ -6,6 +6,8 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { ClickHouseService } from '../../services/clickhouse';
+import { classifyClickHouseError } from '../../services/chExecutor';
+import { AppError } from '../../types';
 import { CONNECTION_ID_HEADER, CONNECTION_ID_COOKIE, getCookie } from '../../middleware/connectionContext';
 import {
   resolveDefaultConnection,
@@ -49,12 +51,6 @@ function isReadonlyStorageError(error: unknown): boolean {
   return message.includes('readonly') || message.includes('read-only') || message.includes('read only');
 }
 
-/** ClickHouse refused the statement for lack of a grant (code 497). */
-function isAccessDeniedError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes('ACCESS_DENIED') || /Not enough privileges/i.test(message);
-}
-
 function isRoleInUseError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return message.includes('still assigned to');
@@ -72,13 +68,13 @@ export function handleError(
   defaultMessage: string,
 ): { code: string; message: string; statusCode: 400 | 403 | 500 } {
   const rawMessage = error instanceof Error ? error.message : defaultMessage;
-  if (isAccessDeniedError(error)) {
-    const detail = rawMessage.split('\n')[0].trim();
-    return {
-      code: 'CLICKHOUSE_ACCESS_DENIED',
-      message: `This connection's ClickHouse user isn't allowed to do this: ${detail} Test the connection in Admin › Connections to see the grants it needs.`,
-      statusCode: 403,
-    };
+  // A service error may already be classified; ClickHouse's own grant error is classified here (ADR 0033 §8).
+  if (error instanceof AppError && error.code === 'CLICKHOUSE_ACCESS_DENIED') {
+    return { code: error.code, message: error.message, statusCode: 403 };
+  }
+  const classified = classifyClickHouseError(error);
+  if (classified?.class === 'grant') {
+    return { code: classified.code, message: classified.message, statusCode: classified.status };
   }
   if (isRoleInUseError(error)) {
     return { code: 'ROLE_IN_USE', message: rawMessage, statusCode: 400 };

@@ -13,6 +13,7 @@ import {
   filterTables,
   checkTableAccess,
   checkDatabaseAccess,
+  checkedOf,
   validateQueryAccess,
 } from "../middleware/dataAccess";
 import { parseStatement } from "../middleware/sqlParser";
@@ -494,8 +495,8 @@ export function createCoreTools(ctx: AgentToolContext) {
                         return { error: accessCheck.reason || "Access denied" };
                     }
 
-          const result = await ctx.clickhouseService.executeQuery(
-            limitedSql,
+          const result = await ctx.clickhouseService.executeChecked(
+            checkedOf(accessCheck),
             "JSON"
           );
           return {
@@ -536,8 +537,8 @@ export function createCoreTools(ctx: AgentToolContext) {
             return { error: accessCheck.reason || "Access denied" };
           }
 
-          const result = await ctx.clickhouseService.executeQuery(
-            explainSql,
+          const result = await ctx.clickhouseService.executeChecked(
+            checkedOf(accessCheck),
             "JSON"
           );
           return { plan: result.data };
@@ -822,8 +823,8 @@ export function createCoreTools(ctx: AgentToolContext) {
           return { error: accessCheck.reason || "Access denied" };
         }
         try {
-          const result = await ctx.clickhouseService.executeQuery(
-            limitedSql,
+          const result = await ctx.clickhouseService.executeChecked(
+            checkedOf(accessCheck),
             "JSON"
           );
           const rows = result.data as Record<string, unknown>[];
@@ -1037,8 +1038,8 @@ export function createChartTool(ctx: AgentToolContext) {
 
         try {
 
-          const result = await ctx.clickhouseService.executeQuery(
-            chartSql,
+          const result = await ctx.clickhouseService.executeChecked(
+            checkedOf(accessCheck),
             "JSON"
           );
 

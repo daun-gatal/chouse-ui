@@ -5,7 +5,7 @@ import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
 } from "../middleware/connectionContext";
-import { accessDeniedError, filterTables, validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, checkedOf, filterTables, validateQueryAccess } from "../middleware/dataAccess";
 import { mutationCountStatement, parseMutationStatement } from "../services/ddlSimulator";
 import { listQueryHistory } from "../services/queryHistory/store";
 import { AppError, type ErrorMetrics, type RecentQuery, type TopTableBySize } from "../types";
@@ -560,7 +560,7 @@ metrics.get("/custom", async (c) => {
     throw AppError.badRequest("Only SELECT queries are allowed for metrics");
   }
 
-  const result = await service.executeQuery(query);
+  const result = await service.executeChecked(checkedOf(access));
 
   return c.json({
     success: true,

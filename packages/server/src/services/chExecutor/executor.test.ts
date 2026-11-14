@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { checkedForTests } from "./checked.test-util";
 import { executorOverClient, logCommentFor, quotaKeyFor, type ClientLike } from "./executor";
 import { personActor, serviceActor } from "./types";
 
@@ -162,5 +163,61 @@ describe("executor handle", () => {
   it("reports ping as a boolean", async () => {
     const { client } = recordingClient();
     expect(await executorOverClient(() => client, serviceActor("connection-test")).ping()).toBe(true);
+  });
+});
+
+describe("checked statements (ADR 0033 §2)", () => {
+  const settingsOf = (sent: Sent): Record<string, unknown> => sent.args.clickhouse_settings as Record<string, unknown>;
+
+  it("sends the checked text and parameters, with the actor's identity", async () => {
+    const { client, sent } = recordingClient();
+    const executor = executorOverClient(() => client, personActor("u1"));
+    const statement = checkedForTests({ sql: "SELECT * FROM {t:Identifier}", params: { t: "shop.orders" }, accountId: "u1" });
+    await executor.queryChecked(statement, { format: "JSON", query_id: "n1" });
+    expect(sent[0].method).toBe("query");
+    expect(sent[0].args).toMatchObject({ query: "SELECT * FROM {t:Identifier}", query_params: { t: "shop.orders" }, format: "JSON", query_id: "chouse:p:u1:n1" });
+    expect(sent[0].args.http_headers).toEqual({ "X-ClickHouse-Quota": "u1" });
+  });
+
+  it("ignores text, parameters and readonly that a call tries to pass", async () => {
+    const { client, sent } = recordingClient();
+    const executor = executorOverClient(() => client, personActor("u1"));
+    const write = checkedForTests({ sql: "INSERT INTO t SELECT 1", accountId: "u1", isRead: false, mayWrite: false });
+    const smuggled = { query: "DROP TABLE t", query_params: { x: "1" }, clickhouse_settings: { readonly: "0", max_execution_time: 5 } };
+    await executor.commandChecked(write, smuggled as never);
+    expect(sent[0].method).toBe("command");
+    expect(sent[0].args.query).toBe("INSERT INTO t SELECT 1");
+    expect(sent[0].args.query_params).toBeUndefined();
+    expect(settingsOf(sent[0])).toMatchObject({ readonly: "2", max_execution_time: 5 });
+  });
+
+  it("decides readonly from the statement: 2 for a read, none for a write by a person who may write", async () => {
+    const { client, sent } = recordingClient();
+    const executor = executorOverClient(() => client, personActor("u1"));
+    await executor.queryChecked(checkedForTests({ sql: "SELECT 1", accountId: "u1" }));
+    await executor.commandChecked(checkedForTests({ sql: "INSERT INTO t SELECT 1", accountId: "u1", isRead: false, mayWrite: true }), { clickhouse_settings: { readonly: "1" } });
+    await executor.queryChecked(checkedForTests({ sql: "INSERT INTO t SELECT 1", accountId: "u1", isRead: false, mayWrite: true }), { readOnlyFeature: 1 });
+    expect(settingsOf(sent[0]).readonly).toBe("2");
+    expect("readonly" in settingsOf(sent[1])).toBe(false);
+    expect(settingsOf(sent[2]).readonly).toBe("1");
+    expect("readOnlyFeature" in sent[2].args).toBe(false);
+  });
+
+  it("refuses a statement checked for someone else, and any statement on a service handle", async () => {
+    const { client, sent } = recordingClient();
+    const statement = checkedForTests({ sql: "SELECT 1", accountId: "u1" });
+    expect(() => executorOverClient(() => client, personActor("u2")).queryChecked(statement)).toThrow("person it was checked for");
+    expect(() => executorOverClient(() => client, serviceActor("collector")).commandChecked(statement)).toThrow("person it was checked for");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("the test helper refuses to make a statement outside a test run", () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() => checkedForTests({ sql: "SELECT 1" })).toThrow();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
   });
 });

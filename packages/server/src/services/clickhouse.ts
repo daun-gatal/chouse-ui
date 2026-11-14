@@ -1,4 +1,16 @@
-import { executorForConfig, type Actor, type ChExecutor } from "./chExecutor";
+import {
+  classifiedAppError,
+  classifyClickHouseError,
+  executorForConfig,
+  type Actor,
+  type ChExecutor,
+  type CheckedCommandArgs,
+  type CheckedQueryArgs,
+  type CheckedStatement,
+  type CommandResult,
+  type ReadOnlyLevel,
+} from "./chExecutor";
+import type { DataFormat, ResultSet } from "./chExecutor";
 import type {
   ConnectionConfig,
   QueryResult,
@@ -143,25 +155,71 @@ export class ClickHouseService {
   // Query Execution
   // ============================================
 
+  /** Run CHouse-built text. Typed text goes through `executeChecked`. */
   async executeQuery<T = Record<string, unknown>>(
     query: string,
     format: string = "JSON",
     queryId?: string,
     maxResultRows?: number
   ): Promise<QueryResult<T>> {
+    return this.run<T>(query, format, queryId, maxResultRows);
+  }
+
+  /**
+   * Run typed text (ADR 0033 §2): only a statement the access check returned.
+   * The executor decides `readonly` for it; `readOnlyFeature` is for a feature
+   * that only ever reads.
+   */
+  async executeChecked<T = Record<string, unknown>>(
+    statement: CheckedStatement,
+    format: string = "JSON",
+    queryId?: string,
+    maxResultRows?: number,
+    readOnlyFeature?: ReadOnlyLevel
+  ): Promise<QueryResult<T>> {
+    return this.run<T>(statement, format, queryId, maxResultRows, readOnlyFeature);
+  }
+
+  /** `query` and `command` for one input: CHouse-built text as it is, typed text through the checked calls. */
+  private sender(client: ChExecutor, input: string | CheckedStatement, readOnlyFeature?: ReadOnlyLevel): {
+    query<Format extends DataFormat>(args: CheckedQueryArgs<Format>): Promise<ResultSet<Format>>;
+    command(args: CheckedCommandArgs): Promise<CommandResult>;
+  } {
+    if (typeof input === "string") {
+      const text = input.trim();
+      return {
+        query: (args) => client.query({ ...args, query: text }),
+        command: (args) => client.command({ ...args, query: text }),
+      };
+    }
+    return {
+      query: (args) => client.queryChecked(input, { ...args, readOnlyFeature }),
+      command: (args) => client.commandChecked(input, { ...args, readOnlyFeature }),
+    };
+  }
+
+  private async run<T>(
+    input: string | CheckedStatement,
+    format: string,
+    queryId?: string,
+    maxResultRows?: number,
+    readOnlyFeature?: ReadOnlyLevel
+  ): Promise<QueryResult<T>> {
+    const query = typeof input === "string" ? input : input.sql;
     // An AI usage run observing this call (ADR 0020) names the query and tags
     // its log_comment per query, so query_log ties it to the AI request.
     const observer = activeQueryObserver();
     const effectiveQueryId = queryId ?? observer?.nextQueryId();
     const observerTags = observer?.logTags();
     const client = observerTags && Object.keys(observerTags).length > 0 ? this.client.withContext(observerTags) : this.client;
+    const send = this.sender(client, input, readOnlyFeature);
     const startedAt = performance.now();
     try {
       const trimmedQuery = query.trim();
 
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
-        const result = await client.command({ query: trimmedQuery, query_id: effectiveQueryId });
+        const result = await send.command({ query_id: effectiveQueryId });
         return {
           meta: [],
           data: [],
@@ -191,8 +249,7 @@ export class ClickHouseService {
         clickhouse_settings.result_overflow_mode = "break";
       }
 
-      const result = await client.query({
-        query: trimmedQuery,
+      const result = await send.query({
         format: format as "JSON" | "JSONEachRow",
         clickhouse_settings,
         query_id: effectiveQueryId,
@@ -276,10 +333,12 @@ export class ClickHouseService {
    * and are entirely unaffected.
    */
   async *streamQueryRows(
-    query: string,
+    statement: CheckedStatement,
     queryId?: string,
     maxResultRows?: number
   ): AsyncGenerator<string> {
+    const query = statement.sql;
+    const send = this.sender(this.client, statement);
     const clickhouse_settings: Record<string, string | number> = {};
 
     if (maxResultRows !== undefined) {
@@ -296,8 +355,7 @@ export class ClickHouseService {
     // streaming an empty body through the row parser.
     if (this.isCommand(trimmedQuery) && !this.isOnClusterDdl(trimmedQuery)) {
       try {
-        const commandResult = await this.client.command({
-          query: trimmedQuery,
+        const commandResult = await send.command({
           query_id: queryId,
           clickhouse_settings,
         });
@@ -326,15 +384,14 @@ export class ClickHouseService {
     // `JSON Parse error: Unexpected identifier "chi"...` (issue #336) even
     // though the DDL committed.
     if (this.isOnClusterDdl(trimmedQuery)) {
-      yield* this.streamOnClusterDdl(trimmedQuery, queryId, clickhouse_settings, startMs, maxResultRows);
+      yield* this.streamOnClusterDdl(statement, queryId, clickhouse_settings, startMs, maxResultRows);
       return;
     }
 
     // JSONCompactEachRowWithNamesAndTypes: line 0 = names[], line 1 = types[],
     // lines 2+ = compact value arrays.  The ClickHouse client exposes these as
     // regular rows in the stream — we track lineIndex to distinguish them.
-    const result = await this.client.query({
-      query: trimmedQuery,
+    const result = await send.query({
       format: "JSONCompactEachRowWithNamesAndTypes",
       clickhouse_settings,
       query_id: queryId,
@@ -406,7 +463,7 @@ export class ClickHouseService {
    * without re-executing the DDL.  Anything else fails closed with `t:err`.
    */
   private async *streamOnClusterDdl(
-    trimmedQuery: string,
+    statement: CheckedStatement,
     queryId: string | undefined,
     clickhouse_settings: Record<string, string | number>,
     startMs: number,
@@ -423,8 +480,7 @@ export class ClickHouseService {
     };
     let result: { json: () => Promise<unknown>; query_id: string };
     try {
-      result = await this.client.query({
-        query: trimmedQuery,
+      result = await this.sender(this.client, statement).query({
         format: "JSON",
         clickhouse_settings: ddlSettings,
         query_id: queryId,
@@ -2601,12 +2657,24 @@ export class ClickHouseService {
   }
 
   private handleError(error: unknown, defaultMessage: string): AppError {
+    if (error instanceof AppError) return error;
+    // A refusal by ClickHouse is a message for the person, never a sign-in
+    // failure: ClickHouse answers a grant error with HTTP 403 (ADR 0033 §8).
+    const classified = classifyClickHouseError(error);
+    if (classified) return classifiedAppError(classified);
     const err = error as Error & { response?: { status?: number } };
     const message = err?.message || defaultMessage;
     const statusCode = err?.response?.status;
 
     if (statusCode === 401 || statusCode === 403 || message.includes("Authentication")) {
-      return AppError.unauthorized("Authentication failed. Please check your credentials.");
+      // Not 401: that would make the browser refresh its own session, and the
+      // failure is this connection's stored login, not the person's sign-in.
+      return new AppError(
+        "ClickHouse refused this connection's login. Check its username and password in Admin › Connections.",
+        "CONNECTION_AUTH_FAILED",
+        "connection",
+        502
+      );
     }
 
     if (statusCode === 404) {

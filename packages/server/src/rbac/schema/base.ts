@@ -617,6 +617,7 @@ export const AUDIT_ACTIONS = {
   SCHEDULED_QUERY_UPDATE: 'scheduled_query.update',
   SCHEDULED_QUERY_DELETE: 'scheduled_query.delete',
   SCHEDULED_QUERY_RUN: 'scheduled_query.run',
+  SCHEDULED_QUERY_OWNER_CHANGED: 'scheduled_query.owner_changed',
 
   // Data Health
   DATA_HEALTH_PROMISE_CREATE: 'data_health.promise_create',

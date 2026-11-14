@@ -15,12 +15,13 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
-import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, checkedOf, validateQueryAccess } from "../middleware/dataAccess";
+import { personActor } from "../services/chExecutor";
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { getDoctorReport } from "../services/doctorReports";
-import { observeClient, selectRows } from "../services/observe/clickhouse";
+import { observeClient, selectCheckedRows } from "../services/observe/clickhouse";
 import { incidentConnection } from "../services/observe/views";
 import * as notebooks from "../services/notebooks/store";
 import { validateReadOnlySelect } from "../services/scheduledQueries/validation";
@@ -143,8 +144,8 @@ async function runQueryCell(c: Context, notebook: notebooks.Notebook, statement:
   const user = getRbacUser(c);
   const access = await validateQueryAccess({ userId: user.sub, isAdmin: isAdmin(c), permissions: user.permissions, sql: statement, connectionId });
   if (!access.allowed) throw accessDeniedError(access, "Access denied");
-  const client = await observeClient(connectionId, "notebook");
-  const rows = await selectRows<Record<string, unknown>>(client, statement, { maxExecutionTime: 30, maxResultRows: 200 });
+  const client = await observeClient(connectionId, "notebook", personActor(user.sub));
+  const rows = await selectCheckedRows<Record<string, unknown>>(client, checkedOf(access), { maxExecutionTime: 30, maxResultRows: 200 });
   const columns = rows[0] ? Object.keys(rows[0]) : [];
   return { columns, rows: rows.slice(0, 200).map((r) => columns.map((col) => r[col])), ranAt: Date.now() };
 }

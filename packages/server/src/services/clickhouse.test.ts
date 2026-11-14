@@ -1,4 +1,5 @@
 
+import { checkedForTests } from "./chExecutor/checked.test-util";
 import { personActor } from "./chExecutor";
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { ClickHouseService } from "./clickhouse";
@@ -131,7 +132,7 @@ describe("ClickHouse Service", () => {
             }));
 
             const lines = await collectLines(
-                service.streamQueryRows("CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory")
+                service.streamQueryRows(checkedForTests({ sql: "CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory", accountId: "test-user" }))
             );
 
             expect(lines).toHaveLength(4);
@@ -157,7 +158,7 @@ describe("ClickHouse Service", () => {
             mockCommandFn.mockResolvedValue({ query_id: "qid-cmd" });
 
             const lines = await collectLines(
-                service.streamQueryRows("CREATE TABLE db.t (x UInt8) ENGINE Memory")
+                service.streamQueryRows(checkedForTests({ sql: "CREATE TABLE db.t (x UInt8) ENGINE Memory", accountId: "test-user" }))
             );
 
             expect(mockCommandFn).toHaveBeenCalled();
@@ -179,7 +180,7 @@ describe("ClickHouse Service", () => {
             mockCommandFn.mockClear();
 
             const lines = await collectLines(
-                service.streamQueryRows("CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory")
+                service.streamQueryRows(checkedForTests({ sql: "CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory", accountId: "test-user" }))
             );
 
             expect(JSON.stringify(lines)).not.toContain('"t":"err"');
@@ -201,7 +202,7 @@ describe("ClickHouse Service", () => {
             // NOTE: consumed via manual .next() rather than for-await: in this
             // test file (hoisted mock.module) for-await drops values yielded
             // before a throw, while manual iteration observes them correctly.
-            const gen = service.streamQueryRows("SELECT 1");
+            const gen = service.streamQueryRows(checkedForTests({ sql: "SELECT 1", accountId: "test-user" }));
             const lines: unknown[] = [];
             let thrown: unknown = null;
             let done = false;

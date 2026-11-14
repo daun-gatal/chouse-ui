@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { ChExecutor } from "./chExecutor";
+import { requiredGrantFromError, type ChExecutor } from "./chExecutor";
 
 import {
   OTHER_DATABASES_LIMIT,
@@ -11,7 +11,6 @@ import {
   parseGrantLines,
   privilegeReportMessage,
   quoteGrantName,
-  requiredGrantFromError,
   type PrivilegeTreeRow,
 } from "./connectionPrivileges";
 

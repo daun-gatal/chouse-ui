@@ -8,7 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { executorForConnection, serviceActor, type Actor, type ChExecutor } from "../chExecutor";
+import { executorForConnection, serviceActor, type Actor, type ChExecutor, type CheckedStatement } from "../chExecutor";
 
 export const OBSERVE_SOURCE = "observe";
 
@@ -61,6 +61,31 @@ export interface QueryOptions {
   maxResultRows?: number;
 }
 
+function readSettings(options: QueryOptions): Record<string, string | number> {
+  return {
+    max_execution_time: options.maxExecutionTime ?? 30,
+    ...(options.maxResultRows ? { max_result_rows: String(options.maxResultRows), result_overflow_mode: "break" } : {}),
+    // Numbers as JSON numbers keeps parsing cheap; UInt64 beyond 2^53 is acceptable loss for metrics.
+    output_format_json_quote_64bit_integers: 0,
+    // Inside a measured run, send headers only once the query finished, so
+    // X-ClickHouse-Summary holds the final rows and bytes read.
+    ...(costScope.getStore() ? { wait_end_of_query: 1 } : {}),
+  };
+}
+
+/** Rows of typed text a person wrote (a notebook cell), read-only. Its parameters are the ones it was checked with. */
+export async function selectCheckedRows<T = Record<string, unknown>>(
+  client: ChExecutor,
+  statement: CheckedStatement,
+  options: Omit<QueryOptions, "params"> = {},
+): Promise<T[]> {
+  const result = await client.queryChecked(statement, { format: "JSONEachRow", readOnlyFeature: 1, clickhouse_settings: readSettings(options) });
+  const rows = (await result.json()) as T[];
+  recordSummary(result.response_headers?.["x-clickhouse-summary"]);
+  return rows;
+}
+
+/** Rows of CHouse-built text, read-only. */
 export async function selectRows<T = Record<string, unknown>>(
   client: ChExecutor,
   query: string,
@@ -70,16 +95,7 @@ export async function selectRows<T = Record<string, unknown>>(
     query,
     query_params: options.params,
     format: "JSONEachRow",
-    clickhouse_settings: {
-      readonly: "1",
-      max_execution_time: options.maxExecutionTime ?? 30,
-      ...(options.maxResultRows ? { max_result_rows: String(options.maxResultRows), result_overflow_mode: "break" } : {}),
-      // Numbers as JSON numbers keeps parsing cheap; UInt64 beyond 2^53 is acceptable loss for metrics.
-      output_format_json_quote_64bit_integers: 0,
-      // Inside a measured run, send headers only once the query finished, so
-      // X-ClickHouse-Summary holds the final rows and bytes read.
-      ...(costScope.getStore() ? { wait_end_of_query: 1 } : {}),
-    },
+    clickhouse_settings: { readonly: "1", ...readSettings(options) },
   });
   const rows = (await result.json()) as T[];
   // Measuring must never break a query: without the header it is just not counted.

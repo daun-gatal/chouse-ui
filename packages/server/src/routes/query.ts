@@ -2,7 +2,8 @@ import { Hono, Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { AppError } from "../types";
-import { accessDeniedError, validateQueryAccess } from "../middleware/dataAccess";
+import { accessDeniedError, checkedOf, validateQueryAccess } from "../middleware/dataAccess";
+import { makeQueryId, personActor } from "../services/chExecutor";
 import { ClickHouseService } from "../services/clickhouse";
 import {
   connectionContextMiddleware,
@@ -245,7 +246,7 @@ async function executeQueryWithValidation(
 
   let result;
   try {
-    result = await service.executeQuery(sql, format, queryId, maxResultRows);
+    result = await service.executeChecked(checkedOf(accessCheck), format, queryId, maxResultRows);
   } catch (error) {
     if (agent && governance) await recordAgentQuery(agent, governance, sql, "error", 0, error instanceof Error ? error.message : String(error));
     throw error;
@@ -255,7 +256,8 @@ async function executeQueryWithValidation(
   // Create audit log for query execution
   if (rbacUserId) {
     try {
-      const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      // The id ClickHouse logged the statement under (ADR 0033 §2).
+      const logQueryId = result.queryId || queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
       await createAuditLogWithContext(c, 
         AUDIT_ACTIONS.CH_QUERY_EXECUTE,
@@ -385,12 +387,15 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
   if (agent && governance?.decision.decision === "block") return agentBlocked(c, governance);
   if (agent && governance) await recordAgentQuery(agent, governance, sql, "ok", 0);
 
+  const statement = checkedOf(accessCheck);
+
   // Audit log (best-effort, mirrors /execute)
   const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   if (rbacUserId) {
     createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
       resourceType: "query",
-      resourceId: logQueryId,
+      // The id ClickHouse logs the statement under (ADR 0033 §2).
+      resourceId: makeQueryId(personActor(rbacUserId), logQueryId),
       details: {
         operationType: sql.trim().split(/\s+/)[0].toUpperCase(),
         query: sql.substring(0, 500),
@@ -415,7 +420,7 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const line of service.streamQueryRows(sql, logQueryId, maxResultRows)) {
+        for await (const line of service.streamQueryRows(statement, logQueryId, maxResultRows)) {
           controller.enqueue(encoder.encode(line + "\n"));
         }
       } catch (error) {

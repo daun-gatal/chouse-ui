@@ -1,4 +1,5 @@
 
+import { checkedForTests } from "../services/chExecutor/checked.test-util";
 import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 
@@ -39,6 +40,8 @@ class MockClickHouseService {
     getDdlImpact = mockGetDdlImpact;
     defaultDatabase = "default";
     executeQuery = mockExecuteQuery;
+    // Typed text arrives as a checked statement; the assertions below read its text.
+    executeChecked = (statement: { sql: string }, ...rest: unknown[]) => mockExecuteQuery(statement.sql, ...rest);
     close = mockClose;
     ping = mockPing;
     getVersion = mockGetVersion;
@@ -96,6 +99,10 @@ mock.module("../middleware/dataAccess", () => ({
         await next();
     }),
     validateQueryAccess: mockValidateQueryAccess,
+    checkedOf: (result: { statement?: unknown }) => {
+        if (!result.statement) throw new Error("test: the access check stub returned no statement");
+        return result.statement;
+    },
     filterTables: mockFilterTables,
     accessDeniedError: (result: { reason?: string }) => AppError.forbidden(result.reason ?? "Access denied"),
 }));
@@ -134,7 +141,7 @@ describe("Metrics Routes", () => {
         mockGetRecentQueries.mockClear();
         mockListQueryHistory.mockReset();
         mockValidateQueryAccess.mockReset();
-        mockValidateQueryAccess.mockResolvedValue({ allowed: true, statementType: "select" });
+        mockValidateQueryAccess.mockImplementation(async (input: { sql: string }) => ({ allowed: true, statementType: "select", statement: checkedForTests({ sql: input.sql, accountId: "user1" }) }));
         identity.roles = ["admin"];
         identity.permissions = [];
         identity.isAdmin = true;

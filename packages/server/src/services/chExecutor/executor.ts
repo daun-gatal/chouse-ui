@@ -8,12 +8,16 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings, type DataFormat, type ResultSet } from "@clickhouse/client";
 
 import type { ConnectionConfig } from "../../types";
+import type { CheckedStatement } from "./checked";
 import { ClientManager, type ClientLane } from "./clientPool";
 import { makeQueryId } from "./queryId";
 import { buildSession, type ChSession } from "./session";
+import { readonlyFor, type ReadOnlyLevel } from "./settings";
 import type {
   Actor,
   ChExecutor,
+  CheckedCommandArgs,
+  CheckedQueryArgs,
   CommandArgs,
   Credential,
   ExecArgs,
@@ -46,6 +50,26 @@ function settingsFor(actor: Actor, options: ExecutorOptions, given: ClickHouseSe
 function withoutOwned<T extends object>(args: T): T {
   const { session_id: _s, role: _r, auth: _a, http_headers: _h, ...rest } = args as T & Record<string, unknown>;
   return rest as T;
+}
+
+/** A checked call's text and parameters come from the statement; anything an untyped caller passed is dropped. */
+function withoutText<T extends object>(args: T): T {
+  const { query: _q, query_params: _p, ...rest } = args as T & Record<string, unknown>;
+  return rest as T;
+}
+
+/**
+ * The settings a checked statement runs with. The statement must have been
+ * checked for the person this handle sends for; the `readonly` level is the
+ * executor's, whatever the call passed.
+ */
+function checkedSettings(actor: Actor, statement: CheckedStatement, given: ClickHouseSettings | undefined, feature: ReadOnlyLevel | undefined): ClickHouseSettings {
+  if (actor.kind !== "person" || actor.accountId !== statement.accountId) {
+    throw new Error("A checked statement can only be sent for the person it was checked for");
+  }
+  const { readonly: _ignored, ...rest } = given ?? {};
+  const level = readonlyFor(statement, feature);
+  return level ? { ...rest, readonly: level } : rest;
 }
 
 /**
@@ -123,6 +147,22 @@ export function executorOverClient(
       const client = clientFor(lane);
       const queryId = makeQueryId(actor, clean.query_id);
       return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), false);
+    },
+    queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
+      const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
+      const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
+      const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
+      const queryId = makeQueryId(actor, rest.query_id);
+      const call = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
+      return sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...identity(queryId, settings, withKey) }), true);
+    },
+    commandChecked(statement: CheckedStatement, args: CheckedCommandArgs = {}) {
+      const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
+      const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
+      const client = clientFor(lane);
+      const queryId = makeQueryId(actor, rest.query_id);
+      const call: CommandArgs = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) };
+      return sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...identity(queryId, settings, withKey) }), true);
     },
     async ping(): Promise<boolean> {
       return (await clientFor(lane).ping()).success;

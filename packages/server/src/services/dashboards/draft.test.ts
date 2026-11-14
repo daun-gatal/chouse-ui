@@ -3,6 +3,7 @@
  * sees it; nothing is repaired, and the model never places panels.
  */
 
+import { checkedForTests } from "../chExecutor/checked.test-util";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 let columns: Array<{ name: string; type: string }> = [];
@@ -10,8 +11,8 @@ let rows: Array<Record<string, unknown>> = [];
 let dryRunError: Error | null = null;
 const dryRuns: string[] = [];
 mock.module("./runner", () => ({
-  execute: async (_accountId: string, _connectionId: string, compiled: { sql: string }) => {
-    dryRuns.push(compiled.sql);
+  execute: async (statement: { sql: string }) => {
+    dryRuns.push(statement.sql);
     if (dryRunError) throw dryRunError;
     return { columns, rows, elapsedMs: 0, readRows: 0, readBytes: 0, ranAt: 0, timezone: "UTC" };
   },
@@ -19,7 +20,9 @@ mock.module("./runner", () => ({
 
 let denied: string | null = null;
 mock.module("../../middleware/dataAccess", () => ({
-  validateQueryAccess: async () => (denied ? { allowed: false, reason: denied } : { allowed: true }),
+  validateQueryAccess: async (input: { sql: string; userId: string }) =>
+    denied ? { allowed: false, reason: denied } : { allowed: true, statement: checkedForTests({ sql: input.sql, accountId: input.userId }) },
+  checkedOf: (result: { statement?: unknown }) => result.statement,
 }));
 
 const { finalizeDraft } = await import("./draft");

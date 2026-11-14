@@ -100,6 +100,10 @@ function canViewAll(c: Context): boolean {
   }
 }
 
+function sameMembers(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && [...a].sort().join("\u0000") === [...b].sort().join("\u0000");
+}
+
 /** The owner scope to apply to list/overview queries (`null` ⇒ all owners). */
 function ownerScope(c: Context): string | null {
   return canViewAll(c) ? null : (userId(c) ?? "__none__");
@@ -113,7 +117,7 @@ function ownerScope(c: Context): string | null {
 async function loadVisibleJob(c: Context, id: string): Promise<ScheduledQueryRow> {
   const job = await store.getJob(id);
   if (!job || job.kind !== "sql_query") throw AppError.notFound("Scheduled query not found");
-  if (!canViewAll(c) && job.createdBy !== userId(c)) {
+  if (!canViewAll(c) && job.createdBy !== userId(c) && job.ownerId !== userId(c)) {
     throw AppError.notFound("Scheduled query not found");
   }
   return job;
@@ -404,10 +408,24 @@ scheduledQueries.patch(
     if (previous.outputMode !== "none" && body.outputMode === "none") {
       await assertNoChainedPromises(id, "remove this job's output");
     }
+    const previousChannels = await store.getJobChannelIds(id);
     await store.updateJob(id, bodyToInput(body));
-    // Saving a job that lost its owner makes the saver its owner, so it can run again.
-    const adopted = await store.adoptOwnerlessJob(id, getRbacUser(c).sub);
     await store.setJobChannels(id, body.channelIds);
+    // Later runs are checked against whoever last changed what the job does
+    // (ADR 0033 §4): its SQL, where it writes, or who it notifies. A job with
+    // no owner is taken by anyone who saves it.
+    const changesWork =
+      previous.query !== body.query ||
+      previous.outputMode !== body.outputMode ||
+      previous.destDatabase !== (body.destDatabase ?? null) ||
+      previous.destTable !== (body.destTable ?? null) ||
+      JSON.stringify(previous.outputConfig ?? null) !== JSON.stringify(bodyToInput(body).outputConfig ?? null) ||
+      !sameMembers(previousChannels, body.channelIds);
+    const saver = getRbacUser(c).sub;
+    const ownerChanged = changesWork || !previous.ownerId ? await store.setJobOwner(id, saver) : false;
+    if (ownerChanged) {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_OWNER_CHANGED, saver, { resourceType: "scheduled_query", resourceId: id, details: { previousOwnerId: previous.ownerId, ownerId: saver, reason: previous.ownerId ? "changed" : "unowned" } });
+    }
     const changedFields = [
       previous.name !== body.name ? "name" : null,
       previous.query !== body.query ? "query" : null,
@@ -416,11 +434,29 @@ scheduledQueries.patch(
       previous.timeoutSecs !== body.timeoutSecs || previous.maxAttempts !== body.maxAttempts ? "reliability" : null,
       previous.enabled !== body.enabled ? "enabled" : null,
     ].filter((field): field is string => field !== null);
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt, ...(adopted ? { ownerTaken: true } : {}) } });
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt, ...(ownerChanged ? { ownerTaken: true } : {}) } });
     const job = await store.getJob(id);
     return ok(c, await toJobResponse(job!, false));
   },
 );
+
+/**
+ * Become the owner of a job that has none, so it can run again (ADR 0033 §4).
+ * The caller's own data access is checked first: the job will run as them.
+ */
+scheduledQueries.post("/:id/assign-to-me", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_EDIT), async (c) => {
+  const id = requireParam(c, "id");
+  const job = await loadVisibleJob(c, id);
+  if (job.ownerId) throw AppError.conflict("This job already has an owner. Save a change to it to become its owner.");
+  await assertConnectionAccess(c, job.connectionId);
+  const access = await dataAccessCheck(c, job.query, job.connectionId);
+  if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
+  const me = getRbacUser(c).sub;
+  if (!(await store.setJobOwner(id, me, true))) throw AppError.conflict("This job already has an owner.");
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_OWNER_CHANGED, me, { resourceType: "scheduled_query", resourceId: id, details: { previousOwnerId: null, ownerId: me, reason: "assigned" } });
+  const updated = await store.getJob(id);
+  return ok(c, await toJobResponse(updated!, false));
+});
 
 scheduledQueries.delete("/:id", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_DELETE), async (c) => {
   const id = requireParam(c, "id");
