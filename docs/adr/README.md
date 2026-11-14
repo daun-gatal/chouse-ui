@@ -57,6 +57,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0030](0030-clickhouse-parses-sql-access-checks.md) | ClickHouse Parses the SQL That Data Access Rules Check | Accepted |
 | [0031](0031-optional-clickhouse-access-admin.md) | ClickHouse Access Admin Is Optional When Saving a Connection | Accepted |
 | [0032](0032-codespaces-lab.md) | A Private Lab in the Visitor's Own GitHub Codespace | Accepted |
+| [0033](0033-every-statement-gets-a-clickhouse-identity.md) | Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections | Proposed |
 
 ## Conventions
 
