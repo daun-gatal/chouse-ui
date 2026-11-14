@@ -4,6 +4,7 @@
  * recorded on the agent's session — a cached one as reading nothing.
  */
 
+import { setExecutorClientForTests } from "../chExecutor";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 import type { AgentContext, GovernanceResult } from "../agents/governance";
@@ -12,8 +13,7 @@ import { fakeExec } from "../../middleware/sqlAccess/fixtures/fakeParser";
 const sent: string[] = [];
 const signals: unknown[] = [];
 let failNext = false;
-mock.module("../scheduledQueries/chClient", () => ({
-  clientForConnection: async () => ({
+setExecutorClientForTests(() => ({
     exec: fakeExec,
     query: async (args: { query: string; abort_signal?: unknown }) => {
       sent.push(args.query);
@@ -24,7 +24,6 @@ mock.module("../scheduledQueries/chClient", () => ({
       }
       return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => ({ meta: [{ name: "v", type: "UInt8" }], data: [{ v: 1 }], statistics: { elapsed: 0.001, rows_read: 1, bytes_read: 100 } }) };
     },
-  }),
 }));
 
 let decision: GovernanceResult["decision"]["decision"] = "allow";

@@ -17,9 +17,9 @@ import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { DATA_HEALTH_FREQUENCIES, type ScheduledQueryRow, type SqFrequency } from "../services/scheduledQueries/types";
 import { buildExecutableQuery, executableForAccessCheck, toDateTime64Param, validateReadOnlySelect } from "../services/scheduledQueries/validation";
-import { clientForConnection } from "../services/scheduledQueries/chClient";
+import { executorForConnection, personActor } from "../services/chExecutor";
 import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
-import { plainSession } from "../services/scheduledQueries/session";
+import { plainSession } from "../services/chExecutor";
 import { AppError, requireParam } from "../types";
 
 const dataHealth = new Hono();
@@ -192,7 +192,7 @@ interface PromiseCompilation {
 async function compile(c: Context, body: PromiseBody, upstreamJob: ScheduledQueryRow | null): Promise<PromiseCompilation> {
   const partitionMetadata = body.source.sourceType === "table"
     ? await describeDestination(
-      plainSession(await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_partition_metadata" }))),
+      plainSession(await executorForConnection(body.connectionId, personActor(currentUser(c).sub), { context: { source: "data_health_partition_metadata" } })),
       body.source.databaseName,
       body.source.tableName,
     )
@@ -415,10 +415,7 @@ dataHealth.post(
     await assertQueryAccess(c, body.sourceQuery, body.connectionId);
     const { sql: execSql } = buildExecutableQuery(body.sourceQuery);
     const now = Date.now();
-    const client = await clientForConnection(
-      body.connectionId,
-      JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_describe_columns" }),
-    );
+    const client = await executorForConnection(body.connectionId, personActor(currentUser(c).sub), { context: { source: "data_health_describe_columns" } });
     const columns = await describeSelectSchema(client, execSql, {
       sq_slot_start: toDateTime64Param(now - 86_400_000),
       sq_slot_end: toDateTime64Param(now),
@@ -513,7 +510,7 @@ dataHealth.post(
     ]);
     if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
     await assertConnectionAccess(c, promise.connectionId);
-    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_backtest", promise_id: promise.id }));
+    const client = await executorForConnection(promise.connectionId, personActor(currentUser(c).sub), { context: { source: "data_health_backtest", promise_id: promise.id } });
     const partitionMetadata = promise.sourceType === "table" && promise.databaseName && promise.tableName
       ? await describeDestination(plainSession(client), promise.databaseName, promise.tableName)
       : null;
@@ -553,7 +550,7 @@ dataHealth.post(
     const query = buildFailingRowsQuery(promise, check, body.limit);
     if (query) await assertQueryAccess(c, query, promise.connectionId);
     await assertConnectionAccess(c, promise.connectionId);
-    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_diagnostic", promise_id: promise.id }));
+    const client = await executorForConnection(promise.connectionId, personActor(currentUser(c).sub), { context: { source: "data_health_diagnostic", promise_id: promise.id } });
     const latestSample = body.slotAt == null
       ? await healthStore.latestSampleForCheck(promise.id, check.checkKey)
       : null;
@@ -635,6 +632,8 @@ dataHealth.patch(
     const ownerId = canViewAll(c) && promise.expiresAt == null ? body.ownerId ?? promise.ownerId ?? user.sub : promise.ownerId ?? user.sub;
     try {
       await scheduledStore.updateJob(existingJob.id, jobInput(body, compiled.sql));
+      // The backing job may have lost its owner; the saver takes it so the check can run.
+      await scheduledStore.adoptOwnerlessJob(existingJob.id, user.sub);
       await healthStore.updatePromiseMetadata(promise.id, metadataInput(body, existingJob.id, ownerId, promise.createdBy ?? user.sub, eventTimeType));
       await healthStore.replaceChecks(promise.id, body.checks);
       await scheduledStore.setJobChannels(existingJob.id, body.channelIds);

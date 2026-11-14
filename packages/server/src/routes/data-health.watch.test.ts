@@ -16,6 +16,12 @@ import { generateAccessToken } from "../rbac/services/jwt";
 import { errorHandler } from "../middleware/error";
 import { ScheduledQueryScheduler } from "../services/scheduledQueries/scheduler";
 import dataHealth, { WATCH_LIMIT } from "./data-health";
+import { fakeExec } from "../middleware/sqlAccess/fixtures/fakeParser";
+import { setExecutorClientForTests } from "../services/chExecutor";
+
+// The users here are admins, and an admin's statement is parsed by ClickHouse
+// too (ADR 0033 §3), so the parse needs a stand-in.
+setExecutorClientForTests(() => ({ exec: fakeExec }));
 
 const ALICE = "watch-alice";
 const BOB = "watch-bob";

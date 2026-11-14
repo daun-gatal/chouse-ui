@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "./chExecutor";
 
 import {
   OTHER_DATABASES_LIMIT,
@@ -184,7 +184,7 @@ class FakeClickHouseError extends Error {
   }
 }
 
-function fakeClient(server: FakeServer): { client: ClickHouseClient; queries: string[] } {
+function fakeClient(server: FakeServer): { client: ChExecutor; queries: string[] } {
   const queries: string[] = [];
   const respond = (rows: unknown[] | string[], text = false): { json: () => Promise<unknown>; text: () => Promise<string> } => ({
     json: async () => rows,
@@ -219,7 +219,7 @@ function fakeClient(server: FakeServer): { client: ClickHouseClient; queries: st
     },
   };
   // Only `query` is used by the check; the cast keeps the fake small.
-  return { client: client as unknown as ClickHouseClient, queries };
+  return { client: client as unknown as ChExecutor, queries };
 }
 
 const FULL_GRANTS = ["GRANT ALL ON *.* TO chouse"];
@@ -413,6 +413,6 @@ describe("checkConnectionPrivileges", () => {
 
   it("lets connection errors through", async () => {
     const client = { query: async () => { throw new FakeClickHouseError("AUTHENTICATION_FAILED", "Authentication failed"); } };
-    await expect(checkConnectionPrivileges(client as unknown as ClickHouseClient, { username: "u" })).rejects.toThrow("Authentication failed");
+    await expect(checkConnectionPrivileges(client as unknown as ChExecutor, { username: "u" })).rejects.toThrow("Authentication failed");
   });
 });

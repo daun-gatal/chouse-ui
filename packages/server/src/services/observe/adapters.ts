@@ -7,7 +7,7 @@
  * the adapter report `unsupported_on_version` instead of guessing.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { hasColumn, hasTable, missingMessage, type Capabilities } from "./capabilities";
 import { NOT_OBSERVE, selectRows } from "./clickhouse";
@@ -51,7 +51,7 @@ export interface PipelineDef {
 }
 
 export interface AdapterContext {
-  client: ClickHouseClient;
+  client: ChExecutor;
   capabilities: Capabilities;
   nowMs: number;
   sinceMs: number;

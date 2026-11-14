@@ -11,6 +11,7 @@ import { createClient } from "@clickhouse/client";
 import { writeFileSync } from "fs";
 import { join } from "path";
 
+import { executorOverClient, serviceActor } from "../../../services/chExecutor";
 import { explainAstOn } from "../clickhouseParse";
 import { CASES, caseKey } from "./cases";
 
@@ -26,7 +27,7 @@ const out: Record<string, Record<string, { lines?: string[]; code?: string }>> =
 for (const [version, url] of servers) {
   const client = createClient({ url });
   for (const c of CASES) {
-    const result = await explainAstOn(client, c.sql, c.params);
+    const result = await explainAstOn(executorOverClient(() => client, serviceActor("access-parse")), c.sql, c.params);
     const key = caseKey(c);
     out[key] ??= {};
     out[key][version] = result.ok ? { lines: result.lines } : { code: result.code };

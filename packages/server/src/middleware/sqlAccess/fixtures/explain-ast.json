@@ -2586,5 +2586,82 @@
     "  Literal 'p'"
    ]
   }
+ },
+ "EXECUTE AS default SELECT 1": {
+  "26.5": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier default",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "/* x */ -- y\nEXECUTE AS default SELECT 1": {
+  "26.5": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier default",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "SELECT 1 PARALLEL WITH EXECUTE AS default SELECT 2": {
+  "26.5": {
+   "lines": [
+    "ParallelWithQuery 2 SelectWithUnionQuery (children 2)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    " ExecuteAsQuery (children 2)",
+    "  UserNameWithHost (children 1)",
+    "   Identifier default",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 1)",
+    "      Literal UInt64_2"
+   ]
+  },
+  "23.8": {
+   "code": "SQL_SYNTAX"
+  }
+ },
+ "SELECT 'ExecuteAsQuery' AS ExecuteAsQuery": {
+  "26.5": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal 'ExecuteAsQuery' (alias ExecuteAsQuery)"
+   ]
+  },
+  "23.8": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal 'ExecuteAsQuery' (alias ExecuteAsQuery)"
+   ]
+  }
  }
 }

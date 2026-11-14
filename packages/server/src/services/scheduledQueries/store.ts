@@ -248,6 +248,18 @@ export async function updateJob(id: string, input: JobInput): Promise<boolean> {
   return true;
 }
 
+/**
+ * Give a job with no owner to `userId`. A job loses its owner when that
+ * account is deleted, and a job with no owner does not run (ADR 0033 §4).
+ * Returns true when the job was taken; a job that has an owner is left alone.
+ */
+export async function adoptOwnerlessJob(id: string, userId: string): Promise<boolean> {
+  const existing = await getJob(id);
+  if (!existing || existing.createdBy) return false;
+  await run(sql`UPDATE scheduled_queries SET created_by = ${userId}, updated_at = ${Date.now()} WHERE id = ${id} AND created_by IS NULL`);
+  return true;
+}
+
 export async function setJobEnabled(id: string, enabled: boolean): Promise<void> {
   await run(sql`UPDATE scheduled_queries SET enabled = ${enabled ? 1 : 0}, updated_at = ${Date.now()} WHERE id = ${id}`);
 }

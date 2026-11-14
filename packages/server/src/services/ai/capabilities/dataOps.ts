@@ -5,7 +5,7 @@ import { PERMISSIONS } from "../../../rbac/schema/base";
 import * as healthStore from "../../dataHealth/store";
 import { dataHealthCheckDefinitionSchema, type DataHealthCheckDefinition } from "../../dataHealth/types";
 import { fireTimesBetween } from "../../scheduledQueries/cadence";
-import { clientForConnection } from "../../scheduledQueries/chClient";
+import { executorForConnection, serviceActor } from "../../chExecutor";
 import { buildLineage } from "../../observe/jobLineage";
 import * as scheduledStore from "../../scheduledQueries/store";
 import type { ScheduledQueryRow } from "../../scheduledQueries/types";
@@ -271,11 +271,11 @@ interface RunLogEvidence {
 
 async function fetchRunLog(connectionId: string, runId: string): Promise<RunLogEvidence | null> {
   try {
-    const client = await clientForConnection(connectionId, JSON.stringify({ source: "dataops_ai_evidence", run_id: runId }));
+    const client = await executorForConnection(connectionId, serviceActor("collector"), { context: { source: "dataops_ai_evidence", run_id: runId } });
     const result = await client.query({
       query: `SELECT query_duration_ms, read_rows, read_bytes, memory_usage, exception_code, exception, tables, columns
               FROM system.query_log
-              WHERE query_id = {runId:String} AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+              WHERE (query_id = {runId:String} OR endsWith(query_id, concat(':', {runId:String}))) AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
               ORDER BY event_time DESC LIMIT 1`,
       query_params: { runId },
       format: "JSON",

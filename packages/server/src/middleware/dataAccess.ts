@@ -21,6 +21,7 @@ import { AppError } from '../types';
 import {
   clickhouseParsePort,
   parseStatementAccess,
+  refuseImpersonation,
   type DenyCode,
   type SqlParsePort,
   type StatementType,
@@ -217,12 +218,30 @@ const ACCESS_TYPE: Record<StatementType, AccessType> = {
 };
 
 /**
- * May this user run this statement? Admins always may. Everyone else needs the
+ * An admin's statement (ADR 0033 §3). Admins keep their bypass of permissions
+ * and data access rules, but ClickHouse must be able to parse the statement and
+ * the parsed tree must hold no `EXECUTE AS`: CHouse alone decides which
+ * ClickHouse user a statement runs as. When the parse cannot run, the statement
+ * is refused, as it is for everyone else.
+ */
+async function validateAdminStatement(input: QueryAccessInput): Promise<QueryAccessResult> {
+  if (!input.sql.trim()) return { allowed: true };
+  if (!input.connectionId && !input.parser) {
+    return refuse('CHECK_UNAVAILABLE', 'No ClickHouse connection is selected, so the statement can\'t be checked.');
+  }
+  const parser = input.parser ?? clickhouseParsePort(input.connectionId as string);
+  const checked = await refuseImpersonation(input.sql, input.params, parser);
+  return checked.ok ? { allowed: true } : refuse(checked.code, checked.reason);
+}
+
+/**
+ * May this user run this statement? Admins skip the permission and table
+ * checks (see `validateAdminStatement`). Everyone else needs the
  * statement's permission and data access to every table and database it
  * touches, as ClickHouse itself parses it. Any doubt is a refusal.
  */
 export async function validateQueryAccess(input: QueryAccessInput): Promise<QueryAccessResult> {
-  if (input.isAdmin) return { allowed: true };
+  if (input.isAdmin) return validateAdminStatement(input);
 
   if (!input.userId) {
     return refuse('PERMISSION_DENIED', 'RBAC authentication is required. Please login with RBAC credentials.');

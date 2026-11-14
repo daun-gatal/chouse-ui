@@ -21,6 +21,7 @@
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "check:contracts": "bun run scripts/check-contracts.ts",
+    "check:clickhouse-access": "bun run scripts/check-clickhouse-access.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

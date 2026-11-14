@@ -13,7 +13,8 @@ import { notifyChannelIds, type NotifyFeature, type NotifyMessage } from "../ale
 import type { NotifyButton, NotifyLink, NotifySeverity } from "../alerting/notify/types";
 import type { ScheduledQueryOutboxRow } from "./types";
 import { logger } from "../../utils/logger";
-import { clientForConnection } from "./chClient";
+import { executorForConnection, makeQueryId, serviceActor } from "../chExecutor";
+import { jobActor } from "./runner";
 import * as store from "./store";
 import { listExpiredWatches } from "../dataHealth/store";
 import { lastScheduledFireMs } from "./cadence";
@@ -122,9 +123,9 @@ export class ScheduledQueryScheduler {
       // Attribute the reaper's KILL to the job OWNER in query_log (not the bare
       // ClickHouse user). A distinct `source` keeps the KILL's own query_id from
       // being counted as a run by the lineage observation query.
-      const logComment = JSON.stringify({ rbac_user_id: job.createdBy ?? null, source: "scheduled_query_kill", job_id: job.id });
-      const client = await clientForConnection(job.connectionId, logComment);
-      await client.command({ query: `KILL QUERY WHERE query_id = {qid:String}`, query_params: { qid: runId } });
+      const client = await executorForConnection(job.connectionId, serviceActor("stop-query", job.createdBy ?? undefined), { context: { source: "scheduled_query_kill", job_id: job.id } });
+      // The run was sent with the run id as its nonce, for the job's owner.
+      await client.onServiceLane().command({ query: `KILL QUERY WHERE query_id = {qid:String}`, query_params: { qid: makeQueryId(jobActor(job), runId) } });
     } catch {
       /* best-effort */
     }

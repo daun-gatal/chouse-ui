@@ -14,7 +14,7 @@ import { z } from "zod";
 import { AppError } from "../../../types";
 import { logger } from "../../../utils/logger";
 import { buildFleetConfig } from "../../fleetMetrics";
-import { ClientManager } from "../../clientManager";
+import { executorForConfig, personActor, serviceActor, type ChExecutor } from "../../chExecutor";
 import { activeQueryObserver, jsonSize, reportQuery } from "../../queryObserver";
 import { listConnections } from "../../../rbac/services/connections";
 
@@ -59,7 +59,16 @@ function assertReadOnlySql(raw: string): string {
 }
 
 /** The read-only `query_node` investigation tool, bound to a node set. */
-export function queryNodeTool(connections: FleetNode[]) {
+/**
+ * A handle on a fleet node. Fleet AI work is sent for the person who started
+ * it when the caller knows who that is, else as the fleet service purpose.
+ */
+async function fleetExecutor(connectionId: string, triggeredBy: string | undefined): Promise<ChExecutor> {
+  const config = await buildFleetConfig(connectionId);
+  return executorForConfig(config, triggeredBy ? personActor(triggeredBy) : serviceActor("fleet-metrics"));
+}
+
+export function queryNodeTool(connections: FleetNode[], triggeredBy?: string) {
   const nameById = new Map(connections.map((c) => [c.id, c.name]));
   return {
     query_node: createAgentTool("query_node", {
@@ -82,10 +91,10 @@ export function queryNodeTool(connections: FleetNode[]) {
         const observer = activeQueryObserver();
         const queryId = observer?.nextQueryId();
         try {
-          const config = await buildFleetConfig(connectionId);
-          const client = ClientManager.getInstance().getClient(config);
           // An AI usage run (ADR 0020) names the query and tags it, per query.
           const tags = observer?.logTags();
+          const base = await fleetExecutor(connectionId, triggeredBy);
+          const client = tags && Object.keys(tags).length > 0 ? base.withContext(tags) : base;
           const result = await client.query({
             query: safe,
             format: "JSON",
@@ -95,7 +104,6 @@ export function queryNodeTool(connections: FleetNode[]) {
               max_execution_time: 8,
               max_result_rows: "200",
               result_overflow_mode: "break",
-              ...(tags && Object.keys(tags).length > 0 ? { log_comment: JSON.stringify(tags) } : {}),
             },
           });
           const json = (await result.json()) as {
@@ -150,10 +158,10 @@ export function cleanQueryForOptimize(q: string): string {
 export async function fetchQueryById(
   connectionId: string,
   queryId: string,
+  triggeredBy?: string,
 ): Promise<{ query: string; peakMemory?: string; user?: string } | null> {
   try {
-    const config = await buildFleetConfig(connectionId);
-    const client = ClientManager.getInstance().getClient(config);
+    const client = await fleetExecutor(connectionId, triggeredBy);
     const result = await client.query({
       query: `SELECT query, user, round(memory_usage / 1e9, 2) AS peak_gb
               FROM system.query_log
@@ -207,10 +215,10 @@ function recentHeavyQueriesSql(hours: number): string {
 export async function recentHeavyQueries(
   connectionId: string,
   hours: number,
+  triggeredBy?: string,
 ): Promise<Record<string, unknown>[]> {
   try {
-    const config = await buildFleetConfig(connectionId);
-    const client = ClientManager.getInstance().getClient(config);
+    const client = await fleetExecutor(connectionId, triggeredBy);
     const result = await client.query({
       query: recentHeavyQueriesSql(hours),
       format: "JSON",
@@ -251,6 +259,7 @@ export interface EstimateFigures {
 export async function explainEstimate(
   connectionId: string,
   rawSql: string,
+  triggeredBy?: string,
 ): Promise<EstimateFigures | null> {
   const sql = rawSql
     .replace(/;\s*$/, "")
@@ -259,8 +268,7 @@ export async function explainEstimate(
     .trim();
   if (!sql || !/^(select|with)\b/i.test(sql)) return null;
   try {
-    const config = await buildFleetConfig(connectionId);
-    const client = ClientManager.getInstance().getClient(config);
+    const client = await fleetExecutor(connectionId, triggeredBy);
     const result = await client.query({
       query: `EXPLAIN ESTIMATE ${sql}`,
       format: "JSON",

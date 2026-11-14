@@ -1,5 +1,4 @@
-import { ClickHouseClient } from "@clickhouse/client";
-import { ClientManager } from "./clientManager";
+import { executorForConfig, type Actor, type ChExecutor } from "./chExecutor";
 import type {
   ConnectionConfig,
   QueryResult,
@@ -90,31 +89,22 @@ export class ClickHouseService {
   private config: ConnectionConfig;
   private rbacUserId?: string;
 
-  constructor(config: ConnectionConfig, options?: { rbacUserId?: string; tags?: Record<string, string> }) {
+  /** Who every statement of this service is sent for (ADR 0033 §2). */
+  private readonly actor: Actor;
+
+  constructor(config: ConnectionConfig, actor: Actor, options?: { tags?: Record<string, string> }) {
     this.config = config;
-    this.rbacUserId = options?.rbacUserId;
+    this.actor = actor;
+    this.rbacUserId = actor.kind === "person" ? actor.accountId : undefined;
     this.tags = options?.tags ?? {};
   }
 
-  /** Extra log_comment fields, e.g. the agent (PAT / MCP) identity (ADR 0016 §10). */
+  /** Extra log_comment context, e.g. the agent (PAT / MCP) identity (ADR 0016 §10). */
   private readonly tags: Record<string, string>;
 
-  /** The log_comment this service attaches to every query it runs. */
-  private get logCommentJson(): string {
-    return JSON.stringify({ rbac_user_id: this.rbacUserId, ...this.tags });
-  }
-
-  /** Per-query log_comment: the service's own tags plus any extra ones; undefined when there is nothing to tag. */
-  private logCommentFor(extra: Record<string, string> | undefined): string | undefined {
-    if (!extra || Object.keys(extra).length === 0) return this.rbacUserId ? this.logCommentJson : undefined;
-    return JSON.stringify({ rbac_user_id: this.rbacUserId, ...this.tags, ...extra });
-  }
-
-  private get client(): ClickHouseClient {
-    // Tag every query this service runs with the RBAC user so query_log
-    // attributes them to the app user, not just the bare ClickHouse user.
-    const logComment = this.rbacUserId ? this.logCommentJson : undefined;
-    return ClientManager.getInstance().getClient(this.config, logComment);
+  /** The executor handle every statement goes through. It sets the query id, log_comment and quota key. */
+  private get client(): ChExecutor {
+    return executorForConfig(this.config, this.actor, { context: this.tags });
   }
 
   /** The connection's default database (used to resolve unqualified table refs). */
@@ -133,8 +123,7 @@ export class ClickHouseService {
 
   async ping(): Promise<boolean> {
     try {
-      const result = await this.client.ping();
-      return result.success;
+      return await this.client.ping();
     } catch (error) {
       throw this.handleError(error, "Failed to ping ClickHouse server");
     }
@@ -164,26 +153,15 @@ export class ClickHouseService {
     // its log_comment per query, so query_log ties it to the AI request.
     const observer = activeQueryObserver();
     const effectiveQueryId = queryId ?? observer?.nextQueryId();
-    const logComment = this.logCommentFor(observer?.logTags());
+    const observerTags = observer?.logTags();
+    const client = observerTags && Object.keys(observerTags).length > 0 ? this.client.withContext(observerTags) : this.client;
     const startedAt = performance.now();
     try {
       const trimmedQuery = query.trim();
 
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
-        const commandParams: any = {
-          query: trimmedQuery,
-          query_id: effectiveQueryId,
-        };
-
-        // Inject RBAC User ID into log_comment if present
-        if (logComment) {
-          commandParams.clickhouse_settings = {
-            log_comment: logComment,
-          };
-        }
-
-        const result = await this.client.command(commandParams);
+        const result = await client.command({ query: trimmedQuery, query_id: effectiveQueryId });
         return {
           meta: [],
           data: [],
@@ -213,14 +191,7 @@ export class ClickHouseService {
         clickhouse_settings.result_overflow_mode = "break";
       }
 
-      // Inject RBAC User ID into log_comment if present
-      if (logComment) {
-        // Tag format: {"rbac_user_id":"UUID"}
-        // This allows us to track which RBAC user executed the query regardless of the DB user
-        clickhouse_settings.log_comment = logComment;
-      }
-
-      const result = await this.client.query({
+      const result = await client.query({
         query: trimmedQuery,
         format: format as "JSON" | "JSONEachRow",
         clickhouse_settings,
@@ -317,10 +288,6 @@ export class ClickHouseService {
       clickhouse_settings.result_overflow_mode = "break";
     }
 
-    if (this.rbacUserId) {
-      clickhouse_settings.log_comment = this.logCommentJson;
-    }
-
     const startMs = performance.now();
     const trimmedQuery = query.trim();
 
@@ -368,7 +335,7 @@ export class ClickHouseService {
     // regular rows in the stream — we track lineIndex to distinguish them.
     const result = await this.client.query({
       query: trimmedQuery,
-      format: "JSONCompactEachRowWithNamesAndTypes" as any,
+      format: "JSONCompactEachRowWithNamesAndTypes",
       clickhouse_settings,
       query_id: queryId,
     });
@@ -536,10 +503,6 @@ export class ClickHouseService {
         date_time_input_format: "best_effort",
         ...settings,
       };
-
-      if (this.rbacUserId) {
-        clickhouse_settings.log_comment = this.logCommentJson;
-      }
 
       const result = await this.client.insert({
         table: `${escapedDatabase}.${escapedTable}`,

@@ -50,6 +50,10 @@ jobs:
       - name: Check Directory Contracts
         run: bun run check:contracts
 
+      # Only services/chExecutor may talk to ClickHouse (ADR 0033 §2).
+      - name: Check ClickHouse Access
+        run: bun run check:clickhouse-access
+
   test-server:
     name: Server Tests
     runs-on: ubuntu-latest

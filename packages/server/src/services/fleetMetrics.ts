@@ -8,7 +8,7 @@
  * back to a live fetch.
  */
 
-import { ClientManager } from "./clientManager";
+import { executorForConfig, serviceActor, type Actor } from "./chExecutor";
 import { getConnectionWithPassword } from "../rbac/services/connections";
 import type { ConnectionConfig } from "../types";
 import { AppError } from "../types";
@@ -285,9 +285,10 @@ export async function buildFleetConfig(
 export async function runFleetMetric(
   connectionId: string,
   metric: FleetMetric,
+  actor: Actor = serviceActor("fleet-metrics"),
 ): Promise<FleetMetricResult> {
   const config = await buildFleetConfig(connectionId);
-  const client = ClientManager.getInstance().getClient(config);
+  const client = executorForConfig(config, actor);
   const result = await client.query({
     query: FLEET_METRICS[metric],
     format: "JSON",

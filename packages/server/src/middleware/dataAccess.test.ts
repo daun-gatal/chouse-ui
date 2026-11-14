@@ -94,6 +94,7 @@ describe("validateQueryAccess", () => {
     const ALL = [
         "table:select", "table:insert", "table:update", "table:delete", "table:create", "table:alter",
         "table:drop", "table:view", "database:create", "database:drop", "query:execute:misc",
+        "live_queries:kill_all",
     ];
 
     beforeEach(() => {
@@ -112,12 +113,6 @@ describe("validateQueryAccess", () => {
             parser: opts.parser ?? fixtureParser("26.5"),
         });
     }
-
-    it("lets admins run anything without parsing", async () => {
-        const parser = fixtureParser("26.5");
-        expect(await validateQueryAccess({ userId, isAdmin: true, permissions: [], sql: "DROP DATABASE secret", connectionId: "c", parser })).toEqual({ allowed: true });
-        expect(parser.calls).toBe(0);
-    });
 
     it("refuses without an RBAC user or a connection", async () => {
         expect(await validateQueryAccess({ userId: undefined, isAdmin: false, permissions: ALL, sql: "SELECT 1", connectionId: "c" })).toMatchObject({ allowed: false, code: "PERMISSION_DENIED" });
@@ -173,6 +168,10 @@ describe("validateQueryAccess", () => {
             ["CREATE DATABASE d2 ENGINE = Atomic", ["database:create"], true],
             ["EXPLAIN ESTIMATE SELECT * FROM public.t", ["table:select"], false],
             ["EXPLAIN ESTIMATE SELECT * FROM public.t", ["query:execute:misc"], true],
+            // A typed KILL can target anyone's query, so it needs the kill-all permission.
+            ["KILL QUERY WHERE query_id = 'x'", ["query:execute:misc"], false],
+            ["KILL QUERY WHERE query_id = 'x'", ["query:execute:misc", "live_queries:kill"], false],
+            ["KILL QUERY WHERE query_id = 'x'", ["live_queries:kill_all"], true],
         ];
         for (const [sql, permissions, allowed] of cases) {
             it(`${allowed ? "allows" : "refuses"} ${sql} with ${permissions.join(", ")}`, async () => {
@@ -189,6 +188,47 @@ describe("validateQueryAccess", () => {
         expect(await check("SELECT * FROM remote('h', secret.s)")).toMatchObject({ code: "UNSAFE_TABLE_FUNCTION", status: 403 });
         expect(await check("SELECT 1", { parser: { ...linesParser([]), explainAst: async () => ({ ok: false, code: "CHECK_UNAVAILABLE", message: "down" }) } as ReturnType<typeof fixtureParser> })).toMatchObject({ code: "CHECK_UNAVAILABLE", status: 503 });
         expect(accessDeniedStatus("TABLE_DENIED")).toBe(403);
+    });
+
+    describe("admins (ADR 0033 §3)", () => {
+        const asAdmin = (sql: string, parser = fixtureParser("26.5")) => validateQueryAccess({ userId, isAdmin: true, permissions: [], sql, connectionId: "c", parser });
+
+        it("refuses EXECUTE AS as the root, behind a comment and under PARALLEL WITH", async () => {
+            for (const sql of ["EXECUTE AS default SELECT 1", "/* x */ -- y\nEXECUTE AS default SELECT 1", "SELECT 1 PARALLEL WITH EXECUTE AS default SELECT 2"]) {
+                expect(await asAdmin(sql)).toMatchObject({ allowed: false, code: "IMPERSONATION", status: 403 });
+            }
+        });
+
+        it("refuses EXECUTE AS for everyone else with the same code", async () => {
+            expect(await check("EXECUTE AS default SELECT 1", { parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "IMPERSONATION" });
+        });
+
+        it("does not mistake a string or an alias that spells the node name", async () => {
+            expect(await asAdmin("SELECT 'ExecuteAsQuery' AS ExecuteAsQuery")).toEqual({ allowed: true });
+        });
+
+        it("keeps the bypass of permissions and data access rules for every other statement", async () => {
+            for (const sql of ["DROP DATABASE d2", "SELECT * FROM public.t, secret.s SETTINGS max_threads=1", "KILL QUERY WHERE query_id = 'x'"]) {
+                expect(await asAdmin(sql)).toEqual({ allowed: true });
+            }
+        });
+
+        it("asks ClickHouse once per statement", async () => {
+            const parser = fixtureParser("26.5");
+            await asAdmin("DROP DATABASE d2", parser);
+            expect(parser.calls).toBe(1);
+        });
+
+        it("is refused when the parse cannot run, and when ClickHouse cannot parse the text", async () => {
+            const down = { ...linesParser([]), explainAst: async () => ({ ok: false, code: "CHECK_UNAVAILABLE", message: "down" }) } as ReturnType<typeof fixtureParser>;
+            expect(await asAdmin("SELECT 1", down)).toMatchObject({ allowed: false, code: "CHECK_UNAVAILABLE", status: 503 });
+            expect(await asAdmin("EXECUTE AS default SELECT 1", fixtureParser("23.8"))).toMatchObject({ allowed: false, code: "SQL_SYNTAX", status: 400 });
+            expect(await validateQueryAccess({ userId, isAdmin: true, permissions: [], sql: "SELECT 1", connectionId: undefined })).toMatchObject({ allowed: false, code: "CHECK_UNAVAILABLE" });
+        });
+
+        it("has nothing to check in an empty statement", async () => {
+            expect(await asAdmin("  ")).toEqual({ allowed: true });
+        });
     });
 
     it("refuses when a rule lookup would see a table only ClickHouse resolves", async () => {

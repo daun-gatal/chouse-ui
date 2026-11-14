@@ -111,7 +111,13 @@ export const CASES: Case[] = [
   { sql: "EXPLAIN SELECT * FROM secret.s", expect: { type: "explain", permission: MISC, reads: ["secret.s"] } },
   { sql: "EXPLAIN ESTIMATE SELECT * FROM public.t", expect: { type: "explain", permission: MISC, reads: ["public.t"] } },
   { sql: "CHECK TABLE public.t", expect: { type: "check", permission: MISC, reads: ["public.t"] } },
-  { sql: "KILL QUERY WHERE query_id = 'x'", expect: { type: "kill", permission: MISC } },
+  // --- EXECUTE AS is refused wherever ClickHouse's parse puts it (ADR 0033 §3).
+  // The 26.5 printouts were taken from a 26.5.7.64 server; 23.8 has no such statement.
+  { sql: "EXECUTE AS default SELECT 1", expect: "IMPERSONATION", syntaxErrorOn: ["23.8"] },
+  { sql: "/* x */ -- y\nEXECUTE AS default SELECT 1", expect: "IMPERSONATION", syntaxErrorOn: ["23.8"] },
+  { sql: "SELECT 1 PARALLEL WITH EXECUTE AS default SELECT 2", expect: "IMPERSONATION", syntaxErrorOn: ["23.8"] },
+  { sql: "SELECT 'ExecuteAsQuery' AS ExecuteAsQuery", expect: { type: "select", permission: SELECT } },
+  { sql: "KILL QUERY WHERE query_id = 'x'", expect: { type: "kill", permission: "live_queries:kill_all" } },
   { sql: "SET max_threads = 1", expect: { type: "set", permission: MISC } },
   { sql: "USE public", expect: { type: "use", permission: MISC, databases: ["public"] } },
 

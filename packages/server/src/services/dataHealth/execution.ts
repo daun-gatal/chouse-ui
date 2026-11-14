@@ -1,8 +1,8 @@
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { escapeQualifiedIdentifier } from "../../utils/sqlIdentifier";
 import { describeDestination, describeSelectSchema, diffSchema } from "../scheduledQueries/materialize";
-import { plainSession } from "../scheduledQueries/session";
+import { plainSession } from "../chExecutor";
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 import * as scheduledStore from "../scheduledQueries/store";
 import { buildExecutableQuery } from "../scheduledQueries/validation";
@@ -36,7 +36,7 @@ export interface DataHealthRunEvaluation {
 }
 
 /** Recompile generated SQL at execution time so existing promises receive compiler fixes. */
-export async function currentDataHealthJob(job: ScheduledQueryRow, client?: ClickHouseClient): Promise<ScheduledQueryRow> {
+export async function currentDataHealthJob(job: ScheduledQueryRow, client?: ChExecutor): Promise<ScheduledQueryRow> {
   const promise = await store.getPromiseByJobId(job.id);
   if (!promise) throw new Error("Data Health promise metadata is missing for the scheduled job");
   const checks = await store.getChecks(promise.id);
@@ -82,7 +82,7 @@ export async function processDataHealthSuccess(
   runId: string,
   slotAt: number,
   observed: Record<string, unknown>,
-  client: ClickHouseClient,
+  client: ChExecutor,
   params: Record<string, string>,
   opts: ProcessDataHealthOptions = {},
 ): Promise<DataHealthRunEvaluation> {

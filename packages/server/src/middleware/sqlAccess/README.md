@@ -18,6 +18,8 @@ is a refusal with a code.
 - `fixtures/`: `cases.ts` (statements and expected decisions, `caseKey`), `explain-ast.json` (real printouts per ClickHouse version), `fakeParser.ts` (test ports), `record.ts` (re-records the JSON).
 
 ## Invariants
+- A printout with an `ExecuteAsQuery` node anywhere is refused for every caller (`[index.ts:printoutImpersonates]`, `[index.ts:refuseImpersonation]`, ADR 0033 §3). The check reads printout lines, where a node name follows the indentation; a string literal that spells the name is on a `Literal` line and does not match.
+- A typed `KILL QUERY` asks for `live_queries:kill_all`, since it can target anyone's query (ADR 0033 §3).
 - The pipeline order is fixed: lex → gate → `EXPLAIN AST` → strict tree → walk. A failure at any step is a refusal; nothing falls back to guessing `[index.ts:parseStatementAccess]`.
 - Gate: quoted names, and the values of `{name:Identifier}` parameters, must be plain words (letters, digits, `_`, `-`, `$`; a parameter may be `db.table`), so the printout can't be forged or misread (`AMBIGUOUS_NAME`) `[index.ts:parseStatementAccess]`, `[lexer.ts:isPlainName]`.
 - Raw `INSERT … FORMAT <name>` data (any format but `Values`) is not SQL: the lexer stops at it (`dataStart`) and only the header is parsed `[lexer.ts:lex]`, `[index.ts:parseStatementAccess]`.

@@ -25,6 +25,7 @@ bun run lint
 bun run typecheck
 (cd packages/server && bun run typecheck)
 bun run check:contracts
+bun run check:clickhouse-access
 
 gate 3 "Frontend tests"
 bunx vitest run

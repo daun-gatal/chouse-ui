@@ -1,6 +1,6 @@
-import { ClientManager } from "./clientManager";
+import { ClientManager } from "./clientPool";
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
-import type { ConnectionConfig } from "../types";
+import type { ConnectionConfig } from "../../types";
 import type { ClickHouseClient } from "@clickhouse/client";
 
 describe("ClientManager", () => {

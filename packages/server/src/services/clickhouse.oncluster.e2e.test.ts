@@ -14,6 +14,7 @@
  * Table names are unique per run and always dropped in `finally`.
  */
 
+import { personActor } from "./chExecutor";
 import { describe, it, expect } from "bun:test";
 import { ClickHouseService } from "./clickhouse";
 
@@ -43,7 +44,7 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
       url: E2E_URL,
       username: E2E_USER,
       password: E2E_PASSWORD,
-    });
+    }, personActor("e2e-user"));
   }
 
   function uniqueTable(prefix: string): string {

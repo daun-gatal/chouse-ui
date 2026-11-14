@@ -6,7 +6,7 @@
  * single-node behaviour.
  */
 
-import type { ChSession } from "./session";
+import type { ChSession } from "../chExecutor";
 import type { ClusterConfig, SqClusterTopology, SqOutputMode } from "./types";
 
 /** Every host must ack the cluster DDL; any failure fails the statement. */

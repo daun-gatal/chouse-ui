@@ -14,17 +14,14 @@
  * - window-only actions run only inside REMEDIATION_MAINTENANCE_WINDOW.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import { executorForConnection, serviceActor, type ChExecutor } from "../chExecutor";
 import { randomUUID } from "crypto";
 
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { AUDIT_ACTIONS } from "../../rbac/schema/base";
 import { createAuditLog } from "../../rbac/services/rbac";
 import { getConnectionWithPassword } from "../../rbac/services/connections";
-import type { ConnectionConfig } from "../../types";
 import { logger } from "../../utils/logger";
-import { ClientManager } from "../clientManager";
-import { clientForConnection } from "../scheduledQueries/chClient";
 import { setJobEnabled, getJob } from "../scheduledQueries/store";
 import { acquireLease } from "../observe/lease";
 import { RollupPrecondition, readRollupPrior, switchPanelToRollup } from "../dashboards/rollupAction";
@@ -76,27 +73,23 @@ const WINDOW = (): { start: number; end: number } => parseWindow(process.env.REM
 
 // --- clients -----------------------------------------------------------------
 
-async function remediationClient(connectionId: string, actionId: string): Promise<ClickHouseClient> {
-  const conn = await getConnectionWithPassword(connectionId);
-  if (!conn) throw new RemediationError(`Connection ${connectionId} not found`, "not_found");
-  const credential = await store.getCredential(connectionId);
-  if (!credential) {
+/** A handle on the remediation login, which executes approved actions. */
+async function remediationClient(connectionId: string, actionId: string, proposedBy: string | null): Promise<ChExecutor> {
+  if (!(await getConnectionWithPassword(connectionId))) throw new RemediationError(`Connection ${connectionId} not found`, "not_found");
+  if (!(await store.getCredential(connectionId))) {
     throw new RemediationError("Cannot execute: no remediation credential is configured for this connection", "no_credential");
   }
-  const config: ConnectionConfig = {
-    url: `${conn.sslEnabled ? "https" : "http"}://${conn.host}:${conn.port}`,
-    username: credential.username,
-    password: credential.password,
-    database: conn.database || undefined,
-  };
-  return ClientManager.getInstance().getClient(config, JSON.stringify({ source: "remediation", action_id: actionId }));
+  return executorForConnection(connectionId, serviceActor("remediation", proposedBy ?? undefined), {
+    credential: "remediation",
+    context: { source: "remediation", action_id: actionId },
+  });
 }
 
-async function readClient(connectionId: string): Promise<ClickHouseClient> {
-  return clientForConnection(connectionId, JSON.stringify({ source: "remediation_preflight" }));
+async function readClient(connectionId: string): Promise<ChExecutor> {
+  return executorForConnection(connectionId, serviceActor("remediation"), { context: { source: "remediation_preflight" } });
 }
 
-async function queryRows(client: ClickHouseClient, query: string, maxSeconds = 15): Promise<Array<Record<string, unknown>>> {
+async function queryRows(client: ChExecutor, query: string, maxSeconds = 15): Promise<Array<Record<string, unknown>>> {
   const result = await client.query({ query, format: "JSONEachRow", clickhouse_settings: { readonly: "1", max_execution_time: maxSeconds } });
   return (await result.json()) as Array<Record<string, unknown>>;
 }
@@ -296,7 +289,7 @@ export async function executeAction(actionId: string, nowMs = Date.now()): Promi
     if (built.internal) {
       await runInternal(action, built.internal);
     } else {
-      const client = await remediationClient(action.connectionId, actionId);
+      const client = await remediationClient(action.connectionId, actionId, action.proposedBy);
       for (const statement of built.statements) {
         await client.command({ query: statement, clickhouse_settings: { max_execution_time: 600 } });
       }
@@ -373,7 +366,7 @@ export async function rollbackAction(actionId: string, actor: Actor): Promise<st
     // Scheduled-job pause/delay roll back by resuming; resume rolls back by pausing.
     await setJobEnabled(built.internal.jobId, built.internal.kind !== "job_resume");
   } else if (built.rollback) {
-    const client = await remediationClient(action.connectionId, actionId);
+    const client = await remediationClient(action.connectionId, actionId, action.proposedBy);
     for (const statement of built.rollback) await client.command({ query: statement, clickhouse_settings: { max_execution_time: 600 } });
   }
   const execution = await store.latestExecution(actionId);
