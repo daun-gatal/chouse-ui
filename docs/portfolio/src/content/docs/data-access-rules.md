@@ -76,6 +76,8 @@ ClickHouse's own message.
 
 The rules apply wherever data is read: the SQL editor, the Explorer, exports, the [Data](/docs/data-observability/) page's lineage and incidents, and every API, CLI and MCP call. A table you can't read never shows up, not even as a lineage node.
 
+They also decide what the monitoring pages name. On [Metrics](/docs/monitoring-metrics/), the largest tables, replication and parts pressure list only tables you can read, and the mutation impact simulator refuses a table, or a predicate that reads one, outside your rules. A sample error message is someone's failed query, so it is shown only to admins and holders of `query:history:view:all`. In an incident notebook, a query cell shows its saved rows only to readers whose own rules allow that query; everyone else sees the SQL and a note that the rows are withheld.
+
 ## Create a policy
 
 1. Open **Admin › Data access** and choose **New policy**.

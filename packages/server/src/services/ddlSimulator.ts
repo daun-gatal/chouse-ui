@@ -86,3 +86,27 @@ export function parseMutationStatement(input: string): ParseResult {
 
   return { ok: true, value: { database, table, kind, where } };
 }
+
+/** The read-only count the simulator runs for a parsed mutation. */
+export interface MutationCount {
+  database: string;
+  table: string;
+  sql: string;
+}
+
+/**
+ * Build the count statement for a parsed mutation. The route checks exactly
+ * this text against the caller's data access rules, and the service then runs
+ * the same text, so what is checked is what runs (ADR 0030 §2). Returns null
+ * when a name is not a plain identifier.
+ */
+export function mutationCountStatement(parsed: ParsedMutation, defaultDatabase?: string): MutationCount | null {
+  const database = parsed.database ?? defaultDatabase ?? "default";
+  if (!IDENT.test(database) || !IDENT.test(parsed.table)) return null;
+  const predicate = parsed.where.trim() ? parsed.where : "1";
+  return {
+    database,
+    table: parsed.table,
+    sql: `SELECT count() AS c FROM \`${database}\`.\`${parsed.table}\` WHERE ${predicate} SETTINGS max_execution_time = 15`,
+  };
+}

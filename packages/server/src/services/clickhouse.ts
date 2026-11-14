@@ -10,6 +10,7 @@ import type {
   ColumnInfo,
 } from "../types";
 import { AppError } from "../types";
+import { mutationCountStatement, type ParsedMutation } from "./ddlSimulator";
 import { logger } from "../utils/logger";
 import { activeQueryObserver, jsonSize, reportQuery } from "./queryObserver";
 
@@ -1607,16 +1608,14 @@ export class ClickHouseService {
    * to a read-only count (single statement, capped execution time).
    */
   async getDdlImpact(
-    parsed: import("./ddlSimulator").ParsedMutation,
+    parsed: ParsedMutation,
     defaultDatabase?: string,
   ): Promise<import("../types").DdlImpactEstimate> {
-    const ident = /^[A-Za-z_][A-Za-z0-9_]*$/;
-    const db = parsed.database ?? defaultDatabase ?? "default";
-    if (!ident.test(db) || !ident.test(parsed.table)) {
+    const count = mutationCountStatement(parsed, defaultDatabase);
+    if (!count) {
       throw AppError.badRequest("Invalid table reference.");
     }
-    const ref = `\`${db}\`.\`${parsed.table}\``;
-    const predicate = parsed.where && parsed.where.trim() ? parsed.where : "1";
+    const db = count.database;
 
     const scalar = async <T extends Record<string, unknown>>(query: string): Promise<T | undefined> => {
       const res = await this.client.query({ query, format: "JSON" });
@@ -1627,9 +1626,7 @@ export class ClickHouseService {
     try {
       // Rows matched by the predicate (read-only, time-capped). Runs first so an
       // invalid table/predicate surfaces a clear error before the rest.
-      const matched = await scalar<{ c: string | number }>(
-        `SELECT count() AS c FROM ${ref} WHERE ${predicate} SETTINGS max_execution_time = 15`,
-      );
+      const matched = await scalar<{ c: string | number }>(count.sql);
 
       // Worst-case rewrite set: all active parts of the table (a mutation
       // rewrites whole parts). Also the table's total rows.

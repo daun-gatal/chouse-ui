@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { addCell, deleteCell, ensureNotebook, exportNotebook, getNotebook, querySnapshot, rerunCell, type NotebookCell } from "./notebooks";
+import { addCell, deleteCell, ensureNotebook, exportNotebook, getNotebook, querySnapshot, rerunCell, snapshotWithheld, type NotebookCell } from "./notebooks";
 
 describe("notebooks API", () => {
   it("ensures, reads and edits a notebook", async () => {
@@ -43,5 +43,12 @@ describe("notebooks API", () => {
     expect(querySnapshot(cell({ snapshot: { columns: ["a"], rows: [[1]], ranAt: 5 } }))).toEqual({ columns: ["a"], rows: [[1]], ranAt: 5 });
     expect(querySnapshot(cell({ snapshot: null }))).toBeNull();
     expect(querySnapshot(cell({ snapshot: { columns: "x" } }))).toBeNull();
+  });
+
+  it("recognises a cell whose rows the server withheld", () => {
+    const cell = (content: Record<string, unknown>): NotebookCell => ({ id: "c", notebookId: "n", position: 0, kind: "query", authorKind: "user", authorId: null, content, createdAt: 0, updatedAt: 0 });
+    expect(snapshotWithheld(cell({ sql: "SELECT 1", snapshot: null, snapshotWithheld: true }))).toBe(true);
+    expect(snapshotWithheld(cell({ sql: "SELECT 1", snapshot: { columns: ["a"], rows: [[1]], ranAt: 5 } }))).toBe(false);
+    expect(snapshotWithheld(cell({ snapshotWithheld: "yes" }))).toBe(false);
   });
 });

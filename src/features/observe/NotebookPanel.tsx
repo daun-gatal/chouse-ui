@@ -8,7 +8,7 @@ import { useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { Bot, Download, FileText, Loader2, Play, StickyNote, Terminal, Trash2, Wrench } from "lucide-react";
 
-import { exportNotebook, querySnapshot, type NotebookAttachment, type NotebookCell } from "@/api/notebooks";
+import { exportNotebook, querySnapshot, snapshotWithheld, type NotebookAttachment, type NotebookCell } from "@/api/notebooks";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
@@ -26,6 +26,7 @@ function CellIcon({ kind }: { kind: NotebookCell["kind"] }): ReactElement {
 }
 
 function SnapshotTable({ cell }: { cell: NotebookCell }): ReactElement | null {
+  if (snapshotWithheld(cell)) return <p className="mt-2 text-[11px] text-paper-faint">Rows withheld: your data access rules don't cover this query.</p>;
   const snapshot = querySnapshot(cell);
   if (!snapshot) return null;
   if (snapshot.rows.length === 0) return <p className="mt-2 text-[11px] text-paper-faint">No rows · ran {formatAgo(snapshot.ranAt)}</p>;
