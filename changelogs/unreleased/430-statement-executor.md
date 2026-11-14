@@ -1,7 +1,7 @@
 type: minor
 
 ### Added
-- **Every ClickHouse statement names its account** — each request CHouse UI sends now carries a query id of the form `chouse:p:<account id>:<random>` (or `chouse:s:<purpose>:<random>` for background work) and a quota key with the same account or purpose. A ClickHouse administrator can read the account from `system.query_log`, and a ClickHouse quota `KEYED BY client_key` now counts each CHouse account separately.
+- **Every ClickHouse statement names its account** — each request CHouse UI sends now carries a query id of the form `chouse:p:<account id>:<random>` (or `chouse:s:<purpose>:<random>` for background work) and, on ClickHouse servers that accept it (24.8 and 26.5 do, 23.8 does not), a quota key with the same account or purpose. A ClickHouse administrator can read the account from `system.query_log`, and a ClickHouse quota `KEYED BY client_key` now counts each CHouse account separately.
 
 ### Changed
 - **One module sends every statement** — all server code now reaches ClickHouse through a single executor that requires a person or a named background purpose for each request. A CI check fails when any other file imports the ClickHouse client. The design is ADR 0033.

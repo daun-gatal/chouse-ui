@@ -4,7 +4,7 @@
 
 ## Highlights
 
-**See which account ran a statement** — Every request to ClickHouse carries a query id of the form `chouse:p:<account id>:<random>`, or `chouse:s:<purpose>:<random>` for background work, and a quota key with the same account or purpose. A ClickHouse administrator can read the account straight from `system.query_log`, and can create a keyed quota to limit each CHouse account separately. A statement cannot change its own query id. → [Who a statement runs as](/docs/security/#who-a-statement-runs-as)
+**See which account ran a statement** — Every request to ClickHouse carries a query id of the form `chouse:p:<account id>:<random>`, or `chouse:s:<purpose>:<random>` for background work, and, on servers that accept it, a quota key with the same account or purpose. A ClickHouse administrator can read the account straight from `system.query_log`, and can create a keyed quota to limit each CHouse account separately. A statement cannot change its own query id. → [Who a statement runs as](/docs/security/#who-a-statement-runs-as)
 
 **`EXECUTE AS` is refused, for administrators too** — CHouse UI decides which ClickHouse user a statement runs as. The check reads ClickHouse's own parse, so a comment or a wrapper cannot hide the keyword. To make this possible, statements typed by administrators are now parsed by ClickHouse before they run, like everyone else's. → [Who a statement runs as](/docs/security/#who-a-statement-runs-as)
 
@@ -21,6 +21,6 @@ There is no migration in this release. Check these:
 | Statements typed by administrators are parsed by ClickHouse first | Nothing to do. An administrator's statement is refused when ClickHouse cannot parse it, or when the connection cannot be reached to parse it |
 | `EXECUTE AS` is refused in every typed statement | Nothing to do unless someone relied on it; run such statements with a ClickHouse client instead |
 | A scheduled job with no owner fails instead of running | Open the job as someone who can see every job and save it: saving a job that has no owner makes you its owner. Failed runs say when this is the reason |
-| Every request sends an `X-ClickHouse-Quota` header | Nothing to do. It has an effect only if you create a ClickHouse quota `KEYED BY client_key` |
+| Every request sends an `X-ClickHouse-Quota` header, on servers that accept it (24.8 and 26.5 do; 23.8 does not and gets none) | Nothing to do. It has an effect only if you create a ClickHouse quota `KEYED BY client_key` |
 
 The full list of changes is in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md).

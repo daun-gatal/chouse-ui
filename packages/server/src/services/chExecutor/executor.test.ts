@@ -31,6 +31,7 @@ describe("executor handle", () => {
     await executor.query({ query: "SELECT 1", format: "JSON" });
     await executor.command({ query: "OPTIMIZE TABLE t" });
     await executor.exec({ query: "EXPLAIN AST SELECT 1" });
+    // By now the server is known to take the quota key, so the insert carries it too.
     await executor.insert({ table: "t", values: [], format: "JSONEachRow" });
     expect(sent.map((s) => s.method)).toEqual(["query", "command", "exec", "insert"]);
     for (const { args } of sent) {
@@ -107,6 +108,55 @@ describe("executor handle", () => {
     expect((sent[0].args.clickhouse_settings as Record<string, unknown>).session_check).toBeUndefined();
     expect((sent[1].args.clickhouse_settings as Record<string, unknown>).session_check).toBe(1);
     expect(sent[0].args.query_id).toBe("chouse:p:u1:r1");
+  });
+
+  describe("a server that refuses the quota key next to Basic auth (ClickHouse 23.8)", () => {
+    const REFUSAL = "Invalid authentication: it is not allowed to use SSL certificate authentication and Authorization HTTP header simultaneously.";
+
+    function oldServer(): { client: ClientLike; sent: Sent[] } {
+      const sent: Sent[] = [];
+      const record = (method: string) => async (args: Record<string, unknown>) => {
+        sent.push({ method, args });
+        if (args.http_headers) throw new Error(REFUSAL);
+        return { query_id: String(args.query_id), response_headers: {}, json: async () => ({ data: [] }) };
+      };
+      return { client: { query: record("query"), command: record("command"), exec: record("exec"), insert: record("insert"), ping: async () => ({ success: true }) } as unknown as ClientLike, sent };
+    }
+
+    it("sends the first request again without the key, with the same query id, and remembers", async () => {
+      const { client, sent } = oldServer();
+      const executor = executorOverClient(() => client, personActor("u1"));
+      await executor.query({ query: "SELECT 1", query_id: "n1" });
+      expect(sent).toHaveLength(2);
+      expect(sent[0].args.http_headers).toEqual({ "X-ClickHouse-Quota": "u1" });
+      expect(sent[1].args.http_headers).toBeUndefined();
+      expect(sent[1].args.query_id).toBe("chouse:p:u1:n1");
+      await executor.command({ query: "OPTIMIZE TABLE t" });
+      await executorOverClient(() => client, serviceActor("collector")).query({ query: "SELECT 2" });
+      expect(sent).toHaveLength(4);
+      expect(sent[2].args.http_headers).toBeUndefined();
+      expect(sent[3].args.http_headers).toBeUndefined();
+    });
+
+    it("never sends a streamed insert twice: no key until the server is known to take it", async () => {
+      const { client, sent } = oldServer();
+      await executorOverClient(() => client, personActor("u1")).insert({ table: "t", values: [], format: "JSONEachRow" });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].args.http_headers).toBeUndefined();
+
+      const modern = recordingClient();
+      const executor = executorOverClient(() => modern.client, personActor("u1"));
+      await executor.query({ query: "SELECT 1" });
+      await executor.insert({ table: "t", values: [], format: "JSONEachRow" });
+      expect(modern.sent[1].args.http_headers).toEqual({ "X-ClickHouse-Quota": "u1" });
+    });
+
+    it("does not hide any other failure, and does not retry it", async () => {
+      const sent: Sent[] = [];
+      const client = { query: async (args: Record<string, unknown>) => { sent.push({ method: "query", args }); throw new Error("Code: 497. Not enough privileges"); } } as unknown as ClientLike;
+      await expect(executorOverClient(() => client, personActor("u1")).query({ query: "SELECT 1" })).rejects.toThrow("497");
+      expect(sent).toHaveLength(1);
+    });
   });
 
   it("reports ping as a boolean", async () => {

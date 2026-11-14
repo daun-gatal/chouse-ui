@@ -49,6 +49,41 @@ function withoutOwned<T extends object>(args: T): T {
 }
 
 /**
+ * Whether a server takes the quota key next to the client's Basic auth.
+ * ClickHouse 23.8 refuses the two together (code 516, observed); 24.8 and 26.5
+ * accept them. It is a fact about the server behind a client, so it is learned
+ * once per pooled client and rebuilt after a restart.
+ */
+const quotaKeyAccepted = new WeakMap<object, boolean>();
+
+function refusesQuotaKey(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Authorization HTTP header/i.test(message) && /simultaneously/i.test(message);
+}
+
+/**
+ * Send with the quota key where the server takes it. The first request on a
+ * client finds out: when the server refuses the key at authentication, nothing
+ * ran, so the request is sent once more without it. A request whose body is a
+ * stream cannot be sent twice, so it carries the key only once the answer is known.
+ */
+async function sendWithQuotaKey<T>(client: object, send: (withKey: boolean) => Promise<T>, canResend: boolean): Promise<T> {
+  const known = quotaKeyAccepted.get(client);
+  if (known === false || (known === undefined && !canResend)) return send(false);
+  try {
+    const result = await send(true);
+    quotaKeyAccepted.set(client, true);
+    return result;
+  } catch (error) {
+    if (known === undefined && refusesQuotaKey(error)) {
+      quotaKeyAccepted.set(client, false);
+      return send(false);
+    }
+    throw error;
+  }
+}
+
+/**
  * Build a handle over a client. Exported for the pool-backed factories below
  * and for tests that supply a stand-in client; nothing else may call it.
  */
@@ -58,29 +93,36 @@ export function executorOverClient(
   options: ExecutorOptions = {},
   lane: ClientLane = "statements",
 ): ChExecutor {
-  const identity = (queryId: string | undefined, settings: ClickHouseSettings | undefined) => ({
-    query_id: makeQueryId(actor, queryId),
+  const identity = (queryId: string, settings: ClickHouseSettings | undefined, withKey: boolean) => ({
+    query_id: queryId,
     clickhouse_settings: settingsFor(actor, options, settings),
-    http_headers: { "X-ClickHouse-Quota": quotaKeyFor(actor) },
+    ...(withKey ? { http_headers: { "X-ClickHouse-Quota": quotaKeyFor(actor) } } : {}),
   });
   return {
     actor,
     query<Format extends DataFormat = "JSON">(args: QueryArgs<Format>): Promise<ResultSet<Format>> {
       const clean = withoutOwned(args);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
-      return client.query({ ...clean, ...identity(clean.query_id, clean.clickhouse_settings) });
+      const queryId = makeQueryId(actor, clean.query_id);
+      return sendWithQuotaKey(client, (withKey) => client.query({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     command(args: CommandArgs) {
       const clean = withoutOwned(args);
-      return clientFor(lane).command({ ...clean, ...identity(clean.query_id, clean.clickhouse_settings) });
+      const client = clientFor(lane);
+      const queryId = makeQueryId(actor, clean.query_id);
+      return sendWithQuotaKey(client, (withKey) => client.command({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     exec(args: ExecArgs) {
       const clean = withoutOwned(args);
-      return clientFor(lane).exec({ ...clean, ...identity(clean.query_id, clean.clickhouse_settings) });
+      const client = clientFor(lane);
+      const queryId = makeQueryId(actor, clean.query_id);
+      return sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     insert<T>(args: InsertArgs<T>) {
       const clean = withoutOwned(args);
-      return clientFor(lane).insert({ ...clean, ...identity(clean.query_id, clean.clickhouse_settings) });
+      const client = clientFor(lane);
+      const queryId = makeQueryId(actor, clean.query_id);
+      return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), false);
     },
     async ping(): Promise<boolean> {
       return (await clientFor(lane).ping()).success;
@@ -89,8 +131,14 @@ export function executorOverClient(
       const client = clientFor(lane);
       return buildSession(
         {
-          query: (args) => client.query({ ...args, ...identity(args.query_id, args.clickhouse_settings) }),
-          command: (args) => client.command({ ...args, ...identity(args.query_id, args.clickhouse_settings) }),
+          query: (args) => {
+            const queryId = makeQueryId(actor, args.query_id);
+            return sendWithQuotaKey(client, (withKey) => client.query({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
+          },
+          command: (args) => {
+            const queryId = makeQueryId(actor, args.query_id);
+            return sendWithQuotaKey(client, (withKey) => client.command({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
+          },
         },
         signal,
         sessionId,

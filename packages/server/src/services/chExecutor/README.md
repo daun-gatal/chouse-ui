@@ -16,6 +16,7 @@ The only code that talks to ClickHouse (ADR 0033 §2). Every other module gets a
 - A handle needs an actor: a person or a purpose from `[types.ts:SERVICE_PURPOSES]`. `[queryId.ts:makeQueryId]` throws for anything else, so no request is sent without one.
 - Every request carries a query id `chouse:p:<account id>:<random>` or `chouse:s:<purpose>:<random>`. A caller's `query_id` is only ever the random part, and one that could change the id's shape is replaced (`[queryId.ts:isNonce]`).
 - `log_comment` is built from the handle's context and the actor; the actor's keys win, and a `log_comment` passed in a call's settings is overwritten (`[executor.ts:logCommentFor]`). A statement can still overwrite it with its own `SETTINGS` clause, so it is context, not proof of identity.
+- The quota key is sent only where the server takes it next to Basic auth. ClickHouse 23.8 refuses the pair at authentication; the first request on a pooled client finds out, is sent again without the key, and the answer is remembered for that client (`[executor.ts:sendWithQuotaKey]`). A streamed insert is never sent twice, so it carries the key only once the answer is known.
 - A call cannot set `session_id`, `role`, `auth` or `http_headers`: the argument types omit them and the handle drops them at run time.
 - A session id is sent only through `[session.ts:buildSession]`, for CHouse-built text; after the first statement it sends `session_check = 1` (ADR 0015 §4).
 - `[executor.ts:setExecutorClientForTests]` throws unless `NODE_ENV` is `test`.
