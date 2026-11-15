@@ -20,9 +20,10 @@ import { zValidator } from '@hono/zod-validator';
 
 import { checkSavedConnection } from '../../services/chExecutor/health';
 import { AppError, requireParam } from '../../types';
-import { getClientIp, getRbacUser, rbacAuthMiddleware, refuseScopedToken } from '../middleware';
+import { getClientIp, getRbacUser, rbacAuthMiddleware, refuseScopedToken, requireJwtSession } from '../middleware';
 import { AUDIT_ACTIONS } from '../schema/base';
 import {
+  callerIdentities,
   ceilingSetupStatements,
   personalSetupStatements,
   checkIdentityChange,
@@ -80,6 +81,18 @@ function refused(c: Context, result: IdentityCheckResult): Response {
   return c.json({ success: false, error: { code, message: result.reason ?? 'The login did not pass the checks.', details: result } }, 422);
 }
 
+/**
+ * Which ClickHouse identity the caller's own statements carry on each
+ * connection, and whether it is usable now. For anyone signed in: it says
+ * nothing about a connection the caller cannot use or holds no link on, and
+ * nothing about other accounts. Registered before `/:id/identity`.
+ */
+connectionIdentityRoutes.get('/identity/mine', rbacAuthMiddleware, async (c) => {
+  const user = getRbacUser(c);
+  const identities = await callerIdentities(user.sub, user.roles.includes('super_admin'));
+  return c.json({ success: true, data: { identities } });
+});
+
 connectionIdentityRoutes.get('/:id/identity', rbacAuthMiddleware, async (c) => {
   requireSuperAdmin(c);
   const connection = await load(c);
@@ -105,6 +118,8 @@ connectionIdentityRoutes.post('/:id/identity/check', rbacAuthMiddleware, zValida
 });
 
 connectionIdentityRoutes.put('/:id/identity', rbacAuthMiddleware, zValidator('json', changeSchema), async (c) => {
+  // It stores a ClickHouse password and decides whose grants every statement runs with: a browser session only.
+  requireJwtSession(c);
   const actor = requireSuperAdmin(c);
   const connection = await load(c);
   const change = c.req.valid('json');
@@ -151,6 +166,8 @@ connectionIdentityRoutes.get('/:id/identity/role-map', rbacAuthMiddleware, async
 });
 
 connectionIdentityRoutes.put('/:id/identity/role-map', rbacAuthMiddleware, zValidator('json', roleMapSchema), async (c) => {
+  // The map decides which ClickHouse role every holder of a CHouse role gets: a browser session only.
+  requireJwtSession(c);
   const actor = requireSuperAdmin(c);
   const connection = await load(c);
   const before = await getRoleMap(connection.id);

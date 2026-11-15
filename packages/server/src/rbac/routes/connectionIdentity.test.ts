@@ -26,10 +26,13 @@ const SUPPORT = {
     { kind: "personal", state: "unavailable", reason: "no EXECUTE AS" },
   ],
 };
+const MINE = [{ connectionId: "c1", connectionName: "prod", kind: "personal", runsAs: { type: "user", name: "alice" }, state: "ready", detail: null, limits: ["x"] }];
+const mockCallerIdentities = mock(async (_userId: string, _superAdmin: boolean) => MINE);
 mock.module("../services/connectionIdentity", () => ({
   ceilingSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_system;"],
   personalSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_impersonate;"],
   connectionKindSupport: async () => SUPPORT,
+  callerIdentities: mockCallerIdentities,
   checkIdentityChange: mockCheck,
   getIdentity: async () => IDENTITY,
   getRoleMap: mockGetRoleMap,
@@ -43,7 +46,12 @@ mock.module("../services/rbac", () => ({ createAuditLogWithContext: mockAudit })
 let roles = ["super_admin"];
 /** True for a request made with a token that names a scope. */
 let scopedToken = false;
+/** True for a request made with a personal access token or an agent's grant. */
+let withToken = false;
 mock.module("../middleware", () => ({
+  requireJwtSession: () => {
+    if (withToken) throw new AppError("This action requires a browser session and cannot be performed with a personal access token", "FORBIDDEN", "permission", 403);
+  },
   refuseScopedToken: () => {
     if (scopedToken) throw new AppError("This action is not within this token's scope. Use a browser session, or a token without a scope.", "FORBIDDEN", "permission", 403);
   },
@@ -87,6 +95,49 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
       scopedToken = false;
     }
     for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit]) expect(m).not.toHaveBeenCalled();
+  });
+
+  it("tells anyone signed in what their own statements run as, and passes whether they are a super admin", async () => {
+    for (const who of [["analyst"], ["admin"], ["super_admin"]]) {
+      roles = who;
+      mockCallerIdentities.mockClear();
+      const res = await app.request("/connections/identity/mine");
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.identities).toEqual(MINE);
+      expect(mockCallerIdentities).toHaveBeenCalledWith("u1", who.includes("super_admin"));
+    }
+    // It is not read as the identity of a connection named "identity".
+    expect(mockGetConnectionById).not.toHaveBeenCalledWith("identity");
+  });
+
+  it("switching the kind and writing the role map need a browser session; a token may read, check and re-check", async () => {
+    withToken = true;
+    try {
+      expect((await app.request("/connections/c1/identity", json("PUT", CHANGE))).status).toBe(403);
+      expect((await app.request("/connections/c1/identity/role-map", json("PUT", { entries: [] }))).status).toBe(403);
+      expect(mockSwitch).not.toHaveBeenCalled();
+      expect(mockSetRoleMap).not.toHaveBeenCalled();
+      for (const [method, path, body] of [["GET", "/connections/c1/identity", undefined], ["POST", "/connections/c1/identity/check", CHANGE], ["GET", "/connections/c1/identity/role-map", undefined], ["POST", "/connections/c1/identity/recheck", undefined]] as const) {
+        expect({ path, status: (await app.request(path, json(method, body))).status }).toEqual({ path, status: 200 });
+      }
+    } finally {
+      withToken = false;
+    }
+  });
+
+  it("the identity data carries which kinds the connection's server can run", async () => {
+    const body = await (await app.request("/connections/c1/identity")).json();
+    expect(body.data.support).toEqual(SUPPORT);
+  });
+
+  it("answers 422 KIND_UNSUPPORTED_ON_SERVER when the server cannot run the kind, and audits nothing", async () => {
+    const reason = "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer.";
+    mockSwitch.mockImplementation(async () => ({ ok: false, unsupported: true, reason, verdict: { ok: false, reason, checks: [], serverVersion: "24.3.18.7" }, support: SUPPORT }));
+    const res = await app.request("/connections/c1/identity", json("PUT", CHANGE));
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatchObject({ code: "KIND_UNSUPPORTED_ON_SERVER", message: reason });
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 
   it("answers only a super admin, on every route, and does nothing for anyone else", async () => {
@@ -134,22 +185,6 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     expect(actor).toBe("u1");
     expect(entry.details).toMatchObject({ from: { identityMode: "shared", username: "svc" }, to: { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system" } });
     expect(JSON.stringify(entry)).not.toContain("pw");
-  });
-
-  it("answers 422 KIND_UNSUPPORTED_ON_SERVER when the server cannot run the kind, and audits nothing", async () => {
-    const reason = "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer.";
-    mockSwitch.mockImplementation(async () => ({ ok: false, unsupported: true, reason, verdict: { ok: false, reason, checks: [], serverVersion: "24.3.18.7" }, support: SUPPORT }));
-    const res = await app.request("/connections/c1/identity", json("PUT", CHANGE));
-    expect(res.status).toBe(422);
-    const body = await res.json();
-    expect(body.error).toMatchObject({ code: "KIND_UNSUPPORTED_ON_SERVER", message: reason });
-    expect(body.error.details.support.serverVersion).toBe("24.3.18.7");
-    expect(mockAudit).not.toHaveBeenCalled();
-  });
-
-  it("the identity data carries which kinds the connection's server can run", async () => {
-    const body = await (await app.request("/connections/c1/identity")).json();
-    expect(body.data.support).toEqual(SUPPORT);
   });
 
   it("answers 422 with the failed checks when the login does not pass, and audits nothing", async () => {

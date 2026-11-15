@@ -169,6 +169,7 @@ async function listToolNames(mcp: McpServer): Promise<string[]> {
 const DEFAULT_TOOL_NAMES = [
   "whoami",
   "list_connections",
+  "connection_runs_as",
   "use_connection",
   "list_databases",
   "list_tables",

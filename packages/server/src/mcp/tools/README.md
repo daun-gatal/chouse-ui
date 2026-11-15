@@ -13,7 +13,7 @@ wrapper, argument parsers, and registration types.
 ## Interface
 - `helpers.ts`: `[helpers.ts:runApiTool]` (standard wrapper), `[helpers.ts:toolContext]`, `[helpers.ts:apiFor]` (per-call client honoring a `connection_id` argument), `textResult`, `jsonResult`, `argString`, `argNumber`, `argOptionalNumber`, `argEnum`, `argOptionalString`, `[helpers.ts:registerChouseTool]`, `[helpers.ts:registerOnServer]`, `[helpers.ts:registerChousePrompt]`, types `ChouseToolRegistration`, `McpToolSink`, `McpToolAccess` (`read | write | destructive`), `MCP_TOOL_CATEGORIES`, `ToolExtra`.
 - Read tools (two modules here also register write tools, marked per line):
-  - `[core.ts:registerCoreTools]` - `whoami`, `list_connections`, `use_connection`.
+  - `[core.ts:registerCoreTools]` - `whoami`, `list_connections`, `connection_runs_as` (which ClickHouse identity the caller's statements carry on each connection, ADR 0033), `use_connection`.
   - `[explore.ts:registerExploreTools]` - `list_databases`, `list_tables`, `describe_table`, `sample_table`.
   - `[query.ts:registerQueryTools]` - `query`, `explain_query`, `list_saved_queries`, `get_saved_query`, `run_saved_query`; plus `[query.ts:classifyReadSql]` / `SqlClassification`.
   - `[observe.ts:registerObserveTools]` - `metrics_overview`, `live_queries`, `fleet_snapshots`, scheduled jobs/runs, health checks, `list_alerts`, `audit_list`.
@@ -29,6 +29,7 @@ wrapper, argument parsers, and registration types.
   - `[actions.ts:registerActionTools]` - tools generated from `ACTION_DEFINITIONS` (skipping names in `NOT_OVER_MCP`, currently `update_my_preferences`; T3 actions are `destructive`, the rest `write`), plus `get_action_status`, `undo_action`; helpers `[actions.ts:mayActOverMcp]`, `[actions.ts:writeAccessFor]`, `[actions.ts:actionToolListed]`, `[actions.ts:mcpActionApi]`, type `WriteAccess`.
 
 ## Invariants
+- No tool creates, confirms or removes a link between an account and a ClickHouse user, switches a connection's kind or edits a role map; the server refuses the kind switch, the role map write and the confirmation to every token (`requireJwtSession`). `connection_runs_as` is the only identity tool, and it is read-only.
 - Every handler goes through `runApiTool`: missing identity fails closed, the agent pause switch is honored, API errors become tool errors, results are capped (`cappedJson`) and guarded (`guardMcpResult`), and each call is audited best-effort without failing the tool `[helpers.ts]` header, `[helpers.ts:runApiTool]`.
 - The `query` tool runs only a single read statement (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN) as classified by the AST parser in `middleware/sqlParser.ts`; multi-statement or unparsable SQL fails closed `[query.ts:classifyReadSql]`.
 - Default enablement is `action !== undefined || (access === "read" && !spendsLlm)`, overridable per tool via `toolOverrides` (`../settings.ts:toolEnabledByDefault`); hand-written write, destructive, and LLM-backed tools are therefore off until an administrator enables each one (ADR 0017); destructive tools rely on the client's permission prompt for human approval `[destructive.ts]`, `[writes.ts]`, `[ai.ts]` headers.

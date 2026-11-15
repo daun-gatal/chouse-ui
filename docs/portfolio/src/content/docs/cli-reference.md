@@ -254,6 +254,7 @@ Aliases: `conn`, `connections`
 chouse connection list
 chouse connection get prod
 chouse connection can-i analytics events -c prod
+chouse connection runs-as
 ```
 
 #### chouse connection can-i
@@ -285,6 +286,169 @@ chouse connection get <name|id>
 chouse connection get prod -o yaml
 ```
 
+#### chouse connection identity
+
+A connection's kind, roles and health (super admin).
+
+How a connection reaches ClickHouse: its kind (shared login, role
+ceiling or personal), the roles it names, whether its login passes CHouse
+UI's checks, and which kinds its server can run. Switching the kind and
+editing the role map store credentials and decide what ClickHouse lets every
+account do, so they stay in the UI (Admin › Connections › ClickHouse login).
+Only a super admin, with a token that has no scopes. Needs server 3.18 or
+newer.
+
+```bash
+chouse connection identity
+```
+
+```bash
+chouse connection identity get prod
+chouse connection identity recheck prod
+```
+
+#### chouse connection identity get
+
+Show the kind, roles, health and which kinds the server can run.
+
+```bash
+chouse connection identity get <name|id>
+```
+
+```bash
+chouse connection identity get prod -o yaml
+```
+
+#### chouse connection identity recheck
+
+Run the login's checks now and store the result.
+
+Run CHouse UI's checks on a connection's stored login now instead
+of waiting for the five-minute round. A failing result makes the connection
+refuse every request until a later check passes; a passing one lets people
+back in. Nothing about the login is changed. Exits with 5 when the login fails
+its checks.
+
+```bash
+chouse connection identity recheck <name|id>
+```
+
+```bash
+chouse connection identity recheck prod
+```
+
+#### chouse connection links
+
+Links between accounts and ClickHouse users (super admin).
+
+On a personal connection each account's statements run as the
+ClickHouse user it is linked to. These commands list a connection's links,
+print the GRANT statements for your ClickHouse administrator, add a link,
+re-check and remove one. Confirming or removing a suspended link stays in the UI: a
+suspension means the person behind the account may have changed, and lifting
+it is a person's decision. Only a super admin, with a token that has no
+scopes. Needs server 3.18 or newer.
+
+```bash
+chouse connection links
+```
+
+```bash
+chouse connection links list prod
+chouse connection links add prod --account ann.lee --user alice
+chouse connection links grants prod | clickhouse-client --multiquery
+```
+
+#### chouse connection links add
+
+Link an account to a ClickHouse user.
+
+Link one CHouse account to one ClickHouse user on a connection.
+--account takes the account's username, email or id; it must match exactly
+one account. The link is active once ClickHouse lets the connection act as
+the user; until then it waits, and "links grants" prints the statement to
+run. CHouse UI stores no password for the ClickHouse user.
+
+```bash
+chouse connection links add <connection> [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--account` | `string` |   | the CHouse account: username, email or id |
+| `--user` | `string` |   | the ClickHouse user its statements run as |
+
+```bash
+chouse connection links add prod --account ann.lee --user alice --yes
+```
+
+#### chouse connection links check
+
+Re-check one link against ClickHouse now.
+
+Run a link's checks now: a waiting link becomes active once the
+grant is there. A suspended or disabled link is not changed by a check.
+
+```bash
+chouse connection links check <connection> <account|link-id>
+```
+
+```bash
+chouse connection links check prod ann.lee
+```
+
+#### chouse connection links grants
+
+Print the GRANT statements for your ClickHouse administrator.
+
+Print one GRANT per link that is waiting for it, as SQL on stdout.
+CHouse UI cannot run these: hand them to a ClickHouse administrator, or pipe
+them to a client that connects as one. With --revokes, print instead the
+REVOKE for each ClickHouse user the connection may still act as although no
+link uses it. Nothing is printed when there is nothing to run. Always SQL,
+whatever -o says.
+
+```bash
+chouse connection links grants <connection> [flags]
+```
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--revokes` |   |   | print the REVOKE statements for ClickHouse users no link uses |
+
+```bash
+chouse connection links grants prod
+chouse connection links grants prod --revokes
+```
+
+#### chouse connection links list
+
+List a connection's links and their state.
+
+```bash
+chouse connection links list <connection>
+```
+
+```bash
+chouse connection links list prod -o json
+```
+
+#### chouse connection links remove
+
+Remove a link.
+
+Remove a link: the account's statements are refused on the
+connection from its next request. The GRANT in ClickHouse stays; "links
+grants --revokes" prints the statement that takes it away.
+
+```bash
+chouse connection links remove <connection> <account|link-id>
+```
+
+```bash
+chouse connection links remove prod ann.lee --yes
+```
+
 #### chouse connection list
 
 List the connections you can use (no passwords).
@@ -301,6 +465,30 @@ chouse connection list [flags]
 ```bash
 chouse connection list
 chouse connection list --search prod -o json
+```
+
+#### chouse connection runs-as
+
+Which ClickHouse user or role your statements run with.
+
+For each connection you can use, show the ClickHouse identity your
+statements run with: the connection's login (a shared login), a ClickHouse
+role (a role ceiling), or your own linked ClickHouse user (a personal
+connection), and whether it is usable now.
+
+"ready" means the identity is in place; ClickHouse grants and your
+permissions still decide each statement. Any other state names what is
+missing, and DETAIL (in -o json or yaml) says who can fix it. A personal
+connection also lists the statement forms it refuses. Needs server 3.18 or
+newer.
+
+```bash
+chouse connection runs-as [name|id]
+```
+
+```bash
+chouse connection runs-as
+chouse connection runs-as prod -o yaml
 ```
 
 #### chouse connection test

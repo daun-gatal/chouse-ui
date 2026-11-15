@@ -13,14 +13,15 @@ import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
 
 import { all, run, runBatch, sql, str, num } from '../../services/observe/db';
-import { isKnownMode, isRoleName } from '../../services/chExecutor';
+import { identityOfConnection, isKnownMode, isRoleName, personActor } from '../../services/chExecutor';
+import { requestIdentity } from '../../services/chExecutor/identity';
 import { runIdentityChecks, writeVerdict, type IdentityVerdict } from '../../services/chExecutor/health';
 import { probeKindSupport, supportOf, type ServerSupport } from '../../services/chExecutor/kindSupport';
 import { resetCreateChecks } from '../../services/chExecutor/selfTest';
 import type { PrivilegeReport } from '../../services/connectionPrivileges';
 import { AppError } from '../../types';
 import { getDatabase, getSchema } from '../db';
-import { encryptPassword, getConnectionWithPassword, testConnection, type ConnectionResponse } from './connections';
+import { encryptPassword, getConnectionById, getConnectionWithPassword, getUserConnections, listConnections, testConnection, type ConnectionResponse } from './connections';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
@@ -151,6 +152,92 @@ export async function getIdentity(connection: ConnectionResponse): Promise<Ident
     serverVersion: connection.identityServerVersion,
     roleMap: await getRoleMap(connection.id),
   };
+}
+
+/** Why an account's statements would be refused on a connection, or `ready`. */
+export type AccessState =
+  | 'ready'
+  /** A role-ceiling connection has no one ClickHouse role for the account: its role is not mapped, or it holds no role or several. */
+  | 'no_usable_role'
+  | 'no_link'
+  | 'pending_grant'
+  | 'suspended'
+  | 'disabled'
+  | 'connection_unavailable';
+
+/** Which ClickHouse identity an account's statements carry on one connection. */
+export interface CallerIdentity {
+  connectionId: string;
+  connectionName: string;
+  /** `shared`, `shared_ceiling`, `personal`, or a kind this version does not know. */
+  kind: string;
+  /** What ClickHouse sees: the connection's login, the role named on each request, or the account's own user. Null when there is none. */
+  runsAs: { type: 'login' | 'role' | 'user'; name: string } | null;
+  state: AccessState;
+  /** What the person is told when a statement is refused; null when `ready`. */
+  detail: string | null;
+  /** Statement forms this connection refuses for everyone, in words. Empty unless the kind has some. */
+  limits: string[];
+}
+
+/** What a personal connection refuses for everyone, so a script or an agent need not find out one refusal at a time. */
+export const PERSONAL_LIMITS: readonly string[] = [
+  'Every statement is sent on its own: SET and USE are refused. Put settings in the statement\'s SETTINGS clause and qualify table names.',
+  'INSERT with rows in the statement (VALUES or FORMAT data) is refused. Use INSERT ... SELECT or a file import.',
+  'A FORMAT clause in the statement is refused: the caller chooses the output format.',
+  'Only SELECT, SHOW, DESCRIBE, EXISTS, CHECK, EXPLAIN, INSERT ... SELECT, ALTER, UPDATE, DELETE, CREATE, DROP, TRUNCATE and KILL run. SYSTEM, GRANT, OPTIMIZE and RENAME are refused.',
+  'Data access policies do not decide what a statement reaches here: the ClickHouse user\'s own grants do.',
+];
+
+const BINDING_STATES: ReadonlySet<string> = new Set(['pending_grant', 'suspended', 'disabled']);
+
+/**
+ * The identity one account's statements carry on one connection. It asks the
+ * same function the executor asks before every request (`requestIdentity`),
+ * so the answer cannot drift from what a statement would get.
+ */
+export async function callerIdentityOn(connection: ConnectionResponse, userId: string): Promise<CallerIdentity> {
+  const identity = identityOfConnection(connection);
+  const base = { connectionId: connection.id, connectionName: connection.name, kind: identity.mode, limits: identity.mode === 'personal' ? [...PERSONAL_LIMITS] : [] };
+  if (identity.mode === 'shared') {
+    return { ...base, runsAs: { type: 'login', name: connection.username }, state: 'ready', detail: null };
+  }
+  try {
+    const resolved = await requestIdentity(identity, personActor(userId));
+    if (resolved.executeAs) return { ...base, runsAs: { type: 'user', name: resolved.executeAs.user }, state: 'ready', detail: null };
+    return { ...base, runsAs: resolved.role ? { type: 'role', name: resolved.role } : null, state: 'ready', detail: null };
+  } catch (error) {
+    if (!(error instanceof AppError) || (error.code !== 'IDENTITY_UNAVAILABLE' && error.code !== 'CONNECTION_UNAVAILABLE')) throw error;
+    if (error.code === 'CONNECTION_UNAVAILABLE') return { ...base, runsAs: null, state: 'connection_unavailable', detail: error.message };
+    if (identity.mode !== 'personal') return { ...base, runsAs: null, state: 'no_usable_role', detail: error.message };
+    const rows = await all(sql`SELECT clickhouse_user, state FROM rbac_clickhouse_bindings WHERE user_id = ${userId} AND connection_id = ${connection.id}`);
+    if (rows.length === 0) return { ...base, runsAs: null, state: 'no_link', detail: error.message };
+    const stored = str(rows[0].state);
+    // A state this version does not know runs nothing, like a disabled link.
+    const state: AccessState = BINDING_STATES.has(stored) ? (stored as AccessState) : 'disabled';
+    return { ...base, runsAs: { type: 'user', name: str(rows[0].clickhouse_user) }, state, detail: error.message };
+  }
+}
+
+/**
+ * The same for every connection the account can use, plus every personal
+ * connection it holds a link on in any state: a person whose link is waiting
+ * or suspended is not admitted to the connection, but should see why.
+ */
+export async function callerIdentities(userId: string, isSuperAdmin: boolean): Promise<CallerIdentity[]> {
+  const usable = isSuperAdmin ? (await listConnections({ activeOnly: true })).connections : await getUserConnections(userId);
+  const byId = new Map(usable.map((connection) => [connection.id, connection]));
+  if (!isSuperAdmin) {
+    for (const row of await all(sql`SELECT connection_id FROM rbac_clickhouse_bindings WHERE user_id = ${userId}`)) {
+      const id = str(row.connection_id);
+      if (byId.has(id)) continue;
+      const linked = await getConnectionById(id);
+      if (linked && linked.isActive && linked.identityMode === 'personal') byId.set(id, linked);
+    }
+  }
+  const out: CallerIdentity[] = [];
+  for (const connection of [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))) out.push(await callerIdentityOn(connection, userId));
+  return out;
 }
 
 /**

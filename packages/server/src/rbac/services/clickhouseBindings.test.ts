@@ -21,7 +21,9 @@ import {
   suspendBindingsOf,
   testBinding,
 } from "./clickhouseBindings";
+import { callerIdentities, PERSONAL_LIMITS } from "./connectionIdentity";
 import { createConnection, getUserConnections } from "./connections";
+import { WRAPPABLE_KINDS } from "../../services/chExecutor/impersonate";
 
 /** A ClickHouse user as the checks see it. */
 interface FakeUser {
@@ -311,6 +313,56 @@ describe("bindings between accounts and ClickHouse users (ADR 0033 §7.4)", () =
     const binding = await createBinding(personal, "ann", "alice", "root");
     await resetBindingsOfConnection(personal, "root");
     expect(await getBinding(binding.id)).toMatchObject({ state: "pending_grant", reason: "The connection was pointed at another server." });
+  });
+
+  describe("what an account's statements run as", () => {
+    const of = async (userId: string, superAdmin = false): Promise<Record<string, unknown>> =>
+      Object.fromEntries((await callerIdentities(userId, superAdmin)).map((entry) => [entry.connectionName, { runsAs: entry.runsAs, state: entry.state }]));
+
+    it("is the linked ClickHouse user on a personal connection, and says why when it is not usable", async () => {
+      await createBinding(personal, "ann", "alice", "root");
+      expect(await of("ann")).toEqual({ personal: { runsAs: { type: "user", name: "alice" }, state: "ready" } });
+
+      server.impersonable.delete("bob");
+      await createBinding(personal, "ben", "bob", "root");
+      // A waiting link does not admit the account to the connection, but the account is told why.
+      expect(await of("ben")).toEqual({ personal: { runsAs: { type: "user", name: "bob" }, state: "pending_grant" } });
+      await suspendBindingsOf("ann", "reset", "root");
+      const [suspended] = await callerIdentities("ann", false);
+      expect(suspended).toMatchObject({ state: "suspended", kind: "personal" });
+      expect(suspended.detail).toContain("suspended");
+      expect(await of("cat")).toEqual({});
+    });
+
+    it("for a super admin covers every connection: the login on a shared one, no link on a personal one", async () => {
+      expect(await of("root", true)).toEqual({
+        personal: { runsAs: null, state: "no_link" },
+        shared: { runsAs: { type: "login", name: "shared_login" }, state: "ready" },
+      });
+    });
+
+    it("says the connection is unavailable when its checks are failing, without the reason", async () => {
+      await createBinding(personal, "ann", "alice", "root");
+      await rawRun(sql`UPDATE rbac_clickhouse_connections SET identity_health = 'failing', identity_health_reason = 'Role chouse_system holds ALL' WHERE id = ${personal}`);
+      try {
+        const [entry] = await callerIdentities("ann", false);
+        expect(entry).toMatchObject({ state: "connection_unavailable", runsAs: null });
+        expect(entry.detail).not.toContain("chouse_system");
+      } finally {
+        await rawRun(sql`UPDATE rbac_clickhouse_connections SET identity_health = 'ok', identity_health_reason = NULL WHERE id = ${personal}`);
+      }
+    });
+
+    it("lists what a personal connection refuses, and names every statement kind it runs", async () => {
+      await createBinding(personal, "ann", "alice", "root");
+      const [entry] = await callerIdentities("ann", false);
+      expect(entry.limits).toEqual([...PERSONAL_LIMITS]);
+      // The prose names the kinds; if the list of wrappable kinds changes, this line must change with it.
+      const named = PERSONAL_LIMITS.join(" ").toUpperCase();
+      for (const kind of WRAPPABLE_KINDS) expect({ kind, named: named.includes(kind.toUpperCase()) }).toEqual({ kind, named: true });
+      const [, shared] = await callerIdentities("root", true);
+      expect(shared.limits).toEqual([]);
+    });
   });
 
   it("writes an account's name into the grant script as comment text only", async () => {

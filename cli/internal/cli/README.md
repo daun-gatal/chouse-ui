@@ -12,7 +12,7 @@ Package `cli` implements the `chouse` cobra command tree. Every command returns 
 - `[app.go:App]`, `[app.go:Session]`, `[app.go:ExitError]`, `[app.go:ExitInterrupted]` (130).
 - Global flags `[root.go:App.newRoot]`: `--server`, `--token`, `--profile`, `-c/--connection`, `-o/--output`, `--no-headers`, `--wide`, `-q/--quiet`, `--timeout`, `--yes`, `--dry-run`, `--ca-cert`, `--insecure-skip-tls-verify`, `--debug`.
 - Command groups `[root.go:App.newRoot]`:
-  - Getting started: `status`, `auth`, `config`, `connection`, `version` (`status.go`, `auth.go`, `config_cmd.go`, `connection.go`).
+  - Getting started: `status`, `auth`, `config`, `connection`, `version` (`status.go`, `auth.go`, `config_cmd.go`, `connection.go`). `connection` also holds the connection-identity commands `runs-as`, `identity get|recheck` and `links list|add|grants|check|remove` `[identity.go:App.identityCommands]`.
   - Query and explore: `query`, `table`, `saved`, `upload` (`query.go`, `explorer.go`, `saved.go`, `upload_audit.go`).
   - Operate: `metrics`, `logs`, `live`, `fleet`, `perf`, `capacity`, `upgrades`, `collectors`, `dashboard`, `scheduled`, `alert`, `audit` (`metrics.go`, `fleet.go`, `governance.go`, `dashboard.go`, `scheduled.go`, `alert_ai.go`, `upload_audit.go`).
   - Data observability: `health`, `lineage`, `incidents`, `remediation`, `context`, `notebook` (`scheduled.go`, `observe.go`, `governance.go`).
@@ -31,6 +31,9 @@ Package `cli` implements the `chouse` cobra command tree. Every command returns 
 - `auth login` accepts only `ch_pat_` tokens, validates them against the server before storing, and never persists `--insecure-skip-tls-verify` `[auth.go:App.newAuthCmd]`.
 - `status` warns when the server is older than `minServerVersion` (3.14.0) `[status.go:minServerVersion]`.
 - An empty table/CSV result prints `No results.` on stderr so empty stdout is never ambiguous `[app.go:Session.Print]`.
+
+- `connection links` has no `confirm`, and there is no command that switches a connection's kind or writes a role map: the server refuses those to every token. `links add` resolves `--account` to exactly one account by exact username, email or id, never by a partial match `[identity.go:Session.accountID]`. `links grants` prints only SQL on stdout `[identity.go:App.identityCommands]`.
+- `connection runs-as <name>` matches the name against the identities the server returned, not against the connections the token can use, so it also answers for a connection where the caller's link is still waiting `[identity.go:App.identityCommands]`.
 
 ## Side Effects
 

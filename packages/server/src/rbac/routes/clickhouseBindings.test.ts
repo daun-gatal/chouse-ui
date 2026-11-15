@@ -38,7 +38,12 @@ mock.module("../../services/observe/db", () => ({
 let user = { sub: "root", roles: ["super_admin"] };
 /** True for a request made with a token that names a scope. */
 let scopedToken = false;
+/** True for a request made with a personal access token or an agent's grant. */
+let withToken = false;
 mock.module("../middleware", () => ({
+  requireJwtSession: () => {
+    if (withToken) throw new AppError("This action requires a browser session and cannot be performed with a personal access token", "FORBIDDEN", "permission", 403);
+  },
   refuseScopedToken: () => {
     if (scopedToken) throw new AppError("This action is not within this token's scope.", "FORBIDDEN", "permission", 403);
   },
@@ -103,6 +108,35 @@ describe("binding routes (ADR 0033 §7.4)", () => {
     for (const m of [mockCreate, mockConfirm, mockRemove, mockRecheck]) expect(m).not.toHaveBeenCalled();
   });
 
+  it("confirming a suspended link needs a browser session; a super admin's token may list, add, re-check and remove", async () => {
+    withToken = true;
+    try {
+      expect((await app.request("/clickhouse-bindings/b1/confirm", json("POST"))).status).toBe(403);
+      expect(mockConfirm).not.toHaveBeenCalled();
+      expect((await app.request("/clickhouse-bindings/connection/c1")).status).toBe(200);
+      expect((await app.request("/clickhouse-bindings/connection/c1", json("POST", { userId: "ann", clickhouseUser: "alice" }))).status).toBe(201);
+      expect((await app.request("/clickhouse-bindings/b1/recheck", json("POST"))).status).toBe(200);
+      expect((await app.request("/clickhouse-bindings/b1", json("DELETE"))).status).toBe(200);
+    } finally {
+      withToken = false;
+    }
+  });
+
+  it("a token cannot remove a suspended link: removing and adding it again would lift the suspension", async () => {
+    mockGet.mockImplementationOnce(async () => ({ ...OWN, state: "suspended" }));
+    withToken = true;
+    try {
+      expect((await app.request("/clickhouse-bindings/b1", json("DELETE"))).status).toBe(403);
+      expect(mockRemove).not.toHaveBeenCalled();
+    } finally {
+      withToken = false;
+    }
+    // A browser session removes it.
+    mockGet.mockImplementationOnce(async () => ({ ...OWN, state: "suspended" }));
+    expect((await app.request("/clickhouse-bindings/b1", json("DELETE"))).status).toBe(200);
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+  });
+
   it("a person sees their own links, without account fields or other people's", async () => {
     user = { sub: "ann", roles: ["analyst"] };
     const body = await data(await app.request("/clickhouse-bindings/mine"));
@@ -129,7 +163,6 @@ describe("binding routes (ADR 0033 §7.4)", () => {
       grants: ["GRANT IMPERSONATE ON dave TO chouse_impersonate;  -- dan"],
       unbound: [{ user: "old" }],
       readiness: { counts: { pending_grant: 1, active: 1, suspended: 0, disabled: 0 }, jobsWithoutLink: 3 },
-      // Whether the server can be a personal connection at all, so links that can never be used are flagged.
       personalSupport: PERSONAL,
       serverVersion: "25.10.7.6",
     });

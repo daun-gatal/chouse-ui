@@ -18,6 +18,8 @@
 
 **Run each person's statements as their own ClickHouse user** — A connection can now be *personal*: a super admin links each CHouse account to a ClickHouse user, and that person's statements run as that user, so the grants, row policies and quotas you already have in ClickHouse decide what they reach. CHouse UI stores no password for those users. It needs a ClickHouse build that checks grants for every statement run this way; CHouse UI tests the server itself and refuses one that fails (of the builds tested, 26.3.63 passes and 26.5.7 does not). → [Personal connections](/docs/personal-connections/)
 
+**See what your statements run as, from an agent or a terminal** — The MCP tool `connection_runs_as` and `chouse connection runs-as` report the ClickHouse identity a caller's statements carry on each connection and whether it is usable now. A super admin can manage the links of a personal connection with `chouse connection links`. Switching a kind, editing a role map and confirming a suspended link need a browser session. → [CLI](/docs/cli/#connection-kinds-and-linked-clickhouse-users)
+
 ## Upgrading from 3.17
 
 The RBAC database gains a column for each job's owner (`scheduled_queries.owner_id`, filled from its creator), the kind and health columns of each connection (every existing connection becomes a shared login) and the role map table. They are added automatically at start-up. Check these:

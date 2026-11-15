@@ -110,7 +110,7 @@ A ClickHouse user **cannot be linked** when its name has characters other than l
 
 ![The grant for a waiting link and the users without a link](/docs/img/app/admin-connection-links-grants.jpg "The GRANT to hand to the ClickHouse administrator, and the REVOKE for a user the connection may still act as")
 
-Each person sees their own links and their state in **Preferences**.
+Each person sees their own links and their state in **Preferences**, and from a terminal with `chouse connection runs-as`. A super admin can list, add, re-check and remove links with the [CLI](/docs/cli/#connection-kinds-and-linked-clickhouse-users); confirming a suspended link stays in the UI.
 
 ![The ClickHouse user card in Preferences](/docs/img/app/preferences-clickhouse-user.jpg "Preferences: which ClickHouse user your statements run as on each personal connection")
 

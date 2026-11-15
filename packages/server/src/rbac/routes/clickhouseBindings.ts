@@ -20,7 +20,7 @@ import { zValidator } from '@hono/zod-validator';
 
 import { all, num, sql } from '../../services/observe/db';
 import { AppError, requireParam } from '../../types';
-import { getRbacUser, rbacAuthMiddleware, refuseScopedToken } from '../middleware';
+import { getRbacUser, rbacAuthMiddleware, refuseScopedToken, requireJwtSession } from '../middleware';
 import {
   bindingCounts,
   confirmBinding,
@@ -111,6 +111,9 @@ clickhouseBindingsRoutes.post('/connection/:connectionId', rbacAuthMiddleware, z
 });
 
 clickhouseBindingsRoutes.post('/:id/confirm', rbacAuthMiddleware, async (c) => {
+  // A suspension means the person behind the account may have changed. Lifting it is a person's judgement,
+  // made in a browser session, never a script's or an agent's.
+  requireJwtSession(c);
   const actor = requireSuperAdmin(c);
   return c.json({ success: true, data: { binding: await confirmBinding(requireParam(c, 'id'), actor) } });
 });
@@ -127,6 +130,9 @@ clickhouseBindingsRoutes.post('/:id/recheck', rbacAuthMiddleware, async (c) => {
 
 clickhouseBindingsRoutes.delete('/:id', rbacAuthMiddleware, async (c) => {
   const actor = requireSuperAdmin(c);
+  // Removing a suspended link and adding it again would lift the suspension, which is a browser session's decision.
+  const binding = await getBinding(requireParam(c, 'id'));
+  if (binding?.state === 'suspended') requireJwtSession(c);
   await removeBinding(requireParam(c, 'id'), actor);
   return c.json({ success: true });
 });
