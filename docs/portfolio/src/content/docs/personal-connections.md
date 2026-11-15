@@ -31,6 +31,8 @@ ClickHouse must have `EXECUTE AS`, and must check the target user's grants for e
 | 26.5.7 | **Refused**: it runs `CREATE` under `EXECUTE AS` without checking the user's grants |
 | 25.10 and older | **Refused**: no `EXECUTE AS` |
 
+On a server without `EXECUTE AS`, **Personal** is disabled in the ClickHouse login panel, with the server's version, before you prepare a login. The **Linked ClickHouse users** panel says the same: links there cannot be used until the server is upgraded. A build that has `EXECUTE AS` but fails the self-test (26.5.7) is refused when you press **Check**, with the check that failed.
+
 The ClickHouse changelog lists the fix for the unchecked `CREATE` for 26.10. If you upgrade a server to a build that fails, the connection refuses every request until the server passes again. CHouse UI repeats the `CREATE` test at most a minute before any statement runs as a person, so an upgrade between two five-minute checks is caught.
 
 Not covered: behind a load balancer whose nodes run different builds, the test can pass on one node while a statement reaches another.

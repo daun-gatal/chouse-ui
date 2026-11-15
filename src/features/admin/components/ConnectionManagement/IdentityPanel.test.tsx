@@ -275,6 +275,71 @@ describe("IdentityPanel", () => {
     expect(field(/^Access contact/).getAttribute("maxlength")).toBe("500");
   });
 
+  describe("a kind the server cannot run", () => {
+    const OLD = {
+      serverVersion: "24.3.18.7",
+      kinds: [
+        { kind: "shared", state: "available" as const, reason: "Works on every ClickHouse version CHouse UI supports." },
+        { kind: "shared_ceiling", state: "unavailable" as const, reason: "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer." },
+        { kind: "personal", state: "unavailable" as const, reason: "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request, and has no EXECUTE AS." },
+      ],
+    };
+
+    it("is disabled, with the reason and the server's version, before anything is typed", async () => {
+      getIdentity.mockResolvedValue({ ...SHARED, support: OLD });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      const ceiling = screen.getByRole("radio", { name: /Role ceiling/ });
+      const personal = screen.getByRole("radio", { name: /Personal/ });
+      expect(ceiling.hasAttribute("disabled")).toBe(true);
+      expect(personal.hasAttribute("disabled")).toBe(true);
+      expect(screen.getByRole("radio", { name: /Shared login/ }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText(/Not available on this server\. ClickHouse 24\.3\.18\.7 does not take a ClickHouse role on a request\. The role ceiling needs ClickHouse 24\.4 or newer\./)).toBeTruthy();
+    });
+
+    it("cannot be chosen by clicking it", async () => {
+      const user = userEvent.setup();
+      getIdentity.mockResolvedValue({ ...SHARED, support: OLD });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      await user.click(screen.getByRole("radio", { name: /Role ceiling/ }));
+      expect(screen.queryByLabelText("System role")).toBeNull();
+      expect(screen.getByRole("radio", { name: /Shared login/ }).getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("blocks nothing when the server could not be asked, or can run the kind", async () => {
+      getIdentity.mockResolvedValue({ ...SHARED, support: { serverVersion: null, kinds: [{ kind: "shared_ceiling", state: "unknown", reason: "CHouse UI could not reach the server." }, { kind: "personal", state: "available", reason: "ok" }] } });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      for (const name of [/Role ceiling/, /Personal/]) expect(screen.getByRole("radio", { name }).hasAttribute("disabled")).toBe(false);
+      expect(screen.queryByText(/Not available on this server/)).toBeNull();
+    });
+
+    it("keeps the kind in use selectable on a server that no longer runs it, so its login can still be replaced", async () => {
+      getIdentity.mockResolvedValue({ ...CEILING, support: OLD });
+      open({ ...CONNECTION, identityMode: "shared_ceiling", systemRole: "chouse_system" });
+      await screen.findByRole("region", { name: "Switch" });
+
+      expect(screen.getByRole("radio", { name: /Role ceiling/ }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByRole("radio", { name: /Personal/ }).hasAttribute("disabled")).toBe(true);
+      // The reason is still shown: the connection is refusing people for it.
+      expect(screen.getAllByText(/Not available on this server/).length).toBe(2);
+    });
+
+    it("stops blocking once another server is being entered: the check asks that one", async () => {
+      const user = userEvent.setup();
+      getIdentity.mockResolvedValue({ ...SHARED, support: OLD });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      await user.click(screen.getByRole("button", { name: /Change server/ }));
+      expect(screen.getByRole("radio", { name: /Role ceiling/ }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText(/which kinds the new one can run is tested when you press Check/)).toBeTruthy();
+    });
+  });
+
   it("choosing role ceiling reveals the system role, the role map and the setup statements before any switch", async () => {
     const user = userEvent.setup();
     open();

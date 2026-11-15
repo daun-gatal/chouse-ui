@@ -23,7 +23,7 @@ Typed HTTP client modules for the CHouse UI backend (`packages/server`). `client
 - Token refresh is single-flight: concurrent 401s share one `refreshTokens()` call, and retries within one request are bounded by `maxRetries` (3) [client.ts:refreshTokens], [client.ts:ApiClient].
 - 429 responses are retried with backoff (honouring `Retry-After`) up to 3 times, except `AI_BUDGET_EXHAUSTED` [client.ts:ApiClient].
 - Non-success responses throw `ApiError` with `code`, `category`, `details`, `statusCode` [client.ts:ApiError].
-- A refused identity switch (422 `IDENTITY_CHECK_FAILED`) keeps its checks on the error's `details`; `identityCheckFromError` returns them only for that code and a well-formed result, and the error's message is the one-line reason [connectionIdentity.ts:identityCheckFromError].
+- A refused identity switch (422 `IDENTITY_CHECK_FAILED`, or `KIND_UNSUPPORTED_ON_SERVER` when the server cannot run the kind) keeps its checks on the error's `details`; `identityCheckFromError` returns them only for those two codes and a well-formed result, and the error's message is the one-line reason [connectionIdentity.ts:identityCheckFromError].
 - A connection with no `identityMode` is read as a shared login; any string other than `shared` / `shared_ceiling` / `personal` is `unknown`, never guessed [connectionIdentity.ts:identityKind].
 - A link is rechecked from the client only while it is waiting for its grant or active; a suspended one needs a super admin's confirm and a disabled one a new link [clickhouseBindings.ts:canRecheckBinding]. No function here sends or receives a ClickHouse password.
 

@@ -378,6 +378,7 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
   }
 
   const { grants, unbound, readiness } = listing.data;
+  const personalBlock = listing.data.personalSupport?.state === "unavailable" ? listing.data.personalSupport.reason : null;
   const rows = listing.data.bindings;
   const working = recheck.isPending || confirm.isPending || remove.isPending;
   const grantScript = grants.join("\n");
@@ -385,7 +386,12 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      {identityKind(connection.identityMode) !== IDENTITY_MODE_PERSONAL && (
+      {personalBlock ? (
+        <p role="alert" className="flex items-start gap-2 rounded-xs border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-[1.5] text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200">
+          <AlertTriangle className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>This connection's server cannot be a personal connection, so links here cannot be used until the server is upgraded. {personalBlock}</span>
+        </p>
+      ) : identityKind(connection.identityMode) !== IDENTITY_MODE_PERSONAL && (
         <p role="note" className="flex items-start gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5 text-[12px] leading-[1.5] text-paper-muted">
           <AlertCircle className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>Links are not in use until this connection is switched to Personal.</span>

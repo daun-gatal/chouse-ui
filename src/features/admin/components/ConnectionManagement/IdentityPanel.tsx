@@ -41,6 +41,8 @@ import {
   type IdentityCheck,
   type IdentityCheckResult,
   type KnownIdentityMode,
+  kindSupport,
+  type ServerSupport,
 } from "@/api/connectionIdentity";
 import type { ClickHouseConnection } from "@/api/rbac";
 import { log } from "@/lib/log";
@@ -226,7 +228,21 @@ function formFrom(identity: ConnectionIdentity, connection: ClickHouseConnection
 }
 
 /** What stops the form from being sent, or null. */
-function formProblem(form: FormState, identity: ConnectionIdentity): string | null {
+/**
+ * Why the chosen kind cannot be used on this connection's server, or null. It
+ * is about the stored server, so it says nothing once another host is typed:
+ * the check then asks that one.
+ */
+function kindBlock(form: FormState, support: ServerSupport | undefined, kind: string): string | null {
+  if (form.changeServer) return null;
+  const found = kindSupport(support, kind);
+  return found && found.state === "unavailable" ? found.reason : null;
+}
+
+function formProblem(form: FormState, identity: ConnectionIdentityDetail): string | null {
+  const blocked = kindBlock(form, identity.support, form.mode);
+  // The stored kind stays selectable, so a login on a server that was downgraded can still be replaced or switched away.
+  if (blocked && form.mode !== identity.identityMode) return blocked;
   const username = form.username.trim();
   if (username === "") return "Enter the ClickHouse user.";
   if (username !== identity.username && form.password === "") return "Enter the password of the new ClickHouse user.";
@@ -516,23 +532,38 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
             aria-label="Kind"
             className="gap-2"
           >
-            {KIND_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                htmlFor={`identity-kind-${option.value}`}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2.5 rounded-xs border bg-ink-200 px-3 py-2.5",
-                  form.mode === option.value ? "border-brand" : "border-ink-500",
-                )}
-              >
-                <RadioGroupItem id={`identity-kind-${option.value}`} value={option.value} className="mt-0.5 border-ink-700 text-brand" />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-[13px] font-medium text-paper">{option.label}</span>
-                  <span className={cn(HELP_CLASS, "leading-[1.5]")}>{option.explanation}</span>
-                </span>
-              </label>
-            ))}
+            {KIND_OPTIONS.map((option) => {
+              const blocked = kindBlock(form, identity.support, option.value);
+              // The kind in use is never disabled: its login must stay replaceable.
+              const disabled = blocked !== null && option.value !== identity.identityMode;
+              return (
+                <label
+                  key={option.value}
+                  htmlFor={`identity-kind-${option.value}`}
+                  className={cn(
+                    "flex items-start gap-2.5 rounded-xs border bg-ink-200 px-3 py-2.5",
+                    disabled ? "cursor-not-allowed" : "cursor-pointer",
+                    form.mode === option.value ? "border-brand" : "border-ink-500",
+                  )}
+                >
+                  <RadioGroupItem id={`identity-kind-${option.value}`} value={option.value} disabled={disabled} aria-describedby={blocked ? `identity-kind-${option.value}-block` : undefined} className="mt-0.5 border-ink-700 text-brand" />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className={cn("text-[13px] font-medium", disabled ? "text-paper-muted" : "text-paper")}>{option.label}</span>
+                    <span className={cn(HELP_CLASS, "leading-[1.5]")}>{option.explanation}</span>
+                    {blocked && (
+                      <span id={`identity-kind-${option.value}-block`} className="mt-1 flex items-start gap-1.5 text-[12px] leading-[1.5] text-amber-800 dark:text-amber-200">
+                        <AlertTriangle className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
+                        <span>Not available on this server. {blocked}</span>
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
           </RadioGroup>
+          {form.changeServer && identity.support && (
+            <p className={cn(HELP_CLASS, "leading-[1.5]")}>You are changing the server: which kinds the new one can run is tested when you press Check.</p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">

@@ -70,7 +70,31 @@ export interface ConnectionIdentity {
   roleMap: RoleMapEntry[];
 }
 
+export type KindSupportState = "available" | "unavailable" | "unknown";
+
+/** Whether a connection's ClickHouse server can run one kind, found out by asking the server. */
+export interface KindSupport {
+  /** `shared`, `shared_ceiling` or `personal`. */
+  kind: string;
+  state: KindSupportState;
+  /** One sentence: why the kind is or is not available on this server. */
+  reason: string;
+}
+
+export interface ServerSupport {
+  /** Null when the server did not answer. */
+  serverVersion: string | null;
+  kinds: KindSupport[];
+}
+
+/** The support of one kind, or null when the server's answer has none for it. */
+export function kindSupport(support: ServerSupport | null | undefined, kind: string): KindSupport | null {
+  return support?.kinds.find((entry) => entry.kind === kind) ?? null;
+}
+
 export interface ConnectionIdentityDetail extends ConnectionIdentity {
+  /** Which kinds this connection's server can run. Absent from servers before 3.18. */
+  support?: ServerSupport;
   /** SQL for the ClickHouse administrator. CHouse never runs these. */
   setupStatements: string[];
   /** The same, for a personal login. */
@@ -126,6 +150,9 @@ export interface IdentityCheckResult {
   verdict: IdentityVerdict;
   privileges?: ConnectionPrivilegeReport;
   reason: string | null;
+  /** True when the server itself cannot run the kind: no login would pass. */
+  unsupported?: boolean;
+  support?: ServerSupport;
 }
 
 export interface IdentitySwitchResult {
@@ -188,8 +215,12 @@ function isIdentityCheckResult(value: unknown): value is IdentityCheckResult {
   return "checks" in value.verdict && Array.isArray(value.verdict.checks);
 }
 
-/** The checks a refused switch carries (`IDENTITY_CHECK_FAILED`), if this error is one. The error's message is the one-line reason. */
+/**
+ * The checks a refused switch carries, if this error is one: `IDENTITY_CHECK_FAILED`
+ * when the login did not pass, `KIND_UNSUPPORTED_ON_SERVER` when the server cannot
+ * run the kind at all. The error's message is the one-line reason.
+ */
 export function identityCheckFromError(error: unknown): IdentityCheckResult | null {
-  if (!(error instanceof ApiError) || error.code !== "IDENTITY_CHECK_FAILED") return null;
+  if (!(error instanceof ApiError) || (error.code !== "IDENTITY_CHECK_FAILED" && error.code !== "KIND_UNSUPPORTED_ON_SERVER")) return null;
   return isIdentityCheckResult(error.details) ? error.details : null;
 }

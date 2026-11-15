@@ -74,6 +74,22 @@ To give a role's people the Monitoring pages, grant it `SELECT ON system.*` (or 
 
 The Explorer lists the databases and tables the role can see in ClickHouse.
 
+## Which kinds a server can run
+
+When you open **ClickHouse login**, CHouse UI asks the connection's server which kinds it can run, and blocks the ones it cannot before you prepare anything:
+
+| Kind | Needs | When the server lacks it |
+| --- | --- | --- |
+| Shared login | Nothing more | Always available |
+| Role ceiling | A ClickHouse role on a request: ClickHouse **24.4 or newer** | The option is disabled, with the server's version and what is needed |
+| Personal | That, the `EXECUTE AS` statement, and the [self-test](/docs/personal-connections/#which-clickhouse-builds-qualify) | The option is disabled when the server has no `EXECUTE AS`; the self-test runs when you press **Check** |
+
+It asks the server itself, with two statements that need no grant, so the answer does not depend on a version list. If the server does not answer, nothing is blocked and **Check** decides. If you are entering another host under **Change server**, the block is lifted too: the check asks the new server.
+
+The same holds for the API: a switch to a kind the server cannot run is refused with `KIND_UNSUPPORTED_ON_SERVER` and that one reason, instead of a list of failed checks.
+
+The kind a connection already has is never disabled, so the login of a connection whose server was downgraded can still be replaced or switched back.
+
 ## What CHouse UI checks
 
 The checks run before a switch, when you press **Check now**, and every five minutes. A connection that fails them, or whose last check is more than 15 minutes old, **refuses every request** until it passes again, and says why.

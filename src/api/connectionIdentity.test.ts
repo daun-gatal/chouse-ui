@@ -14,6 +14,7 @@ import {
   getConnectionIdentity,
   getConnectionRoleMap,
   identityCheckFromError,
+  kindSupport,
   identityKind,
   identityKindLabel,
   IDENTITY_MODE_PERSONAL,
@@ -160,6 +161,20 @@ describe("Connection identity API", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ statusCode: 422, code: "IDENTITY_CHECK_FAILED", message: "chouse_login holds grants of its own." });
     expect(identityCheckFromError(error)).toEqual(FAILING);
+  });
+
+  it("reads the checks off a switch refused because the server cannot run the kind", () => {
+    const unsupported = { ...FAILING, unsupported: true, reason: "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request." };
+    const error = new ApiError(unsupported.reason, 422, "KIND_UNSUPPORTED_ON_SERVER", "unknown", unsupported);
+    expect(identityCheckFromError(error)).toEqual(unsupported);
+  });
+
+  it("finds one kind's support, and nothing when the server gave none", () => {
+    const support = { serverVersion: "24.3.18.7", kinds: [{ kind: "shared", state: "available" as const, reason: "a" }, { kind: "shared_ceiling", state: "unavailable" as const, reason: "b" }] };
+    expect(kindSupport(support, "shared_ceiling")).toEqual({ kind: "shared_ceiling", state: "unavailable", reason: "b" });
+    expect(kindSupport(support, "personal")).toBeNull();
+    expect(kindSupport(undefined, "shared")).toBeNull();
+    expect(kindSupport(null, "shared")).toBeNull();
   });
 
   it("finds no checks on other errors or malformed details", () => {

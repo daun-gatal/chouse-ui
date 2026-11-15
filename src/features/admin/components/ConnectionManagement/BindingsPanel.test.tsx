@@ -226,6 +226,30 @@ describe("BindingsPanel", () => {
     expect(within(unbound).getByText("REVOKE IMPERSONATE ON old_user FROM chouse_impersonate;")).toBeTruthy();
   });
 
+  it("warns, with the server's reason, when this server cannot be a personal connection at all", async () => {
+    const reason = "ClickHouse 25.10.7.6 has no EXECUTE AS statement.";
+    getBindings.mockResolvedValue({ ...LISTING, personalSupport: { kind: "personal", state: "unavailable", reason }, serverVersion: "25.10.7.6" });
+    open();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("cannot be a personal connection");
+    expect(alert.textContent).toContain(reason);
+    // It replaces the neutral note about switching: switching would not help here.
+    expect(screen.queryByText("Links are not in use until this connection is switched to Personal.")).toBeNull();
+  });
+
+  it("shows no such warning on a server that can, or when the server gave no answer", async () => {
+    getBindings.mockResolvedValue({ ...LISTING, personalSupport: { kind: "personal", state: "available", reason: "ok" } });
+    open();
+    await screen.findByRole("table");
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
+    getBindings.mockResolvedValue({ ...LISTING, personalSupport: { kind: "personal", state: "unknown", reason: "could not reach" } });
+    open();
+    await screen.findByRole("table");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("says so when there are no links, and shows neither a grant script nor a warning", async () => {
     getBindings.mockResolvedValue(EMPTY);
     open();

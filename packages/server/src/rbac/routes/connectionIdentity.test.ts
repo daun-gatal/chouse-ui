@@ -18,9 +18,18 @@ const mockRecheck = mock(async () => PASS.verdict);
 const mockAudit = mock(async () => undefined);
 
 mock.module("../services/connections", () => ({ getConnectionById: mockGetConnectionById }));
+const SUPPORT = {
+  serverVersion: "24.3.18.7",
+  kinds: [
+    { kind: "shared", state: "available", reason: "Works on every ClickHouse version CHouse UI supports." },
+    { kind: "shared_ceiling", state: "unavailable", reason: "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer." },
+    { kind: "personal", state: "unavailable", reason: "no EXECUTE AS" },
+  ],
+};
 mock.module("../services/connectionIdentity", () => ({
   ceilingSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_system;"],
   personalSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_impersonate;"],
+  connectionKindSupport: async () => SUPPORT,
   checkIdentityChange: mockCheck,
   getIdentity: async () => IDENTITY,
   getRoleMap: mockGetRoleMap,
@@ -99,6 +108,22 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     expect(actor).toBe("u1");
     expect(entry.details).toMatchObject({ from: { identityMode: "shared", username: "svc" }, to: { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system" } });
     expect(JSON.stringify(entry)).not.toContain("pw");
+  });
+
+  it("answers 422 KIND_UNSUPPORTED_ON_SERVER when the server cannot run the kind, and audits nothing", async () => {
+    const reason = "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer.";
+    mockSwitch.mockImplementation(async () => ({ ok: false, unsupported: true, reason, verdict: { ok: false, reason, checks: [], serverVersion: "24.3.18.7" }, support: SUPPORT }));
+    const res = await app.request("/connections/c1/identity", json("PUT", CHANGE));
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatchObject({ code: "KIND_UNSUPPORTED_ON_SERVER", message: reason });
+    expect(body.error.details.support.serverVersion).toBe("24.3.18.7");
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("the identity data carries which kinds the connection's server can run", async () => {
+    const body = await (await app.request("/connections/c1/identity")).json();
+    expect(body.data.support).toEqual(SUPPORT);
   });
 
   it("answers 422 with the failed checks when the login does not pass, and audits nothing", async () => {

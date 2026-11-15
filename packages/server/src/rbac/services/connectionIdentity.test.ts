@@ -5,7 +5,7 @@ import { setExecutorClientForTests } from "../../services/chExecutor";
 import { closeDatabase } from "../db";
 import { runMigrations } from "../db/migrations";
 import { freshDatabase, rawAll, rawRun } from "../db/migrationTestHarness";
-import { anyRoleMapped, ceilingSetupStatements, defaultRoleIsMapped, getIdentity, getRoleMap, holdsMappedRole, mappedRoleIds, roleIsMapped, setAccessContact, setRoleMap, switchIdentity } from "./connectionIdentity";
+import { anyRoleMapped, ceilingSetupStatements, checkIdentityChange, connectionKindSupport, defaultRoleIsMapped, getIdentity, getRoleMap, holdsMappedRole, mappedRoleIds, roleIsMapped, setAccessContact, setRoleMap, switchIdentity } from "./connectionIdentity";
 import { createConnection, getConnectionById, getConnectionWithPassword } from "./connections";
 
 let connectionId = "";
@@ -87,15 +87,21 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
   describe("the switch", () => {
     const SYSTEM = ["GRANT SHOW, KILL QUERY ON *.* TO chouse_system", "GRANT SELECT ON system.* TO chouse_system"];
     /** A ClickHouse that knows one empty login, `svc_ceiling`, and one login with a direct grant, `svc_direct`. */
-    function server(): void {
+    const asked: string[] = [];
+    function server(takesRole = true, version = "26.5.7.64"): void {
+      asked.length = 0;
       setExecutorClientForTests((_id, config) => ({
         async query(args: { query: string; role?: string }) {
+          asked.push(args.query);
+          // A server older than 24.4 answers any role on a request this way.
+          if (!takesRole && args.role !== undefined) throw Object.assign(new Error("Setting role is neither a builtin setting nor started with the prefix 'SQL_' registered for user-defined settings. (UNKNOWN_SETTING)"), { code: "115" });
+          if (args.query.startsWith("EXPLAIN AST EXECUTE AS")) throw Object.assign(new Error("Syntax error: failed at position 21 ('AS')"), { code: "62" });
           const user = config?.username ?? "";
           const direct = user === "svc_direct";
           const asRole = args.role === "chouse_system";
           const text = ((): string => {
-            if (user !== "svc_ceiling" && !direct) throw Object.assign(new Error(`${user}: Authentication failed`), { code: "516" });
-            if (args.query.startsWith("SELECT version()")) return "26.5.7.64";
+            if (user !== "svc_ceiling" && user !== "old_shared" && !direct) throw Object.assign(new Error(`${user}: Authentication failed`), { code: "516" });
+            if (args.query.startsWith("SELECT version()")) return version;
             // As on a server without SHOW GRANTS FINAL: the privilege check then reads the roles itself.
             if (args.query === "SHOW GRANTS FINAL") throw Object.assign(new Error("Syntax error: failed at position 13 ('FINAL')"), { code: "62", type: "SYNTAX_ERROR" });
             if (args.query === "SHOW GRANTS") return direct ? "GRANT SELECT ON *.* TO svc_direct\nGRANT chouse_system TO svc_direct" : "GRANT chouse_system TO svc_ceiling";
@@ -118,6 +124,34 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
         async close() {},
       }));
     }
+
+    it("is refused with one reason when the server cannot run the kind, before any other check", async () => {
+      server(false, "24.3.18.7");
+      const ceiling = await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", password: "pw", systemRole: "chouse_system" });
+      expect(ceiling).toMatchObject({ ok: false, unsupported: true, reason: "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer." });
+      expect(ceiling.verdict).toMatchObject({ ok: false, serverVersion: "24.3.18.7", checks: [{ id: "version", ok: false }] });
+      expect(ceiling.support?.kinds.map((kind) => [kind.kind, kind.state])).toEqual([["shared", "available"], ["shared_ceiling", "unavailable"], ["personal", "unavailable"]]);
+      // Only the three probe statements were sent: no grants were read for a kind that cannot work.
+      expect(asked.sort()).toEqual(["EXPLAIN AST EXECUTE AS chouse_probe_no_such_user SELECT 1", "SELECT 1", "SELECT version()"]);
+      expect(await getConnectionById(connectionId)).toMatchObject({ identityMode: "shared", username: "old_shared" });
+
+      // A server with roles but no EXECUTE AS: the role ceiling may go on, personal may not.
+      server(true, "25.10.7.6");
+      const personal = await checkIdentityChange(connectionId, { identityMode: "personal", username: "svc_ceiling", password: "pw", systemRole: "chouse_system", impersonationRole: "chouse_impersonate" });
+      expect(personal.result).toMatchObject({ ok: false, unsupported: true });
+      expect(personal.result.reason).toContain("ClickHouse 25.10.7.6 has no EXECUTE AS statement");
+      const ceilingOk = await checkIdentityChange(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", password: "pw", systemRole: "chouse_system" });
+      expect(ceilingOk.result.unsupported).toBeUndefined();
+      expect(ceilingOk.result.support?.serverVersion).toBe("25.10.7.6");
+    });
+
+    it("tells which kinds a saved connection's server can run, asked with its stored login", async () => {
+      server(false, "24.3.18.7");
+      const support = await connectionKindSupport(connectionId);
+      expect(support.serverVersion).toBe("24.3.18.7");
+      expect(support.kinds.find((kind) => kind.kind === "shared_ceiling")?.state).toBe("unavailable");
+      await expect(connectionKindSupport("no-such-connection")).rejects.toMatchObject({ statusCode: 404 });
+    });
 
     it("is refused while the new login holds a direct grant, and nothing is written", async () => {
       server();
