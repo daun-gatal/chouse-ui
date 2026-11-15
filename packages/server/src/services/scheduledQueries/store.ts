@@ -184,9 +184,19 @@ export interface JobInput {
 /** List jobs for one producer, optionally scoped to a single owner. */
 export async function listJobs(ownerId?: string | null, kind: SqKind = "sql_query"): Promise<ScheduledQueryRow[]> {
   const rows = ownerId
-    ? await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} AND (created_by = ${ownerId} OR owner_id = ${ownerId}) ORDER BY name`)
+    ? await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} AND (owner_id = ${ownerId} OR (owner_id IS NULL AND created_by = ${ownerId})) ORDER BY name`)
     : await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} ORDER BY name`);
   return rows.map(toJobRow);
+}
+
+/**
+ * Whether a job is this account's: it is its owner, or the job has no owner
+ * and this account created it. A creator stops seeing a job once someone else
+ * owns it, because its results are then read with the new owner's access.
+ */
+export function isJobOf(job: Pick<ScheduledQueryRow, "ownerId" | "createdBy">, accountId: string | undefined): boolean {
+  if (!accountId) return false;
+  return job.ownerId ? job.ownerId === accountId : job.createdBy === accountId;
 }
 
 export async function listEnabledJobs(): Promise<ScheduledQueryRow[]> {

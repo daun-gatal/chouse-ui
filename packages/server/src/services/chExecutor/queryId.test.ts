@@ -69,7 +69,7 @@ describe("internal requests", () => {
 
   it("writes a condition that matches CHouse's own traffic", () => {
     const condition = internalTrafficSql(["observe", "dash'boards"]);
-    expect(condition).toContain("startsWith(query_id, 'chouse:s:collector:')");
+    expect(condition).toContain("startsWith(initial_query_id, 'chouse:s:collector:')");
     expect(condition).toContain("'^chouse:p:[A-Za-z0-9_-]{1,64}:i-'");
     expect(condition).toContain("IN ('observe', 'dashboards')");
   });
@@ -102,7 +102,9 @@ describe("ownerAccount", () => {
   it("as SQL, reads the id first and only then log_comment, on rows of the current login", () => {
     const expr = ownerAccountSql();
     expect(expr.startsWith("if(user = currentUser(), ")).toBe(true);
-    expect(expr.indexOf("splitByChar(':', query_id)[3]")).toBeLessThan(expr.indexOf("JSONExtractString(log_comment, 'rbac_user_id')"));
+    // initial_query_id: on a shard the row's own query id is not ours, and its log_comment is the statement's to set.
+    expect(expr.indexOf("splitByChar(':', initial_query_id)[3]")).toBeLessThan(expr.indexOf("JSONExtractString(log_comment, 'rbac_user_id')"));
+    expect(expr).not.toMatch(/[^_]query_id/);
     expect(ownerAccountSql({ queryId: "q.query_id", logComment: "Settings['log_comment']", user: "q.user" })).toContain("Settings['log_comment']");
   });
 });

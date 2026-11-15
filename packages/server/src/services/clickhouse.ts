@@ -1,6 +1,7 @@
 import {
   classifiedAppError,
   classifyClickHouseError,
+  clickhouseErrorCode,
   executorForConfig,
   ownerAccount,
   ownerAccountSql,
@@ -176,6 +177,15 @@ export class ClickHouseService {
   /** The ClickHouse login this service sends with: the `user` of every row it logs. */
   get loginUser(): string {
     return this.config.username;
+  }
+
+  /**
+   * The same handle for text CHouse builds around a statement a person typed
+   * (`EXPLAIN …`, a row count for a mutation's predicate). The typed part was
+   * checked, and these only read, so ClickHouse is asked to refuse a write.
+   */
+  private get readOnlyClient(): ChExecutor {
+    return executorForConfig(this.config, this.actor, { context: this.tags, defaults: { readonly: "2" } });
   }
 
   /** The connection's default database (used to resolve unqualified table refs). */
@@ -993,6 +1003,7 @@ export class ClickHouseService {
             memory_usage,
             user,
             substring(exception, 1, 2000) AS exception,
+            initial_query_id,
             log_comment
           FROM system.query_log AS __table1
           WHERE ${window}
@@ -1020,7 +1031,8 @@ export class ClickHouseService {
         memory_usage: Number(row.memory_usage) || 0,
         user: String(row.user ?? ""),
         exception: String(row.exception ?? ""),
-        rbac_user_id: ownerAccount({ queryId: row.query_id, logComment: row.log_comment, user: row.user }, login),
+        // A shard-side row belongs to whoever sent the statement that fanned out.
+        rbac_user_id: ownerAccount({ queryId: row.initial_query_id ?? row.query_id, logComment: row.log_comment, user: row.user }, login),
       }));
     } catch (error) {
       throw this.handleError(error, "Failed to fetch query logs");
@@ -1108,7 +1120,7 @@ export class ClickHouseService {
 
       // For text-based explain types (AST, SYNTAX, PIPELINE), get raw text
       if (explainType === 'ast' || explainType === 'syntax' || explainType === 'pipeline') {
-        const result = await this.client.query({
+        const result = await this.readOnlyClient.query({
           query: explainQuery,
           format: 'TabSeparatedRaw',
         });
@@ -1775,7 +1787,7 @@ export class ClickHouseService {
     const db = count.database;
 
     const scalar = async <T extends Record<string, unknown>>(query: string): Promise<T | undefined> => {
-      const res = await this.client.query({ query, format: "JSON" });
+      const res = await this.readOnlyClient.query({ query, format: "JSON" });
       const json = await res.json() as JsonResponse<T>;
       return json.data[0];
     };
@@ -2804,7 +2816,11 @@ export class ClickHouseService {
     const message = err?.message || defaultMessage;
     const statusCode = err?.response?.status;
 
-    if (statusCode === 401 || statusCode === 403 || message.includes("Authentication")) {
+    // By code where ClickHouse gave one (516: authentication failed): a typed
+    // statement can make any error text, and must not read as a login problem.
+    const chCode = clickhouseErrorCode(error);
+    const loginRefused = chCode !== null ? chCode === 516 : statusCode === 401 || statusCode === 403 || message.includes("Authentication");
+    if (loginRefused) {
       // Not 401: that would make the browser refresh its own session, and the
       // failure is this connection's stored login, not the person's sign-in.
       return new AppError(

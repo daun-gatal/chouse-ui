@@ -940,6 +940,46 @@ used to be reported as a sign-in failure; and moving the owner of a
 dashboard's alerts and reports when a save changes the dashboard's
 variables or adds a panel, since both change what a later run executes.
 
+**Changed after an independent review of the 2b diff.** The executor
+refuses an object that only has a checked statement's fields (the class has
+a private member, and `isReal` is checked before anything is sent), and a
+statement checked for another connection. The account of a logged row is
+read from `initial_query_id`, so a shard-side row, whose own query id the
+server made, belongs to the statement that fanned out and not to whatever
+its `log_comment` says. Without view-all a job is visible to its owner, or
+to its creator while it has no owner: after a takeover its results are read
+with the new owner's access. "Assign to me" also works when the owner's
+account no longer exists. The materialize preview sends nothing unless the
+caller's data access allows the query (it used to describe the query's
+columns first; this predates 2b). The classifier goes by the error code
+when there is one, so words in a statement's own error text cannot make it
+read as a grant, read-only or login problem. The migration's backfill fills
+any empty owner, so a start-up that died between adding the column and
+filling it is repaired by the next one.
+
+**Known and left for later.** Each of these is narrower than the rule in §2
+and is listed so nobody takes the rule as covering it:
+
+- Text CHouse builds around a checked statement is sent through the plain
+  calls: `EXPLAIN` of a checked query (now with `readonly = 2`), the row
+  count for a mutation's predicate (same), a materialize run's `DESCRIBE`
+  and `INSERT … SELECT` around the owner's checked `SELECT`, and data health
+  diagnostics. The typed part was checked; the wrapper was not parsed again.
+- `EXPLAIN ESTIMATE` of model-written SQL in the AI guardrail and in the
+  optimize-log result runs with no access check. It returns row and part
+  estimates, not rows.
+- A fleet AI run with no person (a background run) sends model-written
+  SQL as the service purpose behind the older text guard, as before.
+- Lineage and table usage still take `source`, `job_id` and `pat_id` from
+  `log_comment` to say which job or token read a table. A statement can
+  forge those for itself; it cannot forge the account.
+- `system.mutations`, `system.distributed_ddl_queue` and `system.errors`
+  can show the text of other people's statements and need no permission,
+  because the Monitoring pages read them from the browser. Closing them
+  means moving those reads to server routes first.
+- Two people saving the same job at the same moment can leave one's SQL
+  with the other as owner. Each text passed its own author's check at save.
+
 Observed while building (ClickHouse 23.8.16.16 and 26.5.7.64): under
 `readonly = 2`, `SELECT`, `SHOW`, `DESCRIBE`, `EXISTS`, `CHECK`, `EXPLAIN`,
 `SET`, `USE` and `KILL QUERY` run, and `INSERT`, `CREATE`, `ALTER` and

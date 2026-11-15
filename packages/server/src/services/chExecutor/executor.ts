@@ -8,7 +8,7 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings, type DataFormat, type ResultSet } from "@clickhouse/client";
 
 import type { ConnectionConfig } from "../../types";
-import type { CheckedStatement } from "./checked";
+import { CheckedStatement } from "./checked";
 import { ClientManager, type ClientLane } from "./clientPool";
 import { makeQueryId } from "./queryId";
 import { buildSession, type ChSession } from "./session";
@@ -63,9 +63,15 @@ function withoutText<T extends object>(args: T): T {
  * checked for the person this handle sends for; the `readonly` level is the
  * executor's, whatever the call passed.
  */
-function checkedSettings(actor: Actor, statement: CheckedStatement, given: ClickHouseSettings | undefined, feature: ReadOnlyLevel | undefined): ClickHouseSettings {
+function checkedSettings(actor: Actor, connectionId: string | undefined, statement: CheckedStatement, given: ClickHouseSettings | undefined, feature: ReadOnlyLevel | undefined): ClickHouseSettings {
+  if (!CheckedStatement.isReal(statement)) {
+    throw new Error("Typed text can only be sent as a statement the access check returned");
+  }
   if (actor.kind !== "person" || actor.accountId !== statement.accountId) {
     throw new Error("A checked statement can only be sent for the person it was checked for");
+  }
+  if (connectionId !== undefined && statement.connectionId !== undefined && connectionId !== statement.connectionId) {
+    throw new Error("A checked statement can only be sent on the connection it was checked for");
   }
   const { readonly: _ignored, ...rest } = given ?? {};
   const level = readonlyFor(statement, feature);
@@ -151,7 +157,7 @@ export function executorOverClient(
     },
     queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
-      const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
+      const settings = checkedSettings(actor, options.connectionId, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
       const queryId = idFor(rest.query_id);
       const call = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
@@ -159,7 +165,7 @@ export function executorOverClient(
     },
     commandChecked(statement: CheckedStatement, args: CheckedCommandArgs = {}) {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
-      const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
+      const settings = checkedSettings(actor, options.connectionId, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane);
       const queryId = idFor(rest.query_id);
       const call: CommandArgs = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) };
@@ -242,9 +248,9 @@ export async function executorForConnection(
   const { credential, ...rest } = options;
   if (testClient) {
     const stand = testClient;
-    return executorOverClient(() => stand(connectionId, undefined) as ClientLike, actor, rest);
+    return executorOverClient(() => stand(connectionId, undefined) as ClientLike, actor, { ...rest, connectionId });
   }
-  return executorForConfig(await connectionConfig(connectionId, credential), actor, rest);
+  return executorForConfig(await connectionConfig(connectionId, credential), actor, { ...rest, connectionId });
 }
 
 /**

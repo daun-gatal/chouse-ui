@@ -38,6 +38,9 @@ describe("check-clickhouse-access", () => {
     const util = 'import { checkedForTests } from "../services/chExecutor/checked.test-util";';
     expect(violationsIn(`${SRC}/routes/query.ts`, util)).toHaveLength(1);
     expect(violationsIn(`${SRC}/routes/query.test.ts`, util)).toEqual([]);
+    for (const form of ['from "../services/chExecutor/checked.test-util.ts";', 'await import("../services/chExecutor/checked.test-util");', 'require("../services/chExecutor/checked.test-util");']) {
+      expect(violationsIn(`${SRC}/routes/query.ts`, form)).toHaveLength(1);
+    }
     expect(violationsIn(`${SRC}/routes/query.ts`, "setAccessOverrideForTests(() => true);")).toHaveLength(1);
     expect(violationsIn(`${SRC}/services/chExecutor/shared.e2e.test.ts`, "setAccessOverrideForTests(() => true);")).toEqual([]);
     expect(violationsIn(`${SRC}/middleware/dataAccess.ts`, "export function setAccessOverrideForTests() {}")).toEqual([]);

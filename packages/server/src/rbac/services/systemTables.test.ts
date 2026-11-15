@@ -4,13 +4,13 @@ import { systemTablePermission, systemTableRefusal } from "./systemTables";
 
 describe("systemTablePermission", () => {
   it("asks for query:history:view:all on the statement and session logs", () => {
-    for (const table of ["query_log", "query_thread_log", "query_views_log", "processes", "text_log", "session_log", "crash_log", "asynchronous_insert_log", "opentelemetry_span_log"]) {
+    for (const table of ["query_log", "query_thread_log", "query_views_log", "processes", "text_log", "session_log", "crash_log", "asynchronous_insert_log", "opentelemetry_span_log", "asynchronous_inserts", "query_cache", "zookeeper_log"]) {
       expect(systemTablePermission("system", table)).toBe("query:history:view:all");
     }
   });
 
   it("asks for clickhouse:users:view on the access tables", () => {
-    for (const table of ["users", "roles", "grants", "role_grants", "row_policies", "quotas", "quota_usage", "quotas_usage", "settings_profiles", "settings_profile_elements", "user_directories"]) {
+    for (const table of ["users", "roles", "grants", "role_grants", "row_policies", "quotas", "quota_usage", "quotas_usage", "settings_profiles", "settings_profile_elements", "user_directories", "quota_limits", "zookeeper"]) {
       expect(systemTablePermission("system", table)).toBe("clickhouse:users:view");
     }
   });

@@ -48,7 +48,8 @@ const POOL_IMPORT = /from\s+["'][^"']*chExecutor\/clientPool["']/;
 const CREDENTIAL_READ = /\bgetCredential\s*\(/;
 const REAL_SERVER_TEST = /\.(?:e2e|integration)\.test\.ts$/;
 const MINT = /\bmintCheckedStatement\b/;
-const TEST_UTIL_IMPORT = /from\s+["'][^"']*checked\.test-util["']/;
+// Any mention: a static, dynamic or required import, with or without the extension.
+const TEST_UTIL_IMPORT = /checked\.test-util/;
 const ACCESS_OVERRIDE = /\bsetAccessOverrideForTests\b/;
 
 /** Files that may name `mintCheckedStatement`, and why. */

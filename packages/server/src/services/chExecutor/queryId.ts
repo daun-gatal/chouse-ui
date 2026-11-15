@@ -119,7 +119,11 @@ export interface LogColumns {
   user: string;
 }
 
-const QUERY_LOG: LogColumns = { queryId: "query_id", logComment: "log_comment", user: "user" };
+// `initial_query_id` equals `query_id` for a statement CHouse sent, and on a
+// shard it is the id of the statement that fanned out. A shard-side row has a
+// query id the server made, so reading `query_id` there would fall through to
+// `log_comment`, which the statement controls.
+const QUERY_LOG: LogColumns = { queryId: "initial_query_id", logComment: "log_comment", user: "user" };
 
 /**
  * `ownerAccount` as a ClickHouse expression: the account, or an empty string.

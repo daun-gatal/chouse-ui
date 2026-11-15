@@ -1596,14 +1596,24 @@ for (const dialect of DIALECTS) {
       expect(kept.map((r) => r.created_by ?? null)).toEqual(["user-a", "user-b", null]);
     });
 
-    it("is a no-op when re-run, even for a job whose owner changed or was cleared since", async () => {
+    it("is a no-op when re-run, and never overwrites an owner that changed since", async () => {
       await h.rawRun(sql`UPDATE scheduled_queries SET owner_id = 'editor-9' WHERE id = 'job-a'`);
-      await h.rawRun(sql`UPDATE scheduled_queries SET owner_id = NULL WHERE id = 'job-b'`);
       const migration = MIGRATIONS.find((m) => m.version === "1.76.0")!;
       const { getDatabase } = await import("./index");
       await migration.up(getDatabase());
-      expect(await owners()).toEqual({ "job-a": "editor-9", "job-b": null, "job-orphan": null });
+      expect(await owners()).toEqual({ "job-a": "editor-9", "job-b": "user-b", "job-orphan": null });
       expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
+    });
+
+    it("finishes the backfill when an earlier start-up added the column and died before filling it", async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.75.0" });
+      await job("job-a", "user-a");
+      await job("job-orphan", null);
+      // The state a crash between the two statements leaves: the column is there, empty, and 1.76.0 is not recorded.
+      await h.rawRun(sql`ALTER TABLE scheduled_queries ADD COLUMN owner_id TEXT`);
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toContain("1.76.0");
+      expect(await owners()).toEqual({ "job-a": "user-a", "job-orphan": null });
     });
 
     it("applies cleanly to an install with no jobs", async () => {

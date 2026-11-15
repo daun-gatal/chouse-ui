@@ -51,14 +51,19 @@ export function clickhouseErrorType(error: unknown): string {
 
 /** ClickHouse refused for lack of a grant (497). */
 export function isGrantError(error: unknown): boolean {
-  if (clickhouseErrorCode(error) === ACCESS_DENIED || clickhouseErrorType(error) === "ACCESS_DENIED") return true;
+  // The code decides when there is one: a statement can put any words in its own error text.
+  const code = clickhouseErrorCode(error);
+  if (code !== null) return code === ACCESS_DENIED;
+  if (clickhouseErrorType(error) === "ACCESS_DENIED") return true;
   const message = messageOf(error);
   return message.includes("ACCESS_DENIED") || /Not enough privileges/i.test(message);
 }
 
 /** ClickHouse refused a change on a read-only request (164). */
 export function isReadOnlyError(error: unknown): boolean {
-  if (clickhouseErrorCode(error) === READONLY || clickhouseErrorType(error) === "READONLY") return true;
+  const code = clickhouseErrorCode(error);
+  if (code !== null) return code === READONLY;
+  if (clickhouseErrorType(error) === "READONLY") return true;
   return /\(READONLY\)/.test(messageOf(error));
 }
 

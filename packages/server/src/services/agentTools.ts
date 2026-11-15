@@ -609,7 +609,8 @@ export function createCoreTools(ctx: AgentToolContext) {
           // Everyone shares the connection's ClickHouse user, so "own queries"
           // is decided from the CHouse account recorded on each query.
           // The account comes from the query id the executor made (ADR 0033 §2).
-          const filter = ctx.isAdmin ? "" : `WHERE ${ownerAccountSql({ queryId: "query_id", logComment: "Settings['log_comment']", user: "user" })} = ${quoteStringLiteral(ctx.userId)}`;
+          if (!ctx.isAdmin && !ctx.userId) return { queries: [] };
+          const filter = ctx.isAdmin ? "" : `WHERE ${ownerAccountSql({ queryId: "initial_query_id", logComment: "Settings['log_comment']", user: "user" })} = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT 
                 query_id, user, query, elapsed, read_rows, 
@@ -896,6 +897,7 @@ export function createCoreTools(ctx: AgentToolContext) {
         minDurationMs?: number;
       }): Promise<Record<string, unknown>> => {
         try {
+          if (!ctx.isAdmin && !ctx.userId) return { queries: [] };
           const filter = ctx.isAdmin ? "" : `AND ${ownerAccountSql()} = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT

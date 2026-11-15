@@ -110,6 +110,8 @@ export interface ChExecutor {
 export interface ExecutorOptions {
   /** Context fields for `log_comment` (source, agent, token). Never identity. */
   context?: Record<string, string>;
+  /** The saved connection this handle sends on, when known. A checked statement for another connection is refused. */
+  connectionId?: string;
   /** True for a feature's own requests (collection, dashboard panels): their query ids are marked so reports leave them out. */
   internal?: boolean;
   /** Settings every request of this handle carries unless the call overrides them. */

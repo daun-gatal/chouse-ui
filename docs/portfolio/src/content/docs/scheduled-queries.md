@@ -78,9 +78,9 @@ The owner is whoever last changed what the job does. The person who creates a jo
 | The notification channels | Yes |
 | The name, description, schedule, time zone, limits, retries or the enabled switch | No |
 
-This way nobody's job runs a statement someone else wrote under their name. The job page shows the owner, and who created the job. The same rule applies to a [data health](/docs/data-health/) check and to a dashboard: changing the SQL of a panel, or the dashboard's variables, makes you the owner of that panel's [alerts](/docs/dashboards/#panel-alerts) and of the dashboard's [reports](/docs/dashboards/#scheduled-reports).
+This way nobody's job runs a statement someone else wrote under their name. The job page shows the owner, and who created the job. Without `scheduled_queries:view_all` you see the jobs you own: once someone else owns a job you created, its results are read with their access, so it leaves your list. The same rule applies to a [data health](/docs/data-health/) check and to a dashboard: changing the SQL of a panel, or the dashboard's variables, makes you the owner of that panel's [alerts](/docs/dashboards/#panel-alerts) and of the dashboard's [reports](/docs/dashboards/#scheduled-reports).
 
-A job with no owner does not run: its runs fail with a message saying so. The job list marks it **No owner**. To fix it, open the job and choose **Assign to me** (it needs `scheduled_queries:edit`, and your own data access must allow the job's query), or save a change to it. Before 3.18 such a job ran with no access check at all.
+A job with no owner does not run: its runs fail with a message saying so. The job list marks it **No owner**. A job whose owner's account was deleted fails its access check the same way. To fix either, open the job and choose **Assign to me** (it needs `scheduled_queries:edit`, and your own data access must allow the job's query), or save a change to it. Before 3.18 such a job ran with no access check at all.
 
 ## Promises use the same engine
 

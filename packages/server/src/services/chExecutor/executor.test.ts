@@ -211,6 +211,23 @@ describe("checked statements (ADR 0033 §2)", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("refuses an object that only looks like a checked statement", () => {
+    const { client, sent } = recordingClient();
+    const executor = executorOverClient(() => client, personActor("u1"));
+    const forged = { sql: "DROP TABLE t", params: undefined, connectionId: "c1", accountId: "u1", isRead: false, mayWrite: true };
+    expect(() => executor.commandChecked(forged as never)).toThrow("the access check returned");
+    expect(() => executor.queryChecked(Object.create(Object.getPrototypeOf(checkedForTests({ sql: "SELECT 1" })), { sql: { value: "DROP TABLE t" }, accountId: { value: "u1" } }) as never)).toThrow("the access check returned");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("refuses a statement checked for another connection, when the handle knows its connection", async () => {
+    const { client, sent } = recordingClient();
+    const onA = executorOverClient(() => client, personActor("u1"), { connectionId: "conn-a" });
+    expect(() => onA.queryChecked(checkedForTests({ sql: "SELECT 1", accountId: "u1", connectionId: "conn-b" }))).toThrow("connection it was checked for");
+    await onA.queryChecked(checkedForTests({ sql: "SELECT 1", accountId: "u1", connectionId: "conn-a" }));
+    expect(sent).toHaveLength(1);
+  });
+
   it("the test helper refuses to make a statement outside a test run", () => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";

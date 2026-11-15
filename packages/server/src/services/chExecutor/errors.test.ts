@@ -60,6 +60,14 @@ describe("classifyClickHouseError", () => {
     expect(classified?.message).toContain("readonly = 2");
   });
 
+  it("goes by the code when there is one, whatever words the statement put in its own error", () => {
+    const unknownIdentifier = chError("47", "UNKNOWN_IDENTIFIER", "Missing columns: 'ACCESS_DENIED' while processing query 'SELECT ACCESS_DENIED FROM t'");
+    expect(isGrantError(unknownIdentifier)).toBe(false);
+    expect(classifyClickHouseError(unknownIdentifier)).toBeNull();
+    expect(classifyClickHouseError(chError("62", "SYNTAX_ERROR", "Syntax error near '(READONLY)'"))).toBeNull();
+    expect(classifyClickHouseError(new Error("Code: 47. DB::Exception: Not enough privileges is not a column"))).toBeNull();
+  });
+
   it("leaves every other error alone, including text that only mentions read-only", () => {
     expect(classifyClickHouseError(chError("60", "UNKNOWN_TABLE", "Table x does not exist"))).toBeNull();
     expect(classifyClickHouseError(new Error("Authentication failed"))).toBeNull();

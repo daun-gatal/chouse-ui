@@ -7,10 +7,12 @@ type: minor
 
 ### Changed
 - **System tables that show other people's work need a permission** — a typed read of `system.query_log`, `system.processes`, `system.text_log` and the other statement and session logs needs `query:history:view:all`; a read of `system.users`, `system.grants` and the other access tables needs `clickhouse:users:view`. Other system tables stay open. Without the permission, the Logs page still lists your own statements, and the parts of Monitoring that read these tables say which permission they need.
+- **You see the scheduled queries you own** — without `scheduled_queries:view_all`, a job you created leaves your list once someone else becomes its owner, because its results are then read with their access.
 - **A job runs as whoever last changed what it does** — saving a change to a scheduled query's SQL, output or notification channels makes the saver its owner, and later runs are checked against that person's access. The same holds for a data health check, and for a dashboard's alerts and reports when someone changes a panel's SQL or the dashboard's variables. Existing jobs keep their creator as owner.
 - **Ownership is read from the query id** — Live Queries, the Logs page, lineage, table usage and the AI tools that list your own queries read the CHouse account from the query id CHouse UI set. A statement that sets its own `log_comment` no longer changes who it is shown for, and cannot hide itself from CHouse UI's reports.
 - **The fleet AI checks the SQL it writes** — statements the Doctor and the other fleet AI features write for a person are parsed by ClickHouse, may read only system tables, and follow the same permission rule for the statement logs.
 - **Clearer messages when ClickHouse refuses** — a refused write reads "You may only read here", a missing ClickHouse grant names the grant, and neither is reported as a sign-in failure any more. A connection whose stored login ClickHouse rejects reports `CONNECTION_AUTH_FAILED` instead of signing you out.
 
 ### Fixed
+- **The scheduled query preview read the query's columns before checking access** — the materialize preview now sends nothing to ClickHouse unless your data access allows the query.
 - **Typed text could reach ClickHouse without the check it was shown** — the server now sends a typed statement only as the exact text, parameters, connection and account the access check approved.

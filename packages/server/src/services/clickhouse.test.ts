@@ -98,13 +98,21 @@ describe("ClickHouse Service", () => {
                 { type: "QueryFinish", query_id: "chouse:p:u1:n2", user: "mallory", log_comment: "" },
             ]);
             const rows = await service.getQueryLogs({ limit: 50, hoursBack: 6, sortBy: "event_time", sortDir: "desc", ownAccountId: "u1" });
-            expect(sent().query).toContain("splitByChar(':', query_id)[3]");
+            expect(sent().query).toContain("splitByChar(':', initial_query_id)[3]");
             expect(sent().query).toContain("= {account:String}");
             expect(sent().query).not.toContain("'u1'");
             expect(sent().query_params).toEqual({ account: "u1" });
             expect(sent().clickhouse_settings.readonly).toBe("2");
             // The id decides who a row is for, and a row of another ClickHouse login names no one.
             expect(rows.map((r) => r.rbac_user_id)).toEqual(["u1", null]);
+
+            // A shard-side row has a server-made id and whatever log_comment the statement set:
+            // it belongs to whoever sent the statement that fanned out.
+            mockJsonFn.mockResolvedValueOnce([
+                { type: "QueryFinish", query_id: "b3f1", initial_query_id: "chouse:p:u1:n", user: "default", log_comment: JSON.stringify({ rbac_user_id: "victim" }) },
+            ]);
+            const shard = await service.getQueryLogs({ limit: 50, hoursBack: 6, sortBy: "event_time", sortDir: "desc" });
+            expect(shard[0].rbac_user_id).toBe("u1");
             expect(rows[0].read_rows).toBe(12);
         });
 

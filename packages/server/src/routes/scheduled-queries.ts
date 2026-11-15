@@ -15,7 +15,7 @@ import { zValidator } from "@hono/zod-validator";
 
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { PERMISSIONS, AUDIT_ACTIONS, SYSTEM_ROLES } from "../rbac/schema/base";
-import { createAuditLogWithContext } from "../rbac/services/rbac";
+import { createAuditLogWithContext, getUserById } from "../rbac/services/rbac";
 import { getUserConnections } from "../rbac/services/connections";
 import { validateQueryAccess } from "../middleware/dataAccess";
 import { AppError, requireParam } from "../types";
@@ -117,7 +117,7 @@ function ownerScope(c: Context): string | null {
 async function loadVisibleJob(c: Context, id: string): Promise<ScheduledQueryRow> {
   const job = await store.getJob(id);
   if (!job || job.kind !== "sql_query") throw AppError.notFound("Scheduled query not found");
-  if (!canViewAll(c) && job.createdBy !== userId(c) && job.ownerId !== userId(c)) {
+  if (!canViewAll(c) && !store.isJobOf(job, userId(c))) {
     throw AppError.notFound("Scheduled query not found");
   }
   return job;
@@ -447,13 +447,15 @@ scheduledQueries.patch(
 scheduledQueries.post("/:id/assign-to-me", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_EDIT), async (c) => {
   const id = requireParam(c, "id");
   const job = await loadVisibleJob(c, id);
-  if (job.ownerId) throw AppError.conflict("This job already has an owner. Save a change to it to become its owner.");
+  // An owner whose account was deleted counts as no owner: the job cannot run as them.
+  const ownerGone = job.ownerId !== null && (await getUserById(job.ownerId)) === null;
+  if (job.ownerId && !ownerGone) throw AppError.conflict("This job already has an owner. Save a change to it to become its owner.");
   await assertConnectionAccess(c, job.connectionId);
   const access = await dataAccessCheck(c, job.query, job.connectionId);
   if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
   const me = getRbacUser(c).sub;
-  if (!(await store.setJobOwner(id, me, true))) throw AppError.conflict("This job already has an owner.");
-  await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_OWNER_CHANGED, me, { resourceType: "scheduled_query", resourceId: id, details: { previousOwnerId: null, ownerId: me, reason: "assigned" } });
+  if (!(await store.setJobOwner(id, me, !ownerGone))) throw AppError.conflict("This job already has an owner.");
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_OWNER_CHANGED, me, { resourceType: "scheduled_query", resourceId: id, details: { previousOwnerId: job.ownerId, ownerId: me, reason: "assigned" } });
   const updated = await store.getJob(id);
   return ok(c, await toJobResponse(updated!, false));
 });
@@ -611,6 +613,9 @@ scheduledQueries.post(
     const body = c.req.valid("json") as JobBody;
     const result: Record<string, unknown> = {};
 
+    // Nothing of the query is sent to ClickHouse unless the caller's own data access allows it.
+    let dataAccessAllowed = false;
+
     // 1. Read-only + token validation.
     const ro = validateReadOnlySelect(body.query);
     result.readOnly = { ok: ro.ok, error: ro.error, tokens: ro.tokens };
@@ -620,6 +625,7 @@ scheduledQueries.post(
     if (ro.ok && body.connectionId) {
       const access = await dataAccessCheck(c, body.query, body.connectionId);
       result.dataAccess = { allowed: access.allowed, reason: access.reason };
+      dataAccessAllowed = access.allowed;
     }
 
     // 2. Next fire-times.
@@ -640,7 +646,7 @@ scheduledQueries.post(
     }
 
     // 3. Materialize: DESCRIBE-based schema + destination compatibility + DDL.
-    if (ro.ok && body.outputMode !== "none" && body.destDatabase && body.destTable) {
+    if (ro.ok && dataAccessAllowed && body.outputMode !== "none" && body.destDatabase && body.destTable) {
       if (!hasWritePerm(c)) throw AppError.forbidden("Materialize preview requires scheduled_queries:write");
       try {
         await assertConnectionAccess(c, body.connectionId);

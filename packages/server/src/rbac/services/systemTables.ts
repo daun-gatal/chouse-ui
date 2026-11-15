@@ -18,6 +18,10 @@ const STATEMENT_LOGS: ReadonlySet<string> = new Set([
   "crash_log",
   "asynchronous_insert_log",
   "opentelemetry_span_log",
+  // Not logs, but they hold the text of statements other people sent.
+  "asynchronous_inserts",
+  "query_cache",
+  "zookeeper_log",
 ]);
 
 /** Access tables: who exists in ClickHouse and what they may do. */
@@ -33,6 +37,9 @@ const ACCESS_TABLES: ReadonlySet<string> = new Set([
   "settings_profiles",
   "settings_profile_elements",
   "user_directories",
+  "quota_limits",
+  // Any Keeper node, which with replicated access storage includes the stored users.
+  "zookeeper",
 ]);
 
 /**

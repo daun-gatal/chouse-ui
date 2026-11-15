@@ -23,6 +23,8 @@ export interface CheckedFields {
 let make: (fields: CheckedFields) => CheckedStatement;
 
 export class CheckedStatement implements CheckedFields {
+  /** A private member, so an object literal with the same fields is not a CheckedStatement to the compiler. */
+  readonly #made = true;
   readonly sql: string;
   readonly params: Record<string, unknown> | undefined;
   readonly connectionId: string | undefined;
@@ -42,6 +44,11 @@ export class CheckedStatement implements CheckedFields {
 
   static {
     make = (fields) => new CheckedStatement(fields);
+  }
+
+  /** True only for a statement the access check made; a look-alike object fails. */
+  static isReal(value: unknown): value is CheckedStatement {
+    return value instanceof CheckedStatement && #made in value && value.#made;
   }
 }
 
