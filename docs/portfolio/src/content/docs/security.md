@@ -44,10 +44,28 @@ Every statement CHouse UI sends to ClickHouse goes through one server module, an
 
 A query id proves who sent a statement only on rows whose ClickHouse `user` is the connection's own login. Someone with their own ClickHouse login can choose any id for statements they send directly.
 
-Two rules apply to everyone, administrators included:
+CHouse UI's own reports read the account from the query id, not from `log_comment`: Live Queries, the Logs page, lineage, table usage and the AI tools that list your own queries. A statement that sets its own `log_comment` does not change who it is shown for, and cannot hide itself from those reports. On rows logged before 3.18, which have no such id, the account is still read from `log_comment`.
+
+Three rules apply to everyone, administrators included:
 
 - **`EXECUTE AS` is refused.** CHouse UI decides which ClickHouse user a statement runs as. The check reads ClickHouse's own parse of the statement, so a comment or a wrapper cannot hide the keyword.
 - **Every typed statement is parsed by ClickHouse before it runs.** Administrators still skip permission and data access checks, but a statement ClickHouse cannot parse, or cannot parse right now, is not run.
+- **Typed text runs only after it is checked.** The server sends a typed statement to ClickHouse only as the exact text, parameters, connection and account that the access check approved. This holds for the SQL editor, saved and scheduled queries, dashboard panels, notebook cells and the SQL the AI tools write.
+
+### Reads are sent read-only
+
+CHouse UI also asks ClickHouse to refuse a write, so a mistake in CHouse UI's own check cannot turn a read into a write:
+
+| Statement | `readonly` on the request |
+| --- | --- |
+| A read (`SELECT`, `SHOW`, `DESCRIBE`, `EXISTS`, `CHECK`, `EXPLAIN`), from anyone | `2` |
+| Anything from a person whose roles hold no permission to change data, tables or settings | `2` |
+| Every statement of a feature that only reads: dashboard panels, data health checks, notebook cells, the fleet AI's investigation queries | `1`, or `2` for scheduled queries |
+| A write from a person who may write | none |
+
+Whether a statement is a read comes from ClickHouse's parse of it, not from its first word. With `readonly = 2` ClickHouse refuses every write (error 164, shown as "You may only read here") but still lets a statement set its own settings, such as `SETTINGS max_threads = 4`; it cannot switch `readonly` off.
+
+A connection whose ClickHouse login is itself limited with `readonly = 2` keeps working. A login limited with `readonly = 1` has never worked with CHouse UI, because ClickHouse then refuses the settings CHouse UI sends with every request.
 
 The design and the stages that follow it are in [ADR 0033](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
 

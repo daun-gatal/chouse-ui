@@ -912,6 +912,42 @@ this section that 2a did not build is 2b: the interface below, `readonly`,
 the classifier, the system-table rule, the forced-allow hook, ownership and
 its migration, and the frontend rows.
 
+**What 2b built, and where it differs from the plan below.** 2b shipped
+`readonly`, the checked statement, the classifier, the system-table rule,
+the forced-allow hook, ownership with migration 1.76.0, and the frontend.
+The tables below are the plan as reviewed; these are the differences, each
+decided during the build:
+
+| Planned | Built | Why |
+| --- | --- | --- |
+| A new interface (`runChecked`, `read`, `command`, `insertRows`, `stop`, `parse`) replaces the client-shaped one | The 2a handle stays and gains `queryChecked` and `commandChecked`. `ClickHouseService.executeChecked` and `streamQueryRows` take a checked statement | Rewriting about 95 call sites of CHouse-built text would change nothing they send. The rule that matters is on typed text, and it is enforced where typed text enters |
+| `CheckedStatement` is a class in `S/middleware/dataAccess.ts` | The class is in `S/services/chExecutor/checked.ts` with a private constructor. Its one factory may be named only by `dataAccess.ts`; `check:clickhouse-access` fails on any other file | The executor must not import the middleware that imports it. The CI check gives the same guarantee: only the access check makes one |
+| "No write permission" means none of `query:execute:dml`, `:ddl`, `:misc` | Also none of `table:insert`, `table:update`, `table:delete`, `table:create`, `table:alter`, `table:drop`, `database:create`, `database:drop`, `live_queries:kill_all` | Those are the permissions the access check asks for on a write. With the shorter list a person holding only `table:insert` would have had every insert refused by ClickHouse |
+| `readOnlyFeature` on `read` | CHouse-built reads keep setting `readonly` themselves, as in 2a. `readOnlyFeature` exists on the checked calls only | CHouse-built text is not what the rule guards against |
+| A scheduled run's check uses placeholder values for the time parameters | The check runs on the values of that run, and the run sends the checked statement | A checked statement holds the parameters it was checked with |
+| A data health check and its job take the same owner | The backing job runs as whoever saved the check (`owner_id`). The check's "owner" field keeps meaning the person responsible for it, and `created_by` keeps deciding who sees the job | Someone who may see every check can name another person as responsible. That person did not write the SQL and was not checked against it |
+| The upgrade check replays logged statements through the access check as the person who started it | It stays the service purpose `upgrade-check`, now recording who started it | It sends only `EXPLAIN PLAN` of each statement under `readonly = 2` with a row limit, and shows pass or fail. The statements are other people's; checking them against the starter's table rules would refuse most of the workload the check exists to test |
+| Self-exclusion filters use the `chouse:s:collector:` prefix | They use `internalTrafficSql`: that prefix, `chouse:s:remediation:`, and a marked random part (`i-`) on a feature's request made for a person. Only the executor can set the mark | Dashboard panels and notebook cells are sent for a person, so no service prefix covers them, and `log_comment` cannot be trusted to mark them |
+| `src/hooks/useQuery.ts` moves to the existing recent-queries route | A new route, `POST /api/metrics/query-logs`, builds and scopes the Logs page's statement | The Logs page needs columns, sorting and a time range that the recent-queries route does not have |
+| Built-in dashboard panels over the statement logs are marked as needing the permission | Not marked. A viewer without the permission gets the refusal on the panel, which names the permission | The refusal already says it; a second mechanism would have to be kept in step with the list |
+| `identity.ts`, `recording.test-util.ts`, `S/routes/scheduled-queries.test.ts`, `S/services/agents/governance.test.ts` | Not added | In this delivery the identity is the stored login and nothing more. The executor tests record calls with a stand-in client, and the route behaviour is covered by the store tests and the real-server suite |
+
+Also built, and not in the plan: `validateSystemRead`, which checks SQL the
+fleet AI writes for a person like typed text (only a single `SELECT`, only
+system tables, the same permission rule); the error code
+`CONNECTION_AUTH_FAILED` (502) for a stored login ClickHouse rejects, which
+used to be reported as a sign-in failure; and moving the owner of a
+dashboard's alerts and reports when a save changes the dashboard's
+variables or adds a panel, since both change what a later run executes.
+
+Observed while building (ClickHouse 23.8.16.16 and 26.5.7.64): under
+`readonly = 2`, `SELECT`, `SHOW`, `DESCRIBE`, `EXISTS`, `CHECK`, `EXPLAIN`,
+`SET`, `USE` and `KILL QUERY` run, and `INSERT`, `CREATE`, `ALTER` and
+`SYSTEM` are refused with 164. A login whose profile sets `readonly = 2`
+accepts a request that sends `readonly = 2`. A login whose profile sets
+`readonly = 1` refuses any request that sends a setting, `log_comment`
+included, so it could not be used with CHouse before this change either.
+
 **The executor's interface** (`S/services/chExecutor/types.ts`, `index.ts`).
 
 ```ts

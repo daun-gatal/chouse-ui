@@ -69,7 +69,18 @@ You see your own jobs; `scheduled_queries:view_all` shows and acts on everyone's
 
 A job runs on its connection's ClickHouse credentials, but CHouse UI checks the job **owner's** current permissions and [data access](/docs/data-access-rules/) before every run. If the owner loses access to a table, the job stops reading it. Each query carries the owner's account in its `query_id` and the job in its `log_comment`, so `system.query_log` attributes it (see [Who a statement runs as](/docs/security/#who-a-statement-runs-as)).
 
-A job with no owner does not run: its runs fail with a message saying so. This happens when the owner's account was deleted. To fix it, open the job as someone who can see every job and save it: you become its owner, and its next run is checked against your access. Before 3.18 such a job ran with no access check at all.
+The owner is whoever last changed what the job does. The person who creates a job owns it. After that, saving a change to any of these makes the person who saved it the owner, and the next run is checked against their access:
+
+| A change to | Moves the owner |
+| --- | --- |
+| The SQL | Yes |
+| The output mode, the destination table or its settings | Yes |
+| The notification channels | Yes |
+| The name, description, schedule, time zone, limits, retries or the enabled switch | No |
+
+This way nobody's job runs a statement someone else wrote under their name. The job page shows the owner, and who created the job. The same rule applies to a [data health](/docs/data-health/) check and to a dashboard: changing the SQL of a panel, or the dashboard's variables, makes you the owner of that panel's [alerts](/docs/dashboards/#panel-alerts) and of the dashboard's [reports](/docs/dashboards/#scheduled-reports).
+
+A job with no owner does not run: its runs fail with a message saying so. The job list marks it **No owner**. To fix it, open the job and choose **Assign to me** (it needs `scheduled_queries:edit`, and your own data access must allow the job's query), or save a change to it. Before 3.18 such a job ran with no access check at all.
 
 ## Promises use the same engine
 
