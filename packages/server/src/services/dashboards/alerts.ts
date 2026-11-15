@@ -115,7 +115,7 @@ async function ownerViewer(ownerId: string): Promise<Viewer | string> {
   const user = await getUserById(ownerId);
   if (!user) return "The alert's owner no longer exists";
   if (!user.isActive) return `The alert's owner ${user.username} is deactivated`;
-  return { id: user.id, roles: user.roles, permissions: user.permissions };
+  return { id: user.id, roles: user.roles, permissions: user.permissions, asAccount: true };
 }
 
 export async function evaluate(alert: PanelAlert, now: number): Promise<Evaluated> {

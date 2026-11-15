@@ -8,6 +8,7 @@ import { freshDatabase, rawAll, rawRun } from "../db/migrationTestHarness";
 import {
   bindingCounts,
   checkConnectionBindings,
+  commentText,
   confirmBinding,
   createBinding,
   getBinding,
@@ -310,6 +311,23 @@ describe("bindings between accounts and ClickHouse users (ADR 0033 §7.4)", () =
     const binding = await createBinding(personal, "ann", "alice", "root");
     await resetBindingsOfConnection(personal, "root");
     expect(await getBinding(binding.id)).toMatchObject({ state: "pending_grant", reason: "The connection was pointed at another server." });
+  });
+
+  it("writes an account's name into the grant script as comment text only", async () => {
+    server.impersonable.delete("alice");
+    await rawRun(sql`UPDATE rbac_users SET username = ${"ann\nDROP USER bob; --"} WHERE id = 'ann'`);
+    try {
+      await createBinding(personal, "ann", "alice", "root");
+      const script = (await grantScript(personal)).grants;
+      expect(script).toEqual(["GRANT IMPERSONATE ON alice TO chouse_impersonate;  -- ann_DROP USER bob_ --"]);
+      // One statement, one line: nothing an account name holds can start another.
+      expect(script.join("\n").split("\n")).toHaveLength(1);
+      expect(script[0].split(";")).toHaveLength(2);
+    } finally {
+      await rawRun(sql`UPDATE rbac_users SET username = 'ann' WHERE id = 'ann'`);
+    }
+    expect(commentText("ok.name+1@example.com")).toBe("ok.name+1@example.com");
+    expect(commentText("a/*b*/\r\n`c`'d'")).toBe("a__b_____c__d_");
   });
 
   it("lists users the role may still act as that no link uses, with the statement that takes the grant away", async () => {

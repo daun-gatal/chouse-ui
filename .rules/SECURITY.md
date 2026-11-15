@@ -228,6 +228,47 @@ These rules hold for every caller, admins included
 - **Personal access tokens:** stored only as a SHA-256 hash, shown once, with
   optional expiry and a scope subset; a revoked token fails at once. A PAT
   never carries more than its owner currently holds.
+- **A token's scope holds wherever a route asks.** The server's outermost
+  middleware opens one holder per request (`withRequestScope`), and whatever
+  verifies a bearer token records the token's own permission list in it
+  (`rememberCredential`). `userHasPermission` / `userHasAnyPermission` /
+  `userHasAllPermissions` then answer from that list
+  (`rbac/services/tokenScope.ts`), so "the credential's list, else the
+  database" can never widen a token, however a router runs its auth
+  middleware. Rules that follow from it:
+  - Verify a bearer token only through `rbacAuthMiddleware`,
+    `optionalRbacAuthMiddleware`, `optionalRbacMiddleware` or the MCP
+    verifier. A new place that calls `verifyBearer` and writes the identity to
+    the context must record its scope (`rememberCredential`, or `setTokenScope`).
+  - A token that names a scope is not an administrator where a permission is
+    decided: `isRbacAdmin` is false for it, and `validateQueryAccess` checks
+    it as anyone else. Its owner's exemption from data access rules is kept by
+    `narrowedAdminToken`. Do not add an administrator shortcut that skips a
+    permission check without excluding a scoped token.
+  - Never decide a permission for a request from `getUserPermissions(userId)`
+    directly: that is the owner's full list.
+  - A token that names a scope does not carry `super_admin` or `admin`
+    (`resolveKeyIdentity` removes them), so every "an administrator may"
+    shortcut refuses it without each feature having to know about tokens. Two
+    things the account keeps are asked by account instead: reach to
+    connections (`getUserConnections`) and the exemption from data access
+    rules (`adminOwner`). Do not read the caller's roles from the database to
+    decide a request; use the roles in the context. Code that must load the
+    caller's account (to see that it is active, say) passes it through
+    `asCredential` before deciding anything from its roles or permissions.
+  - Code that reads data access rules itself (`getRulesForUser` +
+    `evaluateRules`) behind its own "is an administrator" shortcut adds
+    `narrowedAdminToken(userId)` to that shortcut, or an administrator's
+    scoped token sees nothing there.
+  - A route gated by a role alone (no permission) cannot be reached by a
+    scoped token. Call `refuseScopedToken` there so the refusal says why, and
+    prefer a permission for anything a token should do with least privilege.
+  - A stored job that runs as its owner (a scheduled query, a dashboard alert
+    or report) is checked as the account (`asAccount`), whatever credential
+    started the run. Never set it on a path that takes SQL from the caller.
+  - The proof: `rbac/middleware/tokenScope.test.ts` runs real tokens through
+    every kind of gate, and `tokenScope.routes.test.ts` through real routes.
+    Both must keep failing without the fix.
 - Compare secrets, signatures and token hashes with `timingSafeEqual`.
 - Keep tokens out of URLs; query strings end up in logs and `Referer`. Use
   headers, or a one-time handoff code as the SSO complete flow does.

@@ -34,6 +34,7 @@ token, so there is one authn/authz implementation. Tool definitions live in
 - `/mcp` answers 404 unless MCP is enabled in settings `[index.ts:createMcpApp]`.
 - A request carrying an `Origin` header not in `allowedOrigins` gets 403 `ORIGIN_NOT_ALLOWED`; headerless requests pass (DNS-rebinding protection) `[origin.ts:originGuard]`.
 - Only `ch_pat_` PATs and, when OAuth is on, `ch_oat_` access tokens authenticate; browser JWTs are rejected; PATs can be turned off when OAuth is on (`oauthPatsAllowed === false`) `[auth.ts:createMcpAuthMiddleware]`.
+- The MCP auth middleware records the verified token's scope for the request (`setTokenScope`), so a permission question a tool asks directly is answered from the token's list `[auth.ts:createMcpAuthMiddleware]`.
 - With OAuth on, every 401 carries `WWW-Authenticate: Bearer resource_metadata=...` (RFC 9728 §5.1) `[auth.ts:oauthChallenge]`.
 - Identity is the user's live roles intersected with token scopes on every call, via `verifyBearer`, so revocation or demotion applies on the next tool call `[auth.ts]` header.
 - An OAuth access token is accepted by the API's bearer middlewares only inside `runAsMcpSubrequest` for that same token; network requests cannot set the `AsyncLocalStorage` scope `[inProcess.ts]`.

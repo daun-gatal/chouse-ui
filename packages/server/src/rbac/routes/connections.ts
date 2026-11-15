@@ -20,6 +20,7 @@ import {
   testSavedConnection,
   getDefaultConnection,
   getUserConnections,
+  withoutIdentityDetail,
   type ConnectionInput,
   type ConnectionResponse,
 } from '../services/connections';
@@ -119,16 +120,6 @@ async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheck> {
     };
   }
   return { failure: null, privileges: result.privileges };
-}
-
-/**
- * A connection as someone who is not a super admin sees it: its kind, so the
- * UI can say statements are limited to a role, and whether it is healthy, but
- * not the system role, the server version or the reason a check failed, which
- * can name grants, roles and other connections.
- */
-function withoutIdentityDetail(connection: ConnectionResponse): ConnectionResponse {
-  return { ...connection, systemRole: null, impersonationRole: null, identityHealthReason: null, identityServerVersion: null };
 }
 
 /** Whether an update changes anything the ClickHouse login or the privilege check depends on. */

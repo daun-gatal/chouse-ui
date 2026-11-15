@@ -18,6 +18,7 @@
 import type { Context, Next } from "hono";
 import { verifyBearer } from "../rbac/services/patAuth";
 import { PAT_PREFIX } from "../rbac/services/personalAccessTokens";
+import { runWithTokenScope, setTokenScope } from "../rbac/services/tokenScope";
 import { AppError } from "../types";
 import { resolveIssuer, resourceMetadataUrl } from "./oauth/issuer";
 import { OAUTH_ACCESS_PREFIX } from "./oauth/secrets";
@@ -43,6 +44,8 @@ export async function verifyIdentity(token: string): Promise<McpIdentity> {
       username: identity.username,
       roles: identity.roles,
       permissions: identity.permissions,
+      scoped: identity.scoped,
+      adminOwner: identity.adminOwner,
       patId: identity.patId,
       patName: identity.patName,
     };
@@ -103,7 +106,11 @@ export function createMcpAuthMiddleware(
     c.set("mcpIdentity", identity);
     c.set("mcpToken", token);
 
-    await next();
+    // Tools reach the API through their own subrequests, which record the scope themselves. This covers anything
+    // a tool decides in this request directly (ADR 0011).
+    const scope = { userId: identity.userId, permissions: identity.permissions, narrowed: identity.scoped === true, adminOwner: identity.adminOwner === true };
+    if (setTokenScope(scope)) await next();
+    else await runWithTokenScope(scope.userId, scope.permissions, () => next(), { narrowed: scope.narrowed, adminOwner: scope.adminOwner });
   };
 }
 

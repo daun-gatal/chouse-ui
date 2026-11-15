@@ -20,7 +20,7 @@ import { zValidator } from '@hono/zod-validator';
 
 import { checkSavedConnection } from '../../services/chExecutor/health';
 import { AppError, requireParam } from '../../types';
-import { getClientIp, getRbacUser, rbacAuthMiddleware } from '../middleware';
+import { getClientIp, getRbacUser, rbacAuthMiddleware, refuseScopedToken } from '../middleware';
 import { AUDIT_ACTIONS } from '../schema/base';
 import {
   ceilingSetupStatements,
@@ -58,6 +58,8 @@ const roleMapSchema = z.object({
 const contactSchema = z.object({ accessContact: z.string().max(500).nullable() });
 
 function requireSuperAdmin(c: Context): string {
+  // The role is all that gates these routes; a token that names a scope does not carry it, and is told so.
+  refuseScopedToken(c);
   const user = getRbacUser(c);
   if (!user.roles.includes('super_admin')) {
     throw AppError.forbidden('Only a super admin can change how a connection reaches ClickHouse.');

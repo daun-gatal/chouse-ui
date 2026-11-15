@@ -8,6 +8,7 @@
 
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { getUserById } from "../../rbac/services/rbac";
+import { asCredential } from "../../rbac/services/tokenScope";
 import { AppError } from "../../types";
 import { NOT_CHOUSE_BY_SOURCE } from "../observe/clickhouse";
 import { dashboardAccess, has, type Viewer } from "./access";
@@ -45,7 +46,8 @@ async function viewerOf(userId: string | undefined): Promise<Viewer> {
   if (!userId) throw AppError.forbidden("Explain this spike runs as a signed-in user");
   const user = await getUserById(userId);
   if (!user || !user.isActive) throw AppError.forbidden("Your account is not active");
-  return { id: user.id, roles: user.roles, permissions: user.permissions };
+  // The account is read to see that it is active; what it may do is what the request's credential carries.
+  return asCredential(user.id, { id: user.id, roles: user.roles, permissions: user.permissions });
 }
 
 /** Gather the evidence for one panel and range (see the module comment). */

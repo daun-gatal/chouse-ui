@@ -110,6 +110,42 @@ machines and humans are authorised identically.
 - The PAT service fails closed with a clear error if the table is absent
   (mixed-version rollout skew).
 
+### Amendment (2026-11-15): the scope holds wherever a route asks
+
+The permission gates check the credential's list and, on a miss, ask the
+database by account id, so a session sees a permission granted after it signed
+in. For a token that second question answered with everything the owner
+holds, which widened a scoped token on every route that used a gate or the
+same hand-written check. A token's request now runs inside a scope that holds
+the token's own list (`rbac/services/tokenScope.ts`), and the by-account
+permission checks answer from it.
+
+The same held for the administrator shortcut on the data routes: a statement
+from an administrator skips the permission for its kind, so an
+administrator's token scoped to reads could still run DDL. A token that names
+a scope is no longer an administrator where a permission is decided; its
+owner's exemption from data access rules is kept.
+
+Many features also decide "is this an administrator" from the role, inside a
+route or a service: seeing other people's objects, approving a high-risk
+action, handing out the super admin role. A permission scope means nothing
+where a role decides. So a token that names a scope does not carry
+`super_admin` or `admin` at all: they are removed when the token is resolved,
+and every such shortcut refuses it without knowing about tokens. A route gated
+by a role alone is therefore closed to a scoped token (`refuseScopedToken`
+says why). A token without a scope carries its owner's roles as before.
+
+Two things belong to the account and are kept for its scoped token, asked by
+account and not by role: which connections it reaches (a super admin reaches
+all of them), and the exemption from data access rules. A scope narrows what
+a token may do, not which servers or tables exist for its owner. A stored job
+that runs as its owner (a scheduled query) is checked as the account,
+whatever credential started the run.
+
+Rejected: refusing scoped tokens for administrators altogether (they are the
+accounts that most need a least-privilege token), and adding a token check to
+each role shortcut (about forty call sites, and the next one would be missed).
+
 ## Consequences
 
 - CLI/MCP auth becomes one env var; no refresh logic, no session handling.
