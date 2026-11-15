@@ -9,7 +9,7 @@ Scheduled Queries (DataOps): overview and jobs tabs, job detail, create/edit wiz
 - `[index.ts]` - re-exports `ScheduledQueries`, `SUB_TABS`, `SubTab`, `JobWizard`
 - `[ScheduledQueries.tsx:ScheduledQueries]` - sub-tab shell (`?job=<id>`)
 - `[hooks.ts:sqKeys]`, `useClusters`, `useScheduledQueries`, `useScheduledQueriesOverview`, `useScheduledQueryRuns`, `useScheduledQueryLineage`, `useJobOwners` - reads
-- `[hooks.ts:useCreateScheduledQuery]`, `useUpdateScheduledQuery`, `useDeleteScheduledQuery`, `useRunScheduledQuery`, `useRerunScheduledQueryRun`, `useDeleteRuns` - mutations
+- `[hooks.ts:useCreateScheduledQuery]`, `useUpdateScheduledQuery`, `useDeleteScheduledQuery`, `useRunScheduledQuery`, `useAssignScheduledQueryToMe`, `useRerunScheduledQueryRun`, `useDeleteRuns` - mutations
 - `[JobWizard.tsx:JobWizard]` - multi-step wizard with server preview and AI draft/review
 - `[JobsTab.tsx:JobsTab]`, `[JobDetail.tsx:JobDetail]`, `[RunsTab.tsx:RunsTab]`, `[LineageTab.tsx:LineageTab]`, `[OverviewTab.tsx:OverviewTab]`
 - `[macros.ts:substituteMacros]`, `evalMacro`, `previewMacros`, `sampleWindow` - mirror of the server macro grammar
@@ -19,6 +19,7 @@ Scheduled Queries (DataOps): overview and jobs tabs, job detail, create/edit wiz
 
 - SCHEDULED_QUERIES_EDIT/RUN/DELETE/VIEW_ALL gate job actions `[JobsTab.tsx:JobsTab]` `[JobDetail.tsx:JobDetail]` `[RunsTab.tsx:RunsTab]`
 - DATA_HEALTH_EDIT offers protecting a materializing job's output table with a Data Health promise (after create, and from job detail) `[JobsTab.tsx:offerProtection]` `[JobDetail.tsx:canProtect]`; lineage needs OBSERVE_VIEW and AI actions AI_OPTIMIZE `[JobDetail.tsx:JobDetail]`; "open in logs" needs LOGS_VIEW `[RunsTab.tsx:RunsTab]`
+- "Owner" everywhere is the account a job runs as (`ownerId`), not its creator (`createdBy`): owner filters and names use it `[hooks.ts:useJobOwners]`; a job with no owner is badged "No owner" in the list `[JobsTab.tsx:JobsTab]` and its detail offers "Assign to me" only with SCHEDULED_QUERIES_EDIT `[JobDetail.tsx:assignToMe]`
 - Without SCHEDULED_QUERIES_WRITE the Output step is dropped and AI drafts forced to `outputMode: 'none'` `[JobWizard.tsx:JobWizard]`
 - Wizard fails closed on server preview (read-only, data access, cluster checks) `[JobWizard.tsx:JobWizard]`
 - Test-run rows capped by `maxResultRows` and `DISPLAY_CAP` 1000 `[MonacoSqlInput.tsx:MonacoSqlInput]`

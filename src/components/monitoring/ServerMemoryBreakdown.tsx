@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { MemoryStick } from "lucide-react";
 
 import { useServerMemoryBreakdown } from "@/hooks/useMonitoringTimeline";
+import { STATEMENT_LOGS_PERMISSION_HINT } from "@/components/common/StatementLogsNotice";
 import { cn, formatBytes } from "@/lib/utils";
 
 interface ServerMemoryBreakdownProps {
@@ -32,7 +33,11 @@ export function ServerMemoryBreakdown({ variant = "standalone" }: ServerMemoryBr
   const named = useMemo(() => {
     if (!data) return [];
     return [
-      { key: "active", label: "Active queries", value: Math.max(0, data.active_queries_bytes), color: "#ffcc01" },
+      // Null when the caller may not read system.processes: the slice is left
+      // out and the note under the legend says why.
+      ...(data.active_queries_bytes === null
+        ? []
+        : [{ key: "active", label: "Active queries", value: Math.max(0, data.active_queries_bytes), color: "#ffcc01" }]),
       { key: "mark", label: "Mark cache", value: Math.max(0, data.mark_cache_bytes), color: "#34d399" },
       { key: "uncomp", label: "Uncompressed cache", value: Math.max(0, data.uncompressed_cache_bytes), color: "#22d3ee" },
       { key: "merges", label: "Merges / mutations", value: Math.max(0, data.merges_mutations_bytes), color: "#f59e0b" },
@@ -179,6 +184,11 @@ export function ServerMemoryBreakdown({ variant = "standalone" }: ServerMemoryBr
             );
           })}
         </ul>
+        {data.active_queries_bytes === null && (
+          <p className="font-mono text-[10px] text-paper-faint">
+            Active queries are not broken out · {STATEMENT_LOGS_PERMISSION_HINT}
+          </p>
+        )}
       </div>
     </div>
   );

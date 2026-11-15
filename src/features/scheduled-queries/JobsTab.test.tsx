@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JobsTab } from "./JobsTab";
 
 const guideActiveMock = vi.fn<() => boolean>(() => false);
+const jobsMock = vi.fn<() => Array<Record<string, unknown>>>();
+const OWNED_JOB = { createdBy: "owner-1", ownerId: "owner-1", description: null, enabled: true, id: "job-1", name: "Daily rollup" };
 
 vi.mock("@/features/onboarding", () => ({
   useOnboardingGuideActive: () => guideActiveMock(),
@@ -29,13 +31,7 @@ vi.mock("@/features/scheduled-queries/hooks", () => ({
   useJobOwners: () => ({ nameOf: () => "Owner", options: [] }),
   useRunScheduledQuery: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useScheduledQueries: () => ({
-    data: [{
-      createdBy: "owner-1",
-      description: null,
-      enabled: true,
-      id: "job-1",
-      name: "Daily rollup",
-    }],
+    data: jobsMock(),
     isLoading: false,
   }),
   useUpdateScheduledQuery: () => ({ mutateAsync: vi.fn() }),
@@ -52,6 +48,7 @@ vi.mock("@/features/scheduled-queries/JobWizard", () => ({
 describe("JobsTab onboarding targets", () => {
   beforeEach(() => {
     guideActiveMock.mockReturnValue(false);
+    jobsMock.mockReturnValue([OWNED_JOB]);
   });
 
   it("keeps the create target available while a job detail is selected during a guide", () => {
@@ -77,5 +74,29 @@ describe("JobsTab onboarding targets", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New job" }));
     expect(screen.getByText("New job wizard")).toBeTruthy();
+  });
+});
+
+describe("JobsTab owner", () => {
+  beforeEach(() => {
+    guideActiveMock.mockReturnValue(false);
+  });
+
+  it("shows the run owner's name on a job that has one", () => {
+    jobsMock.mockReturnValue([OWNED_JOB]);
+    render(<JobsTab onSelectedJobChange={vi.fn()} />);
+
+    expect(screen.getByText("Owner")).toBeTruthy();
+    expect(screen.queryByText("No owner")).toBeNull();
+  });
+
+  it("marks a job with no owner in the list, whoever created it", () => {
+    jobsMock.mockReturnValue([OWNED_JOB, { ...OWNED_JOB, id: "job-2", name: "Orphaned rollup", ownerId: null }]);
+    render(<JobsTab onSelectedJobChange={vi.fn()} />);
+
+    const badge = screen.getByText("No owner");
+    expect(badge.getAttribute("title")).toBe("This job cannot run until it has an owner.");
+    expect(badge.closest("button")?.textContent).toContain("Orphaned rollup");
+    expect(screen.getAllByText("Owner")).toHaveLength(1);
   });
 });

@@ -3,6 +3,7 @@ import { Search, AlertTriangle, CheckCircle2, Bug, Skull, ShieldAlert } from "lu
 
 import { Input } from "@/components/ui/input";
 import { SkeletonRows } from "@/components/common/Skeletons";
+import { StatementLogsNotice } from "@/components/common/StatementLogsNotice";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { AiDiagnoseButton } from "@/components/monitoring/AiDiagnoseButton";
 import {
@@ -11,6 +12,7 @@ import {
   type ServerErrorRow,
   type CrashLogRow,
 } from "@/hooks/useMonitoringTimeline";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { diagnoseServerError } from "@/api/query";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +73,10 @@ export default function ErrorsPage({
     if (guidedView) setView(guidedView);
   }, [guidedView]);
 
+  // system.crash_log is one of the statement-log tables; system.errors is open.
+  const canReadLogs = useCanReadStatementLogs();
+  const crashesDenied = view === "crashes" && !canReadLogs;
+
   const errors = useServerErrors({ enabled: view === "errors" });
   const crashes = useCrashLog({ enabled: view === "crashes" });
   const active = view === "errors" ? errors : crashes;
@@ -81,15 +87,16 @@ export default function ErrorsPage({
   }, [isFetching, onRefreshChange]);
 
   useEffect(() => {
+    if (crashesDenied) return;
     if (refreshKey > 0) refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || crashesDenied) return;
     const id = setInterval(() => refetch(), 15_000);
     return () => clearInterval(id);
-  }, [autoRefresh, refetch]);
+  }, [autoRefresh, crashesDenied, refetch]);
 
   useEffect(() => {
     setCurrentPage(0);
@@ -186,6 +193,8 @@ export default function ErrorsPage({
                   Total hits · <span className="text-paper">{totalErrorHits.toLocaleString()}</span>
                 </span>
               </>
+            ) : !canReadLogs ? (
+              <span>Crashes hidden</span>
             ) : crashCount > 0 ? (
               <span className="inline-flex items-center gap-1.5 text-red-300">
                 <AlertTriangle className="h-3 w-3" aria-hidden />
@@ -200,7 +209,9 @@ export default function ErrorsPage({
         {/* Table card */}
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100">
           <div className="flex-1 overflow-auto">
-            {isLoading ? (
+            {crashesDenied ? (
+              <StatementLogsNotice subject="The crash log" className="h-64 py-0" />
+            ) : isLoading ? (
               <table className="w-full">
                 <tbody>
                   <SkeletonRows count={8} cols={view === "errors" ? 5 : 5} />

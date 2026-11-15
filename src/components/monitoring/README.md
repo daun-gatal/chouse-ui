@@ -12,6 +12,7 @@ Panels and charts used by the Monitoring pages: query and resource timelines, du
 ## Invariants
 - `DdlSimulator` is read-only: the server only parses and estimates the statement (rows, parts/bytes rewritten, duration, disk headroom) and never runs the mutation [DdlSimulator.tsx:DdlSimulator].
 - Without the `AI_OPTIMIZE` permission `AiDiagnoseButton` renders nothing; closing its dialog aborts an in-flight diagnosis through its `AbortController` and resets the result [AiDiagnoseButton.tsx:AiDiagnoseButton].
+- `QueryTimelineChart`, `QueryHistogramChart` and `TopResourceQueriesPanel` render `StatementLogsNotice` instead of their body without `useCanReadStatementLogs`; `ServerMemoryBreakdown` drops the active-queries slice and says why [QueryTimelineChart.tsx:QueryTimelineChart], [TopResourceQueriesPanel.tsx:TopResourceQueriesPanel], [ServerMemoryBreakdown.tsx:ServerMemoryBreakdown].
 - Charts take colours from `useChartColors` so they follow the theme [QueryTimelineChart.tsx:QueryTimelineChart].
 
 ## Side Effects

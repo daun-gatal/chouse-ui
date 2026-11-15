@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 
 import { server } from "@/test/mocks/server";
 import {
+  assignScheduledQueryToMe,
   listScheduledQueries,
   getOverview,
   previewScheduledQuery,
@@ -131,6 +132,46 @@ describe("Scheduled Queries API", () => {
       outputConfig: { createIfMissing: true, engine: "ReplicatedMergeTree", cluster: { name: "prod", shardingKey: "cityHash64(id)" } },
     });
     expect(body).toMatchObject({ outputConfig: { cluster: { name: "prod", shardingKey: "cityHash64(id)" } } });
+  });
+
+  it("carries the run owner next to the creator", async () => {
+    server.use(
+      http.get("/api/scheduled-queries", () =>
+        HttpResponse.json({
+          success: true,
+          data: { jobs: [{ id: "sq-1", createdBy: "user-1", ownerId: "user-2" }, { id: "sq-2", createdBy: "user-1", ownerId: null }] },
+        }),
+      ),
+    );
+    const jobs = await listScheduledQueries();
+    expect(jobs.map((job) => job.ownerId)).toEqual(["user-2", null]);
+    expect(jobs[0].createdBy).toBe("user-1");
+  });
+
+  it("assigns an ownerless job to the caller and returns the updated job", async () => {
+    let seen: { method: string; id: unknown } | null = null;
+    server.use(
+      http.post("/api/scheduled-queries/:id/assign-to-me", ({ request, params }) => {
+        seen = { method: request.method, id: params.id };
+        return HttpResponse.json({ success: true, data: { id: params.id, createdBy: "user-1", ownerId: "me" } });
+      }),
+    );
+    const job = await assignScheduledQueryToMe("sq-1");
+    expect(seen).toEqual({ method: "POST", id: "sq-1" });
+    expect(job.ownerId).toBe("me");
+    expect(job.createdBy).toBe("user-1");
+  });
+
+  it.each([
+    [409, "CONFLICT", "This job already has an owner"],
+    [403, "FORBIDDEN", "Your data access rules do not allow this job's query"],
+  ])("surfaces the server's message when assigning is refused with %i", async (status, code, message) => {
+    server.use(
+      http.post("/api/scheduled-queries/:id/assign-to-me", () =>
+        HttpResponse.json({ success: false, error: { code, message } }, { status }),
+      ),
+    );
+    await expect(assignScheduledQueryToMe("sq-1")).rejects.toThrow(message);
   });
 
   it("triggers a manual run", async () => {

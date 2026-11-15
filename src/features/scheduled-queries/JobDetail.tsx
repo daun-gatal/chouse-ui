@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import {
@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   RotateCcw,
+  UserPlus,
 } from "lucide-react";
 
 import { assessScheduledQuery, planScheduledRecovery, type RecoveryAssessment, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
@@ -29,18 +30,28 @@ import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
 import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { useConnectionName } from "@/features/observe/hooks";
-import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
+import { useAssignScheduledQueryToMe, useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
 import { LineageTab } from "./LineageTab";
 import { formatDuration, formatRelative, scheduleLabel, scheduledQueryToInput, SQ_BTN_PRIMARY, SQ_LABEL, StatusBadge } from "./lib";
 import { RunsTab } from "./RunsTab";
 
-function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
+interface MetricCardProps {
+  label: string;
+  value: string;
+  detail?: string;
+  /** `warning` marks a value that needs attention, e.g. a job with no owner. */
+  tone?: "default" | "warning";
+  children?: ReactNode;
+}
+
+function MetricCard({ label, value, detail, tone = "default", children }: MetricCardProps) {
   return (
     <Card className="rounded-xs border-ink-500 bg-ink-100 p-4">
       <p className={SQ_LABEL}>{label}</p>
-      <p className="mt-2 truncate text-[12px] text-paper" title={value}>{value}</p>
-      {detail && <p className="mt-1 truncate font-mono text-[10px] text-paper-faint">{detail}</p>}
+      <p className={`mt-2 truncate text-[12px] ${tone === "warning" ? "text-amber-500" : "text-paper"}`} title={value}>{value}</p>
+      {children}
+      {detail && <p className="mt-1 truncate font-mono text-[10px] text-paper-faint" title={detail}>{detail}</p>}
     </Card>
   );
 }
@@ -52,7 +63,8 @@ interface JobDetailProps {
 }
 
 export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
-  const { hasPermission } = useRbacStore();
+  const { hasPermission, user } = useRbacStore();
+  const currentUserId = user?.id ?? null;
   const canEdit = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_EDIT);
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
@@ -63,6 +75,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const connectionLabel = useConnectionName(job.connectionId) ?? "—";
   const runMutation = useRunScheduledQuery();
   const updateMutation = useUpdateScheduledQuery();
+  const assignMutation = useAssignScheduledQueryToMe();
   const { data: runs = [] } = useScheduledQueryRuns(job.id);
   const { nameOf: ownerName } = useJobOwners(jobs, canViewAll);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -101,6 +114,15 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       toast.success(job.enabled ? "Job disabled" : "Job enabled");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Update failed");
+    }
+  };
+
+  const assignToMe = async (): Promise<void> => {
+    try {
+      await assignMutation.mutateAsync(job.id);
+      toast.success("You now own this job");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not assign the job");
     }
   };
 
@@ -164,6 +186,14 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       setRecoveryLoading(false);
     }
   };
+
+  // The owner is the account the job runs as; the creator is shown beside it.
+  const hasOwner = job.ownerId !== null;
+  // Someone without view-all sees a job they created even after its owner moved, so "You" must be checked.
+  const ownerLabel = !hasOwner ? "No owner" : job.ownerId === currentUserId ? "You" : canViewAll ? ownerName(job.ownerId) : "Someone else";
+  const createdDetail = canViewAll && job.createdBy
+    ? `Created by ${ownerName(job.createdBy)} · ${formatRelative(job.createdAt)}`
+    : `Created ${formatRelative(job.createdAt)}`;
 
   const destination = job.outputMode === "none"
     ? "Read-only result"
@@ -232,7 +262,18 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
         />
         <MetricCard label="Success rate" value={successRate} detail={`${completedRuns} completed run(s) loaded`} />
         <MetricCard label="Schedule" value={scheduleLabel(job)} detail={job.timezone} />
-        <MetricCard label="Owner" value={canViewAll ? ownerName(job.createdBy) : job.createdBy ? "You" : "—"} detail={`Created ${formatRelative(job.createdAt)}`} />
+        <MetricCard label="Owner" value={ownerLabel} tone={hasOwner ? "default" : "warning"} detail={createdDetail}>
+          {!hasOwner && (
+            <>
+              <p className="mt-1 text-[11px] text-paper-muted">This job cannot run until it has an owner.</p>
+              {canEdit && (
+                <Button variant="outline" className="mt-2 h-7 rounded-xs px-2.5 text-[11px]" onClick={() => void assignToMe()} disabled={assignMutation.isPending}>
+                  <UserPlus className="mr-1.5 h-3 w-3" /> Assign to me
+                </Button>
+              )}
+            </>
+          )}
+        </MetricCard>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">

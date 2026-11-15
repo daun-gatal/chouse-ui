@@ -8,6 +8,7 @@
 import { useQuery, UseQueryOptions } from "@tanstack/react-query";
 import { queryApi } from "@/api";
 import { useAuthStore } from "@/stores";
+import { useCanReadStatementLogs } from "./useCanReadStatementLogs";
 
 export type TimelineBucket = "minute" | "hour" | "day";
 
@@ -32,6 +33,20 @@ const num = (v: unknown): number => {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+/**
+ * Options for a hook that reads the statement logs. Without the permission the
+ * query is switched off whatever the caller passed, because the server refuses
+ * the statement. `refetch()` ignores `enabled`, so each of these hooks also
+ * returns early from its `queryFn`.
+ */
+function logAccessOptions<T>(
+  options: Partial<UseQueryOptions<T, Error>> | undefined,
+  canReadLogs: boolean
+): Partial<UseQueryOptions<T, Error>> {
+  if (canReadLogs) return options ?? {};
+  return { ...options, enabled: false };
+}
 
 function truncFunc(bucket: TimelineBucket, table?: string): string {
   const col = table ? `${table}.event_time` : "event_time";
@@ -63,6 +78,7 @@ export function useQueryTimeline(
   options?: Partial<UseQueryOptions<QueryTimelinePoint[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
   void rbacUserId; // reserved for per-user filtering once query_log carries rbac mapping
 
   return useQuery({
@@ -75,6 +91,7 @@ export function useQueryTimeline(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       // Categorize purely off query_kind (cheap enum compare). The previous LIKE
       // fallback on the raw query text ran string ops over potentially huge
       // SQL bodies for every row in the window — empty query_kind rows are
@@ -102,7 +119,7 @@ export function useQueryTimeline(
       }));
     },
     staleTime: 15_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -128,6 +145,7 @@ export function useQueryResourceTimeline(
   options?: Partial<UseQueryOptions<ResourceTimelinePoint[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: [
@@ -139,6 +157,7 @@ export function useQueryResourceTimeline(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const sql = `
         SELECT
           formatDateTime(${truncFunc(bucket)}, '%Y-%m-%d %H:%i:%S') AS time,
@@ -162,7 +181,7 @@ export function useQueryResourceTimeline(
       }));
     },
     staleTime: 15_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -265,6 +284,7 @@ export function useQueryPatterns(
   options?: Partial<UseQueryOptions<QueryPattern[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: [
@@ -277,6 +297,7 @@ export function useQueryPatterns(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const sql = `
         SELECT
           normalizeQuery(query) AS pattern,
@@ -314,7 +335,7 @@ export function useQueryPatterns(
       }));
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -362,6 +383,7 @@ export function useQueryByRedashId(
   options?: Partial<UseQueryOptions<ByRedashRow[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: [
@@ -374,6 +396,7 @@ export function useQueryByRedashId(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       // Aliases use _str suffix where they shadow source columns — same
       // alias-shadow trap we hit on Mutations / Replication earlier on
       // ClickHouse 24.11 (NO_COMMON_TYPE String vs DateTime).
@@ -419,7 +442,7 @@ export function useQueryByRedashId(
       }));
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -452,6 +475,7 @@ export function useQueryViewsLog(
   options?: Partial<UseQueryOptions<ViewLogRow[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: ["queryViewsLog", queryId, activeConnectionId] as const,
@@ -460,6 +484,7 @@ export function useQueryViewsLog(
     // so the table doesn't exist. Don't retry that — it's not transient.
     retry: false,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const sql = `
         SELECT
           view_name,
@@ -506,7 +531,7 @@ export function useQueryViewsLog(
       }
     },
     staleTime: 5 * 60 * 1000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -543,6 +568,7 @@ export function useQueryByTable(
   options?: Partial<UseQueryOptions<ByTableRow[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: [
@@ -555,6 +581,7 @@ export function useQueryByTable(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       // Filter system schemas INSIDE the arrayFilter so the subsequent
       // arrayJoin amplifies way fewer rows on busy clusters — 100K+ query_log
       // rows × 5 system tables touched each = half a million extra rows
@@ -613,7 +640,7 @@ export function useQueryByTable(
       }));
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -667,6 +694,7 @@ export function useQueryHistogram(
   options?: Partial<UseQueryOptions<HistogramBucket[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
   const spec = HISTOGRAM_SPECS[metric];
 
   return useQuery({
@@ -679,6 +707,7 @@ export function useQueryHistogram(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const multiIfArgs = spec.boundaries
         .map((b, i) => `${spec.field} < ${b}, ${i}`)
         .join(",\n            ");
@@ -711,7 +740,7 @@ export function useQueryHistogram(
       }));
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -734,6 +763,7 @@ export function useQueryPercentiles(
   options?: Partial<UseQueryOptions<QueryPercentiles, Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
   const spec = HISTOGRAM_SPECS[metric];
 
   return useQuery({
@@ -746,6 +776,7 @@ export function useQueryPercentiles(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return { p50: 0, p95: 0, p99: 0, max: 0 };
       const sql = `
         SELECT
           quantile(0.50)(${spec.field}) AS p50,
@@ -766,7 +797,7 @@ export function useQueryPercentiles(
       };
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -972,7 +1003,8 @@ export function useReplicaStatus(
 }
 
 export interface BlockedTaskSummary {
-  long_running_queries: number;  // system.processes elapsed > 60s
+  /** system.processes elapsed > 60s. Null when the caller may not read the statement logs. */
+  long_running_queries: number | null;
   long_running_merges: number;   // system.merges elapsed > 300s
   open_mutations: number;        // system.mutations is_done = 0
   sick_replicas: number;         // system.replicas absolute_delay > 60 OR is_readonly
@@ -990,13 +1022,16 @@ export function useBlockedTaskSummary(
   options?: Partial<UseQueryOptions<BlockedTaskSummary, Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
-    queryKey: ["blockedTaskSummary", activeConnectionId] as const,
+    queryKey: ["blockedTaskSummary", activeConnectionId, canReadLogs] as const,
     queryFn: async () => {
+      // system.processes shows other people's statements, so that one count is
+      // left out for a caller who may not read it; the rest still loads.
       const sql = `
         SELECT
-          (SELECT count() FROM system.processes WHERE elapsed > 60) AS long_running_queries,
+          ${canReadLogs ? "(SELECT count() FROM system.processes WHERE elapsed > 60)" : "NULL"} AS long_running_queries,
           (SELECT count() FROM system.merges WHERE elapsed > 300) AS long_running_merges,
           (SELECT count() FROM system.mutations WHERE is_done = 0) AS open_mutations,
           (SELECT count() FROM system.replicas WHERE absolute_delay > 60 OR is_readonly = 1) AS sick_replicas,
@@ -1007,7 +1042,7 @@ export function useBlockedTaskSummary(
       const result = await queryApi.executeQuery(sql);
       const row = (result.data as Array<Record<string, unknown>>)[0] ?? {};
       return {
-        long_running_queries: num(row.long_running_queries),
+        long_running_queries: canReadLogs ? num(row.long_running_queries) : null,
         long_running_merges: num(row.long_running_merges),
         open_mutations: num(row.open_mutations),
         sick_replicas: num(row.sick_replicas),
@@ -1025,7 +1060,8 @@ export interface ServerMemoryBreakdown {
   total_bytes: number;            // OSMemoryTotal — physical RAM on the box
   available_bytes: number;        // OSMemoryAvailable — free + cacheable
   clickhouse_rss_bytes: number;   // MemoryResident — actual ClickHouse RSS
-  active_queries_bytes: number;   // SUM(memory_usage) FROM system.processes
+  /** SUM(memory_usage) FROM system.processes. Null when the caller may not read the statement logs. */
+  active_queries_bytes: number | null;
   merges_mutations_bytes: number; // CurrentMetric_MergesMutationsMemoryTracking
   mark_cache_bytes: number;       // CurrentMetric_MarkCacheBytes
   uncompressed_cache_bytes: number; // CurrentMetric_UncompressedCacheBytes
@@ -1047,9 +1083,10 @@ export function useServerMemoryBreakdown(
   options?: Partial<UseQueryOptions<ServerMemoryBreakdown, Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
-    queryKey: ["serverMemoryBreakdown", activeConnectionId] as const,
+    queryKey: ["serverMemoryBreakdown", activeConnectionId, canReadLogs] as const,
     queryFn: async () => {
       // Scalar subqueries individually — each returns NULL if the metric or
       // table is absent, and num(NULL) → 0 keeps the math sane.
@@ -1058,7 +1095,7 @@ export function useServerMemoryBreakdown(
           (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1) AS total_bytes,
           (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryAvailable' LIMIT 1) AS available_bytes,
           (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) AS clickhouse_rss_bytes,
-          (SELECT sum(memory_usage) FROM system.processes) AS active_queries_bytes,
+          ${canReadLogs ? "(SELECT sum(memory_usage) FROM system.processes)" : "NULL"} AS active_queries_bytes,
           (SELECT value FROM system.metrics WHERE metric = 'MergesMutationsMemoryTracking' LIMIT 1) AS merges_mutations_bytes,
           (SELECT value FROM system.metrics WHERE metric = 'MarkCacheBytes' LIMIT 1) AS mark_cache_bytes,
           (SELECT value FROM system.metrics WHERE metric = 'UncompressedCacheBytes' LIMIT 1) AS uncompressed_cache_bytes,
@@ -1071,7 +1108,7 @@ export function useServerMemoryBreakdown(
         total_bytes: num(row.total_bytes),
         available_bytes: num(row.available_bytes),
         clickhouse_rss_bytes: num(row.clickhouse_rss_bytes),
-        active_queries_bytes: num(row.active_queries_bytes),
+        active_queries_bytes: canReadLogs ? num(row.active_queries_bytes) : null,
         merges_mutations_bytes: num(row.merges_mutations_bytes),
         mark_cache_bytes: num(row.mark_cache_bytes),
         uncompressed_cache_bytes: num(row.uncompressed_cache_bytes),
@@ -1125,6 +1162,7 @@ function useTopResourceQueries(
   options?: Partial<UseQueryOptions<TopResourceQueryRow[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: [
@@ -1137,6 +1175,7 @@ function useTopResourceQueries(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const orderExpr =
         metric === "cpu_microseconds"
           ? "ProfileEvents['OSCPUVirtualTimeMicroseconds']"
@@ -1179,7 +1218,7 @@ function useTopResourceQueries(
       }));
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -1670,11 +1709,13 @@ export function useQueryProfileEvents(
   options?: Partial<UseQueryOptions<ProfileEventEntry[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
 
   return useQuery({
     queryKey: ["queryProfileEvents", queryId, activeConnectionId] as const,
     enabled: !!queryId,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       const sql = `
         SELECT ProfileEvents
         FROM system.query_log
@@ -1693,7 +1734,7 @@ export function useQueryProfileEvents(
         .sort((a, b) => b.value - a.value);
     },
     staleTime: 5 * 60 * 1000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 
@@ -1852,10 +1893,12 @@ export function useCrashLog(
   options?: Partial<UseQueryOptions<CrashLogRow[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
+  const canReadLogs = useCanReadStatementLogs();
   return useQuery({
     queryKey: ["crashLog", activeConnectionId] as const,
     retry: false,
     queryFn: async () => {
+      if (!canReadLogs) return [];
       // crash_log is build-dependent (absent unless crash logging is compiled
       // in / enabled). Querying it directly on a server that lacks it surfaces
       // a raw Code 60 (UNKNOWN_TABLE) to the user. Gate on system.tables —
@@ -1898,7 +1941,7 @@ export function useCrashLog(
       }
     },
     staleTime: 30_000,
-    ...options,
+    ...logAccessOptions(options, canReadLogs),
   });
 }
 

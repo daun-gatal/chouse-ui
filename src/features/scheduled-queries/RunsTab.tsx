@@ -130,7 +130,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const [investigationLoading, setInvestigationLoading] = useState(false);
   const [investigationError, setInvestigationError] = useState<string>();
 
-  const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.createdBy === ownerFilter);
+  const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.ownerId === ownerFilter);
   const selectedJob = jobOptions.find((j) => j.id === jobId);
 
   // If the selected job no longer matches the owner filter, drop to the first match.

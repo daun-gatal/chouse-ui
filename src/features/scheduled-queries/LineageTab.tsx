@@ -449,7 +449,7 @@ export function LineageTab({ selectedJobId, embedded = false }: { selectedJobId?
   const [jobId, setJobId] = useState<string>("");
   const [windowDays, setWindowDays] = useState<number>(14);
 
-  const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.createdBy === ownerFilter);
+  const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.ownerId === ownerFilter);
 
   useEffect(() => {
     if (selectedJobId) {

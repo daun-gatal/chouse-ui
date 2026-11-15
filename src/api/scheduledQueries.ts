@@ -87,7 +87,14 @@ export interface ScheduledQuery {
   lastRunAt: number;
   maxAttempts: number;
   retentionDays: number;
+  /** Who created the job. Display only: it does not decide who the job runs as. */
   createdBy: string | null;
+  /**
+   * The account the job runs as: whoever last saved a change to what it does
+   * (its SQL, where it writes, or its notification channels). A job with no
+   * owner does not run.
+   */
+  ownerId: string | null;
   createdAt: number;
   updatedAt: number;
   channelIds: string[];
@@ -195,6 +202,15 @@ export async function updateScheduledQuery(id: string, input: ScheduledQueryInpu
 
 export async function deleteScheduledQuery(id: string): Promise<void> {
   await api.delete<{ success: boolean }>(`/scheduled-queries/${id}`);
+}
+
+/**
+ * Take ownership of a job that has no owner, so it can run again (as the
+ * caller). The server answers 409 when the job already has an owner and 403
+ * when the caller's data access rules do not allow the job's query.
+ */
+export async function assignScheduledQueryToMe(id: string): Promise<ScheduledQuery> {
+  return api.post<ScheduledQuery>(`/scheduled-queries/${id}/assign-to-me`);
 }
 
 export async function runScheduledQuery(id: string): Promise<{ run: ScheduledQueryRun | null }> {

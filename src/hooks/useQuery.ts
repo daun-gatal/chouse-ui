@@ -13,6 +13,7 @@ import {
   UseMutationOptions,
 } from '@tanstack/react-query';
 import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
+import { useCanReadStatementLogs } from './useCanReadStatementLogs';
 import { log as appLog } from '@/lib/log';
 import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
 import { useAuthStore } from '@/stores';
@@ -906,8 +907,10 @@ export function useMetrics(
   const { activeConnectionId, sessionId } = useAuthStore();
   const hasConnection = !!(activeConnectionId && sessionId);
 
+  const canReadStatementLogs = useCanReadStatementLogs();
+
   return useQuery({
-    queryKey: ['metrics', timeRange, activeConnectionId] as const,
+    queryKey: ['metrics', timeRange, activeConnectionId, canReadStatementLogs] as const,
     enabled: hasConnection, // Only fetch when connected
     queryFn: async () => {
       // Convert timeRange to interval for query
@@ -937,7 +940,9 @@ export function useMetrics(
       // 3. QueryFinish entries with exception_code != 0
       // 4. QueryStart entries with exception field (non-empty)
       // This matches the logic used in the Logs page
-      const queriesData = await safeQuery(`
+      // Reading the statement log needs query:history:view:all (the server
+      // refuses it otherwise), so without it the per-kind series stay empty.
+      const queriesData = !canReadStatementLogs ? [] : await safeQuery(`
         SELECT 
           toUnixTimestamp(toStartOfMinute(event_time)) as ts,
           countIf(query_kind = 'Select' AND type = 'QueryFinish') as select_count,
@@ -1010,7 +1015,7 @@ export function useMetrics(
             (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
              FROM system.metric_log 
              WHERE event_time >= now() - INTERVAL ${interval}) as cpuLoad,
-            (SELECT count() FROM system.processes) as activeQueries,
+            (SELECT value FROM system.metrics WHERE metric = 'Query' LIMIT 1) as activeQueries,
             (SELECT sum(value) FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection')) as connections,
             (SELECT value FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1) as uptime,
             (SELECT coalesce(sum(total_rows), 0) FROM system.tables) as totalRows,

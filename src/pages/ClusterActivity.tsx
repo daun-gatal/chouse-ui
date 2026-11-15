@@ -3,6 +3,7 @@ import { Search, AlertTriangle, CheckCircle2, Network, Wrench, Activity, Layers,
 
 import { Input } from "@/components/ui/input";
 import { SkeletonRows } from "@/components/common/Skeletons";
+import { STATEMENT_LOGS_PERMISSION_HINT } from "@/components/common/StatementLogsNotice";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { DdlSimulator } from "@/components/monitoring/DdlSimulator";
 import {
@@ -256,8 +257,8 @@ export default function ClusterActivityPage({
             <BlockedChip
               icon={Activity}
               label="Long queries"
-              value={blockedSummary.data.long_running_queries}
-              hint=">60s"
+              value={blockedSummary.data.long_running_queries ?? "—"}
+              hint={blockedSummary.data.long_running_queries === null ? STATEMENT_LOGS_PERMISSION_HINT : ">60s"}
               warnThreshold={1}
             />
             <BlockedChip
