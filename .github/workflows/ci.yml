@@ -124,7 +124,7 @@ jobs:
         run: ./scripts/e2e-observe.sh
 
   connection-identity-e2e:
-    name: Connection identity e2e (24.3, 24.4, 26.5)
+    name: Connection identity e2e (24.3 to 26.5)
     runs-on: ubuntu-latest
     needs: lint
     timeout-minutes: 30
