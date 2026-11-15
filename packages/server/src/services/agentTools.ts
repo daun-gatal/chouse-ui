@@ -19,6 +19,7 @@ import {
 import { parseStatement } from "../middleware/sqlParser";
 import { analyzeQuery } from "./queryAnalyzer";
 import { quoteStringLiteral } from "../utils/sqlIdentifier";
+import { ownerAccountSql } from "./chExecutor";
 
 const zodSchema = <T>(schema: T): T => schema;
 
@@ -607,7 +608,8 @@ export function createCoreTools(ctx: AgentToolContext) {
         try {
           // Everyone shares the connection's ClickHouse user, so "own queries"
           // is decided from the CHouse account recorded on each query.
-          const filter = ctx.isAdmin ? "" : `WHERE JSONExtractString(Settings['log_comment'], 'rbac_user_id') = ${quoteStringLiteral(ctx.userId)}`;
+          // The account comes from the query id the executor made (ADR 0033 §2).
+          const filter = ctx.isAdmin ? "" : `WHERE ${ownerAccountSql({ queryId: "query_id", logComment: "Settings['log_comment']", user: "user" })} = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT 
                 query_id, user, query, elapsed, read_rows, 
@@ -894,7 +896,7 @@ export function createCoreTools(ctx: AgentToolContext) {
         minDurationMs?: number;
       }): Promise<Record<string, unknown>> => {
         try {
-          const filter = ctx.isAdmin ? "" : `AND JSONExtractString(log_comment, 'rbac_user_id') = ${quoteStringLiteral(ctx.userId)}`;
+          const filter = ctx.isAdmin ? "" : `AND ${ownerAccountSql()} = ${quoteStringLiteral(ctx.userId)}`;
           const result = await ctx.clickhouseService.executeQuery(
             `SELECT
                 query_id,

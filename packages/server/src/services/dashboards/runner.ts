@@ -15,7 +15,7 @@
  * replaced by an empty result.
  */
 
-import { ClickHouseError, executorForConnection, personActor, type ChExecutor, type CheckedStatement } from "../chExecutor";
+import { classifiedAppError, classifyClickHouseError, ClickHouseError, executorForConnection, personActor, type ChExecutor, type CheckedStatement } from "../chExecutor";
 
 import { accessDeniedError, checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import { governAgentQuery, recordAgentQuery, type AgentContext } from "../agents/governance";
@@ -151,6 +151,9 @@ export function queryError(error: unknown, maxRows: number, timedOut: boolean, c
     return AppError.unavailable(`ClickHouse did not answer within ${REQUEST_TIMEOUT_MS / 1000} s; the server may be down or unreachable.`);
   }
   if (error instanceof ClickHouseError) {
+    // A grant or read-only refusal is worded once, for every feature (ADR 0033 §8).
+    const classified = classifyClickHouseError(error);
+    if (classified) return classifiedAppError(classified);
     if (error.type === "TOO_MANY_ROWS_OR_BYTES") {
       return AppError.badRequest(`The query returned more than ${maxRows.toLocaleString("en-US")} rows. Aggregate further (a coarser bucket, fewer groups) or add a LIMIT.`);
     }
@@ -181,7 +184,7 @@ interface JsonResult {
 async function connectionClient(accountId: string, connectionId: string, tags: Record<string, string | null> = {}): Promise<ChExecutor> {
   const context: Record<string, string> = { source: DASHBOARDS_SOURCE };
   for (const [key, value] of Object.entries(tags)) if (value !== null) context[key] = value;
-  return executorForConnection(connectionId, personActor(accountId), { context });
+  return executorForConnection(connectionId, personActor(accountId), { context, internal: true });
 }
 
 /** Agent identity per connection for token callers; null for browser sessions. */

@@ -117,6 +117,7 @@ export function executorOverClient(
   options: ExecutorOptions = {},
   lane: ClientLane = "statements",
 ): ChExecutor {
+  const idFor = (nonce: string | undefined): string => makeQueryId(actor, nonce, options.internal === true);
   const identity = (queryId: string, settings: ClickHouseSettings | undefined, withKey: boolean) => ({
     query_id: queryId,
     clickhouse_settings: settingsFor(actor, options, settings),
@@ -127,32 +128,32 @@ export function executorOverClient(
     query<Format extends DataFormat = "JSON">(args: QueryArgs<Format>): Promise<ResultSet<Format>> {
       const clean = withoutOwned(args);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
-      const queryId = makeQueryId(actor, clean.query_id);
+      const queryId = idFor(clean.query_id);
       return sendWithQuotaKey(client, (withKey) => client.query({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     command(args: CommandArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
-      const queryId = makeQueryId(actor, clean.query_id);
+      const queryId = idFor(clean.query_id);
       return sendWithQuotaKey(client, (withKey) => client.command({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     exec(args: ExecArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
-      const queryId = makeQueryId(actor, clean.query_id);
+      const queryId = idFor(clean.query_id);
       return sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
     },
     insert<T>(args: InsertArgs<T>) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
-      const queryId = makeQueryId(actor, clean.query_id);
+      const queryId = idFor(clean.query_id);
       return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), false);
     },
     queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
       const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
-      const queryId = makeQueryId(actor, rest.query_id);
+      const queryId = idFor(rest.query_id);
       const call = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
       return sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...identity(queryId, settings, withKey) }), true);
     },
@@ -160,7 +161,7 @@ export function executorOverClient(
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
       const settings = checkedSettings(actor, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane);
-      const queryId = makeQueryId(actor, rest.query_id);
+      const queryId = idFor(rest.query_id);
       const call: CommandArgs = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) };
       return sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...identity(queryId, settings, withKey) }), true);
     },
@@ -172,11 +173,11 @@ export function executorOverClient(
       return buildSession(
         {
           query: (args) => {
-            const queryId = makeQueryId(actor, args.query_id);
+            const queryId = idFor(args.query_id);
             return sendWithQuotaKey(client, (withKey) => client.query({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
           },
           command: (args) => {
-            const queryId = makeQueryId(actor, args.query_id);
+            const queryId = idFor(args.query_id);
             return sendWithQuotaKey(client, (withKey) => client.command({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
           },
         },
@@ -185,7 +186,7 @@ export function executorOverClient(
       );
     },
     queryIdFor(nonce: string): string {
-      return makeQueryId(actor, nonce);
+      return idFor(nonce);
     },
     withContext(context: Record<string, string>): ChExecutor {
       return executorOverClient(clientFor, actor, { ...options, context: { ...options.context, ...context } }, lane);

@@ -93,6 +93,13 @@ function toHostRows(envelope: unknown, maxResultRows?: number): HostTableShape {
   return { names, types, rows };
 }
 
+/** What the person is told about a failed statement: CHouse's wording for a grant or read-only refusal, else ClickHouse's own. */
+export function personMessage(error: unknown): string {
+  const classified = classifyClickHouseError(error);
+  if (classified) return classified.message;
+  return error instanceof Error ? error.message : String(error);
+}
+
 // ============================================
 // ClickHouse Service
 // ============================================
@@ -117,6 +124,11 @@ export class ClickHouseService {
   /** The executor handle every statement goes through. It sets the query id, log_comment and quota key. */
   private get client(): ChExecutor {
     return executorForConfig(this.config, this.actor, { context: this.tags });
+  }
+
+  /** The ClickHouse login this service sends with: the `user` of every row it logs. */
+  get loginUser(): string {
+    return this.config.username;
   }
 
   /** The connection's default database (used to resolve unqualified table refs). */
@@ -361,7 +373,7 @@ export class ClickHouseService {
         });
         void commandResult;
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = personMessage(error);
         yield JSON.stringify({ t: "err", message: msg });
         throw error;
       }
@@ -412,7 +424,7 @@ export class ClickHouseService {
           } catch (error) {
             // Fail closed for SELECT-like queries: a malformed row is a real
             // error, not a committed-DDL case (DDL is branched above).
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = personMessage(error);
             yield JSON.stringify({ t: "err", message: msg });
             throw error;
           }
@@ -441,7 +453,7 @@ export class ClickHouseService {
         }
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -486,7 +498,7 @@ export class ClickHouseService {
         query_id: queryId,
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -495,7 +507,7 @@ export class ClickHouseService {
     try {
       envelope = await result.json();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       if (isJsonParseErrorMessage(msg)) {
         // Server accepted the statement (HTTP 200) but the body is not JSON.
         // The DDL committed — never re-run it.  Surface success with the raw

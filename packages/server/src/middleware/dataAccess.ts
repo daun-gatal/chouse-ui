@@ -373,3 +373,39 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
 
   return allow(input, input.userId, access.type, WRITE_PERMISSIONS.some((p) => permissions.includes(p)));
 }
+
+const SYSTEM_ONLY = new Set(['system', 'information_schema']);
+
+/**
+ * May this person run this read of system tables? For tools that let a model
+ * write SQL against `system.*` on a person's behalf (the fleet AI's
+ * `query_node`). It asks for no table permission and no data access rule,
+ * since those tools are gated by their own feature permission, but the
+ * statement must parse as a single SELECT that reads nothing outside the
+ * system databases, and the tables that show other people's work need their
+ * permission as everywhere else (ADR 0033 §4). Admins keep their bypass.
+ */
+export async function validateSystemRead(input: QueryAccessInput): Promise<QueryAccessResult> {
+  if (input.isAdmin) return validateAdminStatement(input);
+  if (!input.userId) return refuse('PERMISSION_DENIED', 'RBAC authentication is required. Please login with RBAC credentials.');
+  if (!input.connectionId && !input.parser) {
+    return refuse('CHECK_UNAVAILABLE', 'No ClickHouse connection is selected, so the query can\'t be checked.');
+  }
+  const parser = input.parser ?? clickhouseParsePort(input.connectionId as string);
+  const parsed = await parseStatementAccess(input.sql, input.params, parser);
+  if (!parsed.ok) return refuse(parsed.code, parsed.reason);
+  const { access, defaultDatabase } = parsed;
+  if (access.type !== 'select' || access.targets.length > 0 || access.databases.length > 0) {
+    return refuse('UNSUPPORTED_SHAPE', 'Only a single SELECT on system tables is allowed here.');
+  }
+  const permissions = input.permissions ?? [];
+  for (const ref of access.reads) {
+    const database = ref.database ?? defaultDatabase;
+    if (!SYSTEM_ONLY.has(database.toLowerCase())) {
+      return refuse('TABLE_DENIED', `Only system tables can be read here, not ${database}.${ref.table}.`);
+    }
+    const needed = systemTablePermission(database, ref.table);
+    if (needed && !permissions.includes(needed)) return refuse('TABLE_DENIED', systemTableRefusal(ref.table, needed));
+  }
+  return allow(input, input.userId, access.type, false);
+}

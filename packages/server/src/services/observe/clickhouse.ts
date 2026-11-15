@@ -8,7 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { executorForConnection, serviceActor, type Actor, type ChExecutor, type CheckedStatement } from "../chExecutor";
+import { executorForConnection, internalTrafficSql, serviceActor, type Actor, type ChExecutor, type CheckedStatement } from "../chExecutor";
 
 export const OBSERVE_SOURCE = "observe";
 
@@ -18,7 +18,7 @@ export const OBSERVE_SOURCE = "observe";
  * passes that person.
  */
 export async function observeClient(connectionId: string, collector: string, actor: Actor = serviceActor("collector")): Promise<ChExecutor> {
-  return executorForConnection(connectionId, actor, { context: { source: OBSERVE_SOURCE, collector } });
+  return executorForConnection(connectionId, actor, { context: { source: OBSERVE_SOURCE, collector }, internal: true });
 }
 
 /** What one collector run read from ClickHouse, summed over its queries. */
@@ -108,5 +108,15 @@ export function stripFormat(query: string): string {
   return query.replace(/;\s*$/, "").replace(/\s+FORMAT\s+\w+\s*;?\s*$/i, "");
 }
 
-/** Exclude CHouse's own traffic (collection, preflights, dashboard panels) from query_log reads. */
-export const NOT_OBSERVE = `JSONExtractString(log_comment, 'source') NOT IN ('observe', 'remediation_preflight', 'dashboards')`;
+/**
+ * The same exclusion as readable panel SQL, for the built-in dashboards: by the
+ * `source` CHouse puts in `log_comment`. A statement can set its own
+ * `log_comment`, so CHouse's own reports use `NOT_OBSERVE` instead.
+ */
+export const NOT_CHOUSE_BY_SOURCE = `JSONExtractString(log_comment, 'source') NOT IN ('observe', 'remediation_preflight', 'dashboards')`;
+
+/**
+ * Exclude CHouse's own traffic (collection, preflights, dashboard panels) from
+ * query_log reads, by the query id the executor made (ADR 0033 §4).
+ */
+export const NOT_OBSERVE = `NOT ${internalTrafficSql(["observe", "remediation_preflight", "dashboards"])}`;

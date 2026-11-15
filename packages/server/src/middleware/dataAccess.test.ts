@@ -9,6 +9,7 @@ import {
     accessDeniedStatus,
     checkedOf,
     setAccessOverrideForTests,
+    validateSystemRead,
 } from "./dataAccess";
 import { CheckedStatement } from "../services/chExecutor/checked";
 import { CASES } from "./sqlAccess/fixtures/cases";
@@ -294,6 +295,45 @@ describe("validateQueryAccess", () => {
             expect(await system("SELECT * FROM system.parts JOIN system.query_log ON 1", ["table:select"])).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
             expect(await system("SELECT * FROM system.parts", ["table:select"])).toMatchObject({ allowed: true });
             expect(await system("SELECT * FROM system.tables", ["table:select"])).toMatchObject({ allowed: true });
+        });
+    });
+
+    describe("validateSystemRead: a model's read of system tables for a person", () => {
+        const parser = () => ({ calls: 0, explainAst: async (text: string) => ({ ok: true as const, lines: fakeExplainPrintout(text) }), defaultDatabase: async () => "db" });
+        const read = (sql: string, permissions: string[] = [], isAdmin = false) =>
+            validateSystemRead({ userId, isAdmin, permissions, sql, connectionId: "conn-1", parser: parser() });
+
+        it("allows a system table with no table permission and no data access rule, as a read-only statement", async () => {
+            const result = await read("SELECT * FROM system.parts");
+            expect(result).toMatchObject({ allowed: true, statementType: "select" });
+            expect(checkedOf(result)).toMatchObject({ isRead: true, mayWrite: false, accountId: userId });
+            expect(mockRbacService.checkUserAccess).not.toHaveBeenCalled();
+        });
+
+        it("asks for the same permission as the editor on the tables that show other people's work", async () => {
+            expect(await read("SELECT query FROM system.query_log")).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await read("SELECT * FROM system.parts JOIN system.processes ON 1")).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await read("SELECT query FROM system.query_log", ["query:history:view:all"])).toMatchObject({ allowed: true });
+            expect(await read("SELECT * FROM system.users", ["query:history:view:all"])).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+        });
+
+        it("refuses a table outside the system databases, including an unqualified one", async () => {
+            expect(await read("SELECT * FROM public.t", ["query:history:view:all"])).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await read("SELECT * FROM system.parts JOIN secret.s ON 1")).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+            expect(await read("SELECT * FROM t")).toMatchObject({ allowed: false, code: "TABLE_DENIED" });
+        });
+
+        it("refuses anything that is not a SELECT, and anything ClickHouse or the policy cannot place", async () => {
+            expect(await validateSystemRead({ userId, isAdmin: false, permissions: ALL, sql: "DROP DATABASE d2", connectionId: "c", parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "UNSUPPORTED_SHAPE" });
+            expect(await validateSystemRead({ userId, isAdmin: false, permissions: ALL, sql: "SELECT * FROM remote('h', secret.s)", connectionId: "c", parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "UNSAFE_TABLE_FUNCTION" });
+            expect(await validateSystemRead({ userId, isAdmin: false, permissions: ALL, sql: "EXECUTE AS default SELECT 1", connectionId: "c", parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "IMPERSONATION" });
+            expect(await validateSystemRead({ userId: undefined, isAdmin: false, permissions: ALL, sql: "SELECT 1", connectionId: "c", parser: parser() })).toMatchObject({ allowed: false, code: "PERMISSION_DENIED" });
+            expect(await validateSystemRead({ userId, isAdmin: false, permissions: ALL, sql: "SELECT 1", connectionId: undefined })).toMatchObject({ allowed: false, code: "CHECK_UNAVAILABLE" });
+        });
+
+        it("keeps an admin's bypass, still without EXECUTE AS", async () => {
+            expect(await read("SELECT query FROM system.query_log", [], true)).toMatchObject({ allowed: true });
+            expect(await validateSystemRead({ userId, isAdmin: true, permissions: [], sql: "EXECUTE AS default SELECT 1", connectionId: "c", parser: fixtureParser("26.5") })).toMatchObject({ allowed: false, code: "IMPERSONATION" });
         });
     });
 

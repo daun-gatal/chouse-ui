@@ -4,7 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { AppError } from "../types";
 import { accessDeniedError, checkedOf, validateQueryAccess } from "../middleware/dataAccess";
 import { makeQueryId, personActor } from "../services/chExecutor";
-import { ClickHouseService } from "../services/clickhouse";
+import { ClickHouseService, personMessage } from "../services/clickhouse";
 import {
   connectionContextMiddleware,
   type ConnectionContextVariables,
@@ -424,8 +424,7 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
           controller.enqueue(encoder.encode(line + "\n"));
         }
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        controller.enqueue(encoder.encode(JSON.stringify({ t: "err", message: msg }) + "\n"));
+        controller.enqueue(encoder.encode(JSON.stringify({ t: "err", message: personMessage(error) }) + "\n"));
       } finally {
         controller.close();
       }

@@ -221,7 +221,7 @@ const queryNode: CatalogTool = {
   access: "read",
   requires: "fleet",
   permissions: [],
-  build: (runtime) => (runtime.fleetNodes?.length ? (queryNodeTool(runtime.fleetNodes, runtime.ctx.userId || undefined).query_node as AgentTool) : null),
+  build: (runtime) => (runtime.fleetNodes?.length ? (queryNodeTool(runtime.fleetNodes, runtime.ctx.userId ? { userId: runtime.ctx.userId, isAdmin: runtime.ctx.isAdmin, permissions: runtime.ctx.permissions } : undefined).query_node as AgentTool) : null),
 };
 
 // ============================================

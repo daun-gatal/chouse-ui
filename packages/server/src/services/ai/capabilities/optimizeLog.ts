@@ -103,11 +103,11 @@ export const optimizeLogCapability: StructuredCapability<
     ];
   },
 
-  async finalize(parsed, prepared) {
+  async finalize(parsed, prepared, ctx) {
     const [before, after] = await Promise.all([
-      explainEstimate(prepared.connectionId, prepared.cleaned),
+      explainEstimate(prepared.connectionId, prepared.cleaned, ctx.userId || undefined),
       parsed.optimizedQuery
-        ? explainEstimate(prepared.connectionId, parsed.optimizedQuery)
+        ? explainEstimate(prepared.connectionId, parsed.optimizedQuery, ctx.userId || undefined)
         : Promise.resolve(null),
     ]);
     return {

@@ -12,6 +12,7 @@
 import { createAgentTool } from "../langchainTools";
 import { z } from "zod";
 import { AppError } from "../../../types";
+import { checkedOf, validateSystemRead } from "../../../middleware/dataAccess";
 import { logger } from "../../../utils/logger";
 import { buildFleetConfig } from "../../fleetMetrics";
 import { executorForConfig, personActor, serviceActor, type ChExecutor } from "../../chExecutor";
@@ -68,7 +69,15 @@ async function fleetExecutor(connectionId: string, triggeredBy: string | undefin
   return executorForConfig(config, triggeredBy ? personActor(triggeredBy) : serviceActor("fleet-metrics"));
 }
 
-export function queryNodeTool(connections: FleetNode[], triggeredBy?: string) {
+/** The person a fleet tool acts for, when the run has one. */
+export interface FleetCaller {
+  userId: string;
+  isAdmin?: boolean;
+  permissions?: string[];
+}
+
+export function queryNodeTool(connections: FleetNode[], caller?: FleetCaller) {
+  const triggeredBy = caller?.userId;
   const nameById = new Map(connections.map((c) => [c.id, c.name]));
   return {
     query_node: createAgentTool("query_node", {
@@ -95,17 +104,24 @@ export function queryNodeTool(connections: FleetNode[], triggeredBy?: string) {
           const tags = observer?.logTags();
           const base = await fleetExecutor(connectionId, triggeredBy);
           const client = tags && Object.keys(tags).length > 0 ? base.withContext(tags) : base;
-          const result = await client.query({
-            query: safe,
-            format: "JSON",
-            query_id: queryId,
-            clickhouse_settings: {
-              readonly: "1",
-              max_execution_time: 8,
-              max_result_rows: "200",
-              result_overflow_mode: "break",
-            },
-          });
+          const limits = { max_execution_time: 8, max_result_rows: "200", result_overflow_mode: "break" } as const;
+          let result;
+          if (caller) {
+            // The model wrote this text for a person, so it is checked like typed
+            // text (ADR 0033 §2, §4): ClickHouse parses it, it may read only system
+            // tables, and the tables that show other people's statements need the
+            // same permission as in the editor.
+            const access = await validateSystemRead({ userId: caller.userId, isAdmin: caller.isAdmin, permissions: caller.permissions, sql: safe, connectionId });
+            if (!access.allowed) {
+              const message = access.reason ?? "This query is not allowed";
+              if (queryId) reportQuery(observer, { queryId, connectionId, sql: safe, elapsedMs: 0, readRows: 0, readBytes: 0, resultRows: 0, resultBytes: 0, columns: [], error: message });
+              return { error: message };
+            }
+            result = await client.queryChecked(checkedOf(access), { format: "JSON", query_id: queryId, readOnlyFeature: 1, clickhouse_settings: limits });
+          } else {
+            // A background run has no person; it reads as the fleet service purpose.
+            result = await client.query({ query: safe, format: "JSON", query_id: queryId, clickhouse_settings: { readonly: "1", ...limits } });
+          }
           const json = (await result.json()) as {
             data?: Record<string, unknown>[];
             meta?: { name: string }[];

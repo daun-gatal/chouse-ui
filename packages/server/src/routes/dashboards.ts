@@ -372,7 +372,7 @@ dashboards.put("/:id", requirePermission(PERMISSIONS.DASHBOARDS_EDIT), zValidato
   await assertAlertsInScope(id, input);
   await assertLinks(c, input);
   const result = await store.updateDashboard(id, version, input, saveContext(c)).catch(saveConflict);
-  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length } });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DASHBOARD_UPDATE, viewerOf(c).id, { resourceType: "dashboard", resourceId: id, details: { version: result.version, panels: input.panels.length, removedPanels: result.removedPanelIds.length, removedAlerts: result.removedAlertIds.length, ...(result.rerunAsSaverPanelIds.length > 0 ? { rerunAsSaverPanels: result.rerunAsSaverPanelIds } : {}) } });
   return ok(c, await detailResponse(c, id));
 });
 

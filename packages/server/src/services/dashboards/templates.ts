@@ -10,7 +10,7 @@
  * each query on a real ClickHouse.
  */
 
-import { NOT_OBSERVE } from "../observe/clickhouse";
+import { NOT_CHOUSE_BY_SOURCE } from "../observe/clickhouse";
 import { arrange, roleOf, type ArrangeSection, type Importance } from "./layout";
 import { DEFAULT_ANNOTATION_SOURCES, type DashboardInput, type PanelInput, type VizSpec } from "./spec";
 
@@ -85,7 +85,7 @@ export const TEMPLATES: DashboardTemplate[] = [
           heading: null,
           panels: [
             panel("Running queries", "SELECT count() AS running FROM system.processes", stat("running", "count")),
-            panel("Failed queries", `SELECT countIf(${FAILED}) AS failed FROM system.query_log WHERE ${IN_RANGE} AND ${NOT_OBSERVE}`,
+            panel("Failed queries", `SELECT countIf(${FAILED}) AS failed FROM system.query_log WHERE ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE}`,
               stat("failed", "count", { thresholds: [{ value: 1, severity: "warning" }] })),
             panel("Merges running", "SELECT count() AS merges FROM system.merges", stat("merges", "count")),
             panel("Max replica delay", "SELECT max(absolute_delay) AS delay FROM system.replicas",
@@ -96,9 +96,9 @@ export const TEMPLATES: DashboardTemplate[] = [
           heading: { title: "Queries", description: "What runs, how fast, and what fails" },
           panels: [
             panel("Queries", `SELECT ${BUCKET} AS t, countIf(type = 'QueryFinish') AS finished, countIf(${FAILED}) AS failed
-FROM system.query_log WHERE ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY t ORDER BY t`, viz("stacked_area", "t", ["finished", "failed"], "count"), "primary"),
+FROM system.query_log WHERE ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY t ORDER BY t`, viz("stacked_area", "t", ["finished", "failed"], "count"), "primary"),
             panel("Query latency", `SELECT ${BUCKET} AS t, quantile(0.5)(query_duration_ms) AS p50, quantile(0.95)(query_duration_ms) AS p95, quantile(0.99)(query_duration_ms) AS p99
-FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY t ORDER BY t`, viz("line", "t", ["p50", "p95", "p99"], "ms")),
+FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY t ORDER BY t`, viz("line", "t", ["p50", "p95", "p99"], "ms")),
             panel("Memory tracked", `SELECT ${BUCKET} AS t, max(CurrentMetric_MemoryTracking) AS memory
 FROM system.metric_log WHERE ${IN_RANGE} GROUP BY t ORDER BY t`, viz("area", "t", ["memory"], "bytes")),
             panel("Recent errors", `SELECT name, code, value AS occurrences, last_error_time, last_error_message
@@ -199,20 +199,20 @@ FROM system.replicas ORDER BY absolute_delay DESC LIMIT 50`, viz("table", null, 
           heading: null,
           panels: [
             panel("Latency", `SELECT ${BUCKET} AS t, quantile(0.5)(query_duration_ms) AS p50, quantile(0.95)(query_duration_ms) AS p95, quantile(0.99)(query_duration_ms) AS p99
-FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY t ORDER BY t`, viz("line", "t", ["p50", "p95", "p99"], "ms"), "primary"),
+FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY t ORDER BY t`, viz("line", "t", ["p50", "p95", "p99"], "ms"), "primary"),
             panel("Failures by error code", `SELECT toString(exception_code) AS code, count() AS failures
-FROM system.query_log WHERE ${FAILED} AND ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY code ORDER BY failures DESC LIMIT 10`,
+FROM system.query_log WHERE ${FAILED} AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY code ORDER BY failures DESC LIMIT 10`,
               viz("horizontal_bar", "code", ["failures"], "count")),
             panel("Queries per second", `SELECT ${BUCKET} AS t, count() / {{interval_s}} AS qps
-FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY t ORDER BY t`, viz("area", "t", ["qps"], "per_s", { decimals: 2 })),
+FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY t ORDER BY t`, viz("area", "t", ["qps"], "per_s", { decimals: 2 })),
             panel("p95 latency by user", `SELECT ${BUCKET} AS t, user, quantile(0.95)(query_duration_ms) AS p95
 FROM system.query_log
-WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE}
-  AND user IN (SELECT user FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE} GROUP BY user ORDER BY count() DESC LIMIT 8)
+WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE}
+  AND user IN (SELECT user FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE} GROUP BY user ORDER BY count() DESC LIMIT 8)
 GROUP BY t, user ORDER BY t`, viz("line", "t", ["p95"], "ms", { series: "user" })),
             panel("Slowest query shapes", `SELECT toString(normalized_query_hash) AS shape, any(substring(query, 1, 200)) AS sample, count() AS runs,
   round(quantile(0.95)(query_duration_ms)) AS p95_ms, formatReadableSize(sum(read_bytes)) AS read
-FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_OBSERVE}
+FROM system.query_log WHERE type = 'QueryFinish' AND ${IN_RANGE} AND ${NOT_CHOUSE_BY_SOURCE}
 GROUP BY normalized_query_hash ORDER BY p95_ms DESC LIMIT 20`, viz("table", null, [], "none")),
           ],
         },

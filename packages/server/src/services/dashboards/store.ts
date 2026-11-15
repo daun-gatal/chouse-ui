@@ -401,6 +401,8 @@ export interface UpdateResult {
   removedPanelIds: string[];
   /** Alerts on those panels, deleted with them. */
   removedAlertIds: string[];
+  /** Panels whose statement this save changed: their alerts, and the dashboard's reports, now run as the saver. */
+  rerunAsSaverPanelIds: string[];
 }
 
 /** Panels a save would remove and the alerts that go with them. */
@@ -418,8 +420,30 @@ export async function removals(id: string, input: DashboardInput): Promise<{ rem
  */
 export async function updateDashboard(id: string, version: number, input: DashboardInput, context: SaveContext): Promise<UpdateResult> {
   const now = Date.now();
-  const existing = (await all(sql`SELECT id FROM dashboard_panels WHERE dashboard_id = ${id}`)).map((r) => str(r.id));
+  const before = await all(sql`SELECT id, sql FROM dashboard_panels WHERE dashboard_id = ${id}`);
+  const existing = before.map((r) => str(r.id));
   const { statements, saved } = panelStatements(id, input.panels, new Set(existing), now);
+  // Alerts and reports run later, as their owner. A save that changes what a
+  // panel runs makes the saver that owner, so nobody's later run executes a
+  // statement someone else wrote under their name (ADR 0033 §4). Variables
+  // are part of every panel's statement.
+  const previous = await all(sql`SELECT variables FROM dashboards WHERE id = ${id}`);
+  const variablesChanged = previous[0] !== undefined && str(previous[0].variables) !== JSON.stringify(input.variables);
+  const sqlBefore = new Map(before.map((r) => [str(r.id), str(r.sql)]));
+  const rerunAsSaverPanelIds = saved
+    .filter((panel) => panel.id !== null && sqlBefore.has(panel.id))
+    .filter((panel) => panelValues(panel).sql !== "" && (variablesChanged || panelValues(panel).sql !== sqlBefore.get(panel.id as string)))
+    .map((panel) => panel.id as string);
+  const addedStatement = saved.some((panel) => panel.id !== null && !sqlBefore.has(panel.id) && panelValues(panel).sql !== "");
+  const ownerStatements: SQL[] = [];
+  if (context.userId !== null) {
+    for (const panelId of rerunAsSaverPanelIds) {
+      ownerStatements.push(sql`UPDATE dashboard_alerts SET owner_id = ${context.userId}, updated_at = ${now} WHERE dashboard_id = ${id} AND panel_id = ${panelId} AND owner_id <> ${context.userId}`);
+    }
+    if (rerunAsSaverPanelIds.length > 0 || addedStatement) {
+      ownerStatements.push(sql`UPDATE dashboard_reports SET owner_id = ${context.userId} WHERE dashboard_id = ${id} AND owner_id <> ${context.userId}`);
+    }
+  }
   const keptIds = new Set(saved.map((p) => p.id));
   const removedPanelIds = existing.filter((panelId) => !keptIds.has(panelId));
   const removedAlertIds = await alertIdsForPanels(removedPanelIds);
@@ -434,8 +458,8 @@ export async function updateDashboard(id: string, version: number, input: Dashbo
       variables = ${JSON.stringify(input.variables)}, annotations = ${JSON.stringify(input.annotations)},
       version = ${next}, updated_at = ${now}
     WHERE id = ${id} AND version = ${version}
-    RETURNING id`, [...removalStatements, ...statements, ...versionStatements(id, next, { ...input, panels: saved }, context.userId, context.source, now)]);
-  return { version: next, removedPanelIds, removedAlertIds };
+    RETURNING id`, [...removalStatements, ...statements, ...ownerStatements, ...versionStatements(id, next, { ...input, panels: saved }, context.userId, context.source, now)]);
+  return { version: next, removedPanelIds, removedAlertIds, rerunAsSaverPanelIds: context.userId !== null ? rerunAsSaverPanelIds : [] };
 }
 
 /** Delete a dashboard with its panels, shares, pins, panel alerts, notes, versions, snapshots and reports. Returns the alert ids it removed. */
