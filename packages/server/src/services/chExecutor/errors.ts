@@ -31,6 +31,8 @@ const SET_NON_GRANTED_ROLE = 512;
 export interface ErrorContext {
   /** The connection's kind. On `shared_ceiling` a grant error is about the person's mapped role, not the login. */
   mode?: string;
+  /** The connection's stored login. On `personal` a grant error that names it is about impersonation, not about the person. */
+  login?: string;
 }
 
 function messageOf(error: unknown): string {
@@ -96,6 +98,25 @@ export function classifyClickHouseError(error: unknown, context: ErrorContext = 
     const raw = messageOf(error);
     const grant = requiredGrantFromError(raw) ?? undefined;
     const detail = raw.split("\n")[0].trim();
+    if (context.mode === "personal") {
+      // ClickHouse starts the message with the user it checked: the person's own, or the login when it may not act as them.
+      const named = /(?:^|DB::Exception:\s*)([^:\s]+):\s*Not enough privileges/.exec(raw)?.[1];
+      if (context.login !== undefined && named === context.login) {
+        return {
+          class: "identity",
+          code: "IDENTITY_UNAVAILABLE",
+          status: 403,
+          message: "This connection may not run statements as your ClickHouse user. A ClickHouse administrator must grant IMPERSONATE on your user to the connection's impersonation role.",
+        };
+      }
+      return {
+        class: "grant",
+        code: "CLICKHOUSE_ACCESS_DENIED",
+        status: 403,
+        grant,
+        message: `Your ClickHouse user isn't allowed to do this: ${detail} A ClickHouse administrator can grant it to your user.`,
+      };
+    }
     return {
       class: "grant",
       code: "CLICKHOUSE_ACCESS_DENIED",
@@ -133,7 +154,9 @@ export function classifyClickHouseError(error: unknown, context: ErrorContext = 
       status: 403,
       message: setting
         ? `This connection's ClickHouse user is read-only and refused the setting '${setting[1]}' that CHouse sends. A ClickHouse administrator can allow settings for it with readonly = 2.`
-        : "This statement would change data or settings, and it was sent read-only. You may only read here; ask an admin for write access if you need it.",
+        : context.mode === "personal"
+          ? "This statement would change data or settings, and it was sent as a read. Here it must be a read: you did not write it, or you may only read. If it is a SELECT with a FORMAT clause, remove the clause."
+          : "This statement would change data or settings, and it was sent read-only. You may only read here; ask an admin for write access if you need it.",
     };
   }
   return null;

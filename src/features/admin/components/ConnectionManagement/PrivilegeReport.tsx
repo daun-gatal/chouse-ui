@@ -101,6 +101,7 @@ export function CopyButton({ text, label }: { text: string; label: string }): Re
 /** What a feature says in place of granted/missing when the checked role does not decide it. */
 const SOURCE_LABELS = {
   mapped_role: "From each person's ClickHouse role",
+  person: "From each person's own ClickHouse user",
   unavailable: "Not available on this kind",
 } as const;
 
@@ -129,7 +130,7 @@ interface FeatureRowProps {
 }
 
 function FeatureRow({ feature, byKind, open, onToggle }: FeatureRowProps): ReactElement {
-  if (byKind && (feature.source === "mapped_role" || feature.source === "unavailable")) {
+  if (byKind && (feature.source === "mapped_role" || feature.source === "person" || feature.source === "unavailable")) {
     return <UncheckedFeatureRow feature={feature} label={SOURCE_LABELS[feature.source]} />;
   }
   const failing = feature.status === "missing";

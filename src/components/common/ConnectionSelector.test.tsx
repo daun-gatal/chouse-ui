@@ -1,9 +1,39 @@
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import type { ReactElement, ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { BindingState, OwnBinding } from "@/api/clickhouseBindings";
+import { useRbacStore } from "@/stores";
+import { server } from "@/test/mocks/server";
 import { SharedLogin } from "./ConnectionSelector";
 
 afterEach(cleanup);
+
+function link(state: BindingState, patch: Partial<OwnBinding> = {}): OwnBinding {
+  return {
+    id: "b-1",
+    connectionId: "conn-1",
+    connectionName: "Production",
+    connectionKind: "personal",
+    clickhouseUser: "Alice_CH",
+    defaultDatabase: null,
+    state,
+    reason: null,
+    checkedAt: null,
+    ...patch,
+  };
+}
+
+function serveLinks(links: OwnBinding[]): void {
+  server.use(http.get("/api/rbac/clickhouse-bindings/mine", () => HttpResponse.json({ success: true, data: { bindings: links } })));
+}
+
+function wrapper({ children }: { children: ReactNode }): ReactElement {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
 
 describe("SharedLogin", () => {
   it("names the shared ClickHouse user everyone's statements run as", () => {
@@ -31,5 +61,62 @@ describe("SharedLogin", () => {
     const { container } = render(<SharedLogin username="ChouseLogin" identityMode="shared_ceiling" />);
     expect(container.querySelector("span span")?.className).toContain("normal-case");
     expect(container.querySelector("span span")?.textContent).toBe("ChouseLogin");
+  });
+});
+
+describe("SharedLogin on a personal connection", () => {
+  beforeEach(() => {
+    useRbacStore.setState({ isAuthenticated: true });
+  });
+
+  function renderPersonal(connectionId = "conn-1"): HTMLElement {
+    return render(<SharedLogin username="chouse_login" identityMode="personal" connectionId={connectionId} />, { wrapper }).container;
+  }
+
+  it("names the person's own ClickHouse user when their link is active, keeping its case", async () => {
+    serveLinks([link("active")]);
+    const container = renderPersonal();
+
+    await waitFor(() => expect(container.textContent).toBe("As Alice_CH (your ClickHouse user)"));
+    expect(container.querySelector("span span")?.className).toContain("normal-case");
+    expect(container.textContent).not.toContain("chouse_login");
+  });
+
+  it.each([
+    ["pending_grant", "Your ClickHouse link is waiting"],
+    ["suspended", "Your ClickHouse link is suspended"],
+    ["disabled", "Your ClickHouse link is disabled"],
+  ] as const)("says a %s link cannot be used", async (state, text) => {
+    serveLinks([link(state, { reason: "Ask a super admin." })]);
+    const container = renderPersonal();
+
+    await waitFor(() => expect(container.textContent).toBe(text));
+    expect(container.querySelector("span")?.getAttribute("title")).toBe("Ask a super admin.");
+  });
+
+  it("says so when the person has no link on this connection", async () => {
+    serveLinks([link("active", { connectionId: "conn-2" })]);
+    const container = renderPersonal();
+
+    await waitFor(() => expect(container.textContent).toBe("No ClickHouse user linked"));
+  });
+
+  it("claims neither a link nor its absence before the links are read", () => {
+    serveLinks([]);
+    const container = renderPersonal();
+
+    expect(container.textContent).toBe("Your own ClickHouse user");
+  });
+
+  it("never shows the connection's login as the person's user when the read fails", async () => {
+    server.use(
+      http.get("/api/rbac/clickhouse-bindings/mine", () =>
+        HttpResponse.json({ success: false, error: { code: "INTERNAL", message: "boom" } }, { status: 500 }),
+      ),
+    );
+    const container = renderPersonal();
+
+    await waitFor(() => expect(container.querySelector("span")?.getAttribute("title")).toContain("your own ClickHouse user"));
+    expect(container.textContent).toBe("Your own ClickHouse user");
   });
 });

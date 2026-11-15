@@ -38,7 +38,7 @@ export async function getClickHouseService(c: Context): Promise<ClickHouseServic
   const mode = resolved.config.identity?.mode ?? 'shared';
   if (mode !== 'shared') {
     throw new AppError(
-      "ClickHouse users and roles can't be managed from CHouse on this connection: it limits people to a ClickHouse role, and its login may not manage users. Use a ClickHouse client as an administrator.",
+      "ClickHouse users and roles can't be managed from CHouse on this connection: its login holds no grant of its own and may not manage users. Use a ClickHouse client as an administrator.",
       'CLICKHOUSE_ADMIN_UNAVAILABLE',
       'permission',
       400,

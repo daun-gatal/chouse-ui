@@ -29,6 +29,10 @@ vi.mock("./IdentityPanel", () => ({
   IdentityPanel: ({ connection }: { connection: ClickHouseConnection | null }): ReactElement | null =>
     connection ? <div data-testid="identity-panel">{connection.name}</div> : null,
 }));
+vi.mock("./BindingsPanel", () => ({
+  BindingsPanel: ({ connection }: { connection: ClickHouseConnection | null }): ReactElement | null =>
+    connection ? <div data-testid="bindings-panel">{connection.name}</div> : null,
+}));
 
 function connection(overrides: Partial<ClickHouseConnection>): ClickHouseConnection {
   return {
@@ -47,6 +51,7 @@ function connection(overrides: Partial<ClickHouseConnection>): ClickHouseConnect
     metadata: null,
     identityMode: "shared",
     systemRole: null,
+    impersonationRole: null,
     accessContact: null,
     identityHealth: null,
     identityHealthReason: null,
@@ -66,7 +71,8 @@ const CEILING = connection({
   identityHealth: "failing",
   identityHealthReason: "The role chouse_system no longer exists.",
 });
-const UNKNOWN = connection({ id: "conn-unknown", name: "Lab", identityMode: "personal" });
+const UNKNOWN = connection({ id: "conn-unknown", name: "Lab", identityMode: "per_statement" });
+const PERSONAL = connection({ id: "conn-personal", name: "Warehouse", username: "chouse_personal", identityMode: "personal", systemRole: "chouse_system" });
 
 function row(name: string): HTMLElement {
   const found = screen.getByText(name).closest("tr");
@@ -91,7 +97,7 @@ function input(dialog: HTMLElement, name: string): HTMLInputElement {
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe(): void {} unobserve(): void {} disconnect(): void {} });
   access.superAdmin = false;
-  listConnections.mockResolvedValue({ connections: [SHARED, CEILING, UNKNOWN], total: 3 });
+  listConnections.mockResolvedValue({ connections: [SHARED, CEILING, UNKNOWN, PERSONAL], total: 4 });
 });
 
 afterEach(() => {
@@ -107,6 +113,7 @@ describe("ConnectionManagement: connection kinds", () => {
 
     expect(within(row("Production")).getByText("Role ceiling")).toBeTruthy();
     expect(within(row("Lab")).getByText("Unknown kind")).toBeTruthy();
+    expect(within(row("Warehouse")).getByText("Personal")).toBeTruthy();
     expect(within(row("Staging")).queryByText("Shared login")).toBeNull();
     expect(within(row("Staging")).queryByText("Role ceiling")).toBeNull();
   });
@@ -128,6 +135,34 @@ describe("ConnectionManagement: connection kinds", () => {
 
     expect(screen.queryByRole("button", { name: /^ClickHouse login of/ })).toBeNull();
     expect(screen.queryByTestId("identity-panel")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Linked ClickHouse users of/ })).toBeNull();
+    expect(screen.queryByTestId("bindings-panel")).toBeNull();
+  });
+
+  it("lets a super admin open the linked ClickHouse users of a connection of any kind", async () => {
+    const user = userEvent.setup();
+    access.superAdmin = true;
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+
+    // Links can be prepared before the connection becomes personal.
+    expect(screen.getAllByRole("button", { name: /^Linked ClickHouse users of/ })).toHaveLength(4);
+    expect(screen.queryByTestId("bindings-panel")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Linked ClickHouse users of Staging" }));
+    expect(screen.getByTestId("bindings-panel").textContent).toBe("Staging");
+  });
+
+  it("locks the login and server fields of a personal connection in the edit dialog", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionManagement />);
+    await screen.findByText("Warehouse");
+
+    await user.click(editButton("Warehouse"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/This is a personal connection: host, port, TLS, user and password are changed in its ClickHouse login panel, by a super admin\./)).toBeTruthy();
+    for (const name of ["host", "port", "username", "password"]) {
+      expect(input(dialog, name).disabled).toBe(true);
+    }
   });
 
   it("lets a super admin open the ClickHouse login panel of a connection", async () => {
@@ -136,7 +171,7 @@ describe("ConnectionManagement: connection kinds", () => {
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    expect(screen.getAllByRole("button", { name: /^ClickHouse login of/ })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^ClickHouse login of/ })).toHaveLength(4);
     expect(screen.queryByTestId("identity-panel")).toBeNull();
     await user.click(screen.getByRole("button", { name: "ClickHouse login of Production" }));
     expect(screen.getByTestId("identity-panel").textContent).toBe("Production");

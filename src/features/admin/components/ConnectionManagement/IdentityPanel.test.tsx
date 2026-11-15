@@ -59,6 +59,7 @@ const CONNECTION: ClickHouseConnection = {
   metadata: null,
   identityMode: "shared",
   systemRole: null,
+  impersonationRole: null,
   accessContact: null,
   identityHealth: null,
   identityHealthReason: null,
@@ -70,6 +71,7 @@ const SHARED: ConnectionIdentityDetail = {
   identityMode: "shared",
   username: "chouse",
   systemRole: null,
+  impersonationRole: null,
   accessContact: null,
   health: null,
   healthReason: null,
@@ -77,6 +79,7 @@ const SHARED: ConnectionIdentityDetail = {
   serverVersion: null,
   roleMap: [],
   setupStatements: ["CREATE ROLE chouse_system;", "CREATE USER <new_user> IDENTIFIED BY '...';"],
+  personalSetupStatements: ["CREATE ROLE IF NOT EXISTS chouse_impersonate;", "GRANT chouse_system, chouse_impersonate TO <new_user>;"],
 };
 
 const CEILING: ConnectionIdentityDetail = {
@@ -89,6 +92,17 @@ const CEILING: ConnectionIdentityDetail = {
   checkedAt: 1_800_000_000_000,
   serverVersion: "24.8.1.1",
   roleMap: [{ roleId: "r-analyst", roleName: "analyst", clickhouseRole: "ch_analyst" }],
+};
+
+const PERSONAL: ConnectionIdentityDetail = {
+  ...SHARED,
+  identityMode: "personal",
+  username: "chouse_personal",
+  systemRole: "chouse_system",
+  impersonationRole: "chouse_act_as",
+  health: "ok",
+  checkedAt: 1_800_000_000_000,
+  serverVersion: "26.3.63.1",
 };
 
 const PRIVILEGES: ConnectionPrivilegeReport = {
@@ -241,10 +255,10 @@ describe("IdentityPanel", () => {
   });
 
   it("says a kind this build does not know refuses requests until switched", async () => {
-    getIdentity.mockResolvedValue({ ...SHARED, identityMode: "personal" });
-    open({ ...CONNECTION, identityMode: "personal" });
+    getIdentity.mockResolvedValue({ ...SHARED, identityMode: "per_statement" });
+    open({ ...CONNECTION, identityMode: "per_statement" });
 
-    expect(await screen.findByText('This build does not know the kind "personal"')).toBeTruthy();
+    expect(await screen.findByText('This build does not know the kind "per_statement"')).toBeTruthy();
     expect(screen.getByText("The connection refuses every request until it is switched to a kind below.")).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "Now" })).getByText("Unknown kind")).toBeTruthy();
     // The form falls back to a kind it can save.
@@ -561,5 +575,181 @@ describe("IdentityPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("region", { name: "Switch" })).toBeTruthy();
+  });
+
+  describe("personal", () => {
+    /** Fills the form for a switch from the shared login to a personal connection with a new user. */
+    async function enterPersonalLogin(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      await user.click(screen.getByRole("radio", { name: /Personal/ }));
+      await user.clear(field("ClickHouse user"));
+      await user.type(field("ClickHouse user"), "chouse_personal");
+      await user.type(field(/^Password/), "s3cret");
+    }
+
+    it("offers Personal as a third kind and says what it means", async () => {
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      expect(screen.getAllByRole("radio")).toHaveLength(3);
+      expect(
+        screen.getByText("Each person's statements run as their own ClickHouse user. The login itself holds no grants."),
+      ).toBeTruthy();
+      expect(screen.queryByLabelText("Impersonation role")).toBeNull();
+    });
+
+    it("choosing Personal reveals both roles, the build note and the personal statements, and no role map", async () => {
+      const user = userEvent.setup();
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      await user.click(screen.getByRole("radio", { name: /Personal/ }));
+
+      expect(field("System role").value).toBe("chouse_system");
+      expect(field("Impersonation role").value).toBe("chouse_impersonate");
+      expect(screen.getByText(/Of the builds tested, only 26\.3\.63 does/)).toBeTruthy();
+      expect(screen.queryByTestId("role-map-editor")).toBeNull();
+      const admin = screen.getByRole("region", { name: "For the ClickHouse administrator" });
+      expect(admin.textContent).toContain("GRANT chouse_system, chouse_impersonate TO <new_user>;");
+      expect(admin.textContent).not.toContain("CREATE USER <new_user>");
+    });
+
+    it("copies the personal statements, not the role ceiling's", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      await user.click(screen.getByRole("radio", { name: /Personal/ }));
+
+      await user.click(within(screen.getByRole("region", { name: "For the ClickHouse administrator" })).getByRole("button", { name: "Copy" }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(SHARED.personalSetupStatements.join("\n")));
+    });
+
+    it("shows the role map again when the choice goes back to role ceiling", async () => {
+      const user = userEvent.setup();
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+
+      await user.click(screen.getByRole("radio", { name: /Personal/ }));
+      await user.click(screen.getByRole("radio", { name: /Role ceiling/ }));
+
+      expect(screen.getByTestId("role-map-editor")).toBeTruthy();
+      expect(screen.queryByLabelText("Impersonation role")).toBeNull();
+      expect(screen.getByRole("region", { name: "For the ClickHouse administrator" }).textContent).toContain("CREATE USER <new_user>");
+    });
+
+    it("sends the impersonation role with the check", async () => {
+      const user = userEvent.setup();
+      checkIdentity.mockResolvedValue({
+        ...PASSING,
+        privileges: undefined,
+        verdict: {
+          ...PASSING.verdict,
+          impersonationTargets: ["alice_ch"],
+          checks: [
+            { id: "impersonation_role", label: "The impersonation role is granted to the login", ok: true, detail: "chouse_impersonate is granted to chouse_personal." },
+            { id: "no_nesting", label: "A linked user cannot act as another", ok: true, detail: "ClickHouse refused the nested statement." },
+          ],
+        },
+      });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      await enterPersonalLogin(user);
+
+      await user.click(screen.getByRole("button", { name: "Check" }));
+
+      await waitFor(() =>
+        expect(checkIdentity).toHaveBeenCalledWith("conn-1", {
+          identityMode: "personal",
+          username: "chouse_personal",
+          password: "s3cret",
+          systemRole: "chouse_system",
+          impersonationRole: "chouse_impersonate",
+          accessContact: null,
+        }),
+      );
+      const result = await screen.findByRole("region", { name: "Checks on the entered login" });
+      expect(within(result).getByText("The impersonation role is granted to the login")).toBeTruthy();
+      expect(within(result).getByText("ClickHouse refused the nested statement.")).toBeTruthy();
+    });
+
+    it("leaves the impersonation role out for the other kinds", async () => {
+      const user = userEvent.setup();
+      checkIdentity.mockResolvedValue(PASSING);
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      await enterCeilingLogin(user);
+
+      await user.click(screen.getByRole("button", { name: "Check" }));
+
+      await waitFor(() => expect(checkIdentity).toHaveBeenCalledWith("conn-1", CEILING_CHANGE));
+    });
+
+    it.each([
+      ["", "Enter the impersonation role."],
+      ["chouse-impersonate", /For the impersonation role, use letters, digits and underscores/],
+      ["2impersonate", /For the impersonation role, use letters, digits and underscores/],
+      ["chouse_system", "The impersonation role and the system role must be two roles."],
+    ])("refuses the impersonation role %j before anything is sent", async (value, message) => {
+      const user = userEvent.setup();
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      await enterPersonalLogin(user);
+      await user.clear(field("Impersonation role"));
+      if (value !== "") await user.type(field("Impersonation role"), value);
+
+      await user.click(screen.getByRole("button", { name: "Check" }));
+      expect(screen.getByText(message)).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(screen.getByText(message)).toBeTruthy();
+
+      expect(checkIdentity).not.toHaveBeenCalled();
+      expect(switchIdentity).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog", { name: "Replace the ClickHouse user?" })).toBeNull();
+    });
+
+    it("shows a stored personal connection with its impersonation role and no role map", async () => {
+      getIdentity.mockResolvedValue(PERSONAL);
+      open({ ...CONNECTION, identityMode: "personal", username: "chouse_personal" });
+
+      const now = await screen.findByRole("region", { name: "Now" });
+      expect(within(now).getByText("Personal")).toBeTruthy();
+      expect(within(now).getByText("chouse_act_as")).toBeTruthy();
+      expect(within(now).getByText("chouse_system")).toBeTruthy();
+      expect(field("Impersonation role").value).toBe("chouse_act_as");
+      expect(screen.queryByTestId("role-map-editor")).toBeNull();
+      expect(screen.getByRole("region", { name: "For the ClickHouse administrator" }).textContent).toContain("chouse_impersonate TO <new_user>");
+    });
+
+    it("does not list an impersonation role for a kind that has none", async () => {
+      getIdentity.mockResolvedValue(CEILING);
+      open({ ...CONNECTION, identityMode: "shared_ceiling" });
+
+      const now = await screen.findByRole("region", { name: "Now" });
+      expect(within(now).queryByText("Impersonation role")).toBeNull();
+    });
+
+    it("saves a switch to personal with both roles and keeps the personal statements", async () => {
+      const user = userEvent.setup();
+      const { setupStatements: _statements, personalSetupStatements: _personal, ...stored } = PERSONAL;
+      switchIdentity.mockResolvedValue({ identity: { ...stored, impersonationRole: "chouse_impersonate" }, check: { ...PASSING, privileges: undefined } });
+      getIdentity.mockResolvedValueOnce(SHARED).mockResolvedValue({ ...PERSONAL, impersonationRole: "chouse_impersonate" });
+      open();
+      await screen.findByRole("region", { name: "Switch" });
+      await enterPersonalLogin(user);
+
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const confirm = await screen.findByRole("dialog", { name: "Replace the ClickHouse user?" });
+      expect(confirm.textContent).toContain("chouse_personal replaces chouse for this connection at once, as personal.");
+      await user.click(within(confirm).getByRole("button", { name: "Save and replace" }));
+
+      await waitFor(() => expect(switchIdentity).toHaveBeenCalledTimes(1));
+      expect(switchIdentity.mock.calls[0][1]).toMatchObject({ identityMode: "personal", systemRole: "chouse_system", impersonationRole: "chouse_impersonate" });
+      const now = screen.getByRole("region", { name: "Now" });
+      await waitFor(() => expect(within(now).getByText("Personal")).toBeTruthy());
+      expect(within(now).getByText("chouse_impersonate")).toBeTruthy();
+      expect(screen.getByRole("region", { name: "For the ClickHouse administrator" })).toBeTruthy();
+    });
   });
 });

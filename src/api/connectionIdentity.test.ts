@@ -16,6 +16,7 @@ import {
   identityCheckFromError,
   identityKind,
   identityKindLabel,
+  IDENTITY_MODE_PERSONAL,
   recheckConnectionIdentity,
   setConnectionAccessContact,
   setConnectionRoleMap,
@@ -29,6 +30,7 @@ const IDENTITY: ConnectionIdentity = {
   identityMode: "shared_ceiling",
   username: "chouse_login",
   systemRole: "chouse_system",
+  impersonationRole: null,
   accessContact: "Ask #data-platform",
   health: "ok",
   healthReason: null,
@@ -65,7 +67,7 @@ describe("Connection identity API", () => {
   it("reads a connection's identity with its setup statements", async () => {
     server.use(
       http.get("/api/rbac/connections/:id/identity", ({ params }) =>
-        HttpResponse.json({ success: true, data: { ...IDENTITY, username: String(params.id), setupStatements: ["CREATE ROLE chouse_system;"] } }),
+        HttpResponse.json({ success: true, data: { ...IDENTITY, username: String(params.id), setupStatements: ["CREATE ROLE chouse_system;"], personalSetupStatements: ["CREATE ROLE IF NOT EXISTS chouse_impersonate;"] } }),
       ),
     );
 
@@ -73,6 +75,8 @@ describe("Connection identity API", () => {
     expect(identity.username).toBe("conn-1");
     expect(identity.roleMap).toEqual(IDENTITY.roleMap);
     expect(identity.setupStatements).toEqual(["CREATE ROLE chouse_system;"]);
+    expect(identity.personalSetupStatements).toEqual(["CREATE ROLE IF NOT EXISTS chouse_impersonate;"]);
+    expect(identity.impersonationRole).toBeNull();
   });
 
   it("escapes the connection id in the path", async () => {
@@ -100,6 +104,31 @@ describe("Connection identity API", () => {
     const result = await checkConnectionIdentity("conn-1", CHANGE);
     expect(body).toEqual(CHANGE);
     expect(result).toEqual(FAILING);
+  });
+
+  it("sends the impersonation role of a personal login and returns the users it may act as", async () => {
+    const change: IdentityChange = { identityMode: "personal", username: "chouse_personal", password: "secret", systemRole: "chouse_system", impersonationRole: "chouse_impersonate" };
+    const result: IdentityCheckResult = {
+      ok: true,
+      reason: null,
+      verdict: {
+        ok: true,
+        reason: null,
+        serverVersion: "26.3.63.1",
+        impersonationTargets: ["alice_ch"],
+        checks: [{ id: "no_nesting", label: "A linked user cannot act as another", ok: true, detail: "Refused." }],
+      },
+    };
+    let body: unknown;
+    server.use(
+      http.post("/api/rbac/connections/conn-1/identity/check", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: result });
+      }),
+    );
+
+    expect(await checkConnectionIdentity("conn-1", change)).toEqual(result);
+    expect(body).toEqual(change);
   });
 
   it("switches the identity and returns the stored identity with its check", async () => {
@@ -213,14 +242,17 @@ describe("identityKind", () => {
     expect(identityKind(undefined)).toBe("shared");
     expect(identityKind(null)).toBe("shared");
     expect(identityKind("shared_ceiling")).toBe("shared_ceiling");
-    expect(identityKind("personal")).toBe("unknown");
+    expect(identityKind("personal")).toBe(IDENTITY_MODE_PERSONAL);
+    expect(identityKind("Personal")).toBe("unknown");
+    expect(identityKind("per_statement")).toBe("unknown");
     expect(identityKind("")).toBe("unknown");
   });
 
   it("names each kind in plain words", () => {
     expect(identityKindLabel("shared")).toBe("Shared login");
     expect(identityKindLabel("shared_ceiling")).toBe("Role ceiling");
-    expect(identityKindLabel("personal")).toBe("Unknown kind");
+    expect(identityKindLabel("personal")).toBe("Personal");
+    expect(identityKindLabel("per_statement")).toBe("Unknown kind");
   });
 });
 

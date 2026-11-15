@@ -957,10 +957,12 @@ export interface ClickHouseConnection {
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown> | null;
-  /** How statements reach ClickHouse (ADR 0033): `shared`, `shared_ceiling`, or a kind this build does not know. */
+  /** How statements reach ClickHouse (ADR 0033): `shared`, `shared_ceiling`, `personal`, or a kind this build does not know. */
   identityMode: string;
   /** The ClickHouse role CHouse's own background work names; null on a shared login. */
   systemRole: string | null;
+  /** The role a personal login runs linked users' statements through; null for anyone but a super admin. */
+  impersonationRole: string | null;
   /** Shown to people when ClickHouse refuses them on this connection. */
   accessContact: string | null;
   identityHealth: 'ok' | 'failing' | null;
@@ -1020,10 +1022,11 @@ export interface PrivilegeFeatureReport {
   grants: string[];
   /**
    * On a kind other than `shared`: whose privileges decide this feature. The
-   * system role's are checked; a person's mapped role and a feature the kind
-   * does not offer are not.
+   * system role's are checked; a person's mapped role, a person's own
+   * ClickHouse user (a personal connection) and a feature the kind does not
+   * offer are not.
    */
-  source?: 'system_role' | 'mapped_role' | 'unavailable';
+  source?: 'system_role' | 'mapped_role' | 'person' | 'unavailable';
 }
 
 /** What a connection's ClickHouse user is missing for each CHouse UI feature. */

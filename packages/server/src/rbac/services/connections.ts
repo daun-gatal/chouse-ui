@@ -8,6 +8,7 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
+import { all, str } from '../../services/observe/db';
 import { ephemeralExecutor, identityOfConnection, serviceActor, type ChExecutor } from '../../services/chExecutor';
 import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
 
@@ -59,9 +60,12 @@ export interface ConnectionResponse {
   /** When that verdict was written, in unix milliseconds. */
   identityCheckedAt: number | null;
   identityServerVersion: string | null;
+  /** The ClickHouse role that holds the IMPERSONATE grants of a `personal` connection. */
+  impersonationRole: string | null;
 }
 
 interface IdentityColumns {
+  impersonationRole?: string | null;
   identityMode?: string | null;
   systemRole?: string | null;
   accessContact?: string | null;
@@ -72,7 +76,7 @@ interface IdentityColumns {
 }
 
 /** The identity columns of a connection row, as the response carries them. */
-function identityFields(row: IdentityColumns): Pick<ConnectionResponse, 'identityMode' | 'systemRole' | 'accessContact' | 'identityHealth' | 'identityHealthReason' | 'identityCheckedAt' | 'identityServerVersion'> {
+function identityFields(row: IdentityColumns): Pick<ConnectionResponse, 'identityMode' | 'systemRole' | 'accessContact' | 'identityHealth' | 'identityHealthReason' | 'identityCheckedAt' | 'identityServerVersion' | 'impersonationRole'> {
   return {
     identityMode: row.identityMode ?? 'shared',
     systemRole: row.systemRole ?? null,
@@ -81,6 +85,7 @@ function identityFields(row: IdentityColumns): Pick<ConnectionResponse, 'identit
     identityHealthReason: row.identityHealthReason ?? null,
     identityCheckedAt: row.identityCheckedAt === null || row.identityCheckedAt === undefined ? null : Number(row.identityCheckedAt),
     identityServerVersion: row.identityServerVersion ?? null,
+    impersonationRole: row.impersonationRole ?? null,
   };
 }
 
@@ -758,6 +763,14 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
+  // A `personal` connection (ADR 0033 §7.3) is reached through an active link to a ClickHouse user, not through a
+  // policy. Only an active one: the connection's monitoring pages run as CHouse itself, so a suspended or waiting
+  // link must not open them.
+  const bound = new Set<string>(
+    (await all(sql`SELECT connection_id FROM rbac_clickhouse_bindings WHERE user_id = ${userId} AND state = 'active'`)).map((row) => str(row.connection_id)),
+  );
+
+  const connectionIdSet = new Set<string>(bound);
   const roleRows = await db.select({ roleId: schema.userRoles.roleId })
     .from(schema.userRoles)
     .where(eq(schema.userRoles.userId, userId));
@@ -765,15 +778,12 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
     .map((r: { roleId: string | null }) => r.roleId)
     .filter((rid: string | null): rid is string => Boolean(rid));
 
-  if (roleIds.length === 0) return [];
-
-  const policyLinks = await db.select({ policyId: schema.roleDataAccessPolicies.policyId })
+  const policyLinks = roleIds.length === 0 ? [] : await db.select({ policyId: schema.roleDataAccessPolicies.policyId })
     .from(schema.roleDataAccessPolicies)
     .where(inArray(schema.roleDataAccessPolicies.roleId, roleIds));
   const policyIds = Array.from(new Set(policyLinks.map((l: { policyId: string }) => l.policyId)));
-  if (policyIds.length === 0) return [];
 
-  const ruleRows = await db.select({
+  const ruleRows = policyIds.length === 0 ? [] : await db.select({
     connectionId: schema.dataAccessPolicyRules.connectionId,
     isAllowed: schema.dataAccessPolicyRules.isAllowed,
   })
@@ -785,9 +795,12 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   // specific connection. Null-connection rules are global db/table scopes that
   // apply on connections the user can already reach — they do not, by themselves,
   // grant access to any connection.
-  const connectionIdSet = new Set<string>();
+  const policyAdmits = new Set<string>();
   for (const r of ruleRows as Array<{ connectionId: string | null; isAllowed: boolean | number }>) {
-    if (r.isAllowed && r.connectionId) connectionIdSet.add(r.connectionId);
+    if (r.isAllowed && r.connectionId) {
+      policyAdmits.add(r.connectionId);
+      connectionIdSet.add(r.connectionId);
+    }
   }
 
   logger.debug(
@@ -797,13 +810,16 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
 
   if (connectionIdSet.size === 0) return [];
 
-  const connections = await db.select()
+  const rows = await db.select()
     .from(schema.clickhouseConnections)
     .where(and(
       inArray(schema.clickhouseConnections.id, Array.from(connectionIdSet)),
       eq(schema.clickhouseConnections.isActive, true),
     ))
     .orderBy(desc(schema.clickhouseConnections.isDefault), asc(schema.clickhouseConnections.name));
+  // Policies do not admit anyone to a personal connection, and a link does not admit anyone to another kind.
+  const connections = rows.filter((conn: { id: string; identityMode?: string | null }) =>
+    conn.identityMode === 'personal' ? bound.has(conn.id) : policyAdmits.has(conn.id));
 
   return connections.map((conn: any) => ({
     id: conn.id,

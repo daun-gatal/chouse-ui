@@ -97,6 +97,37 @@ describe("grant helpers", () => {
 });
 
 describe("on a connection that limits people to a ClickHouse role", () => {
+  describe("on a personal connection (§7)", () => {
+    const personal = { mode: "personal", login: "svc_personal" };
+    const denied = (user: string, grant: string): Error => chError("497", "ACCESS_DENIED", `${user}: Not enough privileges. To execute this query, it's necessary to have the grant ${grant}. (ACCESS_DENIED)`);
+
+    it("a refusal that names the person's user is about their own grants", () => {
+      const classified = classifyClickHouseError(denied("alice", "SELECT ON secret.salaries"), personal);
+      expect(classified).toMatchObject({ class: "grant", code: "CLICKHOUSE_ACCESS_DENIED", status: 403, grant: "SELECT ON secret.salaries" });
+      expect(classified?.message).toContain("Your ClickHouse user isn't allowed");
+      expect(classified?.message).toContain("alice: Not enough privileges");
+    });
+
+    it("a refusal that names the login means the connection may not act as the person", () => {
+      for (const error of [denied("svc_personal", "IMPERSONATE ON alice"), new Error("Code: 497. DB::Exception: svc_personal: Not enough privileges. To execute this query, it's necessary to have the grant IMPERSONATE ON alice. (ACCESS_DENIED)")]) {
+        const classified = classifyClickHouseError(error, personal);
+        expect(classified).toMatchObject({ class: "identity", code: "IDENTITY_UNAVAILABLE", status: 403 });
+        expect(classified?.message).toContain("IMPERSONATE");
+        expect(classified?.message).not.toContain("svc_personal");
+      }
+    });
+
+    it("without the login it is worded as the person's grant, never as the shared login's", () => {
+      expect(classifyClickHouseError(denied("svc_personal", "IMPERSONATE ON alice"), { mode: "personal" })?.message).toContain("Your ClickHouse user");
+    });
+
+    it("words a read-only refusal for a statement that had to be a read", () => {
+      const classified = classifyClickHouseError(chError("164", "READONLY", "alice: Cannot execute query in readonly mode. (READONLY)"), personal);
+      expect(classified).toMatchObject({ class: "read-only", code: "READ_ONLY" });
+      expect(classified?.message).toContain("must be a read");
+    });
+  });
+
   const ceiling = { mode: "shared_ceiling" };
 
   it("words a grant error as the person's role's, not the login's", () => {

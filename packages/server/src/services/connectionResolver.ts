@@ -11,6 +11,8 @@
  * Constructing a `ClickHouseService` just wraps that lookup.
  */
 import { identityOfConnection, personActor } from "./chExecutor";
+import { boundUser } from "./chExecutor/identity";
+import { all, sql } from "./observe/db";
 import { ClickHouseService } from "./clickhouse";
 import { getConnectionWithPassword, getUserConnections } from "../rbac/services/connections";
 import { AppError, type ConnectionConfig } from "../types";
@@ -137,6 +139,13 @@ export async function resolveRequestedConnection(
   const match = usable.find((candidate) => candidate.id === connectionId);
 
   if (!match) {
+    // An account whose link on a personal connection is waiting, suspended or disabled is told so. It has a link
+    // there, so this reveals nothing it could not already see in its Preferences.
+    const linked = await all(sql`SELECT 1 AS one FROM rbac_clickhouse_bindings WHERE user_id = ${rbacUserId} AND connection_id = ${connectionId} AND state <> 'active'`);
+    if (linked.length > 0) {
+      const stored = await getConnectionWithPassword(connectionId);
+      if (stored && stored.identityMode === "personal") await boundUser(identityOfConnection(stored), rbacUserId);
+    }
     // Deliberately does not distinguish "no such connection" from "not yours" —
     // that difference would let any authenticated user probe for connection ids.
     throw AppError.forbidden("You do not have access to this ClickHouse connection.");

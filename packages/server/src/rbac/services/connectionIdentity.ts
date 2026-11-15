@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 import { all, run, runBatch, sql, str, num } from '../../services/observe/db';
 import { isKnownMode, isRoleName } from '../../services/chExecutor';
 import { runIdentityChecks, writeVerdict, type IdentityVerdict } from '../../services/chExecutor/health';
+import { resetCreateChecks } from '../../services/chExecutor/selfTest';
 import type { PrivilegeReport } from '../../services/connectionPrivileges';
 import { AppError } from '../../types';
 import { getDatabase, getSchema } from '../db';
@@ -33,6 +34,7 @@ export interface IdentityView {
   identityMode: string;
   username: string;
   systemRole: string | null;
+  impersonationRole: string | null;
   accessContact: string | null;
   health: string | null;
   healthReason: string | null;
@@ -47,6 +49,8 @@ export interface IdentityChange {
   /** Empty or absent keeps the stored password, which is only allowed when the username does not change. */
   password?: string;
   systemRole?: string | null;
+  /** For `personal`: the ClickHouse role that holds the IMPERSONATE grants. */
+  impersonationRole?: string | null;
   accessContact?: string | null;
   host?: string;
   port?: number;
@@ -134,6 +138,7 @@ export async function getIdentity(connection: ConnectionResponse): Promise<Ident
     identityMode: connection.identityMode,
     username: connection.username,
     systemRole: connection.systemRole,
+    impersonationRole: connection.impersonationRole,
     accessContact: connection.accessContact,
     health: connection.identityHealth,
     healthReason: connection.identityHealthReason,
@@ -166,7 +171,29 @@ export function ceilingSetupStatements(username: string, systemRole: string, map
   ];
 }
 
+/**
+ * The statements a ClickHouse administrator runs to prepare a login for a
+ * `personal` connection. The login holds two roles and nothing else: one for
+ * CHouse's own reads of system tables, one that may run statements as the
+ * linked users. Nothing here is sent to ClickHouse by CHouse.
+ */
+export function personalSetupStatements(username: string, systemRole: string, impersonationRole: string): string[] {
+  return [
+    `CREATE ROLE IF NOT EXISTS ${systemRole};`,
+    `GRANT SELECT ON system.* TO ${systemRole};`,
+    `GRANT SHOW ON *.* TO ${systemRole};`,
+    `GRANT KILL QUERY ON *.* TO ${systemRole};`,
+    `CREATE ROLE IF NOT EXISTS ${impersonationRole};`,
+    `CREATE USER IF NOT EXISTS ${username} IDENTIFIED BY '<password>';`,
+    `GRANT IMPERSONATE ON ${username} TO ${impersonationRole};   -- lets CHouse test the server; the login itself holds no grant`,
+    `-- GRANT IMPERSONATE ON <user> TO ${impersonationRole};     -- one line per linked ClickHouse user (Admin › Connections shows them)`,
+    `GRANT ${systemRole}, ${impersonationRole} TO ${username};`,
+    `ALTER USER ${username} DEFAULT ROLE NONE;`,
+  ];
+}
+
 interface ResolvedChange {
+  impersonationRole: string | null;
   mode: string;
   host: string;
   port: number;
@@ -196,6 +223,13 @@ async function resolveChange(connectionId: string, change: IdentityChange): Prom
   if (change.identityMode !== 'shared' && !isRoleName(systemRole)) {
     throw AppError.badRequest('A system role is required: the ClickHouse role CHouse names for its own work. Letters, digits and underscores.');
   }
+  const impersonationRole = change.identityMode === 'personal' ? (change.impersonationRole ?? '').trim() || null : null;
+  if (change.identityMode === 'personal') {
+    if (!isRoleName(impersonationRole)) {
+      throw AppError.badRequest('An impersonation role is required: the ClickHouse role that may run statements as the linked users. Letters, digits and underscores.');
+    }
+    if (impersonationRole === systemRole) throw AppError.badRequest('The impersonation role and the system role must be two roles.');
+  }
   const accessContact = change.accessContact === undefined ? current.accessContact : (change.accessContact ?? '').trim() || null;
   if (accessContact && accessContact.length > 500) throw AppError.badRequest('The access contact is at most 500 characters.');
   return {
@@ -206,6 +240,7 @@ async function resolveChange(connectionId: string, change: IdentityChange): Prom
     username,
     password,
     systemRole,
+    impersonationRole,
     accessContact,
     database: current.database,
   };
@@ -219,6 +254,7 @@ export async function checkIdentityChange(connectionId: string, change: Identity
     config: { url, username: resolved.username, password: resolved.password, database: resolved.database || undefined },
     mode: resolved.mode,
     systemRole: resolved.systemRole,
+    impersonationRole: resolved.impersonationRole,
     host: resolved.host,
     port: resolved.port,
     connectionId,
@@ -247,6 +283,8 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
   if (!result.ok) return result;
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
+  const before = await getConnectionWithPassword(connectionId);
+  const movedServer = !before || before.host !== resolved.host || before.port !== resolved.port;
   await db.update(schema.clickhouseConnections)
     .set({
       identityMode: resolved.mode,
@@ -256,6 +294,7 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
       username: resolved.username,
       passwordEncrypted: resolved.password ? encryptPassword(resolved.password) : null,
       systemRole: resolved.systemRole,
+      impersonationRole: resolved.impersonationRole,
       accessContact: resolved.accessContact,
       identityHealth: null,
       identityHealthReason: null,
@@ -265,6 +304,14 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
     })
     .where(eq(schema.clickhouseConnections.id, connectionId));
   if (resolved.mode !== 'shared') await writeVerdict(connectionId, resolved.username, result.verdict);
+  resetCreateChecks();
+  const { checkConnectionBindings, resetBindingsOfConnection } = await import('./clickhouseBindings');
+  // A user of the same name on another server is another user: no link stays in use across a move.
+  if (movedServer) await resetBindingsOfConnection(connectionId);
+  if (resolved.mode === 'personal') {
+    // Links prepared while the connection was another kind can be tested now. A test that cannot run changes nothing.
+    await checkConnectionBindings(connectionId).catch(() => undefined);
+  }
   return result;
 }
 

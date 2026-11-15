@@ -34,6 +34,7 @@ import { getSessionId } from "@/api/client";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import { PersonalAccessTokensCard } from "@/features/rbac/components/PersonalAccessTokensCard";
 import { LinkedChatAccountsCard } from "@/features/rbac/components/LinkedChatAccountsCard";
+import { ClickHouseLinksCard } from "@/features/rbac/components/ClickHouseLinksCard";
 import { useTheme } from "@/components/common/theme-provider";
 import { log } from "@/lib/log";
 
@@ -872,6 +873,8 @@ export default function Preferences() {
             <EffectivePermissionsCard permissions={user?.permissions || []} />
             {/* Row 3: Personal access tokens — full row */}
             <PersonalAccessTokensCard />
+            {/* Linked ClickHouse users (personal connections); nothing when the person has none */}
+            <ClickHouseLinksCard />
             {/* Linked chat accounts — who you are when you press a button in an alert */}
             <LinkedChatAccountsCard />
             {/* Row 4: Appearance + query settings — full row */}

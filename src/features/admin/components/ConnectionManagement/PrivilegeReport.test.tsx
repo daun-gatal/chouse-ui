@@ -304,6 +304,20 @@ describe("PrivilegeReport", () => {
       expect(screen.queryByText(/gets its access through a role/)).toBeNull();
     });
 
+    it("says a personal connection's data features come from each person's own ClickHouse user", () => {
+      const personal: ConnectionPrivilegeReport = {
+        ...CEILING,
+        kind: "personal",
+        features: CEILING.features.map((item) => (item.source === "mapped_role" ? { ...item, source: "person" } : item)),
+      };
+      render(<PrivilegeReport report={personal} blocked={false} isEditing />);
+      expect(screen.getByText("From each person's own ClickHouse user")).toBeTruthy();
+      expect(screen.queryByText("From each person's ClickHouse role")).toBeNull();
+      // Nothing was checked for it, so it has neither a badge nor grants to expand.
+      expect(screen.getAllByText("Granted")).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: /Data editing/ })).toBeNull();
+    });
+
     it("replaces granted/missing on features the system role does not decide", () => {
       render(<PrivilegeReport report={CEILING} blocked={false} isEditing />);
       expect(screen.getByText("From each person's ClickHouse role")).toBeTruthy();

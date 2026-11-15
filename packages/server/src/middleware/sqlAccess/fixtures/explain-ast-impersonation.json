@@ -1,0 +1,1632 @@
+{
+ "version": "26.3.63.123",
+ "printouts": {
+  "SELECT 1": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_1",
+    "     Function equals (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier readonly",
+    "       Literal UInt64_1"
+   ]
+  },
+  "SELECT count() FROM public.events": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier public.events"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.events"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 3)",
+    "    ExpressionList (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier public.events",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT * FROM events": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Asterisk",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier events"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT * FROM events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier events"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT * FROM events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 3)",
+    "    ExpressionList (children 1)",
+    "     Asterisk",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier events",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT * FROM events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT count() FROM system.parts": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Function count (children 1)",
+    "     ExpressionList",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier system.parts"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM system.parts": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier system.parts"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM system.parts\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 3)",
+    "    ExpressionList (children 1)",
+    "     Function count (children 1)",
+    "      ExpressionList",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier system.parts",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT count() FROM system.parts\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1 SETTINGS max_threads = 1": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "   Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "SELECT 1 FROM (SELECT 2 SETTINGS max_threads = 1)": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      Subquery (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 2)",
+    "          ExpressionList (children 1)",
+    "           Literal UInt64_2",
+    "          Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FROM (SELECT 2 SETTINGS max_threads = 1)": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       Subquery (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Literal UInt64_2",
+    "           Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FROM (SELECT 2 SETTINGS max_threads = 1)\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 3)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       Subquery (children 1)",
+    "        SelectWithUnionQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          SelectQuery (children 2)",
+    "           ExpressionList (children 1)",
+    "            Literal UInt64_2",
+    "           Set",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FROM (SELECT 2 SETTINGS max_threads = 1)\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1 UNION ALL SELECT 2": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 2)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_2"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 UNION ALL SELECT 2": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 2)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_2"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 UNION ALL SELECT 2\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 2)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_2",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 UNION ALL SELECT 2\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 2)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_2",
+    "     Function equals (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier readonly",
+    "       Literal UInt64_1"
+   ]
+  },
+  "SELECT 1;": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1;": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "SELECT 1 -- note": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 -- note": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 -- note\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 -- note\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_1",
+    "     Function equals (children 1)",
+    "      ExpressionList (children 2)",
+    "       Identifier readonly",
+    "       Literal UInt64_1"
+   ]
+  },
+  "WITH x AS (SELECT 1 AS a) SELECT a FROM x": {
+   "lines": [
+    "SelectWithUnionQuery (children 1)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 3)",
+    "   ExpressionList (children 1)",
+    "    WithElement (children 1)",
+    "     Subquery (children 1)",
+    "      SelectWithUnionQuery (children 1)",
+    "       ExpressionList (children 1)",
+    "        SelectQuery (children 1)",
+    "         ExpressionList (children 1)",
+    "          Literal UInt64_1 (alias a)",
+    "   ExpressionList (children 1)",
+    "    Identifier a",
+    "   TablesInSelectQuery (children 1)",
+    "    TablesInSelectQueryElement (children 1)",
+    "     TableExpression (children 1)",
+    "      TableIdentifier x"
+   ]
+  },
+  "EXECUTE AS `alice` WITH x AS (SELECT 1 AS a) SELECT a FROM x": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 3)",
+    "    ExpressionList (children 1)",
+    "     WithElement (children 1)",
+    "      Subquery (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 1)",
+    "          ExpressionList (children 1)",
+    "           Literal UInt64_1 (alias a)",
+    "    ExpressionList (children 1)",
+    "     Identifier a",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier x"
+   ]
+  },
+  "EXECUTE AS `alice` WITH x AS (SELECT 1 AS a) SELECT a FROM x\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 4)",
+    "    ExpressionList (children 1)",
+    "     WithElement (children 1)",
+    "      Subquery (children 1)",
+    "       SelectWithUnionQuery (children 1)",
+    "        ExpressionList (children 1)",
+    "         SelectQuery (children 1)",
+    "          ExpressionList (children 1)",
+    "           Literal UInt64_1 (alias a)",
+    "    ExpressionList (children 1)",
+    "     Identifier a",
+    "    TablesInSelectQuery (children 1)",
+    "     TablesInSelectQueryElement (children 1)",
+    "      TableExpression (children 1)",
+    "       TableIdentifier x",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` WITH x AS (SELECT 1 AS a) SELECT a FROM x\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1 FORMAT TabSeparated": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    " Identifier TabSeparated"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT TabSeparated": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier TabSeparated",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT TabSeparated\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 4)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier TabSeparated",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT TabSeparated\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1 FORMAT JSON SETTINGS max_threads = 1": {
+   "lines": [
+    "SelectWithUnionQuery (children 3)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    " Identifier JSON",
+    " Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT JSON SETTINGS max_threads = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 4)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier JSON",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT JSON SETTINGS max_threads = 1\nSETTINGS readonly = 1": {
+   "code": "CHECK_UNAVAILABLE"
+  },
+  "EXECUTE AS `alice` SELECT 1 FORMAT JSON SETTINGS max_threads = 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 4)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier JSON",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "SELECT 1 SETTINGS max_threads = 1 FORMAT JSON": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 2)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    "   Set",
+    " Identifier JSON"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1 FORMAT JSON": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier JSON",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1 FORMAT JSON\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 4)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Identifier JSON",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 2)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1",
+    "    Set"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 SETTINGS max_threads = 1 FORMAT JSON\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1 INTO OUTFILE 'x'": {
+   "lines": [
+    "SelectWithUnionQuery (children 2)",
+    " ExpressionList (children 1)",
+    "  SelectQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    Literal UInt64_1",
+    " Literal 'x'"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 INTO OUTFILE 'x'": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Literal 'x'",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 INTO OUTFILE 'x'\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 4)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Literal 'x'",
+    " Set",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` SELECT 1 INTO OUTFILE 'x'\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXPLAIN SELECT 1": {
+   "lines": [
+    "Explain EXPLAIN (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN SELECT 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 1)",
+    "      Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN SELECT 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 2)",
+    "     ExpressionList (children 1)",
+    "      Literal UInt64_1",
+    "     Set"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN SELECT 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 2)",
+    "      Literal UInt64_1",
+    "      Function equals (children 1)",
+    "       ExpressionList (children 2)",
+    "        Identifier readonly",
+    "        Literal UInt64_1"
+   ]
+  },
+  "EXPLAIN AST SELECT 1": {
+   "lines": [
+    "Explain EXPLAIN AST (children 1)",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN AST SELECT 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN AST (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 1)",
+    "      Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN AST SELECT 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN AST (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 2)",
+    "     ExpressionList (children 1)",
+    "      Literal UInt64_1",
+    "     Set"
+   ]
+  },
+  "EXECUTE AS `alice` EXPLAIN AST SELECT 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Explain EXPLAIN AST (children 1)",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 2)",
+    "      Literal UInt64_1",
+    "      Function equals (children 1)",
+    "       ExpressionList (children 2)",
+    "        Identifier readonly",
+    "        Literal UInt64_1"
+   ]
+  },
+  "SHOW TABLES FROM public": {
+   "lines": [
+    "ShowTables (children 1)",
+    " Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW TABLES FROM public": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " ShowTables (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW TABLES FROM public\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " ShowTables (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW TABLES FROM public\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SHOW DATABASES": {
+   "lines": [
+    "ShowTables"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW DATABASES": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " ShowTables"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW DATABASES\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " ShowTables"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW DATABASES\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SHOW CREATE TABLE public.events": {
+   "lines": [
+    "ShowCreateTableQuery public events (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW CREATE TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " ShowCreateTableQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW CREATE TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " ShowCreateTableQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` SHOW CREATE TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "DESCRIBE TABLE public.events": {
+   "lines": [
+    "DescribeQuery (children 1)",
+    " TableExpression (children 1)",
+    "  TableIdentifier public.events"
+   ]
+  },
+  "EXECUTE AS `alice` DESCRIBE TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " DescribeQuery (children 1)",
+    "  TableExpression (children 1)",
+    "   TableIdentifier public.events"
+   ]
+  },
+  "EXECUTE AS `alice` DESCRIBE TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " DescribeQuery (children 1)",
+    "  TableExpression (children 1)",
+    "   TableIdentifier public.events"
+   ]
+  },
+  "EXECUTE AS `alice` DESCRIBE TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXISTS TABLE public.events": {
+   "lines": [
+    "ExistsTableQuery public events (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` EXISTS TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " ExistsTableQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` EXISTS TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " ExistsTableQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` EXISTS TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "CHECK TABLE public.events": {
+   "lines": [
+    "CheckQuery public events (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` CHECK TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " CheckQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` CHECK TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " CheckQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` CHECK TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "INSERT INTO public.events SELECT 1, 'a'": {
+   "lines": [
+    "InsertQuery   (children 3)",
+    " Identifier public",
+    " Identifier events",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 2)",
+    "     Literal UInt64_1",
+    "     Literal 'a'"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events SELECT 1, 'a'": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " InsertQuery   (children 3)",
+    "  Identifier public",
+    "  Identifier events",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 2)",
+    "      Literal UInt64_1",
+    "      Literal 'a'"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events SELECT 1, 'a'\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " InsertQuery   (children 4)",
+    "  Identifier public",
+    "  Identifier events",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 2)",
+    "     ExpressionList (children 2)",
+    "      Literal UInt64_1",
+    "      Literal 'a'",
+    "     Set",
+    "  Set"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events SELECT 1, 'a'\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " InsertQuery   (children 3)",
+    "  Identifier public",
+    "  Identifier events",
+    "  SelectWithUnionQuery (children 1)",
+    "   ExpressionList (children 1)",
+    "    SelectQuery (children 1)",
+    "     ExpressionList (children 3)",
+    "      Literal UInt64_1",
+    "      Literal 'a'",
+    "      Function equals (children 1)",
+    "       ExpressionList (children 2)",
+    "        Identifier readonly",
+    "        Literal UInt64_1"
+   ]
+  },
+  "INSERT INTO public.events VALUES (1, 'a')": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events VALUES (1, 'a')": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events VALUES (1, 'a')\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events VALUES (1, 'a')\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "INSERT INTO public.events FORMAT JSONEachRow": {
+   "lines": [
+    "InsertQuery   (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events FORMAT JSONEachRow": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " InsertQuery   (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events FORMAT JSONEachRow\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " InsertQuery   (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` INSERT INTO public.events FORMAT JSONEachRow\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "ALTER TABLE public.events UPDATE name = 'x' WHERE 1": {
+   "lines": [
+    "AlterQuery public events (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand UPDATE (children 2)",
+    "   Literal UInt64_1",
+    "   ExpressionList (children 1)",
+    "    Assignment name (children 1)",
+    "     Literal 'x'",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events UPDATE name = 'x' WHERE 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand UPDATE (children 2)",
+    "    Literal UInt64_1",
+    "    ExpressionList (children 1)",
+    "     Assignment name (children 1)",
+    "      Literal 'x'",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events UPDATE name = 'x' WHERE 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand UPDATE (children 2)",
+    "    Literal UInt64_1",
+    "    ExpressionList (children 1)",
+    "     Assignment name (children 1)",
+    "      Literal 'x'",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events UPDATE name = 'x' WHERE 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "ALTER TABLE public.events DELETE WHERE 1": {
+   "lines": [
+    "AlterQuery public events (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand DELETE (children 1)",
+    "   Literal UInt64_1",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events DELETE WHERE 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand DELETE (children 1)",
+    "    Literal UInt64_1",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events DELETE WHERE 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand DELETE (children 1)",
+    "    Literal UInt64_1",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events DELETE WHERE 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "DELETE FROM public.events WHERE 1": {
+   "lines": [
+    "DeleteQuery public events (children 3)",
+    " Literal UInt64_1",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DELETE FROM public.events WHERE 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " DeleteQuery public events (children 3)",
+    "  Literal UInt64_1",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DELETE FROM public.events WHERE 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " DeleteQuery public events (children 3)",
+    "  Literal UInt64_1",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DELETE FROM public.events WHERE 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "ALTER TABLE public.events ADD COLUMN x UInt8": {
+   "lines": [
+    "AlterQuery public events (children 3)",
+    " ExpressionList (children 1)",
+    "  AlterCommand ADD_COLUMN (children 1)",
+    "   ColumnDeclaration x (children 1)",
+    "    DataType UInt8",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events ADD COLUMN x UInt8": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand ADD_COLUMN (children 1)",
+    "    ColumnDeclaration x (children 1)",
+    "     DataType UInt8",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events ADD COLUMN x UInt8\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " AlterQuery public events (children 3)",
+    "  ExpressionList (children 1)",
+    "   AlterCommand ADD_COLUMN (children 1)",
+    "    ColumnDeclaration x (children 1)",
+    "     DataType UInt8",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` ALTER TABLE public.events ADD COLUMN x UInt8\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "CREATE TABLE public.made (id UInt32) ENGINE = MergeTree ORDER BY id": {
+   "lines": [
+    "CreateQuery public made (children 4)",
+    " Identifier public",
+    " Identifier made",
+    " Columns definition (children 1)",
+    "  ExpressionList (children 1)",
+    "   ColumnDeclaration id (children 1)",
+    "    DataType UInt32",
+    " Storage definition (children 2)",
+    "  Function MergeTree",
+    "  Identifier id"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE TABLE public.made (id UInt32) ENGINE = MergeTree ORDER BY id": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " CreateQuery public made (children 4)",
+    "  Identifier public",
+    "  Identifier made",
+    "  Columns definition (children 1)",
+    "   ExpressionList (children 1)",
+    "    ColumnDeclaration id (children 1)",
+    "     DataType UInt32",
+    "  Storage definition (children 2)",
+    "   Function MergeTree",
+    "   Identifier id"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE TABLE public.made (id UInt32) ENGINE = MergeTree ORDER BY id\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " CreateQuery public made (children 4)",
+    "  Identifier public",
+    "  Identifier made",
+    "  Columns definition (children 1)",
+    "   ExpressionList (children 1)",
+    "    ColumnDeclaration id (children 1)",
+    "     DataType UInt32",
+    "  Storage definition (children 3)",
+    "   Function MergeTree",
+    "   Identifier id",
+    "   Set"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE TABLE public.made (id UInt32) ENGINE = MergeTree ORDER BY id\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "CREATE DATABASE made_db": {
+   "lines": [
+    "CreateQuery made_db  (children 1)",
+    " Identifier made_db"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE DATABASE made_db": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " CreateQuery made_db  (children 1)",
+    "  Identifier made_db"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE DATABASE made_db\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " CreateQuery made_db  (children 1)",
+    "  Identifier made_db"
+   ]
+  },
+  "EXECUTE AS `alice` CREATE DATABASE made_db\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "DROP TABLE public.events": {
+   "lines": [
+    "DropQuery public events (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DROP TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " DropQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DROP TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " DropQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` DROP TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "DROP DATABASE public": {
+   "lines": [
+    "DropQuery public  (children 1)",
+    " Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` DROP DATABASE public": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " DropQuery public  (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` DROP DATABASE public\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " DropQuery public  (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` DROP DATABASE public\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "TRUNCATE TABLE public.events": {
+   "lines": [
+    "TruncateQuery public events (children 2)",
+    " Identifier public",
+    " Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` TRUNCATE TABLE public.events": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " TruncateQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` TRUNCATE TABLE public.events\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " TruncateQuery public events (children 2)",
+    "  Identifier public",
+    "  Identifier events"
+   ]
+  },
+  "EXECUTE AS `alice` TRUNCATE TABLE public.events\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "KILL QUERY WHERE query_id = 'x'": {
+   "lines": [
+    "KillQueryQuery Function_equals ASYNC (children 1)",
+    " Function equals (children 1)",
+    "  ExpressionList (children 2)",
+    "   Identifier query_id",
+    "   Literal 'x'"
+   ]
+  },
+  "EXECUTE AS `alice` KILL QUERY WHERE query_id = 'x'": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " KillQueryQuery Function_equals ASYNC (children 1)",
+    "  Function equals (children 1)",
+    "   ExpressionList (children 2)",
+    "    Identifier query_id",
+    "    Literal 'x'"
+   ]
+  },
+  "EXECUTE AS `alice` KILL QUERY WHERE query_id = 'x'\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 3)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set",
+    " KillQueryQuery Function_equals ASYNC (children 1)",
+    "  Function equals (children 1)",
+    "   ExpressionList (children 2)",
+    "    Identifier query_id",
+    "    Literal 'x'"
+   ]
+  },
+  "EXECUTE AS `alice` KILL QUERY WHERE query_id = 'x'\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SET max_threads = 1": {
+   "lines": [
+    "Set"
+   ]
+  },
+  "EXECUTE AS `alice` SET max_threads = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set"
+   ]
+  },
+  "EXECUTE AS `alice` SET max_threads = 1\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set"
+   ]
+  },
+  "EXECUTE AS `alice` SET max_threads = 1\n, readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " Set"
+   ]
+  },
+  "USE public": {
+   "lines": [
+    "UseQuery public (children 1)",
+    " Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` USE public": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " UseQuery public (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` USE public\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " UseQuery public (children 1)",
+    "  Identifier public"
+   ]
+  },
+  "EXECUTE AS `alice` USE public\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS bob SELECT 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier bob",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` EXECUTE AS bob SELECT 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` EXECUTE AS bob SELECT 1\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` EXECUTE AS bob SELECT 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "/* hidden */ EXECUTE AS bob SELECT 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier bob",
+    " SelectWithUnionQuery (children 1)",
+    "  ExpressionList (children 1)",
+    "   SelectQuery (children 1)",
+    "    ExpressionList (children 1)",
+    "     Literal UInt64_1"
+   ]
+  },
+  "EXECUTE AS `alice` /* hidden */ EXECUTE AS bob SELECT 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` /* hidden */ EXECUTE AS bob SELECT 1\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` /* hidden */ EXECUTE AS bob SELECT 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELECT 1; SELECT 2": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELECT 1; SELECT 2": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELECT 1; SELECT 2\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELECT 1; SELECT 2\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SYSTEM FLUSH LOGS": {
+   "lines": [
+    "SYSTEM query"
+   ]
+  },
+  "EXECUTE AS `alice` SYSTEM FLUSH LOGS": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " SYSTEM query"
+   ]
+  },
+  "EXECUTE AS `alice` SYSTEM FLUSH LOGS\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SYSTEM FLUSH LOGS\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "GRANT SELECT ON public.* TO bob": {
+   "lines": [
+    "GrantQuery"
+   ]
+  },
+  "EXECUTE AS `alice` GRANT SELECT ON public.* TO bob": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " GrantQuery"
+   ]
+  },
+  "EXECUTE AS `alice` GRANT SELECT ON public.* TO bob\nSETTINGS readonly = 1": {
+   "lines": [
+    "ExecuteAsQuery (children 2)",
+    " UserNameWithHost (children 1)",
+    "  Identifier alice",
+    " GrantQuery"
+   ]
+  },
+  "EXECUTE AS `alice` GRANT SELECT ON public.* TO bob\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "SELEC 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELEC 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELEC 1\nSETTINGS readonly = 1": {
+   "code": "SQL_SYNTAX"
+  },
+  "EXECUTE AS `alice` SELEC 1\n, readonly = 1": {
+   "code": "SQL_SYNTAX"
+  }
+ }
+}

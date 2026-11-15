@@ -1443,6 +1443,49 @@ and for editing a notebook gate publishing. New audit actions:
 Not changed: `cli/` prints connection responses as received, and its
 reference snapshot does not include them.
 
+**What delivery 4 built, and where it differs from the plan above.**
+
+| Planned | Built | Why |
+| --- | --- | --- |
+| `validateQueryAccess` gains `writtenBy`; a statement someone else wrote must be a read | Not built. Every `SELECT` and `EXPLAIN` is sent with the statement-level `readonly` whenever ClickHouse confirms a placement, for its author too; a statement from a read-only feature (dashboard panel, notebook cell, scheduled `SELECT`) or from a person who may write nothing is refused when it cannot be sent that way | The cases the plan listed all go through a read-only feature already, and a job runs as its owner (§4), so nobody runs another person's write. One rule instead of a per-caller flag |
+| A typed `FORMAT` is refused on must-be-read statements | Refused on every statement | ClickHouse attaches the clause to the wrapper (observed: the wrapper then has a third child), so the second parse refuses it whatever the kind |
+| The executor adds `readonly = 1` as the last entry of the statement's `SETTINGS` clause | The access check builds both placements (a new clause on its own line, or one more entry in the statement's own trailing clause), asks ClickHouse to parse each, and keeps the one whose printout is the wrapper around the unchanged statement with the expected number of `Set` nodes. The checked statement carries the confirmed texts and the user they were parsed for; the executor sends only those | The executor then sends exactly what was parsed, and a link that changed between check and send is refused |
+| The `CREATE` re-check runs before statements of the `CREATE` family | It runs before any statement sent as a person, at most once a minute per connection | CHouse-built text has no parsed kind to go by, and one small request a minute costs less than deciding which statements count |
+| Pages that filter by table use the tables the person's user can see | Built for the explorer filters and table checks (`visibleTables.ts`, kept 60 seconds). Pages that filter collected evidence by data access rules still use those rules | Evidence pages read rules in several places; left as they are, they fail closed (no policy, nothing shown) |
+| `impersonate.ts` is called by `sqlAccess` | Called by `middleware/dataAccess.ts`; `sqlAccess` is unchanged except for one exported helper | The access check already holds the parse, the kind and the person |
+| Publications, "as seen by" labels, `notebook.result_published` | Not built | Left for later; see below |
+| Readiness report with tokens | Counts of links by state and scheduled queries whose owner has no active link | Tokens are not tied to a connection |
+| "Run now" by a non-owner runs as the person who clicked | A run is always the owner's (delivery 2b) | Unchanged |
+| MCP tools report the kind and the binding state; a chat-action reply for a missing binding | Not built. Both get the same refusal message as every other caller | Left for later |
+| Usage and lineage count the inner `query_log` row and resolve `user` through bindings | Not built. They read the outer row, which carries CHouse's query id and the wrapper text | Left for later |
+| Chart version bump | Not bumped | No chart file, setting or value changes |
+| 12 builds in CI | Five: 24.3.18.7, 24.4.4.113, 25.10.7.6, 26.3.63.123, 26.5.7.64 | The role-ceiling suite now runs on all five as well |
+
+Added after an independent review of the diff: a binding's state is written only from the state the decision was made on, and each test re-reads the row first, so a check in flight cannot write over a suspension; the suspension is written before the password or email change it belongs to; a change to an SSO provider by someone who is not a super admin suspends the links of its accounts; a link to a user that later becomes a connection's login or remediation login is disabled; links in use go back to waiting when a connection is pointed at another host or port; the fleet AI's system read keeps its system-tables-only limit on a personal connection; `SOURCES` joins the privileges no role of an empty login may hold; column names of a file import are written as quoted identifiers.
+
+Also built: lightweight `DELETE FROM` and `UPDATE` typed in the editor are sent as commands (they failed with a syntax error at `FORMAT` on every connection kind; found by the wrappable-kind cases).
+
+Observed while building (26.3.63.123 unless said otherwise):
+
+- A wrapped statement prints as `ExecuteAsQuery (children 2)`, ` UserNameWithHost (children 1)`, `  Identifier <user>`, then the statement's own tree indented by one. A quoted name prints the same. A `FORMAT`, `INTO OUTFILE` or a `SETTINGS` clause after `FORMAT` becomes a further child of the wrapper.
+- `readonly` in a trailing `SETTINGS` clause applies to the whole statement, including the first branch of a `UNION` (`getSetting('readonly')` returns 1 there), and a later `readonly = 0` typed by the person does not win over the one CHouse adds last.
+- The person's default database wins over the `database` of the request, also when it is `default`.
+- `INSERT … VALUES` parses alone and is a syntax error under the wrapper.
+- `EXECUTE AS <user> SET …` and `USE …` answer 113; `KILL QUERY` needs `SELECT ON system.processes` for the person; `CHECK TABLE` needs the `CHECK` grant.
+- The system role reads a user's id from `system.users` with `SELECT ON system.*`; no `SHOW USERS` grant was needed.
+- `SHOW GRANTS FOR <impersonation role>` prints one `GRANT IMPERSONATE ON <user> TO <role>` line per user.
+- The URL's `log_comment` did reach the inner `query_log` row on this build, unlike the earlier probe recorded in §7.2. Nothing relies on it.
+- 25.10.7.6 answers `EXECUTE AS` with error 62 and has no `IMPERSONATE` grant; 26.5.7.64 passes every check but the `CREATE` one.
+
+**Known and left for later.**
+
+- Evidence pages that filter by data access rules (observe access, AI observe tools, dashboard annotations, schema preflight impact) keep using the rules on a personal connection.
+- Publications (§7.6): a dashboard snapshot, a report and a stored notebook result are not labelled "as seen by", and there is no separate publish action for a notebook result.
+- Usage, lineage and query history attribute a person's statement through the outer `query_log` row; the inner row (the one with the real read counts) is not joined.
+- A dashboard's error for a missing grant uses the shared-login wording on a personal connection.
+- User names with `.`, `@` or `-` cannot be bound.
+- The evidence that a wrapped kind is access-checked is the real-server suite on 26.3.63.123 (`personal.e2e.test.ts`), one case per kind; `explain-ast-impersonation.json` records the printouts.
+
 #### 10.5 Verification plan
 
 **Every delivery.** `./scripts/verify-all.sh` with `FULL=1`: lint, types,

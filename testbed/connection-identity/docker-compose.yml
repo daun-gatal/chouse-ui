@@ -1,6 +1,9 @@
 # Connection-identity e2e testbed (ADR 0033 §10.5, scripts/e2e-connection-identity.sh).
-# Three pinned ClickHouse versions with the same fixture: 24.3 takes no role on
-# a request and must fail closed, 24.4 is the first that does, 26.5 is current.
+# Five pinned ClickHouse versions with the same fixture. For the role ceiling:
+# 24.3 takes no role on a request and must fail closed, 24.4 is the first that
+# does. For personal connections: 26.3.63 passes the self-test, 25.10 has no
+# EXECUTE AS, and 26.5.7 runs CREATE under EXECUTE AS unchecked, so both must
+# be refused.
 # The runner executes the Bun suite inside this network, so nothing but Docker
 # is needed on the host.
 name: chouse-connection-identity-e2e
@@ -25,6 +28,12 @@ services:
   ch-24-4:
     <<: *ch
     build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 24.4.4.113 } }
+  ch-25-10:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 25.10.7.6 } }
+  ch-26-3:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 26.3.63.123 } }
   ch-26-5:
     <<: *ch
     build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 26.5.7.64 } }
@@ -35,9 +44,11 @@ services:
       dockerfile: testbed/connection-identity/runner.Dockerfile
     profiles: [runner]
     environment:
-      IDENTITY_E2E_SERVERS: "24.3=http://ch-24-3:8123,24.4=http://ch-24-4:8123,26.5=http://ch-26-5:8123"
+      IDENTITY_E2E_SERVERS: "24.3=http://ch-24-3:8123,24.4=http://ch-24-4:8123,25.10=http://ch-25-10:8123,26.3=http://ch-26-3:8123,26.5=http://ch-26-5:8123"
       IDENTITY_E2E_PASSWORD: e2e
     depends_on:
       ch-24-3: { condition: service_healthy }
       ch-24-4: { condition: service_healthy }
+      ch-25-10: { condition: service_healthy }
+      ch-26-3: { condition: service_healthy }
       ch-26-5: { condition: service_healthy }

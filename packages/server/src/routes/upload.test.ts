@@ -120,6 +120,18 @@ describe("Upload Routes", () => {
             expect(mockInsertStream).toHaveBeenCalled();
         });
 
+        it("writes each column name as an identifier, and refuses one that could not be", async () => {
+            mockInsertStream.mockClear();
+            const send = (columns: string) => app.request("/upload/create?database=default&table=test&columns=" + encodeURIComponent(columns), { method: "POST", headers: { "X-Connection-Id": "conn-1" }, body: "1,a" });
+            expect((await send("id, user name")).status).toBe(200);
+            expect(mockInsertStream.mock.calls[0].at(-1)).toEqual(["`id`", "`user name`"]);
+            for (const columns of ["id`) SELECT 1 --", "a\\b", "a,,b"]) {
+                mockInsertStream.mockClear();
+                expect({ columns, status: (await send(columns)).status }).toEqual({ columns, status: 400 });
+                expect(mockInsertStream).not.toHaveBeenCalled();
+            }
+        });
+
         it("should return 400 for missing params", async () => {
             const res = await app.request("/upload/create", { // Missing params
                 method: "POST",

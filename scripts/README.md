@@ -23,7 +23,7 @@ Repository automation run from the repository root: release helpers for the app 
   - `[e2e-cli.sh]` + `e2e-cli-check.py` + `e2e-cli-output-check.py` + `e2e-cli-runner.Dockerfile` - the real `chouse` binary against a server and ClickHouse (ADR 0012), plus the output-style matrix (ADR 0018).
   - `[e2e-mcp.sh]` + `e2e-mcp-check.py` + `e2e-mcp.override.yml` - the MCP server (ADR 0013 / ADR 0017).
   - `[e2e-observe.sh]` - data observability platform suites (ADR 0016); `KEEP=1` leaves the testbed up.
-  - `[e2e-connection-identity.sh]` - connection kinds and the role ceiling on ClickHouse 24.3, 24.4 and 26.5 (ADR 0033 §10.5); `KEEP=1` leaves the testbed up.
+  - `[e2e-connection-identity.sh]` - connection kinds, the role ceiling and personal connections on ClickHouse 24.3, 24.4, 25.10, 26.3 and 26.5 (ADR 0033 §10.5); `KEEP=1` leaves the testbed up.
   - `[e2e-scheduled-cluster.sh]` - cluster-aware scheduled-query materialize (ADR 0015).
   - `[e2e-oncluster-ddl.sh]` - `ON CLUSTER` DDL regression (issue #336).
 - Docs and demos:

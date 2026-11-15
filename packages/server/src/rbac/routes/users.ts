@@ -4,6 +4,7 @@
  * Handles CRUD operations for users.
  */
 
+import { suspendBindingsOf } from '../services/clickhouseBindings';
 import { defaultRoleIsMapped, holdsMappedRole, mappedRoleIds } from '../services/connectionIdentity';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
@@ -275,6 +276,15 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
   await assertCanGrantRoles(c, input.roleIds);
 
   try {
+    // Someone else changes how this account signs in, or switches it back on: its links to ClickHouse users wait
+    // for a super admin (ADR 0033 §7.4). Before the change, so it is never stored while a link stays in use.
+    if (id !== currentUser.sub) {
+      if (input.email !== undefined && input.email.toLowerCase() !== (existingUser.email ?? '').toLowerCase()) {
+        await suspendBindingsOf(id, 'An administrator changed the account\'s email.', currentUser.sub);
+      } else if (input.isActive === true && existingUser.isActive === false) {
+        await suspendBindingsOf(id, 'The account was reactivated.', currentUser.sub);
+      }
+    }
     const user = await updateUser(id, input);
 
     // Log user update
@@ -385,6 +395,8 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
     }
   }
 
+  // First, so a password is never changed while a link stays in use.
+  if (id !== currentUser.sub) await suspendBindingsOf(id, 'An administrator reset the account\'s password.', currentUser.sub);
   await updateUserPassword(id, newPassword);
 
   // Log password reset
@@ -508,6 +520,7 @@ userRoutes.delete('/:id/identities/:identityId', requirePermission(PERMISSIONS.U
   }
 
   await deleteUserIdentity(identityId);
+  await suspendBindingsOf(id, 'A sign-in identity was removed from the account.', currentUser.sub);
 
   await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_IDENTITY_UNLINK, currentUser.sub, {
     resourceType: 'user',

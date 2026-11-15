@@ -164,9 +164,11 @@ export interface PrivilegeFeatureReport {
    * On a connection that is not `shared` (ADR 0033 §5): who must hold this
    * feature's privileges. `system_role` is checked here; `mapped_role` comes
    * from each person's ClickHouse role and is not checked on the login;
-   * `unavailable` cannot be used on this kind. Absent on a `shared` connection.
+   * `person` comes from each person's own ClickHouse user (a `personal`
+   * connection); `unavailable` cannot be used on this kind. Absent on a
+   * `shared` connection.
    */
-  source?: "system_role" | "mapped_role" | "unavailable";
+  source?: "system_role" | "mapped_role" | "person" | "unavailable";
 }
 
 export interface PrivilegeReport {
@@ -589,8 +591,9 @@ export async function checkConnectionPrivileges(client: ChExecutor, input: Privi
 
   const grantee = input.ceiling ? input.ceiling.systemRole : input.username;
   const features = PRIVILEGE_FEATURES.map((feature): PrivilegeFeatureReport => {
-    const source = input.ceiling ? CEILING_SOURCE[feature.id] : undefined;
-    if (source === "mapped_role" || source === "unavailable") {
+    const ceilingSource = input.ceiling ? CEILING_SOURCE[feature.id] : undefined;
+    const source = ceilingSource === "mapped_role" && input.ceiling?.kind === "personal" ? "person" : ceilingSource;
+    if (source === "mapped_role" || source === "person" || source === "unavailable") {
       // Not the login's or the system role's to hold, so nothing to check and nothing to block on.
       return { id: feature.id, name: feature.name, description: feature.description, required: false, status: "granted", missing: [], unavailable: [], errors: [], grants: [], source };
     }

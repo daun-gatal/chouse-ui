@@ -30,6 +30,7 @@ import {
   Clock,
   Timer,
   KeyRound,
+  Link2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,6 +88,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { IDENTITY_MODE_SHARED, identityKind, identityKindLabel } from '@/api/connectionIdentity';
 import { PrivilegeReport, optionalSummary, privilegeSummary } from './PrivilegeReport';
 import { IdentityPanel } from './IdentityPanel';
+import { BindingsPanel } from './BindingsPanel';
 import { HELP_CLASS, INPUT_CLASS, LABEL_CLASS } from './formStyles';
 
 // ============================================
@@ -673,6 +675,7 @@ export default function ConnectionManagement() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   /** By id, so the panel follows the list when a save refreshes it. */
   const [identityConnectionId, setIdentityConnectionId] = useState<string | null>(null);
+  const [bindingsConnectionId, setBindingsConnectionId] = useState<string | null>(null);
 
   const { hasPermission, isSuperAdmin } = useRbacStore();
   // Kinds and role maps decide what ClickHouse lets every account do: super admin only.
@@ -960,6 +963,23 @@ export default function ConnectionManagement() {
                           </Tooltip>
                         )}
 
+                        {canManageIdentity && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setBindingsConnectionId(conn.id)}
+                                aria-label={`Linked ClickHouse users of ${conn.name}`}
+                                className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
+                              >
+                                <Link2 className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Linked ClickHouse users</TooltipContent>
+                          </Tooltip>
+                        )}
+
                         {canEdit && (
                           <>
                             <Tooltip>
@@ -1037,6 +1057,14 @@ export default function ConnectionManagement() {
           connection={connections.find((conn) => conn.id === identityConnectionId) ?? null}
           onClose={() => setIdentityConnectionId(null)}
           onChanged={fetchConnections}
+        />
+      )}
+
+      {/* Links between accounts and ClickHouse users (personal connections), super admin only */}
+      {canManageIdentity && (
+        <BindingsPanel
+          connection={connections.find((conn) => conn.id === bindingsConnectionId) ?? null}
+          onClose={() => setBindingsConnectionId(null)}
         />
       )}
 

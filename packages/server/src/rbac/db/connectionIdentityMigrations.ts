@@ -8,7 +8,14 @@ import { sql, type SQL } from 'drizzle-orm';
 
 import { logger } from '../../utils/logger';
 import { getDatabaseType, type PostgresDb, type RbacDb, type SqliteDb } from './index';
-import { CONNECTION_IDENTITY_COLUMNS, connectionIdentityIndexStatements, connectionIdentityTableStatements } from './connectionIdentitySchema';
+import {
+  bindingIndexStatements,
+  bindingTableStatements,
+  CONNECTION_IDENTITY_COLUMNS,
+  connectionIdentityIndexStatements,
+  connectionIdentityTableStatements,
+  PERSONAL_CONNECTION_COLUMNS,
+} from './connectionIdentitySchema';
 import type { Migration } from './migrations';
 
 type Row = Record<string, unknown>;
@@ -63,6 +70,22 @@ export const CONNECTION_IDENTITY_MIGRATIONS: Migration[] = [
       for (const statement of connectionIdentityTableStatements(dialect)) await exec(db, sql.raw(statement));
       for (const statement of connectionIdentityIndexStatements()) await exec(db, sql.raw(statement));
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.77.0] Added connection kinds and the role map (${dialect}); every existing connection is 'shared'`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.78.0',
+    name: 'personal_connections',
+    description: 'ADR 0033 — personal connections. rbac_clickhouse_connections gains impersonation_role, and rbac_clickhouse_bindings holds, per account and connection, the ClickHouse user that account runs as. No existing connection changes kind and no binding is created.',
+    up: async (db) => {
+      const dialect = getDatabaseType() === 'sqlite' ? 'sqlite' : 'postgres';
+      for (const column of PERSONAL_CONNECTION_COLUMNS) {
+        if (await hasColumn(db, 'rbac_clickhouse_connections', column.name)) continue;
+        await exec(db, sql.raw(`ALTER TABLE rbac_clickhouse_connections ADD COLUMN ${column.name} ${column.type(dialect)}`));
+      }
+      for (const statement of bindingTableStatements(dialect)) await exec(db, sql.raw(statement));
+      for (const statement of bindingIndexStatements()) await exec(db, sql.raw(statement));
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.78.0] Added the impersonation role column and the ClickHouse bindings table (${dialect})`);
     },
     down: async () => { /* forward-only */ },
   },

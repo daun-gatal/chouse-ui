@@ -98,7 +98,12 @@ upload.post(
         }
         const hasHeaderBool = hasHeader !== "false";
 
-        const columnArray = columns ? columns.split(',') : undefined;
+        // Column names go into the INSERT statement the client builds, so each one is written as an identifier.
+        const columnArray = columns ? columns.split(',').map((raw) => {
+            const name = raw.trim();
+            if (name.length === 0 || name.length > 256 || /[`\\\u0000-\u001f]/.test(name)) throw AppError.badRequest(`Unsupported column name: ${name.slice(0, 60)}`);
+            return `\`${name}\``;
+        }) : undefined;
 
         // The ClickHouse service comes from the shared per-request connection
         // context (ADR 0010), not a pod-local session lookup.

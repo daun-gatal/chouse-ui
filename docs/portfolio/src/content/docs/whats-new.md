@@ -16,6 +16,8 @@
 
 **Limit each person to a ClickHouse role** — A connection can now be a *role ceiling*: its ClickHouse user holds no grant of its own, each CHouse role is mapped to one ClickHouse role, and every statement is sent with the role of the person it is for. ClickHouse itself then refuses anything outside that role, for administrators too. CHouse UI checks the login before the switch and every five minutes after. Needs ClickHouse 24.4 or newer; existing connections are unchanged. → [Connection kinds and the role ceiling](/docs/connection-identity/)
 
+**Run each person's statements as their own ClickHouse user** — A connection can now be *personal*: a super admin links each CHouse account to a ClickHouse user, and that person's statements run as that user, so the grants, row policies and quotas you already have in ClickHouse decide what they reach. CHouse UI stores no password for those users. It needs a ClickHouse build that checks grants for every statement run this way; CHouse UI tests the server itself and refuses one that fails (of the builds tested, 26.3.63 passes and 26.5.7 does not). → [Personal connections](/docs/personal-connections/)
+
 ## Upgrading from 3.17
 
 The RBAC database gains a column for each job's owner (`scheduled_queries.owner_id`, filled from its creator), the kind and health columns of each connection (every existing connection becomes a shared login) and the role map table. They are added automatically at start-up. Check these:

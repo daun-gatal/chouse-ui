@@ -14,6 +14,7 @@ import { logger } from "../../utils/logger";
 import { checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import { getUserPermissions, getUserRoles } from "../../rbac/services/rbac";
 import { SYSTEM_ROLES } from "../../rbac/schema/base";
+import { AppError } from "../../types";
 import { executorForConnection, personActor, type Actor } from "../chExecutor";
 import * as store from "./store";
 import {
@@ -165,7 +166,14 @@ async function ownerAccess(job: ScheduledQueryRow, params: Record<string, string
   const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
   const { sql, params: names } = executableForAccessCheck(job.query);
   const bound = Object.fromEntries(Object.keys(names).map((name) => [name, params[name] ?? names[name]]));
-  const result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params: bound, connectionId: job.connectionId });
+  let result: Awaited<ReturnType<typeof validateQueryAccess>>;
+  try {
+    result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params: bound, connectionId: job.connectionId });
+  } catch (error) {
+    // The owner has no usable ClickHouse identity on the connection (no role, no active link), or the connection refuses: the run is refused with that reason.
+    if (error instanceof AppError && (error.code === "IDENTITY_UNAVAILABLE" || error.code === "CONNECTION_UNAVAILABLE")) return { denial: error.message };
+    throw error;
+  }
   return result.allowed ? { statement: checkedOf(result) } : { denial: result.reason ?? "data access denied for one or more tables" };
 }
 

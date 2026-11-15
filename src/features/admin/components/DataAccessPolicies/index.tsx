@@ -34,6 +34,7 @@ import {
   type DataAccessPolicyRule,
   type ClickHouseConnection,
 } from '@/api/rbac';
+import { IDENTITY_MODE_PERSONAL, identityKind } from '@/api/connectionIdentity';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
 
@@ -337,6 +338,11 @@ export const DataAccessPolicies: React.FC = () => {
     );
   };
 
+  // On a personal connection ClickHouse decides what a person reaches, not these policies.
+  const hasPersonalConnection = (connections ?? []).some(
+    (conn) => conn.isActive && identityKind(conn.identityMode) === IDENTITY_MODE_PERSONAL,
+  );
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -357,6 +363,15 @@ export const DataAccessPolicies: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {hasPersonalConnection && (
+        <p role="note" className="flex items-start gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5 text-[12px] leading-[1.5] text-paper-muted">
+          <Info className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>
+            On a personal connection these policies do not decide which data a person's statements reach: their own ClickHouse user does. Policies still limit the monitoring evidence CHouse collected.
+          </span>
+        </p>
+      )}
 
       {!policies || policies.length === 0 ? (
         <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">

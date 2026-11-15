@@ -21,11 +21,12 @@ import type { ConnectionConfig } from "../../types";
 import { logger } from "../../utils/logger";
 import { clickhouseErrorCode } from "./errors";
 import { executorForConfig } from "./executor";
-import { isKnownMode, isRoleName } from "./identity";
+import { isBindableUserName, isKnownMode, isRoleName } from "./identity";
+import { runSelfTest, type SelfTestCheck } from "./selfTest";
 import { serviceActor, type ChExecutor } from "./types";
 
 export interface IdentityCheck {
-  id: "version" | "empty_login" | "roles" | "bare_reads" | "system_role" | "login_reuse" | "remediation_login";
+  id: "version" | "empty_login" | "roles" | "bare_reads" | "system_role" | "login_reuse" | "remediation_login" | "impersonation_role" | SelfTestCheck["id"];
   label: string;
   ok: boolean;
   /** What was found, in words a ClickHouse administrator can act on. */
@@ -38,6 +39,8 @@ export interface IdentityVerdict {
   reason: string | null;
   checks: IdentityCheck[];
   serverVersion: string | null;
+  /** On a `personal` connection: the users the impersonation role may run statements as. */
+  impersonationTargets?: string[];
 }
 
 export interface IdentityCheckInput {
@@ -45,6 +48,8 @@ export interface IdentityCheckInput {
   config: ConnectionConfig;
   mode: string;
   systemRole: string | null;
+  /** For a `personal` connection: the role that holds the IMPERSONATE grants. */
+  impersonationRole?: string | null;
   host: string;
   port: number;
   /** The connection being checked, left out of the login-reuse check. Absent for a new one. */
@@ -67,7 +72,7 @@ const ACCESS_MANAGEMENT = /\b(ACCESS MANAGEMENT|CREATE USER|ALTER USER|DROP USER
  * skips access checks, reaching the server again through `remote` as a user
  * with an empty password, and reading named-collection secrets.
  */
-const ACT_AS_ANOTHER = /\b(IMPERSONATE|SET DEFINER|ALLOW SQL SECURITY NONE|REMOTE|NAMED COLLECTION ADMIN|NAMED COLLECTION CONTROL|SHOW NAMED COLLECTIONS SECRETS|displaySecretsInShowAndSelect)\b/i;
+const ACT_AS_ANOTHER = /\b(IMPERSONATE|SET DEFINER|ALLOW SQL SECURITY NONE|REMOTE|SOURCES|NAMED COLLECTION ADMIN|NAMED COLLECTION CONTROL|SHOW NAMED COLLECTIONS SECRETS|displaySecretsInShowAndSelect)\b/i;
 
 const EVERYTHING = /^\*(\.\*)?$/;
 
@@ -138,7 +143,37 @@ async function bareReadLeak(bare: ChExecutor, table: string): Promise<string | n
   }
 }
 
-async function checkRoles(config: ConnectionConfig, granted: readonly string[]): Promise<IdentityCheck> {
+/**
+ * The impersonation role of a `personal` connection holds one kind of grant:
+ * `IMPERSONATE ON <user>`, one user per line, never on every user and never
+ * with a grant option. Returns the users, or why a line is not allowed.
+ */
+export function impersonationTarget(grant: GrantLine): { user: string } | { problem: string } {
+  if (grant.withGrantOption || grant.withAdminOption) return { problem: "a grant it can pass on" };
+  if (grant.privileges === null) return { problem: "another role" };
+  if (grant.privileges !== "IMPERSONATE") return { problem: "a privilege other than IMPERSONATE" };
+  const user = (grant.target ?? "").replace(/^`|`$/g, "");
+  if (!isBindableUserName(user)) return { problem: "IMPERSONATE on something other than one user with a plain name (letters, digits and underscores)" };
+  return { user };
+}
+
+async function checkImpersonationRole(config: ConnectionConfig, role: string): Promise<{ check: IdentityCheck; targets: string[] }> {
+  const label = "The impersonation role holds only IMPERSONATE on named users";
+  const targets: string[] = [];
+  try {
+    for (const raw of await lines(handle(config, role), `SHOW GRANTS FOR ${role}`)) {
+      const target = impersonationTarget(parseGrantLine(raw));
+      if ("problem" in target) return { check: { id: "impersonation_role", label, ok: false, detail: `Role ${role} holds ${target.problem}: ${raw.slice(0, 160)}` }, targets: [] };
+      targets.push(target.user);
+    }
+  } catch (error) {
+    return { check: { id: "impersonation_role", label, ok: false, detail: `Could not read the grants of ${role}: ${firstLine(error)}` }, targets: [] };
+  }
+  if (targets.includes("default")) return { check: { id: "impersonation_role", label, ok: false, detail: `Role ${role} may run statements as the user default. Run: REVOKE IMPERSONATE ON default FROM ${role}` }, targets: [] };
+  return { check: { id: "impersonation_role", label, ok: true, detail: `${targets.length} user${targets.length === 1 ? "" : "s"}.` }, targets };
+}
+
+async function checkRoles(config: ConnectionConfig, granted: readonly string[], impersonationRole: string | null = null): Promise<IdentityCheck> {
   const label = "Its roles hold nothing that manages or becomes other users";
   const seen = new Set<string>();
   const queue = granted.map((role) => ({ role, via: role }));
@@ -147,6 +182,8 @@ async function checkRoles(config: ConnectionConfig, granted: readonly string[]):
       const next = queue.shift();
       if (!next || seen.has(next.role)) continue;
       seen.add(next.role);
+      // Checked on its own: it must hold IMPERSONATE, which no other role may.
+      if (next.role === impersonationRole) continue;
       if (seen.size > 200) return { id: "roles", label, ok: false, detail: "The login reaches more than 200 roles; too many to check." };
       // Named with the top-level role, which enables the roles granted to it.
       for (const raw of await lines(handle(config, next.via), `SHOW GRANTS FOR ${next.role}`)) {
@@ -240,7 +277,9 @@ export async function runIdentityChecks(input: IdentityCheckInput): Promise<Iden
   }
 
   // 2. Its roles.
-  checks.push(await checkRoles(input.config, granted));
+  const personal = input.mode === "personal";
+  const impersonationRole = personal && isRoleName(input.impersonationRole) ? input.impersonationRole : null;
+  checks.push(await checkRoles(input.config, granted, impersonationRole));
 
   // 3 and 4. The system role works, and a request that names no role reads nothing.
   const systemLabel = "The system role can read system tables";
@@ -273,9 +312,34 @@ export async function runIdentityChecks(input: IdentityCheckInput): Promise<Iden
     ? { id: "bare_reads", label: "A request that names no role reads no data", ok: false, detail: `${leaks[0]}. If the login holds no grant, the server setting select_from_system_db_requires_grant is off.` }
     : { id: "bare_reads", label: "A request that names no role reads no data", ok: true, detail: "Refused, as it should be." });
 
+  // 5. A personal connection: the impersonation role, and the server's self-test (§7.1).
+  let impersonationTargets: string[] | undefined;
+  if (personal) {
+    const label = "The impersonation role holds only IMPERSONATE on named users";
+    if (impersonationRole === null) {
+      checks.push({ id: "impersonation_role", label, ok: false, detail: "No impersonation role is set. It is a name of letters, digits and underscores." });
+    } else if (impersonationRole === input.systemRole) {
+      checks.push({ id: "impersonation_role", label, ok: false, detail: "The impersonation role and the system role must be two roles." });
+    } else if (!granted.includes(impersonationRole)) {
+      checks.push({ id: "impersonation_role", label, ok: false, detail: `The role ${impersonationRole} is not granted to ${input.config.username}. Run: GRANT ${impersonationRole} TO ${input.config.username}` });
+    } else {
+      const role = await checkImpersonationRole(input.config, impersonationRole);
+      checks.push(role.check);
+      impersonationTargets = role.targets;
+      const impersonating = handle(input.config, impersonationRole);
+      const send = async (query: string): Promise<string> => {
+        const result = await impersonating.exec({ query, abort_signal: AbortSignal.timeout(CHECK_SECONDS * 1000), clickhouse_settings: { max_execution_time: CHECK_SECONDS, default_format: "TabSeparatedRaw" } });
+        let body = "";
+        for await (const chunk of result.stream as AsyncIterable<Buffer | string>) body += chunk.toString();
+        return body;
+      };
+      checks.push(...(await runSelfTest(send, input.config.username)));
+    }
+  }
+
   checks.push(reuse);
   if (input.remediation) checks.push(await checkRemediation(input.remediation));
-  return verdictOf(checks, serverVersion);
+  return { ...verdictOf(checks, serverVersion), ...(impersonationTargets ? { impersonationTargets } : {}) };
 }
 
 /**
@@ -309,12 +373,18 @@ export async function checkSavedConnection(connectionId: string): Promise<Identi
     config: { url, username: connection.username, password: connection.password || "", database: connection.database || undefined },
     mode: connection.identityMode,
     systemRole: connection.systemRole,
+    impersonationRole: connection.impersonationRole,
     host: connection.host,
     port: connection.port,
     connectionId,
     remediation,
   });
   await writeVerdict(connectionId, connection.username, verdict);
+  if (connection.identityMode === "personal" && verdict.ok) {
+    // Bindings are checked only against a server that passed: a failing connection refuses everyone anyway.
+    const { checkConnectionBindings } = await import("../../rbac/services/clickhouseBindings");
+    await checkConnectionBindings(connectionId);
+  }
   return verdict;
 }
 

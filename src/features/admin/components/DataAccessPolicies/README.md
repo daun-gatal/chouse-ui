@@ -13,6 +13,7 @@ Admin UI to list, create, edit and delete named data access policies (allow/deny
 - New needs DATA_ACCESS_CREATE, edit DATA_ACCESS_UPDATE, delete DATA_ACCESS_DELETE `[index.tsx:DataAccessPolicies]`
 - System policies cannot be deleted; delete disabled while attached to a role `[index.tsx:DataAccessPolicies]`
 - Steps need >= 1 connection, >= 1 rule, and a name of >= 2 chars `[index.tsx:step1Valid]` `[index.tsx:step2Valid]` `[index.tsx:step3Valid]`
+- With an active personal connection the page notes that policies do not decide which data a person's statements reach there (their own ClickHouse user does); the note never blocks `[index.tsx:DataAccessPolicies]`
 - Empty patterns saved as `*`; removing a connection prunes its rules; global rules preserved `[index.tsx:saveMutation]` `[index.tsx:toggleScopeConn]`
 
 ## Side Effects

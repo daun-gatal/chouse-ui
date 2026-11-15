@@ -5,6 +5,24 @@
  * text and send another, or send typed text that was never checked.
  */
 
+/**
+ * How a checked statement is sent on a `personal` connection (ADR 0033 §7.2):
+ * the texts ClickHouse parsed with the wrapper around them, and the user they
+ * were parsed for.
+ */
+export interface ImpersonatedText {
+  /** The bound ClickHouse user the wrapper names. */
+  user: string;
+  /** `EXECUTE AS <user> <typed text>`. */
+  sql: string;
+  /**
+   * The text to send when the statement must be a read: with `readonly = 1`
+   * in its own SETTINGS clause where the kind can carry one, the plain text
+   * for a kind that cannot write, and null when it cannot be sent as a read.
+   */
+  readOnlySql: string | null;
+}
+
 export interface CheckedFields {
   /** The exact text that was checked and will run. */
   sql: string;
@@ -18,6 +36,8 @@ export interface CheckedFields {
   isRead: boolean;
   /** True when the account holds a permission that lets it change anything through typed text. */
   mayWrite: boolean;
+  /** Set exactly when the statement was checked for a `personal` connection. */
+  impersonated?: ImpersonatedText;
 }
 
 let make: (fields: CheckedFields) => CheckedStatement;
@@ -31,6 +51,7 @@ export class CheckedStatement implements CheckedFields {
   readonly accountId: string;
   readonly isRead: boolean;
   readonly mayWrite: boolean;
+  readonly impersonated: Readonly<ImpersonatedText> | undefined;
 
   private constructor(fields: CheckedFields) {
     this.sql = fields.sql;
@@ -39,6 +60,7 @@ export class CheckedStatement implements CheckedFields {
     this.accountId = fields.accountId;
     this.isRead = fields.isRead;
     this.mayWrite = fields.mayWrite;
+    this.impersonated = fields.impersonated ? Object.freeze({ ...fields.impersonated }) : undefined;
     Object.freeze(this);
   }
 

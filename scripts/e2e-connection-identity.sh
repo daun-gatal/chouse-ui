@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Connection kinds and the role ceiling on real ClickHouse (ADR 0033 §10.5):
-# the identity checks, the switch and the ceiling itself on 24.3, 24.4 and 26.5.
+# Connection kinds on real ClickHouse (ADR 0033 §10.5): the identity checks,
+# the switch and the role ceiling on 24.3, 24.4, 25.10, 26.3 and 26.5, and
+# personal connections, which only 26.3.63 may be and the others must refuse.
 #
 #   ./scripts/e2e-connection-identity.sh
 #   KEEP=1 ./scripts/e2e-connection-identity.sh   # leave the servers up afterwards

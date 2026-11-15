@@ -583,6 +583,9 @@ export const AUDIT_ACTIONS = {
   CONNECTION_REVOKE_ACCESS: 'connection.revoke_access',
   CONNECTION_IDENTITY_SWITCHED: 'connection.identity_switched',
   CONNECTION_ROLE_MAP_CHANGED: 'connection.role_map_changed',
+  BINDING_CREATED: 'binding.created',
+  BINDING_STATE_CHANGED: 'binding.state_changed',
+  BINDING_REMOVED: 'binding.removed',
 
   // Data Access Rules / Policies
   DATA_ACCESS_CREATE: 'data_access.create',

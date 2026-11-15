@@ -13,12 +13,14 @@ Shared React hooks: TanStack Query wrappers over the `src/api` modules (explorer
 - Preferences: `useAppPreferences`, `useLogsPreferences`, `usePaginationPreference` / `getDefaultPaginationSize`, `useUserManagementPreferences` [useAppPreferences.ts:useAppPreferences], [usePaginationPreferences.ts:usePaginationPreference]
 - `useAiModelId` [useAiModelId.ts:useAiModelId]; `useChartColors` [useChartColors.ts:useChartColors]
 - `useCanReadStatementLogs` - whether the signed-in person may read the statement-log tables (admin, super admin, or `query:history:view:all`); not in the barrel [useCanReadStatementLogs.ts:useCanReadStatementLogs]
+- `useMyClickHouseLinks` - the signed-in person's links to ClickHouse users (`getMyBindings`, stale after 60 s, key `myClickHouseLinksKey(userId)`), with `linkOnConnection`; not in the barrel [useMyClickHouseLinks.ts:useMyClickHouseLinks]
 - Utilities: `useDebounce`, `useWindowSize` / `Breakpoint`, `useDeviceType`, `useInView` [useDebounce.ts:useDebounce], [useInView.ts:useInView]
 
 ## Invariants
 - TanStack keys come from `queryKeys`; per-user keys must also be cleared in `src/utils/sessionCleanup.ts` on user switch [useQuery.ts:queryKeys], [../utils/sessionCleanup.ts:cleanupUserSession].
 - Identifiers interpolated into SQL go through `escapeQualifiedIdentifier` (e.g. `DESCRIBE TABLE` in `useTableSchema`) [useQuery.ts:useTableSchema]; string values in monitoring SQL escape `\` and `'` before quoting [useMonitoringTimeline.ts:useDatabaseObjects], [useMonitoringTimeline.ts:useTableDDL].
 - A hook that reads a statement-log table (`system.query_log`, `system.query_views_log`, `system.crash_log`) sends nothing without `useCanReadStatementLogs`: it is disabled whatever the caller passes and its `queryFn` returns empty on `refetch()`. The two mixed statements leave `system.processes` out and report that value as `null` [useMonitoringTimeline.ts:logAccessOptions], [useMonitoringTimeline.ts:useBlockedTaskSummary], [useMonitoringTimeline.ts:useServerMemoryBreakdown].
+- `useMyClickHouseLinks` keys its cache by account id, so it needs no entry in `cleanupUserSession`, and sends nothing while nobody is signed in [useMyClickHouseLinks.ts:myClickHouseLinksKey].
 - Polling stops in background tabs: `useLiveQueries` (default 3 s) and `useFleetSummary` (default 30 s, `0` disables) set `refetchIntervalInBackground: false` [useLiveQueries.ts:useLiveQueries], [useFleetMetrics.ts:useFleetSummary].
 - Fleet alerts are edge-triggered per (node, rule) and re-arm when the breach clears, with hysteresis on memory % [useFleetAlerts.ts:useFleetAlerts].
 - Every hook in `useAuth.ts` is marked `@deprecated`; new code should use `useRbacStore` directly [useAuth.ts:useAuth], [useAuth.ts:usePermission].

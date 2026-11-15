@@ -17,3 +17,5 @@ export const SECONDARY_BUTTON_CLASS =
 
 export const PRIMARY_BUTTON_CLASS =
   "h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50";
+
+export const SECTION_TITLE_CLASS = "font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint";

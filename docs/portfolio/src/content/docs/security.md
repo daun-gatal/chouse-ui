@@ -69,6 +69,8 @@ A connection whose ClickHouse login is itself limited with `readonly = 2` keeps 
 
 On a [role-ceiling connection](/docs/connection-identity/) the request also names a ClickHouse role: the one mapped to the person's CHouse role, or the system role for CHouse UI's own work. The stored ClickHouse user holds no grant of its own there, so ClickHouse refuses whatever that role is not granted, for administrators too.
 
+On a [personal connection](/docs/personal-connections/) a person's statement is sent as `EXECUTE AS <their ClickHouse user>`, with a role that may only act as the users a ClickHouse administrator allowed. ClickHouse checks that user's own grants. `readonly` cannot go on such a request, so a read carries `readonly = 1` in its own `SETTINGS` clause. CHouse UI sends the wrapped statement only after ClickHouse's parse shows the person's linked user as the target and the typed statement unchanged under it.
+
 The design and the stages that follow it are in [ADR 0033](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
 
 ## AI
