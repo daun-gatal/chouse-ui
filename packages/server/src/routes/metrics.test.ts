@@ -18,6 +18,7 @@ const mockGetInsertThroughput = mock();
 const mockGetTopTablesBySize = mock();
 const mockGetPartsPressure = mock();
 const mockGetDdlImpact = mock();
+const mockGetQueryLogs = mock();
 const mockExecuteQuery = mock();
 const mockClose = mock();
 const mockPing = mock();
@@ -38,6 +39,7 @@ class MockClickHouseService {
     getTopTablesBySize = mockGetTopTablesBySize;
     getPartsPressure = mockGetPartsPressure;
     getDdlImpact = mockGetDdlImpact;
+    getQueryLogs = mockGetQueryLogs;
     defaultDatabase = "default";
     executeQuery = mockExecuteQuery;
     // Typed text arrives as a checked statement; the assertions below read its text.
@@ -49,6 +51,8 @@ class MockClickHouseService {
 
 mock.module("../services/clickhouse", () => ({
     ClickHouseService: MockClickHouseService,
+    QUERY_LOG_MAX_ROWS: 10_000,
+    QUERY_LOG_SORT_COLUMNS: { event_time: "__table1.event_time", query_duration_ms: "query_duration_ms" },
     getSession: mock((id) => {
         if (id === "valid-session") {
             return {
@@ -181,6 +185,58 @@ describe("Metrics Routes", () => {
             const body = await res.json();
             expect(body.data.uptime).toBe(100);
             expect(mockGetSystemStats).toHaveBeenCalled();
+        });
+    });
+
+    describe("POST /metrics/query-logs", () => {
+        const asUser = (permissions: string[]): void => {
+            identity.roles = ["analyst"];
+            identity.permissions = permissions;
+            identity.isAdmin = false;
+        };
+        const post = (body: unknown = {}) => app.request("/metrics/query-logs", {
+            method: "POST", headers: { "Authorization": "Bearer token", "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+
+        it("gives an admin and a query:history:view:all holder every statement", async () => {
+            mockGetQueryLogs.mockResolvedValue([{ query_id: "chouse:p:u2:n", rbac_user_id: "u2" }]);
+            const admin = await post({ limit: 50 });
+            expect(admin.status).toBe(200);
+            expect(mockGetQueryLogs).toHaveBeenLastCalledWith({ limit: 50, hoursBack: 24, sortBy: "event_time", sortDir: "desc" });
+            expect((await admin.json()).data).toHaveLength(1);
+
+            asUser(["query:history:view", "query:history:view:all"]);
+            expect((await post({ username: "etl" })).status).toBe(200);
+            expect(mockGetQueryLogs.mock.calls.at(-1)?.[0]).not.toHaveProperty("ownAccountId");
+            expect(mockGetQueryLogs.mock.calls.at(-1)?.[0]).toMatchObject({ username: "etl" });
+        });
+
+        it("scopes a query:history:view holder to their own account, whatever the body asks for", async () => {
+            asUser(["query:history:view"]);
+            mockGetQueryLogs.mockResolvedValue([]);
+            const res = await post({ ownAccountId: "someone-else", sortBy: "query_duration_ms", sortDir: "asc", range: { start: "2026-11-01 00:00:00", end: "2026-11-02 00:00:00" } });
+            expect(res.status).toBe(200);
+            expect(mockGetQueryLogs).toHaveBeenLastCalledWith({
+                limit: 100, hoursBack: 24, sortBy: "query_duration_ms", sortDir: "asc",
+                range: { start: "2026-11-01 00:00:00", end: "2026-11-02 00:00:00" }, ownAccountId: "user1",
+            });
+        });
+
+        it("refuses a person with neither permission", async () => {
+            asUser(["metrics:view"]);
+            mockGetQueryLogs.mockClear();
+            const res = await post();
+            expect(res.status).toBe(403);
+            expect(mockGetQueryLogs).not.toHaveBeenCalled();
+        });
+
+        it("refuses a sort column, a range or a limit that is not allowed", async () => {
+            mockGetQueryLogs.mockClear();
+            expect((await post({ sortBy: "query; DROP TABLE t" })).status).toBe(400);
+            expect((await post({ range: { start: "2026-11-01' OR 1", end: "2026-11-02 00:00:00" } })).status).toBe(400);
+            expect((await post({ limit: 10_001 })).status).toBe(400);
+            expect((await post({ hoursBack: 0 })).status).toBe(400);
+            expect(mockGetQueryLogs).not.toHaveBeenCalled();
         });
     });
 

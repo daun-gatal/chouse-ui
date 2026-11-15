@@ -2,6 +2,8 @@ import {
   classifiedAppError,
   classifyClickHouseError,
   executorForConfig,
+  ownerAccount,
+  ownerAccountSql,
   type Actor,
   type ChExecutor,
   type CheckedCommandArgs,
@@ -91,6 +93,51 @@ function toHostRows(envelope: unknown, maxResultRows?: number): HostTableShape {
     }
   }
   return { names, types, rows };
+}
+
+/** Columns the Logs page may sort by. An allow-list, since the name goes into ORDER BY. */
+export const QUERY_LOG_SORT_COLUMNS: Record<string, string> = {
+  event_time: "__table1.event_time",
+  type: "type",
+  query: "query",
+  user: "user",
+  query_duration_ms: "query_duration_ms",
+  read_rows: "read_rows",
+  read_bytes: "read_bytes",
+  memory_usage: "memory_usage",
+  query_id: "query_id",
+};
+
+export const QUERY_LOG_MAX_ROWS = 10_000;
+
+export interface QueryLogOptions {
+  limit: number;
+  hoursBack: number;
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  /** An absolute window, `YYYY-MM-DD HH:MM:SS` at both ends; it replaces `hoursBack`. */
+  range?: { start: string; end: string };
+  /** A ClickHouse user to narrow to. */
+  username?: string;
+  /** When set, only statements CHouse sent for this account. */
+  ownAccountId?: string;
+}
+
+export interface QueryLogRow {
+  type: string;
+  event_date: string;
+  event_time: string;
+  event_timestamp: number;
+  query_id: string;
+  query: string;
+  query_duration_ms: number;
+  read_rows: number;
+  read_bytes: number;
+  memory_usage: number;
+  user: string;
+  exception: string;
+  /** The CHouse account the statement was sent for, or null. */
+  rbac_user_id: string | null;
 }
 
 /** What the person is told about a failed statement: CHouse's wording for a grant or read-only refusal, else ClickHouse's own. */
@@ -898,6 +945,85 @@ export class ClickHouseService {
       }));
     } catch (error) {
       throw this.handleError(error, "Failed to fetch recent queries");
+    }
+  }
+
+  /**
+   * Rows of `system.query_log` for the Logs page, built here so the scope is
+   * the server's decision (ADR 0033 §4). With `ownAccountId` only statements
+   * CHouse sent for that account come back; the account is read from the query
+   * id the executor made, never from what the statement says about itself.
+   */
+  async getQueryLogs(options: QueryLogOptions): Promise<QueryLogRow[]> {
+    const order = QUERY_LOG_SORT_COLUMNS[options.sortBy] ?? QUERY_LOG_SORT_COLUMNS.event_time;
+    const direction = options.sortDir === "asc" ? "ASC" : "DESC";
+    const limit = Math.min(QUERY_LOG_MAX_ROWS, Math.max(1, Math.trunc(options.limit) || 100));
+    const hours = Math.min(24 * 90, Math.max(1, Math.trunc(options.hoursBack) || 24));
+    const params: Record<string, unknown> = {};
+    let window: string;
+    if (options.range) {
+      params.start = options.range.start;
+      params.end = options.range.end;
+      window = "event_date >= toDate(substring({start:String}, 1, 10)) AND __table1.event_time >= toDateTime({start:String}) AND __table1.event_time <= toDateTime({end:String})";
+    } else {
+      window = `event_date >= today() - ${Math.ceil(hours / 24)} AND __table1.event_time >= now() - INTERVAL ${hours} HOUR`;
+    }
+    const filters: string[] = [];
+    if (options.username) {
+      params.username = options.username;
+      filters.push("AND user = {username:String}");
+    }
+    if (options.ownAccountId !== undefined) {
+      params.account = options.ownAccountId;
+      filters.push(`AND ${ownerAccountSql()} = {account:String}`);
+    }
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT
+            type,
+            event_date,
+            formatDateTime(event_time, '%H:%i:%S') AS event_time,
+            toUnixTimestamp(__table1.event_time) AS event_timestamp,
+            query_id,
+            substring(query, 1, 2000) AS query,
+            query_duration_ms,
+            read_rows,
+            read_bytes,
+            memory_usage,
+            user,
+            substring(exception, 1, 2000) AS exception,
+            log_comment
+          FROM system.query_log AS __table1
+          WHERE ${window}
+            AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+            ${filters.join(" ")}
+          ORDER BY ${order} ${direction}
+          LIMIT ${limit}
+        `,
+        format: "JSONEachRow",
+        query_params: params,
+        clickhouse_settings: { readonly: "2", max_result_rows: String(QUERY_LOG_MAX_ROWS), max_result_bytes: "0", max_execution_time: 60 },
+      });
+      const rows = (await result.json()) as Array<Record<string, unknown>>;
+      const login = this.loginUser;
+      return rows.map((row) => ({
+        type: String(row.type ?? ""),
+        event_date: String(row.event_date ?? ""),
+        event_time: String(row.event_time ?? ""),
+        event_timestamp: Number(row.event_timestamp) || 0,
+        query_id: String(row.query_id ?? ""),
+        query: String(row.query ?? ""),
+        query_duration_ms: Number(row.query_duration_ms) || 0,
+        read_rows: Number(row.read_rows) || 0,
+        read_bytes: Number(row.read_bytes) || 0,
+        memory_usage: Number(row.memory_usage) || 0,
+        user: String(row.user ?? ""),
+        exception: String(row.exception ?? ""),
+        rbac_user_id: ownerAccount({ queryId: row.query_id, logComment: row.log_comment, user: row.user }, login),
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch query logs");
     }
   }
 

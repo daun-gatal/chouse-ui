@@ -3,9 +3,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '@/test/mocks/server';
 import {
     getSystemStats,
     getRecentQueries,
+    getQueryLogs,
     getDiskMetrics,
     getTopTables,
     getPartsPressure,
@@ -42,6 +45,36 @@ describe('Metrics API', () => {
             const queries = await getRecentQueries(10, 'testuser');
 
             expect(queries).toBeDefined();
+        });
+    });
+
+    describe('getQueryLogs', () => {
+        it('posts the window and sort to the server and returns its rows', async () => {
+            let body: unknown = null;
+            server.use(
+                http.post('/api/metrics/query-logs', async ({ request }) => {
+                    body = await request.json();
+                    return HttpResponse.json({
+                        success: true,
+                        data: [{ type: 'QueryFinish', event_date: '2026-11-14', event_time: '10:00:00', event_timestamp: 1, query_id: 'chouse:p:u1:n', query: 'SELECT 1', query_duration_ms: 3, read_rows: 1, read_bytes: 1, memory_usage: 0, user: 'default', exception: '', rbac_user_id: 'u1' }],
+                    });
+                }),
+            );
+
+            const rows = await getQueryLogs({ limit: 50, hoursBack: 6, sortBy: 'event_time', sortDir: 'desc', range: { start: '2026-11-14 00:00:00', end: '2026-11-14 12:00:00' } });
+
+            expect(body).toEqual({ limit: 50, hoursBack: 6, sortBy: 'event_time', sortDir: 'desc', range: { start: '2026-11-14 00:00:00', end: '2026-11-14 12:00:00' } });
+            expect(rows).toHaveLength(1);
+            expect(rows[0].rbac_user_id).toBe('u1');
+        });
+
+        it('surfaces a refusal from the server', async () => {
+            server.use(
+                http.post('/api/metrics/query-logs', () =>
+                    HttpResponse.json({ success: false, error: { code: 'FORBIDDEN', message: "Permission 'query:history:view' is required to read the query log" } }, { status: 403 })),
+            );
+
+            await expect(getQueryLogs({ limit: 10, hoursBack: 24, sortBy: 'event_time', sortDir: 'desc' })).rejects.toThrow('query:history:view');
         });
     });
 

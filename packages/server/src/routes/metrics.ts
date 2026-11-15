@@ -1,4 +1,7 @@
 import { Hono, Context } from "hono";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
+import { QUERY_LOG_MAX_ROWS, QUERY_LOG_SORT_COLUMNS } from "../services/clickhouse";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { userHasPermission, userHasAnyPermission } from "../rbac/services/rbac";
 import {
@@ -154,6 +157,39 @@ function recentLimit(raw: string | undefined): number {
   if (!Number.isFinite(parsed)) return 10;
   return Math.min(100, Math.max(1, parsed));
 }
+
+const queryLogsSchema = z.object({
+  limit: z.number().int().min(1).max(QUERY_LOG_MAX_ROWS).default(100),
+  hoursBack: z.number().int().min(1).max(24 * 90).default(24),
+  sortBy: z.string().refine((key) => key in QUERY_LOG_SORT_COLUMNS, "Unknown sort column").default("event_time"),
+  sortDir: z.enum(["asc", "desc"]).default("desc"),
+  range: z.object({
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+  }).optional(),
+  username: z.string().min(1).max(200).optional(),
+});
+
+/**
+ * POST /metrics/query-logs
+ * The statement log for the Logs page (ADR 0033 §4). The page used to send
+ * its own SELECT on system.query_log and narrow the rows in the browser; a
+ * typed read of that table now needs query:history:view:all, so the server
+ * builds the statement and scopes it: everyone's statements with that
+ * permission, else only the ones CHouse sent for the caller, which needs
+ * query:history:view.
+ */
+metrics.post("/query-logs", zValidator("json", queryLogsSchema), async (c) => {
+  const rbacUserId = c.get("rbacUserId");
+  if (!rbacUserId) throw AppError.unauthorized("RBAC authentication is required. Please login with RBAC credentials.");
+  const body = c.req.valid("json");
+  const all = canSeeAllQueryText(c);
+  if (!all && !(c.get("rbacPermissions") ?? []).includes(PERMISSIONS.QUERY_HISTORY_VIEW)) {
+    throw AppError.forbidden(`Permission '${PERMISSIONS.QUERY_HISTORY_VIEW}' is required to read the query log`);
+  }
+  const rows = await c.get("service").getQueryLogs({ ...body, ...(all ? {} : { ownAccountId: rbacUserId }) });
+  return c.json({ success: true, data: rows });
+});
 
 /**
  * GET /metrics/recent-queries

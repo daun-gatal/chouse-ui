@@ -39,6 +39,93 @@ describe("ClickHouse Service", () => {
         mockPingFn.mockClear();
     });
 
+    describe("typed text (ADR 0033 §2, §4)", () => {
+        const sentArgs = (): Record<string, unknown> => mockQueryFn.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
+        it("sends a checked read with readonly = 2 and a checked write with none", async () => {
+            mockJsonFn.mockResolvedValue({ data: [], meta: [] });
+            await service.executeChecked(checkedForTests({ sql: "SELECT 1", accountId: "test-user" }));
+            expect(sentArgs().query).toBe("SELECT 1");
+            expect((sentArgs().clickhouse_settings as Record<string, unknown>).readonly).toBe("2");
+
+            await service.executeChecked(checkedForTests({ sql: "INSERT INTO t VALUES (1)", accountId: "test-user", isRead: false, mayWrite: true }));
+            const command = mockCommandFn.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+            expect(command.query).toBe("INSERT INTO t VALUES (1)");
+            expect("readonly" in ((command.clickhouse_settings ?? {}) as Record<string, unknown>)).toBe(false);
+        });
+
+        it("sends a write from a person who may write nothing read-only, so ClickHouse refuses it", async () => {
+            await service.executeChecked(checkedForTests({ sql: "INSERT INTO t VALUES (1)", accountId: "test-user", isRead: false, mayWrite: false }));
+            const command = mockCommandFn.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+            expect((command.clickhouse_settings as Record<string, unknown>).readonly).toBe("2");
+        });
+
+        it("leaves CHouse-built text as the call site sends it", async () => {
+            mockJsonFn.mockResolvedValue({ data: [], meta: [] });
+            await service.executeQuery("SELECT 1");
+            expect("readonly" in (sentArgs().clickhouse_settings as Record<string, unknown>)).toBe(false);
+        });
+
+        it("refuses a statement checked for another account", async () => {
+            await expect(service.executeChecked(checkedForTests({ sql: "SELECT 1", accountId: "someone-else" }))).rejects.toThrow();
+            expect(mockQueryFn).not.toHaveBeenCalled();
+        });
+
+        it("words a ClickHouse refusal for the person instead of reporting a sign-in failure", async () => {
+            mockQueryFn.mockImplementation(async () => {
+                throw Object.assign(new Error("default: Cannot execute query in readonly mode. (READONLY)"), { code: "164", type: "READONLY", response: { status: 500 } });
+            });
+            await expect(service.executeChecked(checkedForTests({ sql: "SELECT 1", accountId: "test-user" }))).rejects.toMatchObject({ code: "READ_ONLY", statusCode: 403 });
+            mockQueryFn.mockImplementation(async () => {
+                throw Object.assign(new Error("default: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON db.t. (ACCESS_DENIED)"), { code: "497", type: "ACCESS_DENIED", response: { status: 403 } });
+            });
+            await expect(service.executeQuery("SELECT * FROM db.t")).rejects.toMatchObject({ code: "CLICKHOUSE_ACCESS_DENIED", statusCode: 403 });
+            // The stored login being refused is a connection problem, not the person's session.
+            mockQueryFn.mockImplementation(async () => {
+                throw Object.assign(new Error("Authentication failed"), { response: { status: 403 } });
+            });
+            await expect(service.executeQuery("SELECT 1")).rejects.toMatchObject({ code: "CONNECTION_AUTH_FAILED", statusCode: 502 });
+        });
+    });
+
+    describe("getQueryLogs", () => {
+        const sent = (): { query: string; query_params: Record<string, unknown>; clickhouse_settings: Record<string, unknown> } =>
+            mockQueryFn.mock.calls.at(-1)?.[0] as never;
+
+        it("scopes to one account by the query id, with the account as a bound parameter", async () => {
+            mockJsonFn.mockResolvedValueOnce([
+                { type: "QueryFinish", query_id: "chouse:p:u1:n", user: "default", read_rows: "12", log_comment: JSON.stringify({ rbac_user_id: "victim" }) },
+                { type: "QueryFinish", query_id: "chouse:p:u1:n2", user: "mallory", log_comment: "" },
+            ]);
+            const rows = await service.getQueryLogs({ limit: 50, hoursBack: 6, sortBy: "event_time", sortDir: "desc", ownAccountId: "u1" });
+            expect(sent().query).toContain("splitByChar(':', query_id)[3]");
+            expect(sent().query).toContain("= {account:String}");
+            expect(sent().query).not.toContain("'u1'");
+            expect(sent().query_params).toEqual({ account: "u1" });
+            expect(sent().clickhouse_settings.readonly).toBe("2");
+            // The id decides who a row is for, and a row of another ClickHouse login names no one.
+            expect(rows.map((r) => r.rbac_user_id)).toEqual(["u1", null]);
+            expect(rows[0].read_rows).toBe(12);
+        });
+
+        it("has no account filter for someone who may see everything, and binds the range and the user", async () => {
+            mockJsonFn.mockResolvedValueOnce([]);
+            await service.getQueryLogs({ limit: 10, hoursBack: 24, sortBy: "query_duration_ms", sortDir: "asc", range: { start: "2026-11-01 00:00:00", end: "2026-11-02 00:00:00" }, username: "etl" });
+            expect(sent().query).not.toContain("{account:String}");
+            expect(sent().query).toContain("ORDER BY query_duration_ms ASC");
+            expect(sent().query).toContain("toDateTime({start:String})");
+            expect(sent().query_params).toEqual({ start: "2026-11-01 00:00:00", end: "2026-11-02 00:00:00", username: "etl" });
+        });
+
+        it("falls back to a safe sort column and clamps the limit", async () => {
+            mockJsonFn.mockResolvedValueOnce([]);
+            await service.getQueryLogs({ limit: 10_000_000, hoursBack: 24, sortBy: "query; DROP TABLE t", sortDir: "desc" });
+            expect(sent().query).toContain("ORDER BY __table1.event_time DESC");
+            expect(sent().query).toContain("LIMIT 10000");
+            expect(sent().query).not.toContain("DROP TABLE");
+        });
+    });
+
     describe("executeQuery", () => {
         it("should execute SELECT query", async () => {
             mockJsonFn.mockResolvedValueOnce({

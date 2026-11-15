@@ -7,4 +7,4 @@ COPY packages/server/package.json ./packages/server/
 RUN bun install --frozen-lockfile
 COPY packages/server ./packages/server
 WORKDIR /app/packages/server
-CMD ["bun", "test", "--timeout", "600000", "src/services/observe/observe.e2e.test.ts", "src/services/observe/sources.e2e.test.ts"]
+CMD ["bun", "test", "--timeout", "600000", "src/services/observe/observe.e2e.test.ts", "src/services/observe/sources.e2e.test.ts", "src/services/chExecutor/shared.e2e.test.ts"]
