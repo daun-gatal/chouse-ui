@@ -1,7 +1,8 @@
 /**
- * How one connection reaches ClickHouse (ADR 0033): its kind, the stored
- * login, the role names and the health of its checks, with the form that
- * switches them. Super admin only; the server refuses everyone else.
+ * How one connection reaches ClickHouse (ADR 0033): its kind (shared login,
+ * role ceiling or personal), the stored login, the role names and the health
+ * of its checks, with the form that switches them. Super admin only; the
+ * server refuses everyone else.
  *
  * A switch never rewrites the login in place: a ClickHouse administrator
  * prepares a different user, the super admin enters it here, CHouse checks it,
@@ -22,7 +23,9 @@ import { Textarea } from "@/components/ui/textarea";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import {
   ACCESS_CONTACT_MAX,
+  CLICKHOUSE_ROLE_NAME,
   IDENTITY_MODE_CEILING,
+  IDENTITY_MODE_PERSONAL,
   IDENTITY_MODE_SHARED,
   checkConnectionIdentity,
   getConnectionIdentity,
@@ -44,7 +47,7 @@ import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import { CopyButton, PrivilegeReport } from "./PrivilegeReport";
 import { RoleMapEditor } from "./RoleMapEditor";
-import { ERROR_CLASS, HELP_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "./formStyles";
+import { ERROR_CLASS, HELP_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, SECTION_TITLE_CLASS } from "./formStyles";
 
 interface IdentityPanelProps {
   /** The connection to show; null closes the panel. */
@@ -66,18 +69,24 @@ const KIND_OPTIONS: ReadonlyArray<{ value: KnownIdentityMode; label: string; exp
     explanation:
       "The ClickHouse user holds no grants; each statement names the ClickHouse role mapped to the person's CHouse role, so ClickHouse itself limits them (needs ClickHouse 24.4 or newer).",
   },
+  {
+    value: IDENTITY_MODE_PERSONAL,
+    label: "Personal",
+    explanation: "Each person's statements run as their own ClickHouse user. The login itself holds no grants.",
+  },
 ];
 
 const DEFAULT_SYSTEM_ROLE = "chouse_system";
+const DEFAULT_IMPERSONATION_ROLE = "chouse_impersonate";
 
-const SECTION_TITLE_CLASS = "font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint";
+const ROLE_NAME_RULE = "use letters, digits and underscores, not starting with a digit (128 at most).";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
 function isKnownMode(value: string): value is KnownIdentityMode {
-  return value === IDENTITY_MODE_SHARED || value === IDENTITY_MODE_CEILING;
+  return value === IDENTITY_MODE_SHARED || value === IDENTITY_MODE_CEILING || value === IDENTITY_MODE_PERSONAL;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }): ReactElement {
@@ -193,6 +202,7 @@ interface FormState {
   username: string;
   password: string;
   systemRole: string;
+  impersonationRole: string;
   accessContact: string;
   changeServer: boolean;
   host: string;
@@ -206,6 +216,7 @@ function formFrom(identity: ConnectionIdentity, connection: ClickHouseConnection
     username: identity.username,
     password: "",
     systemRole: identity.systemRole ?? DEFAULT_SYSTEM_ROLE,
+    impersonationRole: identity.impersonationRole ?? DEFAULT_IMPERSONATION_ROLE,
     accessContact: identity.accessContact ?? "",
     changeServer: false,
     host: connection.host,
@@ -219,7 +230,13 @@ function formProblem(form: FormState, identity: ConnectionIdentity): string | nu
   const username = form.username.trim();
   if (username === "") return "Enter the ClickHouse user.";
   if (username !== identity.username && form.password === "") return "Enter the password of the new ClickHouse user.";
-  if (form.mode === IDENTITY_MODE_CEILING && form.systemRole.trim() === "") return "Enter the system role.";
+  if (form.mode !== IDENTITY_MODE_SHARED && form.systemRole.trim() === "") return "Enter the system role.";
+  if (form.mode === IDENTITY_MODE_PERSONAL) {
+    const impersonationRole = form.impersonationRole.trim();
+    if (impersonationRole === "") return "Enter the impersonation role.";
+    if (!CLICKHOUSE_ROLE_NAME.test(impersonationRole)) return `For the impersonation role, ${ROLE_NAME_RULE}`;
+    if (impersonationRole === form.systemRole.trim()) return "The impersonation role and the system role must be two roles.";
+  }
   if (form.changeServer) {
     if (form.host.trim() === "") return "Enter the host.";
     const port = Number(form.port);
@@ -233,7 +250,9 @@ function changeFrom(form: FormState): IdentityChange {
     identityMode: form.mode,
     username: form.username.trim(),
     ...(form.password !== "" ? { password: form.password } : {}),
-    systemRole: form.mode === IDENTITY_MODE_CEILING ? form.systemRole.trim() : null,
+    systemRole: form.mode === IDENTITY_MODE_SHARED ? null : form.systemRole.trim(),
+    // Only a personal login has one; the server stores none for the other kinds.
+    ...(form.mode === IDENTITY_MODE_PERSONAL ? { impersonationRole: form.impersonationRole.trim() } : {}),
     accessContact: form.accessContact.trim() || null,
     ...(form.changeServer ? { host: form.host.trim(), port: Number(form.port), sslEnabled: form.sslEnabled } : {}),
   };
@@ -311,7 +330,10 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
   const userChanges = username !== identity.username;
   const kindChanges = form.mode !== identity.identityMode;
   const isSwitch = userChanges || kindChanges;
-  const showCeilingSetup = currentKind === IDENTITY_MODE_CEILING || form.mode === IDENTITY_MODE_CEILING;
+  // The selected kind decides what to prepare; while the form says shared login, the stored kind does.
+  const setupKind = form.mode !== IDENTITY_MODE_SHARED ? form.mode : currentKind;
+  const showCeilingSetup = setupKind === IDENTITY_MODE_CEILING;
+  const showPersonalSetup = setupKind === IDENTITY_MODE_PERSONAL;
   const contactChanged = (form.accessContact.trim() || null) !== identity.accessContact;
   const working = busy !== null;
 
@@ -359,7 +381,7 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
       });
       // The password is not kept in the form once it is stored.
       setForm({ ...formFrom(result.identity, connection), changeServer: false, host: form.host, port: form.port, sslEnabled: form.sslEnabled });
-      setIdentity({ ...result.identity, setupStatements: identity.setupStatements });
+      setIdentity({ ...identity, ...result.identity });
       toast.success(isSwitch ? "Login switched" : "Login saved");
       onChanged();
       // The setup statements follow the stored role names.
@@ -400,7 +422,7 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
     setBusy("recheck");
     try {
       const result = await recheckConnectionIdentity(connectionId);
-      setIdentity({ ...result.identity, setupStatements: identity.setupStatements });
+      setIdentity({ ...identity, ...result.identity });
       if (result.verdict) {
         showOutcome({
           title: "Checks on the stored login",
@@ -428,7 +450,7 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
     setBusy("contact");
     try {
       const saved = await setConnectionAccessContact(connectionId, form.accessContact.trim() || null);
-      setIdentity({ ...saved, setupStatements: identity.setupStatements });
+      setIdentity({ ...identity, ...saved });
       toast.success("Access contact saved");
       onChanged();
     } catch (error) {
@@ -440,7 +462,8 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
     }
   };
 
-  const statements = identity.setupStatements.join("\n");
+  const setupStatements = showPersonalSetup ? identity.personalSetupStatements : identity.setupStatements;
+  const statements = setupStatements.join("\n");
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -463,6 +486,9 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
           </Fact>
           <Fact label="ClickHouse user">{identity.username}</Fact>
           <Fact label="System role">{identity.systemRole ?? <span className="text-paper-faint">None</span>}</Fact>
+          {(currentKind === IDENTITY_MODE_PERSONAL || identity.impersonationRole !== null) && (
+            <Fact label="Impersonation role">{identity.impersonationRole ?? <span className="text-paper-faint">None</span>}</Fact>
+          )}
           <Fact label="Access contact">{identity.accessContact ?? <span className="text-paper-faint">None</span>}</Fact>
         </dl>
         <div className="flex items-start justify-between gap-3">
@@ -539,7 +565,13 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
             </div>
           </div>
 
-          {form.mode === IDENTITY_MODE_CEILING && (
+          {form.mode === IDENTITY_MODE_PERSONAL && (
+            <p className={cn(HELP_CLASS, "leading-[1.5]")}>
+              A personal connection needs a ClickHouse build that passes the checks. Of the builds tested, only 26.3.63 does; on another build the check list says which check fails and why.
+            </p>
+          )}
+
+          {form.mode !== IDENTITY_MODE_SHARED && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="identity-system-role" className={LABEL_CLASS}>System role</Label>
               <Input
@@ -553,6 +585,25 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
                 className={INPUT_CLASS}
               />
               <p className={HELP_CLASS}>The ClickHouse role CHouse names for its own background work.</p>
+            </div>
+          )}
+
+          {form.mode === IDENTITY_MODE_PERSONAL && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="identity-impersonation-role" className={LABEL_CLASS}>Impersonation role</Label>
+              <Input
+                id="identity-impersonation-role"
+                value={form.impersonationRole}
+                onChange={(event) => edit({ impersonationRole: event.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={128}
+                placeholder={DEFAULT_IMPERSONATION_ROLE}
+                className={INPUT_CLASS}
+              />
+              <p className={HELP_CLASS}>
+                The ClickHouse role that lets the login run a statement as a linked ClickHouse user. It must not be the system role.
+              </p>
             </div>
           )}
 
@@ -643,23 +694,23 @@ function IdentityPanelBody({ connection, onChanged }: { connection: ClickHouseCo
       {outcome && <OutcomeView outcome={outcome} />}
 
       {showCeilingSetup && (
-        <>
-          <Section title="Role map">
-            <RoleMapEditor connectionId={connectionId} onSaved={() => void load()} />
-          </Section>
+        <Section title="Role map">
+          <RoleMapEditor connectionId={connectionId} onSaved={() => void load()} />
+        </Section>
+      )}
 
-          {identity.setupStatements.length > 0 && (
-            <Section title="For the ClickHouse administrator">
-              <p className={cn(HELP_CLASS, "leading-[1.5]")}>
-                A ClickHouse administrator runs these in ClickHouse to prepare the user and roles. CHouse never runs them.
-              </p>
-              <div className="flex items-start justify-between gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
-                <pre className="min-w-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.6] text-paper">{statements}</pre>
-                <CopyButton text={statements} label="Copy" />
-              </div>
-            </Section>
-          )}
-        </>
+      {(showCeilingSetup || showPersonalSetup) && setupStatements.length > 0 && (
+        <Section title="For the ClickHouse administrator">
+          <p className={cn(HELP_CLASS, "leading-[1.5]")}>
+            {showPersonalSetup
+              ? "A ClickHouse administrator runs these in ClickHouse to prepare the user and roles of a personal connection. CHouse never runs them. Each linked ClickHouse user needs one more grant, listed with this connection's links."
+              : "A ClickHouse administrator runs these in ClickHouse to prepare the user and roles. CHouse never runs them."}
+          </p>
+          <div className="flex items-start justify-between gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
+            <pre className="min-w-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.6] text-paper">{statements}</pre>
+            <CopyButton text={statements} label="Copy" />
+          </div>
+        </Section>
       )}
 
       <ConfirmationDialog

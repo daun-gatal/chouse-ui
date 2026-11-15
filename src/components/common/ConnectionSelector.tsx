@@ -42,7 +42,9 @@ import {
   type ConnectResult,
 } from "@/api/rbac";
 import { setSessionId, setConnectionId, clearSession, getSessionId } from "@/api/client";
-import { IDENTITY_MODE_CEILING, identityKind } from "@/api/connectionIdentity";
+import { IDENTITY_MODE_CEILING, IDENTITY_MODE_PERSONAL, identityKind } from "@/api/connectionIdentity";
+import type { BindingState } from "@/api/clickhouseBindings";
+import { linkOnConnection, useMyClickHouseLinks } from "@/hooks/useMyClickHouseLinks";
 import { rbacUserPreferencesApi } from "@/api";
 import { useRbacStore, useAuthStore } from "@/stores";
 
@@ -57,13 +59,59 @@ const SHARED_LOGIN_TITLE =
 const ROLE_CEILING_TITLE =
   "Your statements on this connection run as this ClickHouse user, with only the ClickHouse role mapped to your CHouse role.";
 
+const PERSONAL_TITLE =
+  "Your statements on this connection run as your own ClickHouse user, with that user's grants.";
+
+const NO_LINK_TITLE =
+  "This connection runs each person's statements as their own ClickHouse user. A super admin links your account to one.";
+
+/** What a person reads when their link exists but cannot be used. */
+const UNUSABLE_LINK_TEXT: Record<Exclude<BindingState, "active">, string> = {
+  pending_grant: "Your ClickHouse link is waiting",
+  suspended: "Your ClickHouse link is suspended",
+  disabled: "Your ClickHouse link is disabled",
+};
+
+/**
+ * Who the signed-in person is on a personal connection: their linked
+ * ClickHouse user, or why they have none they can use.
+ */
+function PersonalLogin({ connectionId }: { connectionId: string }): ReactElement {
+  const { data, isPending, isError } = useMyClickHouseLinks();
+  // Neither "linked" nor "not linked" is known yet (or at all, when the read failed).
+  if (isPending || isError) return <span title={PERSONAL_TITLE}>Your own ClickHouse user</span>;
+  const link = linkOnConnection(data, connectionId);
+  if (!link) return <span title={NO_LINK_TITLE}>No ClickHouse user linked</span>;
+  if (link.state !== "active") {
+    return <span title={link.reason ?? NO_LINK_TITLE}>{UNUSABLE_LINK_TEXT[link.state]}</span>;
+  }
+  return (
+    <span title={PERSONAL_TITLE}>
+      As <span className="normal-case tracking-normal text-paper-muted">{link.clickhouseUser}</span> (your ClickHouse user)
+    </span>
+  );
+}
+
+interface SharedLoginProps {
+  username: string;
+  identityMode?: string | null;
+  /** Needed on a personal connection, to find the person's own link on it. */
+  connectionId?: string;
+}
+
 /**
  * The ClickHouse user a connection's statements run as. The surrounding label
  * is uppercased; the username is not, because ClickHouse user names are
- * case-sensitive.
+ * case-sensitive. On a personal connection that user is the person's own, not
+ * the connection's login.
  */
-export function SharedLogin({ username, identityMode }: { username: string; identityMode?: string | null }): ReactElement {
-  if (identityKind(identityMode) === IDENTITY_MODE_CEILING) {
+export function SharedLogin({ username, identityMode, connectionId }: SharedLoginProps): ReactElement {
+  const kind = identityKind(identityMode);
+  if (kind === IDENTITY_MODE_PERSONAL) {
+    if (connectionId === undefined) return <span title={PERSONAL_TITLE}>Your own ClickHouse user</span>;
+    return <PersonalLogin connectionId={connectionId} />;
+  }
+  if (kind === IDENTITY_MODE_CEILING) {
     return (
       <span title={ROLE_CEILING_TITLE}>
         Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>, limited to your ClickHouse role
@@ -383,7 +431,7 @@ export default function ConnectionSelector({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-[12px] font-medium text-paper">{conn.name}</span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} />
+                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
                 </span>
               </div>
             )}
@@ -391,7 +439,7 @@ export default function ConnectionSelector({
         </TooltipTrigger>
         {isCollapsed && (
           <TooltipContent side="right" className={TOOLTIP_CLASS}>
-            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} />
+            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
           </TooltipContent>
         )}
       </Tooltip>
@@ -428,7 +476,7 @@ export default function ConnectionSelector({
                   {activeConnection.name}
                 </span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} identityMode={activeConnection.identityMode} />
+                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} identityMode={activeConnection.identityMode} connectionId={activeConnection.id} />
                 </span>
               </div>
             )}
@@ -477,7 +525,7 @@ export default function ConnectionSelector({
                     )}
                   </div>
                   <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                    <SharedLogin username={conn.username} identityMode={conn.identityMode} />
+                    <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
                   </span>
                 </div>
                 {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />}

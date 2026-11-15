@@ -3,8 +3,10 @@
  * packages/server/src/rbac/routes/connectionIdentity.ts.
  *
  * A connection's kind says how its statements reach ClickHouse: `shared` (one
- * login holding every grant) or `shared_ceiling` (a login with no grants, and
- * each statement names the ClickHouse role mapped to the person's CHouse role).
+ * login holding every grant), `shared_ceiling` (a login with no grants, and
+ * each statement names the ClickHouse role mapped to the person's CHouse role)
+ * or `personal` (a login with no grants, and each statement runs as the
+ * ClickHouse user linked to the person's account).
  */
 
 import { api, ApiError } from "./client";
@@ -12,8 +14,9 @@ import type { ConnectionPrivilegeReport } from "./rbac";
 
 export const IDENTITY_MODE_SHARED = "shared";
 export const IDENTITY_MODE_CEILING = "shared_ceiling";
+export const IDENTITY_MODE_PERSONAL = "personal";
 
-export type KnownIdentityMode = typeof IDENTITY_MODE_SHARED | typeof IDENTITY_MODE_CEILING;
+export type KnownIdentityMode = typeof IDENTITY_MODE_SHARED | typeof IDENTITY_MODE_CEILING | typeof IDENTITY_MODE_PERSONAL;
 export type IdentityKind = KnownIdentityMode | "unknown";
 
 /** A ClickHouse role name the server accepts in the role map. */
@@ -27,14 +30,16 @@ export const ACCESS_CONTACT_MAX = 500;
  */
 export function identityKind(mode: string | null | undefined): IdentityKind {
   if (mode === undefined || mode === null || mode === IDENTITY_MODE_SHARED) return IDENTITY_MODE_SHARED;
-  return mode === IDENTITY_MODE_CEILING ? IDENTITY_MODE_CEILING : "unknown";
+  if (mode === IDENTITY_MODE_CEILING) return IDENTITY_MODE_CEILING;
+  return mode === IDENTITY_MODE_PERSONAL ? IDENTITY_MODE_PERSONAL : "unknown";
 }
 
 /** The kind in plain words. */
 export function identityKindLabel(mode: string | null | undefined): string {
   const kind = identityKind(mode);
   if (kind === IDENTITY_MODE_SHARED) return "Shared login";
-  return kind === IDENTITY_MODE_CEILING ? "Role ceiling" : "Unknown kind";
+  if (kind === IDENTITY_MODE_CEILING) return "Role ceiling";
+  return kind === IDENTITY_MODE_PERSONAL ? "Personal" : "Unknown kind";
 }
 
 export type IdentityHealth = "ok" | "failing" | null;
@@ -54,6 +59,8 @@ export interface ConnectionIdentity {
   identityMode: string;
   username: string;
   systemRole: string | null;
+  /** The ClickHouse role that lets the login run statements as linked users; null unless the kind is `personal`. */
+  impersonationRole: string | null;
   accessContact: string | null;
   health: IdentityHealth;
   healthReason: string | null;
@@ -66,6 +73,8 @@ export interface ConnectionIdentity {
 export interface ConnectionIdentityDetail extends ConnectionIdentity {
   /** SQL for the ClickHouse administrator. CHouse never runs these. */
   setupStatements: string[];
+  /** The same, for a personal login. */
+  personalSetupStatements: string[];
 }
 
 export interface IdentityChange {
@@ -74,6 +83,8 @@ export interface IdentityChange {
   /** May be left out only when the username is unchanged: the stored one is kept. */
   password?: string;
   systemRole?: string | null;
+  /** Required when the kind is `personal`; must differ from the system role. */
+  impersonationRole?: string | null;
   accessContact?: string | null;
   host?: string;
   port?: number;
@@ -87,7 +98,12 @@ export type IdentityCheckId =
   | "bare_reads"
   | "system_role"
   | "login_reuse"
-  | "remediation_login";
+  | "remediation_login"
+  | "impersonation_role"
+  | "impersonation"
+  | "create_checked"
+  | "format"
+  | "no_nesting";
 
 export interface IdentityCheck {
   id: IdentityCheckId;
@@ -101,6 +117,8 @@ export interface IdentityVerdict {
   reason: string | null;
   checks: IdentityCheck[];
   serverVersion: string | null;
+  /** On a personal login: the ClickHouse users the impersonation role may act as. */
+  impersonationTargets?: string[];
 }
 
 export interface IdentityCheckResult {
