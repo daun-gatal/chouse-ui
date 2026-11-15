@@ -27,6 +27,7 @@ import { serviceActor, type ChExecutor } from '../../services/chExecutor/types';
 import { resetVisibleTables } from '../../services/chExecutor/visibleTables';
 import { AppError, type ConnectionConfig } from '../../types';
 import { logger } from '../../utils/logger';
+import { escapeIdentifier } from '../../utils/sqlIdentifier';
 import { AUDIT_ACTIONS } from '../schema/base';
 
 export const BINDING_STATES = ['pending_grant', 'active', 'suspended', 'disabled'] as const;
@@ -410,7 +411,7 @@ export async function grantScript(connectionId: string): Promise<GrantScript> {
           const target = impersonationTarget(parseGrantLine(raw));
           // The login's grant on itself is what the self-test uses.
           if ('user' in target && target.user !== probe.login && !bound.has(target.user)) {
-            unbound.push({ user: target.user, revoke: `REVOKE IMPERSONATE ON ${target.user} FROM ${stored};` });
+            unbound.push({ user: target.user, revoke: `REVOKE IMPERSONATE ON ${isRoleName(target.user) ? target.user : escapeIdentifier(target.user)} FROM ${stored};` });
           }
         }
       }

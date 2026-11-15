@@ -228,6 +228,8 @@ Every tool's description, access level, required permissions and parameters are 
 
 The server also offers **resources** — `chouse://connection/{id}`, `chouse://database/{name}`, `chouse://table/{db}/{table}`, `chouse://saved-query/{id}`, `chouse://scheduled-job/{id}`, `chouse://health-check/{id}`, `chouse://doctor-report/{id}` — and **prompts**: `investigate-slow-query`, `diagnose-incident`, `review-schema`, `plan-schema-migration`.
 
+**What a statement runs as:** `connection_runs_as` tells an agent, for each connection, which ClickHouse identity its statements carry (the connection's login, a ClickHouse role, or the token owner's linked ClickHouse user), whether that is usable now, and what a [personal connection](/docs/personal-connections/) refuses. No MCP tool creates or removes a link, switches a connection's kind or edits a role map: an agent that is not linked can only tell you so.
+
 **Which connection:** pass `X-Connection-Id` as a request header or a `connection_id` argument on each tool call (`use_connection` only checks an id); otherwise the token owner's default connection is used. Nothing is pinned on the server, so any replica can serve any call.
 
 ## Write tools

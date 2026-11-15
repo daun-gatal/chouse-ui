@@ -54,6 +54,7 @@ Settings resolve flag > environment > profile: `--server`/`CHOUSE_SERVER`, `--to
 ```bash
 chouse status
 chouse connection list
+chouse connection runs-as                       # which ClickHouse user or role your statements run with
 chouse table list -c prod                       # -c takes a connection name or id
 chouse table schema analytics.events
 chouse table sample analytics.events --limit 20
@@ -126,6 +127,44 @@ chouse ai guardrail-triggers --days 7        # matches: counts only, never the v
 ```
 
 `mcp config` prints the raw snippet; every snippet reads the token from `CH_HOUSE_PAT` or a secret prompt, never inline.
+
+## Connection kinds and linked ClickHouse users
+
+`chouse connection runs-as` shows, for each connection, the ClickHouse identity your statements carry (the connection's login, a ClickHouse role, or your own linked ClickHouse user) and whether it is usable now. Add a connection name for the detail, including what a [personal connection](/docs/personal-connections/) refuses.
+
+| State | Meaning |
+| --- | --- |
+| `ready` | The identity is in place. ClickHouse grants and your CHouse permissions still decide each statement. |
+| `no_usable_role` | Role ceiling: your role is not mapped to a ClickHouse role on this connection, or your account has no role. |
+| `no_link` | Personal: your account is not linked to a ClickHouse user. |
+| `pending_grant` | Personal: your link waits for a ClickHouse administrator to run its grant. |
+| `suspended` | Personal: your link is suspended until a super admin confirms it. |
+| `disabled` | Personal: your link's ClickHouse user is gone, changed, or not allowed. |
+| `connection_unavailable` | The connection's login failed its checks, so it refuses everyone. |
+
+A super admin can also read and manage the [links](/docs/personal-connections/#links) of a personal connection:
+
+```bash
+chouse connection identity get prod             # kind, roles, health, which kinds the server can run
+chouse connection identity recheck prod         # run the login's checks now
+chouse connection links list prod
+chouse connection links add prod --account ann.lee --user alice --yes
+chouse connection links grants prod             # the GRANTs for your ClickHouse administrator, as SQL
+chouse connection links check prod ann.lee      # after the grant ran
+chouse connection links remove prod ann.lee --yes
+chouse connection links grants prod --revokes   # REVOKEs for ClickHouse users no link uses
+```
+
+These need a token without scopes, because only the super admin role gates them. Three things stay in the UI on purpose: switching a connection's kind and editing its role map (they store credentials and decide what ClickHouse lets every account do), and confirming or removing a suspended link (a suspension means the person behind the account may have changed). `identity recheck` exits with 5 when the login fails its checks.
+
+To link many accounts, loop over a file of `account,user` lines:
+
+```bash
+while IFS=, read -r account user; do
+  chouse connection links add prod --account "$account" --user "$user" --yes
+done < links.csv
+chouse connection links grants prod > grants.sql
+```
 
 ## Output
 

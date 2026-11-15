@@ -1,0 +1,123 @@
+# Connection-identity lab (ADR 0033): CHouse UI with PostgreSQL for its own
+# data, and two ClickHouse servers, seeded so each connection kind can be
+# tried by hand.
+#
+#   ./up.sh                      build, start, seed
+#   ./up.sh down                 stop and delete everything, volumes included
+#
+#   ch-a  ClickHouse 26.3.63.123  passes the personal-connection self-test
+#   ch-b  ClickHouse 26.5.7.64    fails it (runs CREATE under EXECUTE AS unchecked)
+#
+# Works with a remote Docker daemon (DOCKER_HOST): nothing is bind-mounted.
+# README.md lists the accounts and what to try.
+name: chouse-identity-lab
+
+x-ch: &ch
+  restart: unless-stopped
+  ulimits:
+    nofile: { soft: 262144, hard: 262144 }
+  environment:
+    CLICKHOUSE_USER: default
+    CLICKHOUSE_PASSWORD: lab
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+  healthcheck:
+    # Ready only once the fixture's last user exists, not merely when the port answers.
+    test: ["CMD-SHELL", "clickhouse-client --password lab -q \"SELECT throwIf(count() = 0) FROM system.users WHERE name = 'lab_ready'\""]
+    interval: 3s
+    retries: 100
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chouse
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: chouse
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chouse -d chouse"]
+      interval: 3s
+      retries: 40
+
+  ch-a:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 26.3.63.123 } }
+    ports:
+      - "${LAB_CH_A_PORT:-8200}:8123"
+    volumes:
+      - ch-a-data:/var/lib/clickhouse
+
+  ch-b:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 26.5.7.64 } }
+    ports:
+      - "${LAB_CH_B_PORT:-8201}:8123"
+    volumes:
+      - ch-b-data:/var/lib/clickhouse
+
+  chouse-ui:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: identity-lab
+    restart: unless-stopped
+    ports:
+      - "${LAB_UI_PORT:-3000}:5521"
+    environment:
+      NODE_ENV: production
+      RBAC_DB_TYPE: postgres
+      RBAC_POSTGRES_URL: postgres://chouse:lab@postgres:5432/chouse
+      # Lab-only secrets: fixed so a restart keeps sessions and stored passwords readable. Never reuse them.
+      JWT_SECRET: identity-lab-jwt-secret-not-for-production-0123456789
+      RBAC_ENCRYPTION_KEY: 1ab0000000000000000000000000000000000000000000000000000000000000
+      RBAC_ENCRYPTION_SALT: 1ab1111111111111111111111111111111111111111111111111111111111111
+      RBAC_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:-Lab-admin-123!}
+      CORS_ORIGIN: ${LAB_ORIGIN:-http://localhost:${LAB_UI_PORT:-3000}}
+    depends_on:
+      postgres: { condition: service_healthy }
+      ch-a: { condition: service_healthy }
+      ch-b: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "--spider", "http://localhost:5521/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 15s
+
+  # The docs site and landing page, built from this working tree, to review next to the app.
+  docs:
+    build: { context: ../../docs/portfolio, dockerfile: Dockerfile }
+    restart: unless-stopped
+    ports:
+      - "${LAB_DOCS_PORT:-5173}:3000"
+
+  # One-shot: registers the connections, roles, accounts and links. Safe to run again.
+  seed:
+    build: { context: ., dockerfile: seed.Dockerfile }
+    restart: "no"
+    environment:
+      LAB_CHOUSE_URL: http://chouse-ui:5521
+      LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:-Lab-admin-123!}
+      LAB_USER_PASSWORD: ${LAB_USER_PASSWORD:-Lab-pass-123!}
+    depends_on:
+      chouse-ui: { condition: service_healthy }
+
+  # One-shot: MCP and CLI checks against the seeded lab (scripts/e2e-identity-surfaces.sh). It changes link
+  # states, so it runs on a fresh lab, never on one you are using by hand.
+  check:
+    build: { context: ../.., dockerfile: testbed/identity-lab/check.Dockerfile }
+    profiles: ["check"]
+    restart: "no"
+    environment:
+      LAB_CHOUSE_URL: http://chouse-ui:5521
+      LAB_CH_A_URL: http://ch-a:8123
+      LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:-Lab-admin-123!}
+      LAB_USER_PASSWORD: ${LAB_USER_PASSWORD:-Lab-pass-123!}
+
+volumes:
+  postgres-data:
+  ch-a-data:
+  ch-b-data:

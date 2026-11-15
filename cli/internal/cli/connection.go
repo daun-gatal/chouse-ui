@@ -22,7 +22,8 @@ chouse config set connection NAME. Creating and deleting connections stores
 or removes credentials, so it stays in the UI (Admin › Connections).`,
 		Example: `  chouse connection list
   chouse connection get prod
-  chouse connection can-i analytics events -c prod`,
+  chouse connection can-i analytics events -c prod
+  chouse connection runs-as`,
 	}
 
 	var search string
@@ -121,6 +122,7 @@ access.`,
 	}
 
 	cmd.AddCommand(list, get, test, cani)
+	cmd.AddCommand(a.identityCommands()...)
 	return cmd
 }
 

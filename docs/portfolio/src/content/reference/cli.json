@@ -670,7 +670,7 @@
       "use": "chouse connection",
       "short": "ClickHouse connections you can use",
       "long": "List, inspect and check the ClickHouse connections your token can\nuse. Every command takes -c with a connection name or id; set a default with\nchouse config set connection NAME. Creating and deleting connections stores\nor removes credentials, so it stays in the UI (Admin › Connections).",
-      "example": "  chouse connection list\n  chouse connection get prod\n  chouse connection can-i analytics events -c prod",
+      "example": "  chouse connection list\n  chouse connection get prod\n  chouse connection can-i analytics events -c prod\n  chouse connection runs-as",
       "aliases": [
         "conn",
         "connections"
@@ -694,6 +694,95 @@
       "runnable": true
     },
     {
+      "path": "chouse connection identity",
+      "use": "chouse connection identity",
+      "short": "A connection's kind, roles and health (super admin)",
+      "long": "How a connection reaches ClickHouse: its kind (shared login, role\nceiling or personal), the roles it names, whether its login passes CHouse\nUI's checks, and which kinds its server can run. Switching the kind and\nediting the role map store credentials and decide what ClickHouse lets every\naccount do, so they stay in the UI (Admin › Connections › ClickHouse login).\nOnly a super admin, with a token that has no scopes. Needs server 3.18 or\nnewer.",
+      "example": "  chouse connection identity get prod\n  chouse connection identity recheck prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection identity get",
+      "use": "chouse connection identity get <name|id>",
+      "short": "Show the kind, roles, health and which kinds the server can run",
+      "example": "  chouse connection identity get prod -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection identity recheck",
+      "use": "chouse connection identity recheck <name|id>",
+      "short": "Run the login's checks now and store the result",
+      "long": "Run CHouse UI's checks on a connection's stored login now instead\nof waiting for the five-minute round. A failing result makes the connection\nrefuse every request until a later check passes; a passing one lets people\nback in. Nothing about the login is changed. Exits with 5 when the login fails\nits checks.",
+      "example": "  chouse connection identity recheck prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection links",
+      "use": "chouse connection links",
+      "short": "Links between accounts and ClickHouse users (super admin)",
+      "long": "On a personal connection each account's statements run as the\nClickHouse user it is linked to. These commands list a connection's links,\nprint the GRANT statements for your ClickHouse administrator, add a link,\nre-check and remove one. Confirming or removing a suspended link stays in the UI: a\nsuspension means the person behind the account may have changed, and lifting\nit is a person's decision. Only a super admin, with a token that has no\nscopes. Needs server 3.18 or newer.",
+      "example": "  chouse connection links list prod\n  chouse connection links add prod --account ann.lee --user alice\n  chouse connection links grants prod | clickhouse-client --multiquery",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection links add",
+      "use": "chouse connection links add <connection> [flags]",
+      "short": "Link an account to a ClickHouse user",
+      "long": "Link one CHouse account to one ClickHouse user on a connection.\n--account takes the account's username, email or id; it must match exactly\none account. The link is active once ClickHouse lets the connection act as\nthe user; until then it waits, and \"links grants\" prints the statement to\nrun. CHouse UI stores no password for the ClickHouse user.",
+      "example": "  chouse connection links add prod --account ann.lee --user alice --yes",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "account",
+          "type": "string",
+          "usage": "the CHouse account: username, email or id"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "the ClickHouse user its statements run as"
+        }
+      ]
+    },
+    {
+      "path": "chouse connection links check",
+      "use": "chouse connection links check <connection> <account|link-id>",
+      "short": "Re-check one link against ClickHouse now",
+      "long": "Run a link's checks now: a waiting link becomes active once the\ngrant is there. A suspended or disabled link is not changed by a check.",
+      "example": "  chouse connection links check prod ann.lee",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection links grants",
+      "use": "chouse connection links grants <connection> [flags]",
+      "short": "Print the GRANT statements for your ClickHouse administrator",
+      "long": "Print one GRANT per link that is waiting for it, as SQL on stdout.\nCHouse UI cannot run these: hand them to a ClickHouse administrator, or pipe\nthem to a client that connects as one. With --revokes, print instead the\nREVOKE for each ClickHouse user the connection may still act as although no\nlink uses it. Nothing is printed when there is nothing to run. Always SQL,\nwhatever -o says.",
+      "example": "  chouse connection links grants prod\n  chouse connection links grants prod --revokes",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "revokes",
+          "type": "bool",
+          "usage": "print the REVOKE statements for ClickHouse users no link uses"
+        }
+      ]
+    },
+    {
+      "path": "chouse connection links list",
+      "use": "chouse connection links list <connection>",
+      "short": "List a connection's links and their state",
+      "example": "  chouse connection links list prod -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection links remove",
+      "use": "chouse connection links remove <connection> <account|link-id>",
+      "short": "Remove a link",
+      "long": "Remove a link: the account's statements are refused on the\nconnection from its next request. The GRANT in ClickHouse stays; \"links\ngrants --revokes\" prints the statement that takes it away.",
+      "example": "  chouse connection links remove prod ann.lee --yes",
+      "runnable": true
+    },
+    {
       "path": "chouse connection list",
       "use": "chouse connection list [flags]",
       "short": "List the connections you can use (no passwords)",
@@ -712,6 +801,14 @@
           "usage": "filter by name or host"
         }
       ]
+    },
+    {
+      "path": "chouse connection runs-as",
+      "use": "chouse connection runs-as [name|id]",
+      "short": "Which ClickHouse user or role your statements run with",
+      "long": "For each connection you can use, show the ClickHouse identity your\nstatements run with: the connection's login (a shared login), a ClickHouse\nrole (a role ceiling), or your own linked ClickHouse user (a personal\nconnection), and whether it is usable now.\n\n\"ready\" means the identity is in place; ClickHouse grants and your\npermissions still decide each statement. Any other state names what is\nmissing, and DETAIL (in -o json or yaml) says who can fix it. A personal\nconnection also lists the statement forms it refuses. Needs server 3.18 or\nnewer.",
+      "example": "  chouse connection runs-as\n  chouse connection runs-as prod -o yaml",
+      "runnable": true
     },
     {
       "path": "chouse connection test",

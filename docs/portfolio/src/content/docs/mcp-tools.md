@@ -1,7 +1,7 @@
 ---
 generated: the MCP tool registry in packages/server/src/mcp
 ---
-All 135 tools the [MCP server](/docs/mcp/) offers. 120 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
+All 136 tools the [MCP server](/docs/mcp/) offers. 121 are on by default: the read-only tools that don't spend LLM budget. Writes, destructive tools and tools that call the AI stay off until an administrator turns them on in **AI Governance › MCP**, one tool or one category at a time.
 
 An agent only sees a tool in `tools/list` when it is on **and** the agent's token holds one of the listed permissions. The underlying API still checks the permission and the user's [data access rules](/docs/data-access-rules/) on every call.
 
@@ -17,6 +17,7 @@ An agent only sees a tool in `tools/list` when it is on **and** the agent's toke
 | --- | --- | --- | --- |
 | [`whoami`](#whoami) | Read | Yes | any token |
 | [`list_connections`](#list_connections) | Read | Yes | `connections:view` |
+| [`connection_runs_as`](#connection_runs_as) | Read | Yes | `connections:view` |
 | [`use_connection`](#use_connection) | Read | Yes | `connections:view` |
 | [`list_databases`](#list_databases) | Read | Yes | `database:view`, `table:view` |
 | [`list_tables`](#list_tables) | Read | Yes | `database:view`, `table:view` |
@@ -166,6 +167,14 @@ No parameters.
 *List connections* — **Read** · on by default · needs any of `connections:view`
 
 List the ClickHouse connections visible to this token.
+
+No parameters.
+
+### connection_runs_as
+
+*What my statements run as* — **Read** · on by default · needs any of `connections:view`
+
+For each connection this token can use, report which ClickHouse identity its statements run with (the connection's login, a ClickHouse role, or the account's own linked ClickHouse user), whether that is usable now, and the statement forms the connection refuses. 'ready' means the identity is in place; ClickHouse grants and CHouse permissions still decide each statement. Call it before querying a connection, and when a statement is refused for identity reasons. A state other than 'ready' cannot be fixed with any tool: tell the user, who needs a super admin or a ClickHouse administrator.
 
 No parameters.
 

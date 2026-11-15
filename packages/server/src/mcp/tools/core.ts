@@ -46,6 +46,22 @@ export function registerCoreTools(sink: McpToolSink, deps: McpDeps): void {
   });
 
   registerChouseTool(sink, {
+    name: "connection_runs_as",
+    title: "What my statements run as",
+    category: "identity",
+    access: "read",
+    permissions: [PERMISSIONS.CONNECTIONS_VIEW],
+    description:
+      "For each connection this token can use, report which ClickHouse identity its statements run with (the connection's login, a ClickHouse role, or the account's own linked ClickHouse user), whether that is usable now, and the statement forms the connection refuses. 'ready' means the identity is in place; ClickHouse grants and CHouse permissions still decide each statement. Call it before querying a connection, and when a statement is refused for identity reasons. A state other than 'ready' cannot be fixed with any tool: tell the user, who needs a super admin or a ClickHouse administrator.",
+    handler: async (_args, extra) => {
+      const ctx = toolContext(extra);
+      return runApiTool(ctx, deps.clientFor(ctx), "connection_runs_as", undefined, () =>
+        deps.clientFor(ctx).request("GET", "/api/rbac/connections/identity/mine")
+      );
+    },
+  });
+
+  registerChouseTool(sink, {
     name: "use_connection",
     title: "Check a connection",
     category: "identity",

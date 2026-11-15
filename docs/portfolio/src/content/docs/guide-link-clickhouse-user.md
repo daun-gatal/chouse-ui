@@ -46,6 +46,18 @@ A table outside `alice`'s grants is refused by ClickHouse, and the message names
 
 If someone else resets Ann's password or changes her email, or a sign-in identity is added to or removed from her account, the link is **Suspended** and her statements are refused. Check that the account is still Ann's, then press **Confirm** on the link.
 
+## From the command line
+
+A super admin can do steps 1 to 3 with the [CLI](/docs/cli/#connection-kinds-and-linked-clickhouse-users), with a token that has no scopes:
+
+```bash
+chouse connection links add Production --account ann.lee --user alice --yes
+chouse connection links grants Production     # hand this to the ClickHouse administrator
+chouse connection links check Production ann.lee
+```
+
+Ann can check from her side with `chouse connection runs-as Production`.
+
 ## When Ann leaves
 
 Remove the link. Then run the `REVOKE` the panel shows under **ClickHouse users without a link**, so the connection can no longer act as `alice`.
