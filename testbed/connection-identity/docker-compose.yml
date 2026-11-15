@@ -1,0 +1,43 @@
+# Connection-identity e2e testbed (ADR 0033 §10.5, scripts/e2e-connection-identity.sh).
+# Three pinned ClickHouse versions with the same fixture: 24.3 takes no role on
+# a request and must fail closed, 24.4 is the first that does, 26.5 is current.
+# The runner executes the Bun suite inside this network, so nothing but Docker
+# is needed on the host.
+name: chouse-connection-identity-e2e
+
+x-ch: &ch
+  ulimits:
+    nofile: { soft: 262144, hard: 262144 }
+  environment:
+    CLICKHOUSE_USER: default
+    CLICKHOUSE_PASSWORD: e2e
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+  healthcheck:
+    # Ready only once the fixture's last user exists, not merely when the port answers.
+    test: ["CMD-SHELL", "clickhouse-client --password e2e -q \"SELECT throwIf(count() = 0) FROM system.users WHERE name = 'svc_strong'\""]
+    interval: 2s
+    retries: 90
+
+services:
+  ch-24-3:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 24.3.18.7 } }
+  ch-24-4:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 24.4.4.113 } }
+  ch-26-5:
+    <<: *ch
+    build: { context: ., dockerfile: clickhouse.Dockerfile, args: { CH_VERSION: 26.5.7.64 } }
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: testbed/connection-identity/runner.Dockerfile
+    profiles: [runner]
+    environment:
+      IDENTITY_E2E_SERVERS: "24.3=http://ch-24-3:8123,24.4=http://ch-24-4:8123,26.5=http://ch-26-5:8123"
+      IDENTITY_E2E_PASSWORD: e2e
+    depends_on:
+      ch-24-3: { condition: service_healthy }
+      ch-24-4: { condition: service_healthy }
+      ch-26-5: { condition: service_healthy }
