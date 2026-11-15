@@ -230,9 +230,12 @@ authRoutes.get('/me', rbacAuthMiddleware, async (c) => {
     throw AppError.notFound('User not found');
   }
 
+  // For a token, what this credential may do: its owner's permissions narrowed to the token's scope (ADR 0011).
+  const permissions = c.get('authMethod') === 'pat' ? user.permissions : fullUser.permissions;
+
   return c.json({
     success: true,
-    data: { user: fullUser },
+    data: { user: { ...fullUser, permissions } },
   });
 });
 

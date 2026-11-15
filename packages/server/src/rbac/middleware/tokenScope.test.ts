@@ -194,6 +194,13 @@ describe("a scoped token of an administrator in the SQL access check", () => {
     expect((await check("DROP TABLE shop.orders", DROP, [])).allowed).toBe(true);
   });
 
+  it("a stored job that runs as its owner is checked as the account, whatever credential started the run", async () => {
+    await asToken([PERMISSIONS.TABLE_SELECT], true, async () => {
+      expect((await check("DROP TABLE shop.orders", DROP, [])).allowed).toBe(false);
+      expect((await validateQueryAccess({ userId: OWNER, isAdmin: true, permissions: [], sql: "DROP TABLE shop.orders", connectionId: undefined, parser: parser(DROP), asAccount: true })).allowed).toBe(true);
+    });
+  });
+
   it("a scoped token of someone who is not an administrator gets no exemption from the rules", async () => {
     await runWithTokenScope("scope-viewer", [PERMISSIONS.TABLE_SELECT], async () => {
       expect(await checkTableAccess("scope-viewer", false, "shop", "orders")).toBe(false);

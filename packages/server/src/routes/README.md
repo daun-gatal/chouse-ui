@@ -24,6 +24,7 @@ and `packages/server/src/rbac/services`.
 ## Invariants
 - Every `/api` request must send `X-Requested-With: XMLHttpRequest` unless it is on the public list (`/api/health`, `/api/config`, `/api/rbac/auth/login|refresh|sso`, `/api/rbac/health`, the three integration callbacks) or carries a `Bearer` PAT (`PAT_PREFIX`) or an MCP OAuth token that `isMcpSubrequestFor` vouches for; otherwise 403 `DIRECT_ACCESS_DENIED` `[index.ts:apiProtectionMiddleware]`.
 - The protection layer only checks token prefixes (no DB I/O); validity is enforced by the per-route auth middleware `[index.ts:apiProtectionMiddleware]`.
+- Linking and unlinking a chat account take a browser session (`requireJwtSession`); a token may only list them `[chat-identities.ts]`.
 - User SQL passes `validateQueryAccess` and then `enforceSchemaPreflight` before it runs `[query.ts]`; explorer drops also go through `enforceSchemaPreflight` `[explorer.ts]`.
 - Uploads require write access to the target table via `checkTableAccess(..., "write")` and a format in `UPLOAD_FORMATS` `[upload.ts]`.
 - `GET /metrics/recent-queries` scopes on the server: RBAC admins and `query:history:view:all` get `system.query_log` (last 7 days); other holders of `query:history:view` get only their own CHouse query history on the current connection; anyone else gets `[]`. `username` only narrows `[metrics.ts:canSeeAllQueryText]`, `[metrics.ts:metrics]`.

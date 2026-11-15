@@ -41,6 +41,8 @@ export interface RbacContext {
   patId?: string;
   /** True when the request's token names a scope, so it carries less than its owner holds. */
   tokenScoped?: boolean;
+  /** True when the request's token belongs to an administrator (a scoped token does not carry that role). */
+  tokenAdminOwner?: boolean;
 }
 
 /** What the request's credential says about the caller, as the context holds it. */
@@ -51,6 +53,7 @@ function attach(c: Context, identity: BearerIdentity): void {
   c.set('rbacPermissions', identity.permissions);
   c.set('authMethod', identity.authMethod);
   c.set('tokenScoped', identity.scoped === true);
+  c.set('tokenAdminOwner', identity.adminOwner === true);
   if (identity.patId) {
     c.set('patId', identity.patId);
   }
@@ -60,12 +63,11 @@ function attach(c: Context, identity: BearerIdentity): void {
 /** The scope of the token in the context, or null for a browser session. */
 function scopeOf(c: Context): TokenScope | null {
   if (c.get('authMethod') !== 'pat') return null;
-  const roles = c.get('rbacRoles') ?? [];
   return {
     userId: c.get('rbacUserId'),
     permissions: c.get('rbacPermissions') ?? [],
     narrowed: c.get('tokenScoped') === true,
-    adminOwner: roles.includes('super_admin') || roles.includes('admin'),
+    adminOwner: c.get('tokenAdminOwner') === true,
   };
 }
 
@@ -355,10 +357,10 @@ export function getRbacUserOptional(c: Context): TokenPayload | null {
  * method predate PATs and are always JWT sessions, so they pass.
  */
 /**
- * Reject a token that names a scope on a route gated by a role alone. A
- * token keeps its owner's roles whatever its scope, so a role check cannot
- * hold it to that scope; such a route is for a browser session or a token
- * that inherits everything its owner may do.
+ * Reject a token that names a scope on a route gated by a role alone, and
+ * say why. Such a token does not carry its owner's administrator roles, so
+ * the role check would refuse it anyway; this names the reason. The route is
+ * for a browser session or a token that inherits everything its owner may do.
  */
 export function refuseScopedToken(c: Context): void {
   if (c.get('tokenScoped') === true) {

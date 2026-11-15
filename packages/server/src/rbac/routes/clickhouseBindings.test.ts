@@ -79,6 +79,8 @@ describe("binding routes (ADR 0033 §7.4)", () => {
 
   it("refuses a super admin's token that names a scope on the management routes, and lets it act only as its owner elsewhere", async () => {
     scopedToken = true;
+    // As the token is resolved: a scope removes the administrator roles from it.
+    user = { sub: "root", roles: [] };
     try {
       for (const [method, path, body] of [
         ["GET", "/clickhouse-bindings/connection/c1", undefined],

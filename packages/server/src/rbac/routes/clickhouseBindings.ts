@@ -43,7 +43,7 @@ const createSchema = z.object({
 });
 
 function requireSuperAdmin(c: Context): string {
-  // The role is all that gates these routes, and a token keeps its owner's roles whatever its scope.
+  // The role is all that gates these routes; a token that names a scope does not carry it, and is told so.
   refuseScopedToken(c);
   const user = getRbacUser(c);
   if (!user.roles.includes('super_admin')) {
@@ -113,8 +113,7 @@ clickhouseBindingsRoutes.post('/:id/confirm', rbacAuthMiddleware, async (c) => {
 clickhouseBindingsRoutes.post('/:id/recheck', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
   const binding = await getBinding(requireParam(c, 'id'));
-  // A token that names a scope is not held to it by a role, so it acts here as the account's owner only.
-  const superAdmin = user.roles.includes('super_admin') && c.get('tokenScoped') !== true;
+  const superAdmin = user.roles.includes('super_admin');
   // The same answer for a link that is not there and one that is someone else's.
   if (!binding || (binding.userId !== user.sub && !superAdmin)) throw AppError.notFound('Link not found');
   const checked = await recheckBinding(binding.id, user.sub);

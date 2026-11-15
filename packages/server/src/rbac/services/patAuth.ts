@@ -34,6 +34,8 @@ export interface BearerIdentity {
   authMethod: AuthMethod;
   /** True for a token that names a scope. Never set for a browser session. */
   scoped?: boolean;
+  /** For a token: true when its owner is an administrator, though a scoped token does not carry that role. */
+  adminOwner?: boolean;
   patId?: string;
   patName?: string;
 }
@@ -63,6 +65,7 @@ export async function verifyBearer(rawToken: string, options: VerifyBearerOption
       sessionId: `pat:${grant.patId}`,
       authMethod: "pat",
       scoped: grant.scoped,
+      adminOwner: grant.adminOwner,
       patId: grant.patId,
       patName: grant.patName,
     };
@@ -80,6 +83,7 @@ export async function verifyBearer(rawToken: string, options: VerifyBearerOption
       sessionId: `pat:${pat.patId}`,
       authMethod: "pat",
       scoped: pat.scoped,
+      adminOwner: pat.adminOwner,
       patId: pat.patId,
       patName: pat.patName,
     };

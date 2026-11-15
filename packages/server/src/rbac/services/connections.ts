@@ -763,6 +763,13 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
+  // A super admin reaches every active connection. Asked here by account, so it also holds for the account's
+  // scoped token, which does not carry the role (ADR 0011): a scope narrows permissions, not which servers exist.
+  const superAdmin = await all(sql`
+    SELECT 1 AS one FROM rbac_user_roles ur JOIN rbac_roles r ON r.id = ur.role_id
+    WHERE ur.user_id = ${userId} AND r.name = 'super_admin'`);
+  if (superAdmin.length > 0) return (await listConnections({ activeOnly: true })).connections;
+
   // A `personal` connection (ADR 0033 §7.3) is reached through an active link to a ClickHouse user, not through a
   // policy. Only an active one: the connection's monitoring pages run as CHouse itself, so a suspended or waiting
   // link must not open them.

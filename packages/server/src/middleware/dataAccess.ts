@@ -70,7 +70,7 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
       }
       // A token's own permission list answers every permission question for the rest of the request (ADR 0011).
       scope = identity.authMethod === 'pat'
-        ? { userId: identity.userId, permissions: identity.permissions, narrowed: identity.scoped === true, adminOwner: identity.roles.includes('super_admin') || identity.roles.includes('admin') }
+        ? { userId: identity.userId, permissions: identity.permissions, narrowed: identity.scoped === true, adminOwner: identity.adminOwner === true }
         : null;
       setTokenScope(scope);
     } catch {
@@ -244,6 +244,11 @@ export interface QueryAccessInput {
   params?: Record<string, unknown>;
   /** The connection it runs on: the parse and the rules are both per connection. */
   connectionId: string | undefined;
+  /**
+   * True for a stored job running as its owner (a scheduled query): the check is about the account, whatever
+   * credential happened to start the run, so a token's scope does not change the outcome.
+   */
+  asAccount?: boolean;
   /** Test seam; defaults to `EXPLAIN AST` on the connection. */
   parser?: SqlParsePort;
   /** Test seam: the connection's kind. Read from the connection when no `parser` is given. */
@@ -392,7 +397,7 @@ const SYSTEM_ONLY = new Set(['system', 'information_schema']);
  * access rules is kept by `exemptFromRules`.
  */
 function heldToScope(input: QueryAccessInput): QueryAccessInput {
-  return input.isAdmin && narrowedAdminToken(input.userId) ? { ...input, isAdmin: false } : input;
+  return input.isAdmin && !input.asAccount && narrowedAdminToken(input.userId) ? { ...input, isAdmin: false } : input;
 }
 
 /** The connection's identity when it is a `personal` one, else null. */

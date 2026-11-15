@@ -57,7 +57,7 @@ const roleMapSchema = z.object({
 const contactSchema = z.object({ accessContact: z.string().max(500).nullable() });
 
 function requireSuperAdmin(c: Context): string {
-  // The role is all that gates these routes, and a token keeps its owner's roles whatever its scope.
+  // The role is all that gates these routes; a token that names a scope does not carry it, and is told so.
   refuseScopedToken(c);
   const user = getRbacUser(c);
   if (!user.roles.includes('super_admin')) {

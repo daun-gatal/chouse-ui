@@ -247,12 +247,21 @@ These rules hold for every caller, admins included
     permission check without excluding a scoped token.
   - Never decide a permission for a request from `getUserPermissions(userId)`
     directly: that is the owner's full list.
-  - A token keeps its owner's roles whatever its scope. A route gated by a
-    role alone (no permission) must call `refuseScopedToken`, or gain a
-    permission. Prefer a permission for anything a token should be able to do
-    with least privilege.
-  - The proof: `rbac/middleware/tokenScope.test.ts` runs real
-    tokens through every kind of gate and must keep failing without the fix.
+  - A token that names a scope does not carry `super_admin` or `admin`
+    (`resolveKeyIdentity` removes them), so every "an administrator may"
+    shortcut refuses it without each feature having to know about tokens. Two
+    things the account keeps are asked by account instead: reach to
+    connections (`getUserConnections`) and the exemption from data access
+    rules (`adminOwner`). Do not read the caller's roles from the database to
+    decide a request; use the roles in the context.
+  - A route gated by a role alone (no permission) cannot be reached by a
+    scoped token. Call `refuseScopedToken` there so the refusal says why, and
+    prefer a permission for anything a token should do with least privilege.
+  - A stored job that runs as its owner (a scheduled query) is checked as the
+    account (`asAccount`), whatever credential started the run.
+  - The proof: `rbac/middleware/tokenScope.test.ts` runs real tokens through
+    every kind of gate, and `tokenScope.routes.test.ts` through real routes.
+    Both must keep failing without the fix.
 - Compare secrets, signatures and token hashes with `timingSafeEqual`.
 - Keep tokens out of URLs; query strings end up in logs and `Referer`. Use
   headers, or a one-time handoff code as the SSO complete flow does.
