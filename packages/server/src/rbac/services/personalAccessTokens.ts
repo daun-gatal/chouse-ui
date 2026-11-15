@@ -18,6 +18,7 @@ import { PERMISSIONS } from "../schema/base";
 import { AppError } from "../../types";
 import { logger } from "../../utils/logger";
 import { getUserById, getUserPermissions, getUserRoles } from "./rbac";
+import { PRIVILEGED_ROLES } from "./tokenScope";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
@@ -439,9 +440,6 @@ export async function verifyPatToken(rawToken: string): Promise<VerifiedPat> {
   }
   return resolveKeyIdentity(row, PAT_INVALID_MESSAGE);
 }
-
-/** Roles that features treat as "may do this without the permission". */
-const PRIVILEGED_ROLES: ReadonlySet<string> = new Set(['super_admin', 'admin']);
 
 /**
  * The live identity behind a credential row (a PAT or an agent's OAuth grant):

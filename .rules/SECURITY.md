@@ -253,12 +253,19 @@ These rules hold for every caller, admins included
     things the account keeps are asked by account instead: reach to
     connections (`getUserConnections`) and the exemption from data access
     rules (`adminOwner`). Do not read the caller's roles from the database to
-    decide a request; use the roles in the context.
+    decide a request; use the roles in the context. Code that must load the
+    caller's account (to see that it is active, say) passes it through
+    `asCredential` before deciding anything from its roles or permissions.
+  - Code that reads data access rules itself (`getRulesForUser` +
+    `evaluateRules`) behind its own "is an administrator" shortcut adds
+    `narrowedAdminToken(userId)` to that shortcut, or an administrator's
+    scoped token sees nothing there.
   - A route gated by a role alone (no permission) cannot be reached by a
     scoped token. Call `refuseScopedToken` there so the refusal says why, and
     prefer a permission for anything a token should do with least privilege.
-  - A stored job that runs as its owner (a scheduled query) is checked as the
-    account (`asAccount`), whatever credential started the run.
+  - A stored job that runs as its owner (a scheduled query, a dashboard alert
+    or report) is checked as the account (`asAccount`), whatever credential
+    started the run. Never set it on a path that takes SQL from the caller.
   - The proof: `rbac/middleware/tokenScope.test.ts` runs real tokens through
     every kind of gate, and `tokenScope.routes.test.ts` through real routes.
     Both must keep failing without the fix.

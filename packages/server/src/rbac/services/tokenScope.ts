@@ -76,3 +76,23 @@ export function narrowedAdminToken(userId: string | undefined): boolean {
   const scope = storage.getStore()?.scope;
   return scope !== null && scope !== undefined && scope.userId === userId && scope.narrowed && scope.adminOwner;
 }
+
+/** Roles that features treat as "may do this without the permission". A token that names a scope carries none. */
+export const PRIVILEGED_ROLES: ReadonlySet<string> = new Set(["super_admin", "admin"]);
+
+/**
+ * An account's roles and permissions as the current request's credential
+ * carries them. Code that loads an account from the database to decide what
+ * the caller may do must pass the result through this: for a token's request
+ * about its own owner it returns the token's list, and no administrator role
+ * when the token names a scope. Anything else is returned as given.
+ */
+export function asCredential<T extends { roles: string[]; permissions: string[] }>(userId: string, account: T): T {
+  const scope = storage.getStore()?.scope;
+  if (!scope || scope.userId !== userId) return account;
+  return {
+    ...account,
+    roles: scope.narrowed ? account.roles.filter((role) => !PRIVILEGED_ROLES.has(role)) : account.roles,
+    permissions: [...scope.permissions],
+  };
+}

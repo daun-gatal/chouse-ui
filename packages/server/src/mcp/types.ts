@@ -12,6 +12,10 @@ export interface McpIdentity {
   username: string;
   roles: string[];
   permissions: string[];
+  /** True when the token names a scope. */
+  scoped?: boolean;
+  /** True when the token's owner is an administrator (a scoped token does not carry that role). */
+  adminOwner?: boolean;
   patId?: string;
   patName?: string;
 }

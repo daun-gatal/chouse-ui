@@ -19,7 +19,7 @@ import { createConnection, getUserConnections } from "../services/connections";
 import { generateAccessToken } from "../services/jwt";
 import { createPat } from "../services/personalAccessTokens";
 import { getUserPermissions } from "../services/rbac";
-import { withRequestScope } from "../services/tokenScope";
+import { asCredential, runWithTokenScope, withRequestScope } from "../services/tokenScope";
 
 const OWNER = "routes-owner";
 const VIEWER = "routes-viewer";
@@ -91,10 +91,13 @@ describe("a scoped token of a super admin on real routes (ADR 0011)", () => {
 
   it("is told its own permissions, not its owner's", async () => {
     for (const path of ["/api/rbac/auth/me", "/api/rbac/auth/profile"]) {
-      const mine = (await call("GET", path, scoped)).body.data?.user as { permissions: string[] };
+      const mine = (await call("GET", path, scoped)).body.data?.user as { permissions: string[]; roles: string[] };
       expect([...mine.permissions].sort()).toEqual([...SCOPE].sort());
-      const owners = (await call("GET", path, session)).body.data?.user as { permissions: string[] };
+      expect(mine.roles).toEqual([]);
+      const owners = (await call("GET", path, session)).body.data?.user as { permissions: string[]; roles: string[] };
       expect(owners.permissions.length).toBeGreaterThan(SCOPE.length);
+      expect(owners.roles).toEqual(["super_admin"]);
+      expect(((await call("GET", path, unscoped)).body.data?.user as { roles: string[] }).roles).toEqual(["super_admin"]);
     }
   });
 
@@ -102,6 +105,31 @@ describe("a scoped token of a super admin on real routes (ADR 0011)", () => {
     const connection = await createConnection({ name: "routes-ch", host: "ch.invalid", port: 8123, username: "default" }, OWNER);
     expect((await getUserConnections(OWNER)).map((row) => row.id)).toContain(connection.id);
     expect(await getUserConnections(VIEWER)).toEqual([]);
+    for (const token of [scoped, unscoped, session]) {
+      const mine = (await call("GET", "/api/rbac/connections/my", token)).body.data as unknown as Array<{ id: string }>;
+      expect(mine.map((row) => row.id)).toContain(connection.id);
+    }
+  });
+
+  it("is not restricted by data access rules where a feature reads the rules itself", async () => {
+    // The owner has no policy at all; someone who is not an administrator gets nothing here.
+    const filter = async (token: string): Promise<unknown> => (await call("POST", "/api/rbac/data-access/filter/databases", token, { databases: ["shop", "finance"] })).body.data;
+    expect(await filter(scoped)).toEqual(["shop", "finance"]);
+    expect(await filter(unscoped)).toEqual(["shop", "finance"]);
+    const viewerToken = (await createPat(VIEWER, { name: "viewer" })).rawToken;
+    expect(await filter(viewerToken)).toEqual([]);
+  });
+
+  it("an account loaded from the database is seen as the credential carries it", async () => {
+    const account = { roles: ["super_admin"], permissions: ["a", "b"] };
+    await runWithTokenScope(OWNER, ["a"], async () => {
+      expect(asCredential(OWNER, account)).toEqual({ roles: [], permissions: ["a"] });
+      expect(asCredential(VIEWER, account)).toEqual(account);
+    }, { narrowed: true, adminOwner: true });
+    await runWithTokenScope(OWNER, ["a", "b"], async () => {
+      expect(asCredential(OWNER, account)).toEqual(account);
+    }, { narrowed: false, adminOwner: true });
+    expect(asCredential(OWNER, account)).toEqual(account);
   });
 
   it("no token links or unlinks a chat account: that takes a browser session", async () => {

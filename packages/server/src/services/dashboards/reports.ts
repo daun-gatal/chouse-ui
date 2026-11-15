@@ -182,7 +182,7 @@ async function ownerViewer(ownerId: string): Promise<Viewer | string> {
   const user = await getUserById(ownerId);
   if (!user) return "The report's owner no longer exists";
   if (!user.isActive) return `The report's owner ${user.username} is deactivated`;
-  return { id: user.id, roles: user.roles, permissions: user.permissions };
+  return { id: user.id, roles: user.roles, permissions: user.permissions, asAccount: true };
 }
 
 /** Names of the dashboard's panel alerts that started firing on the report's connection in [fromMs, toMs). */

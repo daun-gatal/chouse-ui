@@ -11,12 +11,13 @@ import type { Context } from "hono";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { evaluateRules, getRulesForUser } from "../rbac/services/dataAccess";
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
+import { narrowedAdminToken } from "../rbac/services/tokenScope";
 import { analyzeDdl, type ImpactItem, type PreflightResult } from "../services/schemaPreflight/impact";
 import { parseDdl } from "../services/schemaPreflight/parse";
 
 /** Dependents in tables the caller cannot read are counted, not named (same as POST /observe/preflight). */
 async function visibleImpact(impact: PreflightResult, userId: string | undefined, isAdmin: boolean, connectionId: string): Promise<PreflightResult & { hiddenDependents: number }> {
-  if (isAdmin) return { ...impact, hiddenDependents: 0 };
+  if (isAdmin || narrowedAdminToken(userId)) return { ...impact, hiddenDependents: 0 };
   const rules = userId ? await getRulesForUser(userId, connectionId) : [];
   const visible = (item: ImpactItem): boolean => {
     const dot = item.ref.indexOf(".");

@@ -757,7 +757,7 @@ export async function testSavedConnection(id: string): Promise<TestConnectionRes
  * Connection access is derived entirely from the data access policies attached to
  * the user's role(s): an *allow* rule scoped to a connection grants that connection,
  * and an *allow* rule with connectionId = null (all connections) grants every active
- * connection. (Super admins bypass this and see all connections elsewhere.)
+ * connection. A super admin account reaches every active connection.
  */
 export async function getUserConnections(userId: string): Promise<ConnectionResponse[]> {
   const db = getDatabase() as AnyDb;

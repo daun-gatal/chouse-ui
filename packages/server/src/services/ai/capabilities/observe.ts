@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { evaluateRules, getRulesForUser } from "../../../rbac/services/dataAccess";
+import { narrowedAdminToken } from "../../../rbac/services/tokenScope";
 import { AppError } from "../../../types";
 import { logger } from "../../../utils/logger";
 import { getTableContext } from "../../context/store";
@@ -37,7 +38,7 @@ function can(ctx: AgentRunContext, permission: string): boolean {
 }
 
 async function tableAllowed(ctx: AgentRunContext, connectionId: string): Promise<(db: string, table: string | null) => boolean> {
-  if (ctx.isAdmin) return () => true;
+  if (ctx.isAdmin || narrowedAdminToken(ctx.userId)) return () => true;
   if (!ctx.userId) return () => false;
   const rules = await getRulesForUser(ctx.userId, connectionId);
   return (db, table) => evaluateRules(rules, db, table).allowed;

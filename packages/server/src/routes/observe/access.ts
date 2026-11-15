@@ -13,6 +13,7 @@ import { getRbacUser } from "../../rbac/middleware/rbacAuth";
 import { PERMISSIONS, SYSTEM_ROLES } from "../../rbac/schema/base";
 import { getUserConnections } from "../../rbac/services/connections";
 import { evaluateRules, getRulesForUser } from "../../rbac/services/dataAccess";
+import { narrowedAdminToken } from "../../rbac/services/tokenScope";
 import type { Actor } from "../../services/remediation/executor";
 import { AppError } from "../../types";
 
@@ -50,7 +51,8 @@ export type TablePredicate = (database: string | null | undefined, table: string
 
 /** A synchronous per-table access predicate for this user and connection. */
 export async function tableAccess(c: Context, connectionId: string): Promise<TablePredicate> {
-  if (isAdmin(c)) return () => true;
+  // An administrator, or an administrator's scoped token: rules never restricted the account (ADR 0011).
+  if (isAdmin(c) || narrowedAdminToken(getRbacUser(c).sub)) return () => true;
   const rules = await getRulesForUser(getRbacUser(c).sub, connectionId);
   return (database, table) => {
     if (!database) return true;

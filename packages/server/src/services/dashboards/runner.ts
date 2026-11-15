@@ -132,7 +132,7 @@ export function compilePanel(query: PanelQuery, window: Window): Compiled {
 /** Step 4: the viewer's data-access rules for the compiled statement. */
 export async function assertDataAccess(viewer: Viewer, compiled: Compiled, connection: ConnectionResponse): Promise<CheckedStatement> {
   // ADR 0030: check exactly what runs — the compiled SQL with its bound parameters.
-  const access = await validateQueryAccess({ userId: viewer.id, isAdmin: isAdmin(viewer), permissions: viewer.permissions, sql: compiled.sql, params: compiled.params, connectionId: connection.id });
+  const access = await validateQueryAccess({ userId: viewer.id, isAdmin: isAdmin(viewer), permissions: viewer.permissions, sql: compiled.sql, params: compiled.params, connectionId: connection.id, asAccount: viewer.asAccount });
   if (!access.allowed) throw accessDeniedError(access, "Access denied");
   return checkedOf(access);
 }

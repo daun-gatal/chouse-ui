@@ -235,7 +235,7 @@ authRoutes.get('/me', rbacAuthMiddleware, async (c) => {
 
   return c.json({
     success: true,
-    data: { user: { ...fullUser, permissions } },
+    data: { user: { ...fullUser, permissions, roles: c.get('authMethod') === 'pat' ? user.roles : fullUser.roles } },
   });
 });
 
@@ -259,7 +259,9 @@ authRoutes.get('/profile', rbacAuthMiddleware, async (c) => {
   }
 
   // 2. Map role names to full role metadata for display
-  const userRoles = fullUser.roles.map(roleName => {
+  // For a token, the roles it carries: a token that names a scope carries no administrator role (ADR 0011).
+  const carriedRoles = c.get('authMethod') === 'pat' ? user.roles : fullUser.roles;
+  const userRoles = carriedRoles.map(roleName => {
     const roleMetadata = allRoles.find(r => r.name === roleName);
     return {
       name: roleName,
@@ -275,6 +277,7 @@ authRoutes.get('/profile', rbacAuthMiddleware, async (c) => {
         ...fullUser,
         // What this credential may do: for a token, its owner's permissions narrowed to the token's scope.
         permissions: c.get('authMethod') === 'pat' ? user.permissions : fullUser.permissions,
+        roles: carriedRoles,
         rolesMetadata: userRoles,
       },
       // As on /connections/my: role names and check reasons are a super admin's to see.

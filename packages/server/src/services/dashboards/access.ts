@@ -15,6 +15,8 @@ export interface Viewer {
   id: string;
   roles: string[];
   permissions: string[];
+  /** True for the owner of a stored job (an alert, a report) that runs as them: checked as the account, whatever credential started the run. */
+  asAccount?: boolean;
 }
 
 export function isSuperAdmin(viewer: Viewer): boolean {

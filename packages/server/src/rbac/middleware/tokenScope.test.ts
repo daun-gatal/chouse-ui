@@ -143,7 +143,7 @@ describe("a token is held to its scope (ADR 0011)", () => {
     });
   });
 
-  it("a scope that names a permission the owner has lost carries nothing", async () => {
+  it("a token without a scope never carries what its owner does not hold", async () => {
     const role = await rawAll(sql`SELECT id FROM rbac_roles WHERE name = 'viewer'`);
     await rawRun(sql`INSERT INTO rbac_users (id, email, username, password_hash, is_active, created_at, updated_at) VALUES ('scope-viewer', 'v@t.local', 'scope-viewer', 'x', 1, unixepoch(), unixepoch())`);
     await rawRun(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES ('ur-viewer', 'scope-viewer', ${String(role[0].id)}, unixepoch())`);
