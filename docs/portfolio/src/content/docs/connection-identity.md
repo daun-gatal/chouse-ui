@@ -62,6 +62,10 @@ ALTER USER svc_chouse_ceiling DEFAULT ROLE NONE;
 3. Choose **Role ceiling**, enter the new user, its password and the system role, and press **Check**. Nothing is saved yet.
 4. When every check passes, press **Save**. The kind, the user and the role names are stored together. Have the ClickHouse administrator drop the old user afterwards.
 
+![The ClickHouse login panel of a role-ceiling connection](/docs/img/app/admin-connection-identity.jpg "A role-ceiling connection: its kind, user, system role and access contact, with the health line and Check now")
+
+![The role map](/docs/img/app/admin-connection-role-map.jpg "One ClickHouse role per CHouse role; a role that is not mapped is refused on the connection")
+
 ## Monitoring pages need a grant on the role
 
 Live Queries, the query log list and the server's own metrics are read by CHouse UI with the system role, so they work for everyone who has the CHouse permission for them. Many charts and tiles on the **Monitoring** pages are different: the browser sends their statements like any typed statement, so they run with the person's mapped role. A role with no grant on `system` tables gets empty tiles there (zeros), not an error.

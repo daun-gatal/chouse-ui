@@ -73,6 +73,8 @@ GRANT IMPERSONATE ON alice TO chouse_impersonate;  -- ann
 
 **4. Switch.** In **ClickHouse login**, enter the new user, its password, the system role and the impersonation role, press **Check**, then **Save**. Nothing is stored unless every check passes.
 
+![The ClickHouse login panel of a personal connection](/docs/img/app/admin-connection-personal.jpg "A personal connection: its ClickHouse user, the system role, the impersonation role, and the health line with Check now")
+
 ## What CHouse UI checks
 
 Everything the [role ceiling checks](/docs/connection-identity/#what-chouse-ui-checks), and:
@@ -89,6 +91,8 @@ No other role of the login may hold `IMPERSONATE`.
 
 ## Links
 
+![Linked ClickHouse users of a connection](/docs/img/app/admin-connection-links.jpg "Each account, its ClickHouse user and the state of the link, with the reason when a link is not active")
+
 | State | Meaning | What changes it |
 | --- | --- | --- |
 | **Waiting for the grant** | The link exists; ClickHouse does not yet let the connection act as the user | The grant is run, then the next check or **Check again** |
@@ -102,7 +106,11 @@ A ClickHouse user **cannot be linked** when its name has characters other than l
 
 `IMPERSONATE` is granted on a user name and stays after a link is removed. The panel lists users the connection may still act as that no link uses, with the `REVOKE` for each.
 
+![The grant for a waiting link and the users without a link](/docs/img/app/admin-connection-links-grants.jpg "The GRANT to hand to the ClickHouse administrator, and the REVOKE for a user the connection may still act as")
+
 Each person sees their own links and their state in **Preferences**.
+
+![The ClickHouse user card in Preferences](/docs/img/app/preferences-clickhouse-user.jpg "Preferences: which ClickHouse user your statements run as on each personal connection")
 
 ## What changes on a personal connection
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, type LucideIcon, LogIn, ShieldCheck, Plug, ArrowUpCircle, FlaskConical, Server } from "lucide-react";
+import { ArrowRight, type LucideIcon, Activity, KeyRound, Link2, ShieldCheck, UserCheck, UserRound } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
 import { RELEASE, WHATS_NEW_PATH } from "../content/release";
 import { withBase } from "../docs-site/lib";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The current release, shown on real screens: one tab per headline feature,
- * each with a capture from scripts/docs-screenshots.sh and the three steps to
+ * each with a capture of the running app and the three steps to
  * try it. Keep it to the release's biggest additions — the rest live on the
  * What's new page.
  */
@@ -27,88 +27,88 @@ interface Showcase {
 
 const SHOWCASES: Showcase[] = [
   {
-    icon: LogIn,
-    label: "Sign in to MCP",
-    title: "Paste the URL. Sign in. The agent works as you.",
-    pitch: "Agents connect to CHouse MCP with the URL alone — even hosted ones with nowhere to paste a token. They open CHouse in your browser, you choose what they may change and for how long, and they get a token that only works on MCP, with your live access.",
+    icon: UserCheck,
+    label: "Personal connections",
+    title: "Run each person's statements as their own ClickHouse user",
+    pitch: "A connection can now be personal. Its own ClickHouse user holds no grant; each person's statements run as the ClickHouse user linked to their account, so the grants, row policies and quotas you already have decide what they reach. CHouse UI stores no password for those users.",
     steps: [
-      "Turn on AI Governance › MCP › Sign-in for agents",
-      "Add https://<your CHouse>/mcp to your agent",
-      "Sign in, pick its write tools and how long, then Allow",
+      "Admin › Connections › ClickHouse login, choose Personal",
+      "Run the statements shown for your ClickHouse administrator",
+      "Press Check, then Save: nothing is stored unless every check passes",
     ],
-    shot: "oauth-consent",
-    alt: "The consent page an agent opens: its name, where it returns to, write tools and how long access lasts",
-    docs: { label: "Sign in with OAuth", href: "/docs/mcp/#sign-in-with-oauth" },
+    shot: "admin-connection-personal",
+    alt: "The ClickHouse login panel of a personal connection: its kind, user, system role and impersonation role, with a Ready health line",
+    docs: { label: "Personal connections", href: "/docs/personal-connections/" },
+  },
+  {
+    icon: Link2,
+    label: "Linked ClickHouse users",
+    title: "Decide which account runs as which ClickHouse user",
+    pitch: "A super admin links each account to one ClickHouse user and sees every link's state. A link waits until ClickHouse allows it, is suspended when someone else changes how the account signs in, and is disabled when the user behind the name changes.",
+    steps: [
+      "Open Linked ClickHouse users on the connection",
+      "Pick an account, type its ClickHouse user, Add link",
+      "Hand the GRANT shown to your ClickHouse administrator",
+    ],
+    shot: "admin-connection-links",
+    alt: "Linked ClickHouse users of a connection: four accounts with their ClickHouse users, two active, one disabled, one waiting for the grant",
+    docs: { label: "Link an account to a ClickHouse user", href: "/docs/guide-link-clickhouse-user/" },
+  },
+  {
+    icon: KeyRound,
+    label: "Grants to hand over",
+    title: "The exact statements for your ClickHouse administrator",
+    pitch: "CHouse UI cannot grant itself anything. For every waiting link it shows the GRANT to run, and for every ClickHouse user the connection may still act as without a link, the REVOKE that takes it away.",
+    steps: [
+      "Add the links you need",
+      "Copy the statements under For the ClickHouse administrator",
+      "After they ran, press Check again on each waiting link",
+    ],
+    shot: "admin-connection-links-grants",
+    alt: "The lower half of the links panel: the GRANT for a waiting link, and a warning with the REVOKE for a user that no link uses",
+    docs: { label: "Links and their states", href: "/docs/personal-connections/#links" },
+  },
+  {
+    icon: UserRound,
+    label: "Your ClickHouse user",
+    title: "Everyone sees who their statements run as",
+    pitch: "Preferences and the connection switcher show which ClickHouse user you are on a personal connection, and whether the link is active. When ClickHouse refuses a statement, the message names the grant your user is missing.",
+    steps: [
+      "Open Preferences",
+      "Find ClickHouse user: the connection, the user, the state",
+      "Press Check again after your administrator ran the grant",
+    ],
+    shot: "preferences-clickhouse-user",
+    alt: "The ClickHouse user card in Preferences: on Production, statements run as alice, and the link is active",
+    docs: { label: "What changes on a personal connection", href: "/docs/personal-connections/#what-changes-on-a-personal-connection" },
   },
   {
     icon: ShieldCheck,
-    label: "Agent controls",
-    title: "Decide which agents get in, and for how long",
-    pitch: "Sign-in starts off. Administrators decide whether pasted tokens still work on MCP, hold new agents until they are approved, limit where agents may return to and cap how long access lasts — and see every agent and who is connected through it.",
+    label: "Role ceiling",
+    title: "Or limit each CHouse role to one ClickHouse role",
+    pitch: "For teams without a ClickHouse user per person: map each CHouse role to a ClickHouse role. Every statement is sent with the role of the person it is for, so ClickHouse itself refuses anything outside it, for administrators too. Needs ClickHouse 24.4 or newer.",
     steps: [
-      "AI Governance › MCP › Sign-in for agents",
-      "Approve new agents, or limit their return addresses",
-      "Block an agent, or revoke one person's access",
+      "Admin › Connections › ClickHouse login, choose Role ceiling",
+      "Map each CHouse role to a ClickHouse role",
+      "Check, then Save",
     ],
-    shot: "agents-mcp-sign-in",
-    alt: "Sign-in for agents in AI Governance › MCP, with the agents list and who is connected",
-    docs: { label: "Connect an AI agent", href: "/docs/guide-connect-an-agent/" },
+    shot: "admin-connection-role-map",
+    alt: "The role map of a role-ceiling connection: the Data analyst role mapped to analyst_ro and Finance to finance_rw",
+    docs: { label: "Connection kinds and the role ceiling", href: "/docs/connection-identity/" },
   },
   {
-    icon: Plug,
-    label: "Connected apps",
-    title: "Every agent you let in, with Revoke",
-    pitch: "Agents you signed in are listed next to your tokens, with their write tools, when access ends and when they last called CHouse. Change what one may do, or revoke it at once.",
+    icon: Activity,
+    label: "Checked every five minutes",
+    title: "A login that drifts stops the connection, not your guarantees",
+    pitch: "Before a switch and every five minutes after, CHouse UI checks that the connection's ClickHouse user is still empty, that its roles cannot manage or become other users, and, for a personal connection, that the server still checks grants for everything run as a person. A connection that fails refuses every request and says why.",
     steps: [
-      "Open Preferences › Personal access tokens",
-      "Check each agent's write tools, expiry and last use",
-      "Use the wrench to change its tools, the bin to revoke it",
+      "Open ClickHouse login on a role-ceiling or personal connection",
+      "Read the health line and when it was last checked",
+      "Press Check now after a change in ClickHouse",
     ],
-    shot: "preferences-connected-apps",
-    alt: "Connected apps in Preferences: two agents signed in with OAuth above a personal access token",
-    docs: { label: "Connected apps", href: "/docs/personal-access-tokens/#connected-apps" },
-  },
-  {
-    icon: ArrowUpCircle,
-    label: "Upgrade check",
-    title: "See what a ClickHouse upgrade changes for your workload",
-    pitch: "Upgrades says whether your version is still supported and which versions to move to, then checks a target against your schema, settings and 30 days of queries: exactly against a server on that line, or from the release notes.",
-    steps: [
-      "Open Monitoring › Upgrades and pick a target",
-      "Compare with a connection on that line, or the notes",
-      "Work through Breaks, then changed defaults; Copy as Markdown",
-    ],
-    shot: "monitoring-upgrades",
-    alt: "Monitoring › Upgrades after an exact check of 25.8 against 26.8, with findings by severity",
-    docs: { label: "Check an upgrade", href: "/docs/monitoring-upgrades/#check-an-upgrade" },
-  },
-  {
-    icon: FlaskConical,
-    label: "Try it on this server",
-    title: "Find the queries the new analyzer breaks, before you upgrade",
-    pitch: "A check plans your top 200 read-only query shapes on your current server with the target's settings, using EXPLAIN. Nothing runs. A query that would fail shows with the setting that breaks it, the error and who runs it.",
-    steps: [
-      "Leave “Also try my top 200 read-only query shapes…” on",
-      "Click Check",
-      "Open the Tried here finding, fix the queries, then stop turning the analyzer off",
-    ],
-    shot: "monitoring-upgrades-try",
-    alt: "A Tried here finding: two query shapes that fail with the new analyzer, with their errors, users and run counts",
-    docs: { label: "Try it on this server", href: "/docs/monitoring-upgrades/#try-it-on-this-server" },
-  },
-  {
-    icon: Server,
-    label: "Fleet versions",
-    title: "Spot the clusters that need an upgrade",
-    pitch: "On Fleet, a version turns red when its line is out of support and amber when a newer patch is out. Hover it for the reason; click it to check an upgrade for that connection.",
-    steps: [
-      "Set UPGRADE_CHECK_ENABLED (Helm observability.upgradeCheckEnabled)",
-      "Open Fleet",
-      "Click a red or amber version to open Upgrades",
-    ],
-    shot: "fleet",
-    alt: "Fleet with four connections: two versions out of support in red, one behind on patches in amber",
-    docs: { label: "Fleet view", href: "/docs/fleet/" },
+    shot: "admin-connection-identity",
+    alt: "The ClickHouse login panel of a role-ceiling connection: kind, user, system role, access contact and a Ready health line with Check now",
+    docs: { label: "What CHouse UI checks", href: "/docs/connection-identity/#what-chouse-ui-checks" },
   },
 ];
 
@@ -123,7 +123,7 @@ export default function WhatsNew() {
       <Container>
         <SectionHeader
           eyebrow={`New in ${RELEASE.version}`}
-          title="AI agents that sign in, and upgrades checked against your workload."
+          title="ClickHouse decides what each person reaches."
           description="Real screens from this release. Pick one to see it and how to try it."
           action={
             <a
