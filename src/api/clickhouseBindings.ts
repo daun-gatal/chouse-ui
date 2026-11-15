@@ -8,6 +8,7 @@
  * a super admin creates, confirms and removes them.
  */
 
+import type { KindSupport } from "./connectionIdentity";
 import { api } from "./client";
 
 export type BindingState = "pending_grant" | "active" | "suspended" | "disabled";
@@ -60,6 +61,9 @@ export interface ConnectionBindings {
   /** ClickHouse users the connection may still act as although no link uses them. */
   unbound: UnboundUser[];
   readiness: BindingReadiness;
+  /** Whether this connection's server can be a personal connection at all. Absent from servers before 3.18. */
+  personalSupport?: KindSupport | null;
+  serverVersion?: string | null;
 }
 
 export interface CreateBindingInput {

@@ -26,6 +26,7 @@ import {
   ceilingSetupStatements,
   personalSetupStatements,
   checkIdentityChange,
+  connectionKindSupport,
   getIdentity,
   getRoleMap,
   setAccessContact,
@@ -72,7 +73,9 @@ async function load(c: Context): Promise<ConnectionResponse> {
 
 /** What a refused check or switch returns: the checks, so the form can show which one failed. */
 function refused(c: Context, result: IdentityCheckResult): Response {
-  return c.json({ success: false, error: { code: 'IDENTITY_CHECK_FAILED', message: result.reason ?? 'The login did not pass the checks.', details: result } }, 422);
+  // A server that cannot run the kind at all is its own answer: no change to the login would help.
+  const code = result.unsupported ? 'KIND_UNSUPPORTED_ON_SERVER' : 'IDENTITY_CHECK_FAILED';
+  return c.json({ success: false, error: { code, message: result.reason ?? 'The login did not pass the checks.', details: result } }, 422);
 }
 
 connectionIdentityRoutes.get('/:id/identity', rbacAuthMiddleware, async (c) => {
@@ -86,6 +89,8 @@ connectionIdentityRoutes.get('/:id/identity', rbacAuthMiddleware, async (c) => {
       ...identity,
       setupStatements: ceilingSetupStatements('<new_user>', systemRole, identity.roleMap.map((entry) => entry.clickhouseRole)),
       personalSetupStatements: personalSetupStatements('<new_user>', systemRole, identity.impersonationRole ?? 'chouse_impersonate'),
+      // Which kinds this connection's server can run, so the form can block one before a login is prepared for it.
+      support: await connectionKindSupport(connection.id),
     },
   });
 });

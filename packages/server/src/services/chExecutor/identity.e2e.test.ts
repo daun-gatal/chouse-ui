@@ -27,6 +27,7 @@ import { checkIdentityChange, setRoleMap, switchIdentity } from "../../rbac/serv
 import { createConnection, getConnectionById, testSavedConnection } from "../../rbac/services/connections";
 import { ClickHouseService } from "../clickhouse";
 import { checkSavedConnection, runIdentityChecks } from "./health";
+import { probeKindSupport, supportOf } from "./kindSupport";
 import { connectionConfig, executorForConnection, personActor, serviceActor } from "./index";
 
 const SERVERS = (process.env["IDENTITY_E2E_SERVERS"] ?? "")
@@ -43,6 +44,12 @@ const ADMIN = "e2e-admin"; // an admin whose role maps to analyst_ro
 const LOOSE = "e2e-loose"; // a role with no mapping
 const READER = ["table:select", "table:view", "query:execute"];
 const WRITER = [...READER, "table:insert"];
+
+/** Whether a build takes a ClickHouse role on a request: 24.4 and newer. */
+function takesRoleBy(label: string): boolean {
+  const [major, minor] = label.split(".").map(Number);
+  return major > 24 || (major === 24 && minor >= 4);
+}
 
 describe.skipIf(SERVERS.length === 0)("connection kinds and the role ceiling on a real server (ADR 0033)", () => {
   beforeAll(async () => {
@@ -123,6 +130,43 @@ describe.skipIf(SERVERS.length === 0)("connection kinds and the role ceiling on 
         await raw?.command({ query: "REVOKE SELECT ON public.* FROM svc_ceiling" }).catch(() => undefined);
         await raw?.command({ query: "DROP TABLE IF EXISTS secret.e2e_written" }).catch(() => undefined);
         await raw?.close();
+      });
+
+      describe("which kinds this server can run", () => {
+        // Asked of the server, not read from a version table. EXECUTE AS first appears, among these builds, in 26.3.
+        const hasExecuteAs = server.label.startsWith("26.");
+        const expected = { shared: "available", shared_ceiling: takesRoleBy(server.label) ? "available" : "unavailable", personal: takesRoleBy(server.label) && hasExecuteAs ? "available" : "unavailable" };
+
+        it("is the same answer from a full login and from an empty one", async () => {
+          for (const username of ["default", "svc_ceiling"]) {
+            const support = await probeKindSupport(login(username));
+            expect({ username, version: support.serverVersion, kinds: Object.fromEntries(support.kinds.map((kind) => [kind.kind, kind.state])) }).toEqual({ username, version, kinds: expected });
+          }
+        });
+
+        it("says what a kind needs when the server cannot run it, with the server's version", async () => {
+          const support = await probeKindSupport(login("default"));
+          for (const kind of support.kinds) {
+            if (kind.state !== "unavailable") continue;
+            expect(kind.reason).toContain(`ClickHouse ${version}`);
+          }
+          if (!takesRole) expect(supportOf(support, "shared_ceiling")?.reason).toContain("24.4 or newer");
+          if (takesRole && !hasExecuteAs) expect(supportOf(support, "personal")?.reason).toContain("no EXECUTE AS");
+        });
+
+        it("makes the kinds unknown, never unavailable, for a login that cannot connect", async () => {
+          const support = await probeKindSupport({ ...login("svc_ceiling"), password: "wrong" });
+          expect(support.kinds.map((kind) => kind.state)).toEqual(["available", "unknown", "unknown"]);
+        });
+
+        it("a switch to a kind the server cannot run is refused as unsupported, with that one reason", async () => {
+          const ceiling = await checkIdentityChange(sharedId, { identityMode: "shared_ceiling", username: "svc_ceiling", password: PASSWORD, systemRole: "chouse_system" });
+          expect(ceiling.result.unsupported === true).toBe(!takesRole);
+          const personal = await checkIdentityChange(sharedId, { identityMode: "personal", username: "svc_ceiling", password: PASSWORD, systemRole: "chouse_system", impersonationRole: "chouse_impersonate" });
+          expect(personal.result.ok).toBe(false);
+          expect(personal.result.unsupported === true).toBe(!(takesRole && hasExecuteAs));
+          expect((await getConnectionById(sharedId))?.identityMode).toBe("shared");
+        });
       });
 
       describe("the identity checks", () => {

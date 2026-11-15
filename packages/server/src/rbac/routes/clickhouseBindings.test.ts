@@ -25,6 +25,10 @@ mock.module("../services/clickhouseBindings", () => ({
   removeBinding: mockRemove,
 }));
 mock.module("../services/connections", () => ({ getConnectionById: mockGetConnectionById }));
+const PERSONAL = { kind: "personal", state: "unavailable", reason: "ClickHouse 25.10.7.6 has no EXECUTE AS statement." };
+mock.module("../services/connectionIdentity", () => ({
+  connectionKindSupport: async () => ({ serverVersion: "25.10.7.6", kinds: [{ kind: "shared", state: "available", reason: "" }, PERSONAL] }),
+}));
 mock.module("../../services/observe/db", () => ({
   all: async () => [{ n: 3 }],
   num: (value: unknown) => Number(value),
@@ -95,6 +99,9 @@ describe("binding routes (ADR 0033 §7.4)", () => {
       grants: ["GRANT IMPERSONATE ON dave TO chouse_impersonate;  -- dan"],
       unbound: [{ user: "old" }],
       readiness: { counts: { pending_grant: 1, active: 1, suspended: 0, disabled: 0 }, jobsWithoutLink: 3 },
+      // Whether the server can be a personal connection at all, so links that can never be used are flagged.
+      personalSupport: PERSONAL,
+      serverVersion: "25.10.7.6",
     });
     expect((await app.request("/clickhouse-bindings/connection/missing")).status).toBe(404);
   });

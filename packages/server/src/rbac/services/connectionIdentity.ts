@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 import { all, run, runBatch, sql, str, num } from '../../services/observe/db';
 import { isKnownMode, isRoleName } from '../../services/chExecutor';
 import { runIdentityChecks, writeVerdict, type IdentityVerdict } from '../../services/chExecutor/health';
+import { probeKindSupport, supportOf, type ServerSupport } from '../../services/chExecutor/kindSupport';
 import { resetCreateChecks } from '../../services/chExecutor/selfTest';
 import type { PrivilegeReport } from '../../services/connectionPrivileges';
 import { AppError } from '../../types';
@@ -64,6 +65,10 @@ export interface IdentityCheckResult {
   privileges?: PrivilegeReport;
   /** Why the login cannot be used, in one line; null when `ok`. */
   reason: string | null;
+  /** True when the server itself cannot run the kind (its version lacks what the kind needs): no login would pass. */
+  unsupported?: boolean;
+  /** Which kinds the server the login is on can run. */
+  support?: ServerSupport;
 }
 
 export async function getRoleMap(connectionId: string): Promise<RoleMapEntry[]> {
@@ -246,10 +251,35 @@ async function resolveChange(connectionId: string, change: IdentityChange): Prom
   };
 }
 
+/**
+ * Which kinds the server of a saved connection can run, asked with its stored
+ * login. Shown before a switch, so a kind the server cannot run is blocked
+ * before anyone prepares a login for it.
+ */
+export async function connectionKindSupport(connectionId: string): Promise<ServerSupport> {
+  const connection = await getConnectionWithPassword(connectionId);
+  if (!connection) throw AppError.notFound('Connection not found');
+  const url = `${connection.sslEnabled ? 'https' : 'http'}://${connection.host}:${connection.port}`;
+  return probeKindSupport({ url, username: connection.username, password: connection.password || '', database: connection.database || undefined });
+}
+
 /** Check a login for a kind without saving anything: the identity checks, then the privilege check for that kind. */
 export async function checkIdentityChange(connectionId: string, change: IdentityChange): Promise<{ result: IdentityCheckResult; resolved: ResolvedChange }> {
   const resolved = await resolveChange(connectionId, change);
   const url = `${resolved.sslEnabled ? 'https' : 'http'}://${resolved.host}:${resolved.port}`;
+  // First, whether this server can run the kind at all. A server that cannot is refused with that one reason,
+  // not with a list of failed checks that each fail for it.
+  const support = await probeKindSupport({ url, username: resolved.username, password: resolved.password, database: resolved.database || undefined });
+  const kind = supportOf(support, resolved.mode);
+  if (kind && kind.state === 'unavailable') {
+    const verdict: IdentityVerdict = {
+      ok: false,
+      reason: kind.reason,
+      checks: [{ id: 'version', label: 'The server can run this kind of connection', ok: false, detail: kind.reason }],
+      serverVersion: support.serverVersion,
+    };
+    return { result: { ok: false, verdict, reason: kind.reason, unsupported: true, support }, resolved };
+  }
   const verdict = await runIdentityChecks({
     config: { url, username: resolved.username, password: resolved.password, database: resolved.database || undefined },
     mode: resolved.mode,
@@ -259,17 +289,17 @@ export async function checkIdentityChange(connectionId: string, change: Identity
     port: resolved.port,
     connectionId,
   });
-  if (!verdict.ok) return { result: { ok: false, verdict, reason: verdict.reason }, resolved };
+  if (!verdict.ok) return { result: { ok: false, verdict, reason: verdict.reason, support }, resolved };
   const tested = await testConnection(
     { name: 'identity-check', host: resolved.host, port: resolved.port, username: resolved.username, password: resolved.password, database: resolved.database, sslEnabled: resolved.sslEnabled },
     resolved.mode !== 'shared' && resolved.systemRole ? { kind: resolved.mode, systemRole: resolved.systemRole } : undefined,
   );
-  if (!tested.success) return { result: { ok: false, verdict, reason: tested.error || 'Could not connect to ClickHouse.' }, resolved };
+  if (!tested.success) return { result: { ok: false, verdict, reason: tested.error || 'Could not connect to ClickHouse.', support }, resolved };
   if (tested.privileges && !tested.privileges.ok) {
     const holder = resolved.mode === 'shared' ? resolved.username : resolved.systemRole;
     return { result: { ok: false, verdict, privileges: tested.privileges, reason: `${holder} is missing ${tested.privileges.missingCount} privilege${tested.privileges.missingCount === 1 ? '' : 's'} CHouse needs.` }, resolved };
   }
-  return { result: { ok: true, verdict, privileges: tested.privileges, reason: null }, resolved };
+  return { result: { ok: true, verdict, privileges: tested.privileges, reason: null, support }, resolved };
 }
 
 /**

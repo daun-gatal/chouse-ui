@@ -1477,6 +1477,8 @@ Observed while building (26.3.63.123 unless said otherwise):
 - The URL's `log_comment` did reach the inner `query_log` row on this build, unlike the earlier probe recorded in §7.2. Nothing relies on it.
 - 25.10.7.6 answers `EXECUTE AS` with error 62 and has no `IMPERSONATE` grant; 26.5.7.64 passes every check but the `CREATE` one.
 
+Added after delivery 4 (its own PR): a kind the server cannot run is blocked before a login is prepared. `chExecutor/kindSupport.ts` asks the server with statements that need no grant: a request naming a role that does not exist (511 where the server takes a role, 115 before 24.4), and `EXPLAIN AST EXECUTE AS x SELECT 1` (a tree where the statement exists, error 62 where it does not; observed on 24.3.18.7, 24.4.4.113, 25.10.7.6, 26.3.63.123 and 26.5.7.64, with a full and with an empty login). The login panel disables such a kind with the reason, the links panel warns, and a switch answers `KIND_UNSUPPORTED_ON_SERVER`. The unchecked `CREATE` of 26.5.7 cannot be asked this way: it needs the prepared login, so the self-test still decides it at the check.
+
 **Known and left for later.**
 
 - Evidence pages that filter by data access rules (observe access, AI observe tools, dashboard annotations, schema preflight impact) keep using the rules on a personal connection.

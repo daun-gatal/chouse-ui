@@ -33,6 +33,7 @@ import {
   removeBinding,
   type BindingView,
 } from '../services/clickhouseBindings';
+import { connectionKindSupport } from '../services/connectionIdentity';
 import { getConnectionById } from '../services/connections';
 
 const clickhouseBindingsRoutes = new Hono();
@@ -75,7 +76,7 @@ clickhouseBindingsRoutes.get('/connection/:connectionId', rbacAuthMiddleware, as
   const connectionId = requireParam(c, 'connectionId');
   const connection = await getConnectionById(connectionId);
   if (!connection) throw AppError.notFound('Connection not found');
-  const [bindings, script, counts, jobs] = await Promise.all([
+  const [bindings, script, counts, jobs, support] = await Promise.all([
     listBindingsOfConnection(connectionId),
     grantScript(connectionId),
     bindingCounts(connectionId),
@@ -84,6 +85,7 @@ clickhouseBindingsRoutes.get('/connection/:connectionId', rbacAuthMiddleware, as
       SELECT COUNT(*) AS n FROM scheduled_queries q
       WHERE q.connection_id = ${connectionId}
         AND NOT EXISTS (SELECT 1 FROM rbac_clickhouse_bindings b WHERE b.connection_id = q.connection_id AND b.user_id = q.owner_id AND b.state = 'active')`).catch(() => []),
+    connectionKindSupport(connectionId),
   ]);
   return c.json({
     success: true,
@@ -92,6 +94,9 @@ clickhouseBindingsRoutes.get('/connection/:connectionId', rbacAuthMiddleware, as
       grants: script.grants,
       unbound: script.unbound,
       readiness: { counts, jobsWithoutLink: jobs.length > 0 ? num(jobs[0].n) : 0 },
+      // Whether this connection's server can be a personal connection at all: links on one that cannot are never used.
+      personalSupport: support.kinds.find((kind) => kind.kind === 'personal') ?? null,
+      serverVersion: support.serverVersion,
     },
   });
 });
