@@ -32,8 +32,16 @@ mock.module("../../services/observe/db", () => ({
 }));
 
 let user = { sub: "root", roles: ["super_admin"] };
+/** True for a request made with a token that names a scope. */
+let scopedToken = false;
 mock.module("../middleware", () => ({
-  rbacAuthMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+  refuseScopedToken: () => {
+    if (scopedToken) throw new AppError("This action is not within this token's scope.", "FORBIDDEN", "permission", 403);
+  },
+  rbacAuthMiddleware: async (c: { set(key: string, value: unknown): void }, next: () => Promise<void>) => {
+    c.set("tokenScoped", scopedToken);
+    return next();
+  },
   getRbacUser: () => user,
 }));
 
@@ -67,6 +75,26 @@ describe("binding routes (ADR 0033 §7.4)", () => {
       }
     }
     for (const m of [mockCreate, mockConfirm, mockRemove]) expect(m).not.toHaveBeenCalled();
+  });
+
+  it("refuses a super admin's token that names a scope on the management routes, and lets it act only as its owner elsewhere", async () => {
+    scopedToken = true;
+    try {
+      for (const [method, path, body] of [
+        ["GET", "/clickhouse-bindings/connection/c1", undefined],
+        ["POST", "/clickhouse-bindings/connection/c1", { userId: "ann", clickhouseUser: "alice" }],
+        ["POST", "/clickhouse-bindings/b1/confirm", undefined],
+        ["DELETE", "/clickhouse-bindings/b1", undefined],
+      ] as const) {
+        expect({ method, path, status: (await app.request(path, json(method, body))).status }).toEqual({ method, path, status: 403 });
+      }
+      // Its own links are still its owner's to see; someone else's link is as missing as for anyone.
+      expect((await app.request("/clickhouse-bindings/mine")).status).toBe(200);
+      expect((await app.request("/clickhouse-bindings/b2/recheck", json("POST"))).status).toBe(404);
+    } finally {
+      scopedToken = false;
+    }
+    for (const m of [mockCreate, mockConfirm, mockRemove, mockRecheck]) expect(m).not.toHaveBeenCalled();
   });
 
   it("a person sees their own links, without account fields or other people's", async () => {

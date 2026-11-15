@@ -10,6 +10,7 @@
 import { Context, Next } from 'hono';
 import { extractTokenFromHeader } from '../rbac/services/jwt';
 import { verifyBearer } from '../rbac/services/patAuth';
+import { narrowedAdminToken, runWithTokenScope, setTokenScope, type TokenScope } from '../rbac/services/tokenScope';
 import {
   checkUserAccess,
   filterDatabasesForUser,
@@ -48,6 +49,7 @@ import {
 export async function optionalRbacMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
   const token = extractTokenFromHeader(authHeader);
+  let scope: TokenScope | null = null;
 
   if (token) {
     try {
@@ -55,19 +57,31 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
       c.set('rbacUserId', identity.userId);
       c.set('rbacRoles', identity.roles);
       c.set('rbacPermissions', identity.permissions);
-      c.set('isRbacAdmin', identity.roles.includes('super_admin') || identity.roles.includes('admin'));
+      // A token that names a scope is not an administrator where a permission is decided: the administrator
+      // shortcut would skip the very checks its scope narrows. Its owner's exemption from data access rules
+      // stays, in the checks below (`exemptFromRules`).
+      c.set('isRbacAdmin', (identity.roles.includes('super_admin') || identity.roles.includes('admin')) && identity.scoped !== true);
       // Agent governance and log_comment attribution key off these; without them token
       // requests (MCP, CLI) skipped budgets, the pause switch and session counting.
       c.set('authMethod', identity.authMethod);
+      c.set('tokenScoped', identity.scoped === true);
       if (identity.patId) {
         c.set('patId', identity.patId);
       }
+      // A token's own permission list answers every permission question for the rest of the request (ADR 0011).
+      scope = identity.authMethod === 'pat'
+        ? { userId: identity.userId, permissions: identity.permissions, narrowed: identity.scoped === true, adminOwner: identity.roles.includes('super_admin') || identity.roles.includes('admin') }
+        : null;
+      setTokenScope(scope);
     } catch {
       // Token invalid, continue without RBAC context
     }
   }
 
-  await next();
+  // The request's holder carries the scope when one is open; this covers code that runs the middleware without it.
+  const held = scope;
+  if (held) await runWithTokenScope(held.userId, held.permissions, () => next(), { narrowed: held.narrowed, adminOwner: held.adminOwner });
+  else await next();
 }
 
 // ============================================
@@ -96,6 +110,15 @@ async function personalView(userId: string, connectionId: string | undefined, ac
 }
 
 /**
+ * Whether data access rules are skipped for this account although the request
+ * is not an administrator's: a token that names a scope, owned by an
+ * administrator. Rules never restricted its owner; only permissions narrow it.
+ */
+function exemptFromRules(userId: string | undefined): boolean {
+  return narrowedAdminToken(userId);
+}
+
+/**
  * Check if user has access to a database
  */
 export async function checkDatabaseAccess(
@@ -106,7 +129,7 @@ export async function checkDatabaseAccess(
   accessType: AccessType = 'read'
 ): Promise<boolean> {
   // Admins have full access
-  if (isAdmin) return true;
+  if (isAdmin || exemptFromRules(userId)) return true;
 
   // RBAC user is required
   if (!userId) {
@@ -132,7 +155,7 @@ export async function checkTableAccess(
   accessType: AccessType = 'read'
 ): Promise<boolean> {
   // Admins have full access
-  if (isAdmin) return true;
+  if (isAdmin || exemptFromRules(userId)) return true;
 
   // RBAC user is required
   if (!userId) {
@@ -161,7 +184,7 @@ export async function filterDatabases(
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
   // Admins see all (including system databases)
-  if (isAdmin) return databases;
+  if (isAdmin || exemptFromRules(userId)) return databases;
 
   // RBAC user is required
   if (!userId) {
@@ -189,7 +212,7 @@ export async function filterTables(
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
   // Admins see all (including system tables)
-  if (isAdmin) return tables;
+  if (isAdmin || exemptFromRules(userId)) return tables;
 
   // RBAC user is required
   if (!userId) {
@@ -362,6 +385,16 @@ async function validateAdminStatement(input: QueryAccessInput): Promise<QueryAcc
 
 const SYSTEM_ONLY = new Set(['system', 'information_schema']);
 
+/**
+ * A token that names a scope is checked as anyone else is, whoever owns it:
+ * the administrator's path skips the permission for the statement's kind,
+ * which is exactly what a scope narrows. Its owner's exemption from data
+ * access rules is kept by `exemptFromRules`.
+ */
+function heldToScope(input: QueryAccessInput): QueryAccessInput {
+  return input.isAdmin && narrowedAdminToken(input.userId) ? { ...input, isAdmin: false } : input;
+}
+
 /** The connection's identity when it is a `personal` one, else null. */
 async function personalIdentity(input: QueryAccessInput): Promise<ConnectionIdentity | null> {
   let identity = input.identity;
@@ -442,7 +475,8 @@ async function validatePersonalStatement(input: QueryAccessInput, identity: Conn
  * statement's permission and data access to every table and database it
  * touches, as ClickHouse itself parses it. Any doubt is a refusal.
  */
-export async function validateQueryAccess(input: QueryAccessInput): Promise<QueryAccessResult> {
+export async function validateQueryAccess(given: QueryAccessInput): Promise<QueryAccessResult> {
+  const input = heldToScope(given);
   const personal = await personalIdentity(input);
   if (personal) return validatePersonalStatement(input, personal);
   if (input.isAdmin) return validateAdminStatement(input);
@@ -477,6 +511,7 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
     if (needed && !permissions.includes(needed)) {
       return { ...refuse('TABLE_DENIED', systemTableRefusal(ref.table, needed)), statementType: access.type };
     }
+    if (exemptFromRules(input.userId)) continue;
     const result = await checkUserAccess(input.userId, database, ref.table, accessType, input.connectionId);
     if (!result.allowed) {
       return { ...refuse('TABLE_DENIED', `Access denied to ${database}.${ref.table} (requires ${accessType} permission)`), statementType: access.type };
@@ -484,7 +519,7 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
   }
   for (const name of access.databases) {
     const database = name || defaultDatabase;
-    if (forced('table')) continue;
+    if (forced('table') || exemptFromRules(input.userId)) continue;
     const result = await checkUserAccess(input.userId, database, null, accessType, input.connectionId);
     if (!result.allowed) {
       return { ...refuse('TABLE_DENIED', `Access denied to database ${database}`), statementType: access.type };
@@ -504,7 +539,8 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
  * system databases, and the tables that show other people's work need their
  * permission as everywhere else (ADR 0033 §4). Admins keep their bypass.
  */
-export async function validateSystemRead(input: QueryAccessInput): Promise<QueryAccessResult> {
+export async function validateSystemRead(given: QueryAccessInput): Promise<QueryAccessResult> {
+  const input = heldToScope(given);
   const personal = await personalIdentity(input);
   if (personal) {
     // The person's own ClickHouse user decides which system tables it reads.

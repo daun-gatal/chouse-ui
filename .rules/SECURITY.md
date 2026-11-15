@@ -228,6 +228,31 @@ These rules hold for every caller, admins included
 - **Personal access tokens:** stored only as a SHA-256 hash, shown once, with
   optional expiry and a scope subset; a revoked token fails at once. A PAT
   never carries more than its owner currently holds.
+- **A token's scope holds wherever a route asks.** The server's outermost
+  middleware opens one holder per request (`withRequestScope`), and whatever
+  verifies a bearer token records the token's own permission list in it
+  (`rememberCredential`). `userHasPermission` / `userHasAnyPermission` /
+  `userHasAllPermissions` then answer from that list
+  (`rbac/services/tokenScope.ts`), so "the credential's list, else the
+  database" can never widen a token, however a router runs its auth
+  middleware. Rules that follow from it:
+  - Verify a bearer token only through `rbacAuthMiddleware`,
+    `optionalRbacAuthMiddleware`, `optionalRbacMiddleware` or the MCP
+    verifier. A new place that calls `verifyBearer` and writes the identity to
+    the context must record its scope (`rememberCredential`, or `setTokenScope`).
+  - A token that names a scope is not an administrator where a permission is
+    decided: `isRbacAdmin` is false for it, and `validateQueryAccess` checks
+    it as anyone else. Its owner's exemption from data access rules is kept by
+    `narrowedAdminToken`. Do not add an administrator shortcut that skips a
+    permission check without excluding a scoped token.
+  - Never decide a permission for a request from `getUserPermissions(userId)`
+    directly: that is the owner's full list.
+  - A token keeps its owner's roles whatever its scope. A route gated by a
+    role alone (no permission) must call `refuseScopedToken`, or gain a
+    permission. Prefer a permission for anything a token should be able to do
+    with least privilege.
+  - The proof: `rbac/middleware/tokenScope.test.ts` runs real
+    tokens through every kind of gate and must keep failing without the fix.
 - Compare secrets, signatures and token hashes with `timingSafeEqual`.
 - Keep tokens out of URLs; query strings end up in logs and `Referer`. Use
   headers, or a one-time handoff code as the SSO complete flow does.

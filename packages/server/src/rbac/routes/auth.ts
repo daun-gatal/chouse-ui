@@ -17,7 +17,7 @@ import {
   createAuditLogWithContext,
   listRoles,
 } from '../services/rbac';
-import { getUserConnections } from '../services/connections';
+import { getUserConnections, withoutIdentityDetail } from '../services/connections';
 import { getRulesForUser } from '../services/dataAccess';
 import { validatePasswordStrength } from '../services/password';
 import { verifyRefreshToken } from '../services/jwt';
@@ -270,9 +270,12 @@ authRoutes.get('/profile', rbacAuthMiddleware, async (c) => {
     data: {
       user: {
         ...fullUser,
+        // What this credential may do: for a token, its owner's permissions narrowed to the token's scope.
+        permissions: c.get('authMethod') === 'pat' ? user.permissions : fullUser.permissions,
         rolesMetadata: userRoles,
       },
-      connections,
+      // As on /connections/my: role names and check reasons are a super admin's to see.
+      connections: user.roles.includes('super_admin') ? connections : connections.map(withoutIdentityDetail),
       dataAccessRules: allRules,
     },
   });

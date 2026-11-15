@@ -110,6 +110,30 @@ machines and humans are authorised identically.
 - The PAT service fails closed with a clear error if the table is absent
   (mixed-version rollout skew).
 
+### Amendment (2026-11-15): the scope holds wherever a route asks
+
+The permission gates check the credential's list and, on a miss, ask the
+database by account id, so a session sees a permission granted after it signed
+in. For a token that second question answered with everything the owner
+holds, which widened a scoped token on every route that used a gate or the
+same hand-written check. A token's request now runs inside a scope that holds
+the token's own list (`rbac/services/tokenScope.ts`), and the by-account
+permission checks answer from it. A token keeps its owner's roles, so a route
+gated by a role alone refuses a scoped token (`refuseScopedToken`).
+
+The same held for the administrator shortcut on the data routes: a statement
+from an administrator skips the permission for its kind, so an
+administrator's token scoped to reads could still run DDL. A token that names
+a scope is no longer an administrator where a permission is decided; its
+owner's exemption from data access rules is kept.
+
+Not changed here: features that decide "is this an administrator" from the
+role inside their own service (dashboards, scheduled queries, fleet,
+remediation and others) still do so for a scoped token. Each sits behind a
+permission gate that now holds the scope; what the role adds there (seeing
+other people's objects, skipping data access rules) is not narrowed by a
+scope. Whether a scoped token should lose those too is an open decision.
+
 ## Consequences
 
 - CLI/MCP auth becomes one env var; no refresh logic, no session handling.

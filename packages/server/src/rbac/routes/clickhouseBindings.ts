@@ -20,7 +20,7 @@ import { zValidator } from '@hono/zod-validator';
 
 import { all, num, sql } from '../../services/observe/db';
 import { AppError, requireParam } from '../../types';
-import { getRbacUser, rbacAuthMiddleware } from '../middleware';
+import { getRbacUser, rbacAuthMiddleware, refuseScopedToken } from '../middleware';
 import {
   bindingCounts,
   confirmBinding,
@@ -43,6 +43,8 @@ const createSchema = z.object({
 });
 
 function requireSuperAdmin(c: Context): string {
+  // The role is all that gates these routes, and a token keeps its owner's roles whatever its scope.
+  refuseScopedToken(c);
   const user = getRbacUser(c);
   if (!user.roles.includes('super_admin')) {
     throw AppError.forbidden('Only a super admin can link an account to a ClickHouse user.');
@@ -111,7 +113,8 @@ clickhouseBindingsRoutes.post('/:id/confirm', rbacAuthMiddleware, async (c) => {
 clickhouseBindingsRoutes.post('/:id/recheck', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
   const binding = await getBinding(requireParam(c, 'id'));
-  const superAdmin = user.roles.includes('super_admin');
+  // A token that names a scope is not held to it by a role, so it acts here as the account's owner only.
+  const superAdmin = user.roles.includes('super_admin') && c.get('tokenScoped') !== true;
   // The same answer for a link that is not there and one that is someone else's.
   if (!binding || (binding.userId !== user.sub && !superAdmin)) throw AppError.notFound('Link not found');
   const checked = await recheckBinding(binding.id, user.sub);

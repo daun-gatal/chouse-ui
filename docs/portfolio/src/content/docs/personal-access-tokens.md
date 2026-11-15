@@ -17,6 +17,9 @@ Personal access tokens (PATs) let the [CLI](/docs/cli/), [MCP](/docs/mcp/) agent
 ## How a token is checked
 
 - A token carries your identity, not a frozen copy of your rights: every call checks your **current** roles, intersected with the token's scopes. Removing a role, deactivating you or revoking the token takes effect on the next call.
+- A scoped token is refused, with 403, on anything outside its scopes. That includes administration: a token scoped to `table:select` cannot list users or roles, even when you can.
+- An administrator's scoped token is checked for the kind of statement it runs, like anyone's: scoped to `table:select` it cannot run DDL. Data access policies still do not restrict an administrator's token.
+- Your roles are not narrowed by a scope. Actions that only a role gates (a super admin changing a connection's kind, role map or links) are refused for a scoped token; use a browser session, or a token without scopes.
 - Data access policies apply exactly as in the UI.
 - Tokens are independent of browser sessions; signing out doesn't affect them.
 - Every MCP tool call is audited with the token's user, and agent activity appears on [AI Governance](/docs/agents/).

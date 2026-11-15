@@ -67,6 +67,8 @@ export interface VerifiedPat {
   roles: string[];
   /** Live owner permissions intersected with the token scopes. */
   permissions: string[];
+  /** True when the token names a scope, so it carries less than its owner holds. */
+  scoped: boolean;
   patId: string;
   patName: string;
 }
@@ -474,6 +476,7 @@ export async function resolveKeyIdentity(
     username: owner.username,
     roles,
     permissions,
+    scoped: scopes.length > 0,
     patId: row.id,
     patName: row.name,
   };

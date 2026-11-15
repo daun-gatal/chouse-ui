@@ -839,6 +839,16 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   }));
 }
 
+/**
+ * A connection as someone who is not a super admin sees it: its kind, so the
+ * UI can say whose identity statements run with, and whether it is healthy,
+ * but not the role names, the server version or the reason a check failed,
+ * which can name grants, roles and other connections.
+ */
+export function withoutIdentityDetail(connection: ConnectionResponse): ConnectionResponse {
+  return { ...connection, systemRole: null, impersonationRole: null, identityHealthReason: null, identityServerVersion: null };
+}
+
 /** Generic secret encryption — same AES-256-GCM scheme as connection passwords. */
 export const encryptSecret = encryptPassword;
 export const decryptSecret = decryptPassword;

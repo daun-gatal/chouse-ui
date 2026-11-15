@@ -32,6 +32,8 @@ export interface BearerIdentity {
   permissions: string[];
   sessionId: string;
   authMethod: AuthMethod;
+  /** True for a token that names a scope. Never set for a browser session. */
+  scoped?: boolean;
   patId?: string;
   patName?: string;
 }
@@ -60,6 +62,7 @@ export async function verifyBearer(rawToken: string, options: VerifyBearerOption
       permissions: grant.permissions,
       sessionId: `pat:${grant.patId}`,
       authMethod: "pat",
+      scoped: grant.scoped,
       patId: grant.patId,
       patName: grant.patName,
     };
@@ -76,6 +79,7 @@ export async function verifyBearer(rawToken: string, options: VerifyBearerOption
       permissions: pat.permissions,
       sessionId: `pat:${pat.patId}`,
       authMethod: "pat",
+      scoped: pat.scoped,
       patId: pat.patId,
       patName: pat.patName,
     };
