@@ -380,7 +380,7 @@ export default function ConnectionSelector({
         </TooltipTrigger>
         {isCollapsed && (
           <TooltipContent side="right" className={TOOLTIP_CLASS}>
-            {conn.name} · {isConnected ? "Connected" : "Connect"}
+            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} />
           </TooltipContent>
         )}
       </Tooltip>

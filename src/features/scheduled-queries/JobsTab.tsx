@@ -239,8 +239,9 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
             {pageItems.map((job) => (
               <Card key={job.id} className="flex items-center justify-between gap-4 rounded-xs border-ink-500 bg-ink-100 p-3">
                 <button type="button" onClick={() => onSelectedJobChange(job.id)} className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-medium text-paper">{job.name}</span>
+                  {/* Badges wrap under the name on a narrow screen instead of squeezing it out. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="min-w-0 max-w-full truncate text-[13px] font-medium text-paper">{job.name}</span>
                     {job.lastRun && <StatusBadge status={job.lastRun.status} />}
                     {!job.enabled && <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">disabled</span>}
                     {job.ownerId === null ? (

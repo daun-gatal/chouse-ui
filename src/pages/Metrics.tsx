@@ -39,6 +39,8 @@ import {
   Cloud,
   List,
 } from "lucide-react";
+import { STATEMENT_LOGS_PERMISSION_HINT } from "@/components/common/StatementLogsNotice";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -467,6 +469,8 @@ export default function Metrics({
 
   const intervalMinutes = getIntervalMinutes(timeRange);
 
+  // Failed queries and queries per second come from the statement log, which needs a permission.
+  const canReadStatementLogs = useCanReadStatementLogs();
   const { data: metrics, isLoading, isFetching, refetch, error, dataUpdatedAt } = useMetrics(timeRange, {
     refetchInterval: refreshInterval > 0 ? refreshInterval * 1000 : false,
     refetchOnWindowFocus: false,
@@ -1183,7 +1187,8 @@ export default function Metrics({
               />
               <StatCard
                 title="Failed Queries"
-                value={String(stats?.failedQueries || 0)}
+                value={canReadStatementLogs ? String(stats?.failedQueries || 0) : "—"}
+                subtitle={canReadStatementLogs ? undefined : STATEMENT_LOGS_PERMISSION_HINT}
                 icon={AlertCircle}
                 color="text-red-400"
                 bgColor="bg-red-500/20"
@@ -1348,9 +1353,12 @@ export default function Metrics({
                 <div className="grid grid-cols-2 border-l border-t border-ink-500">
                   <div className="border-b border-r border-ink-500 p-4">
                     <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
-                      {formatCompactNumber(metrics?.queriesPerSecond?.values?.slice(-1)[0] || 0)}
+                      {canReadStatementLogs ? formatCompactNumber(metrics?.queriesPerSecond?.values?.slice(-1)[0] || 0) : "—"}
                     </div>
                     <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Queries/s</div>
+                    {!canReadStatementLogs && (
+                      <div className="mt-1 font-mono text-[10px] text-paper-faint">{STATEMENT_LOGS_PERMISSION_HINT}</div>
+                    )}
                   </div>
                   <div className="border-b border-r border-ink-500 p-4">
                     <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
@@ -2183,10 +2191,10 @@ export default function Metrics({
                   <div className="grid grid-cols-1 md:grid-cols-3 border-l border-t border-ink-500">
                     <StatCard
                       title="Failed Queries"
-                      value={String(stats?.failedQueries || 0)}
+                      value={canReadStatementLogs ? String(stats?.failedQueries || 0) : "—"}
                       icon={XCircle}
                       isLoading={isLoading}
-                      subtitle={`of ${stats?.totalQueries || 0} total`}
+                      subtitle={canReadStatementLogs ? `of ${stats?.totalQueries || 0} total` : STATEMENT_LOGS_PERMISSION_HINT}
                     />
                     <StatCard
                       title="Error Types"

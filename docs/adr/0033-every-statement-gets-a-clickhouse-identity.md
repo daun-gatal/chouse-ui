@@ -947,6 +947,11 @@ Observed while building (ClickHouse 23.8.16.16 and 26.5.7.64): under
 accepts a request that sends `readonly = 2`. A login whose profile sets
 `readonly = 1` refuses any request that sends a setting, `log_comment`
 included, so it could not be used with CHouse before this change either.
+On 26.5.7.64, with a quota `KEYED BY client_key` assigned to the login, an
+`INSERT … VALUES` that the server runs as an asynchronous insert (the
+default there) fails with 496 `QUOTA_REQUIRES_CLIENT_KEY` although the
+request carries the key; with `async_insert = 0` it runs. This is the
+server's behaviour and applies to 2a as well; the user docs say so.
 
 **The executor's interface** (`S/services/chExecutor/types.ts`, `index.ts`).
 
