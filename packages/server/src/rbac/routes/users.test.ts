@@ -36,6 +36,10 @@ mock.module("../services/connectionIdentity", () => ({
     defaultRoleIsMapped: async () => defaultRoleMapped,
 }));
 
+// Links to ClickHouse users are suspended when someone else changes how an account signs in (ADR 0033 §7.4).
+const mockSuspend = mock(async (_userId: string, _reason: string, _actorId?: string) => 0);
+mock.module("../services/clickhouseBindings", () => ({ suspendBindingsOf: mockSuspend }));
+
 mock.module("../services/password", () => ({
     validatePasswordStrength: mockValidatePasswordStrength,
     generateSecurePassword: mockGenerateSecurePassword
@@ -75,6 +79,7 @@ describe("RBAC Users Routes", () => {
         mockListUsers.mockClear();
         mockUpdateUserPassword.mockClear();
         mockCreateAuditLog.mockClear();
+        mockSuspend.mockClear();
 
         // Reset default admin state
         mockTokenPayload = {
@@ -294,6 +299,51 @@ describe("RBAC Users Routes", () => {
 
             expect(res.status).toBe(400); // Bad Request
             expect(mockUpdateUser).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("a change to how an account signs in suspends its ClickHouse links (ADR 0033 §7.4)", () => {
+        const headers = { "Content-Type": "application/json", "Authorization": "Bearer token" };
+        const patch = (id: string, body: unknown) => app.request(`/users/${id}`, { method: "PATCH", headers, body: JSON.stringify(body) });
+
+        it("when someone else resets the password, and not when the holder is the one acting", async () => {
+            mockGetUserById.mockResolvedValue({ id: "u1", roles: [], email: "u1@x.io", isActive: true });
+            expect((await app.request("/users/u1/reset-password", { method: "POST", headers, body: JSON.stringify({ generatePassword: true }) })).status).toBe(200);
+            expect(mockSuspend).toHaveBeenCalledWith("u1", expect.stringContaining("password"), "admin-id");
+            mockSuspend.mockClear();
+            mockGetUserById.mockResolvedValue({ id: "admin-id", roles: [], email: "a@x.io", isActive: true });
+            expect((await app.request("/users/admin-id/reset-password", { method: "POST", headers, body: JSON.stringify({ generatePassword: true }) })).status).toBe(200);
+            expect(mockSuspend).not.toHaveBeenCalled();
+        });
+
+        it("when someone else changes the email or reactivates the account", async () => {
+            mockUpdateUser.mockResolvedValue({ id: "u1" });
+            mockGetUserById.mockResolvedValue({ id: "u1", roles: [], email: "u1@x.io", isActive: true });
+            await patch("u1", { email: "other@x.io" });
+            expect(mockSuspend).toHaveBeenCalledWith("u1", expect.stringContaining("email"), "admin-id");
+            mockSuspend.mockClear();
+            mockGetUserById.mockResolvedValue({ id: "u1", roles: [], email: "u1@x.io", isActive: false });
+            await patch("u1", { isActive: true });
+            expect(mockSuspend).toHaveBeenCalledWith("u1", expect.stringContaining("reactivated"), "admin-id");
+        });
+
+        it("not for the same email in another case, a display name, a deactivation, or the holder's own change", async () => {
+            mockUpdateUser.mockResolvedValue({ id: "u1" });
+            mockGetUserById.mockResolvedValue({ id: "u1", roles: [], email: "u1@x.io", isActive: true });
+            await patch("u1", { email: "U1@X.io" });
+            await patch("u1", { displayName: "New name" });
+            await patch("u1", { isActive: false });
+            await patch("u1", { isActive: true });
+            mockGetUserById.mockResolvedValue({ id: "admin-id", roles: [], email: "a@x.io", isActive: true });
+            await patch("admin-id", { email: "new@x.io" });
+            expect(mockSuspend).not.toHaveBeenCalled();
+        });
+
+        it("not when the change was refused", async () => {
+            mockGetUserById.mockResolvedValue({ id: "boss", roles: ["super_admin"], email: "b@x.io", isActive: true });
+            expect((await patch("boss", { email: "x@x.io" })).status).toBe(403);
+            expect((await app.request("/users/boss/reset-password", { method: "POST", headers, body: JSON.stringify({ generatePassword: true }) })).status).toBe(403);
+            expect(mockSuspend).not.toHaveBeenCalled();
         });
     });
 

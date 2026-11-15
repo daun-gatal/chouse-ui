@@ -24,6 +24,7 @@ import { getClientIp, getRbacUser, rbacAuthMiddleware } from '../middleware';
 import { AUDIT_ACTIONS } from '../schema/base';
 import {
   ceilingSetupStatements,
+  personalSetupStatements,
   checkIdentityChange,
   getIdentity,
   getRoleMap,
@@ -42,6 +43,7 @@ const changeSchema = z.object({
   username: z.string().min(1).max(255),
   password: z.string().max(1000).optional(),
   systemRole: z.string().max(128).nullish(),
+  impersonationRole: z.string().max(128).nullish(),
   accessContact: z.string().max(500).nullish(),
   host: z.string().min(1).max(255).optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
@@ -83,6 +85,7 @@ connectionIdentityRoutes.get('/:id/identity', rbacAuthMiddleware, async (c) => {
     data: {
       ...identity,
       setupStatements: ceilingSetupStatements('<new_user>', systemRole, identity.roleMap.map((entry) => entry.clickhouseRole)),
+      personalSetupStatements: personalSetupStatements('<new_user>', systemRole, identity.impersonationRole ?? 'chouse_impersonate'),
     },
   });
 });
@@ -105,8 +108,13 @@ connectionIdentityRoutes.put('/:id/identity', rbacAuthMiddleware, zValidator('js
     resourceId: connection.id,
     details: {
       name: connection.name,
-      from: { identityMode: connection.identityMode, username: connection.username, systemRole: connection.systemRole },
-      to: { identityMode: change.identityMode, username: change.username, systemRole: change.identityMode === 'shared' ? null : change.systemRole ?? null },
+      from: { identityMode: connection.identityMode, username: connection.username, systemRole: connection.systemRole, impersonationRole: connection.impersonationRole },
+      to: {
+        identityMode: change.identityMode,
+        username: change.username,
+        systemRole: change.identityMode === 'shared' ? null : change.systemRole ?? null,
+        impersonationRole: change.identityMode === 'personal' ? change.impersonationRole ?? null : null,
+      },
     },
     ipAddress: getClientIp(c),
     status: 'success',

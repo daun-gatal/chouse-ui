@@ -34,6 +34,7 @@ const EXECUTOR = `${SERVER_SRC}/services/chExecutor/`;
 /** Files outside the executor that may import the client library, and why. */
 export const CLIENT_IMPORT_ALLOWED: Record<string, string> = {
   [`${SERVER_SRC}/middleware/sqlAccess/fixtures/record.ts`]: "developer script that records parse fixtures from real servers",
+  [`${SERVER_SRC}/middleware/sqlAccess/fixtures/recordImpersonation.ts`]: "developer script that records the wrapped-statement fixtures from a real server",
 };
 
 /** Files that may call the remediation store's `getCredential`, and why. */

@@ -16,7 +16,7 @@ import { zValidator } from "@hono/zod-validator";
 import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/middleware/rbacAuth";
 import { PERMISSIONS, AUDIT_ACTIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { createAuditLogWithContext, getUserById } from "../rbac/services/rbac";
-import { getUserConnections } from "../rbac/services/connections";
+import { getConnectionById, getUserConnections } from "../rbac/services/connections";
 import { validateQueryAccess } from "../middleware/dataAccess";
 import { AppError, requireParam } from "../types";
 import { logger } from "../utils/logger";
@@ -210,6 +210,19 @@ function validateBody(body: JobBody, canWrite: boolean): void {
   }
 }
 
+/**
+ * Materialize rebuilds a table through several statements in one ClickHouse
+ * session. On a personal connection every statement is sent on its own as the
+ * owner's ClickHouse user, so there is no session to hold (ADR 0033 §7.5).
+ */
+async function assertMaterializeAvailable(body: JobBody): Promise<void> {
+  if (body.outputMode === "none") return;
+  const connection = await getConnectionById(body.connectionId);
+  if (connection?.identityMode === "personal") {
+    throw new AppError("Materialize is not available on a personal connection. Save the job without an output table, or use a connection of another kind.", "UNAVAILABLE_ON_CONNECTION", "validation", 400);
+  }
+}
+
 /** Cluster precondition report for a draft/saved body (ADR 0015 §2). */
 async function inspectBodyCluster(s: ChSession, body: JobBody): Promise<ClusterInspection | null> {
   const cluster = body.outputConfig?.cluster;
@@ -370,6 +383,7 @@ scheduledQueries.post(
   async (c) => {
     const raw = c.req.valid("json");
     validateBody(raw, hasWritePerm(c));
+    await assertMaterializeAvailable(raw);
     await assertConnectionAccess(c, raw.connectionId);
     const access = await dataAccessCheck(c, raw.query, raw.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
@@ -396,6 +410,7 @@ scheduledQueries.patch(
     const previous = await loadVisibleJob(c, id);
     const raw = c.req.valid("json");
     validateBody(raw, hasWritePerm(c));
+    await assertMaterializeAvailable(raw);
     // The connection is the data-access boundary and is fixed at creation — an
     // edit must never silently re-point a job at a different cluster.
     if (raw.connectionId !== previous.connectionId) {

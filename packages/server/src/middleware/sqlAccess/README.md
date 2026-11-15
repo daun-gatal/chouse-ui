@@ -11,6 +11,7 @@ is a refusal with a code.
 
 ## Interface
 - `index.ts`: `[index.ts:parseStatementAccess]` - `(sql, params, port) → ParsedAccess` (`{ ok, access, defaultDatabase }` or `{ ok: false, code, reason }`); re-exports `clickhouseParsePort`, `resetDefaultDatabaseCache` and the types.
+- `[index.ts:hasInlineData]` - true for an `INSERT` that carries its rows in the text; a personal connection refuses those.
 - `clickhouseParse.ts`: `[clickhouseParse.ts:SqlParsePort]` (`explainAst`, `defaultDatabase`), `[clickhouseParse.ts:clickhouseParsePort]`, `[clickhouseParse.ts:explainAstOn]`, `[clickhouseParse.ts:classifyParseError]`, `[clickhouseParse.ts:resetDefaultDatabaseCache]`.
 - `explainTree.ts`: `[explainTree.ts:readExplainTree]`, `[explainTree.ts:preOrder]`, type `AstNode`.
 - `analyze.ts`: `[analyze.ts:analyzeStatement]`, types `StatementAccess` (`type`, `permission`, `targets`, `reads`, `databases`), `NameRef`, `DenyCode`, `StatementType`.
@@ -40,6 +41,7 @@ is a refusal with a code.
 ## Side Effects
 - `clickhouseParsePort` opens (or reuses) the connection's pooled client and runs `EXPLAIN AST` and, when the connection has no database, `SELECT currentDatabase()`. It never caches a parse or a decision `[clickhouseParse.ts:clickhouseParsePort]`.
 - `fixtures/record.ts` writes `fixtures/explain-ast.json` (run by hand) `[fixtures/record.ts]`.
+- `fixtures/recordImpersonation.ts` writes `fixtures/explain-ast-impersonation.json`: the statements of `fixtures/impersonation-cases.ts` alone and under `EXECUTE AS`, from a server that passes the personal-connection self-test (run by hand) `[fixtures/recordImpersonation.ts]`.
 
 ## Verification
 - Run (from repo root): `./scripts/test-isolated-server.sh`

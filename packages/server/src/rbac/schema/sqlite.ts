@@ -290,6 +290,8 @@ export const clickhouseConnections = sqliteTable('rbac_clickhouse_connections', 
   identityHealthReason: text('identity_health_reason'),
   identityCheckedAt: integer('identity_checked_at'),
   identityServerVersion: text('identity_server_version'),
+  // ADR 0033 §7: the role that holds the IMPERSONATE grants of a `personal` connection.
+  impersonationRole: text('impersonation_role'),
 }, (table) => ({
   nameIdx: index('ch_connections_name_idx').on(table.name),
   defaultIdx: index('ch_connections_default_idx').on(table.isDefault),

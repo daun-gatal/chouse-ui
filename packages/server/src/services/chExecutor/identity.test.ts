@@ -8,7 +8,9 @@ import {
   healthRefusal,
   identityCacheKey,
   identityOfConnection,
+  isBindableUserName,
   isRoleName,
+  requestIdentity,
   requestRole,
   VERDICT_MAX_AGE_MS,
   type ConnectionIdentity,
@@ -17,7 +19,7 @@ import { personActor, serviceActor } from "./types";
 
 const NOW = 1_800_000_000_000;
 const ceiling = (over: Partial<ConnectionIdentity> = {}): ConnectionIdentity => ({
-  connectionId: "conn-1", mode: "shared_ceiling", systemRole: "chouse_system", health: "ok", healthReason: null, checkedAt: NOW - 60_000, accessContact: null, ...over,
+  connectionId: "conn-1", mode: "shared_ceiling", systemRole: "chouse_system", health: "ok", healthReason: null, checkedAt: NOW - 60_000, accessContact: null, impersonationRole: null, ...over,
 });
 
 describe("request identity (ADR 0033 §5, §6)", () => {
@@ -125,8 +127,66 @@ describe("request identity (ADR 0033 §5, §6)", () => {
 
   it("reads a connection row, and takes an object with no kind as shared", () => {
     expect(identityOfConnection({ id: "c", identityMode: "shared_ceiling", systemRole: "sys", identityHealth: "ok", identityHealthReason: null, identityCheckedAt: 5, accessContact: "x" }))
-      .toEqual({ connectionId: "c", mode: "shared_ceiling", systemRole: "sys", health: "ok", healthReason: null, checkedAt: 5, accessContact: "x" });
+      .toEqual({ connectionId: "c", mode: "shared_ceiling", systemRole: "sys", health: "ok", healthReason: null, checkedAt: 5, accessContact: "x", impersonationRole: null });
     expect(identityOfConnection({ id: "c" }).mode).toBe("shared");
+  });
+
+  describe("a personal connection (§7)", () => {
+    const personal = (over: Partial<ConnectionIdentity> = {}): ConnectionIdentity => ceiling({ mode: "personal", impersonationRole: "chouse_impersonate", ...over });
+    const link = (id: string, user: string, chUser: string, state: string, connection = "conn-1") =>
+      rawRun(sql`INSERT INTO rbac_clickhouse_bindings (id, user_id, connection_id, clickhouse_user, clickhouse_user_id, default_database, state, created_at, updated_at) VALUES (${id}, ${user}, ${connection}, ${chUser}, ${`id-${id}`}, 'analytics', ${state}, 1, 1)`);
+
+    beforeAll(async () => {
+      await link("l-ann", "ann", "alice", "active");
+      await link("l-bob", "bob", "bob_ch", "pending_grant");
+      await link("l-loose", "loose", "lou", "suspended");
+      await link("l-ann-2", "ann", "other", "disabled", "conn-2");
+    });
+
+    it("a person's request names the impersonation role and runs as their bound user", async () => {
+      expect(await requestIdentity(personal(), personActor("ann"), NOW)).toEqual({ role: "chouse_impersonate", executeAs: { user: "alice", defaultDatabase: "analytics" } });
+      expect(await requestRole(personal(), personActor("ann"), NOW)).toBe("chouse_impersonate");
+    });
+
+    it("CHouse's own work names the system role and runs as nobody else", async () => {
+      expect(await requestIdentity(personal(), serviceActor("collector"), NOW)).toEqual({ role: "chouse_system" });
+    });
+
+    it("refuses an account with no link, and says which state a link that is not active is in", async () => {
+      await expect(requestIdentity(personal(), personActor("none"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE", statusCode: 403, message: expect.stringContaining("not linked") });
+      await expect(requestIdentity(personal(), personActor("bob"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE", message: expect.stringContaining("waiting for a ClickHouse administrator") });
+      await expect(requestIdentity(personal(), personActor("loose"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE", message: expect.stringContaining("suspended") });
+      await expect(requestIdentity(personal({ connectionId: "conn-2" }), personActor("ann"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE", message: expect.stringContaining("disabled") });
+    });
+
+    it("refuses a state this version does not know, and a stored user name it cannot write", async () => {
+      await rawRun(sql`UPDATE rbac_clickhouse_bindings SET state = 'frozen' WHERE id = 'l-ann'`);
+      await expect(requestIdentity(personal(), personActor("ann"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE" });
+      await rawRun(sql`UPDATE rbac_clickhouse_bindings SET state = 'active', clickhouse_user = 'al\`ice' WHERE id = 'l-ann'`);
+      await expect(requestIdentity(personal(), personActor("ann"), NOW)).rejects.toMatchObject({ code: "IDENTITY_UNAVAILABLE", message: expect.stringContaining("cannot run as") });
+      await rawRun(sql`UPDATE rbac_clickhouse_bindings SET clickhouse_user = 'alice' WHERE id = 'l-ann'`);
+    });
+
+    it("refuses everyone without an impersonation role, a system role or a passing verdict", async () => {
+      await expect(requestIdentity(personal({ impersonationRole: null }), personActor("ann"), NOW)).rejects.toMatchObject({ code: "CONNECTION_UNAVAILABLE", statusCode: 503 });
+      await expect(requestIdentity(personal({ impersonationRole: "bad role" }), personActor("ann"), NOW)).rejects.toMatchObject({ code: "CONNECTION_UNAVAILABLE" });
+      await expect(requestIdentity(personal({ systemRole: null }), serviceActor("collector"), NOW)).rejects.toMatchObject({ code: "CONNECTION_UNAVAILABLE" });
+      await expect(requestIdentity(personal({ health: "failing" }), personActor("ann"), NOW)).rejects.toMatchObject({ code: "CONNECTION_UNAVAILABLE" });
+      await expect(requestIdentity(personal({ checkedAt: NOW - VERDICT_MAX_AGE_MS - 1 }), personActor("ann"), NOW)).rejects.toMatchObject({ code: "CONNECTION_UNAVAILABLE" });
+    });
+
+    it("keys a cached result by the bound user, so two people never share rows", async () => {
+      await rawRun(sql`UPDATE rbac_clickhouse_bindings SET state = 'active' WHERE id = 'l-bob'`);
+      const fresh = (): ConnectionIdentity => personal({ checkedAt: Date.now() });
+      expect(await identityCacheKey(fresh(), personActor("ann"))).toBe("personal:user:alice");
+      expect(await identityCacheKey(fresh(), personActor("bob"))).toBe("personal:user:bob_ch");
+      expect(await identityCacheKey(fresh(), serviceActor("collector"))).toBe("personal:chouse_system");
+    });
+
+    it("accepts only user names made of letters, digits and underscores", () => {
+      for (const ok of ["alice", "_svc", "User_1"]) expect(isBindableUserName(ok)).toBe(true);
+      for (const bad of ["", "1x", "a.b", "a@b", "a-b", "a b", "a`b", "x".repeat(129), null, undefined]) expect(isBindableUserName(bad)).toBe(false);
+    });
   });
 
   it("accepts only plain role names", () => {

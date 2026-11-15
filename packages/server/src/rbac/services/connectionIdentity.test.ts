@@ -29,7 +29,7 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
   it("a new connection is shared, with no system role and no verdict", async () => {
     const connection = (await getConnectionById(connectionId))!;
     expect(await getIdentity(connection)).toEqual({
-      identityMode: "shared", username: "old_shared", systemRole: null, accessContact: null, health: null, healthReason: null, checkedAt: null, serverVersion: null, roleMap: [],
+      identityMode: "shared", username: "old_shared", systemRole: null, impersonationRole: null, accessContact: null, health: null, healthReason: null, checkedAt: null, serverVersion: null, roleMap: [],
     });
   });
 

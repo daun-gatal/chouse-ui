@@ -24,7 +24,12 @@ mock.module("../sso/store", () => ({
   deleteDbProvider: mockDeleteDbProvider,
   countIdentitiesByProvider: mockCountIdentitiesByProvider,
   deleteIdentitiesByProvider: mockDeleteIdentitiesByProvider,
+  listIdentityUserIdsByProvider: mock(async () => ["u1", "u2", "u1"]),
 }));
+
+// Changing a provider decides who signs in as its accounts (ADR 0033 §7.4).
+const mockSuspend = mock(async (_userId: string, _reason: string, _actorId?: string) => 0);
+mock.module("../services/clickhouseBindings", () => ({ suspendBindingsOf: mockSuspend }));
 
 // ---- SSO config mock ----
 // getSsoConfig returns a config carrying one env provider ('google', source 'config').
@@ -427,6 +432,18 @@ describe("RBAC SSO Admin Routes", () => {
       );
       const details = (auditCall![3] as { details: Record<string, unknown> }).details;
       expect(details.clientSecretChanged).toBe(false);
+    });
+
+    it("suspends the ClickHouse links of the provider's accounts when someone who is not a super admin changes it", async () => {
+      mockGetDbProvider.mockResolvedValue(makeDbProvider());
+      mockSuspend.mockClear();
+      const patch = (): Promise<Response> => app.request("/sso-admin/providers/okta", { method: "PATCH", headers: JSON_AUTH, body: JSON.stringify({ displayName: "Okta v3" }) });
+      expect((await patch()).status).toBe(200);
+      expect(mockSuspend).not.toHaveBeenCalled();
+      mockTokenPayload.roles = ["sso_manager"];
+      mockTokenPayload.permissions = ["sso:view", "sso:edit"];
+      expect((await patch()).status).toBe(200);
+      expect(mockSuspend.mock.calls.map((call) => call[0])).toEqual(["u1", "u2"]);
     });
   });
 

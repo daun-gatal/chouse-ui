@@ -7,13 +7,17 @@
 
 import { createClient, type ClickHouseClient, type ClickHouseSettings, type DataFormat, type ResultSet } from "@clickhouse/client";
 
-import type { ConnectionConfig } from "../../types";
+import { AppError, type ConnectionConfig } from "../../types";
 import { CheckedStatement } from "./checked";
 import { ClientManager, type ClientLane } from "./clientPool";
-import { identityOfConnection, requestRole } from "./identity";
+import { connectionUnavailable, identityOfConnection, requestIdentity, type RequestIdentity } from "./identity";
+import { importAs, IMPORT_SESSION_SECONDS } from "./importSession";
+import { wrapBuilt } from "./impersonate";
 import { makeQueryId } from "./queryId";
 import { buildSession, type ChSession } from "./session";
+import { ensureCreateChecked } from "./selfTest";
 import { readonlyFor, type ReadOnlyLevel } from "./settings";
+import { serviceActor } from "./types";
 import type {
   Actor,
   ChExecutor,
@@ -127,77 +131,159 @@ export function executorOverClient(
   lane: ClientLane = "statements",
 ): ChExecutor {
   const idFor = (nonce: string | undefined): string => makeQueryId(actor, nonce, options.internal === true);
-  const identity = (queryId: string, settings: ClickHouseSettings | undefined, withKey: boolean, role: string | undefined) => ({
+  const envelope = (queryId: string, settings: ClickHouseSettings, withKey: boolean, role: string | undefined) => ({
     query_id: queryId,
-    clickhouse_settings: settingsFor(actor, options, settings),
+    clickhouse_settings: settings,
     ...(role ? { role } : {}),
     ...(withKey ? { http_headers: { "X-ClickHouse-Quota": quotaKeyFor(actor) } } : {}),
   });
   /**
-   * The ClickHouse role this request names (ADR 0033 §5, §6), resolved for
-   * every request so a removed role or a failing verdict stops the next one.
-   * It rejects when the request must not be sent. `roleOverride` is for
-   * checking a login: a bare request, or a role named from the connection's
-   * own settings, never from a request.
+   * The ClickHouse identity of this request (ADR 0033 §5 to §7), resolved for
+   * every request so a removed role, a changed binding or a failing verdict
+   * stops the next one. It rejects when the request must not be sent.
+   * `roleOverride` is for checking a login: a bare request, or a role named
+   * from the connection's own settings, never from a request.
    */
-  const withRole = async <T>(send: (role: string | undefined) => Promise<T>): Promise<T> =>
-    send(options.roleOverride !== undefined ? options.roleOverride ?? undefined : await requestRole(options.identity, actor));
+  const resolve = async (): Promise<RequestIdentity> => {
+    if (options.roleOverride !== undefined) return options.roleOverride ? { role: options.roleOverride } : {};
+    const resolved = await requestIdentity(options.identity, actor);
+    if (resolved.executeAs) await createChecked(resolved);
+    return resolved;
+  };
+  /**
+   * Before anything runs as a person, the server must still refuse an
+   * unchecked `CREATE` under `EXECUTE AS` (§7.1). Remembered for a minute per
+   * connection and login.
+   */
+  const createChecked = async (resolved: RequestIdentity): Promise<void> => {
+    const identity = options.identity;
+    if (!identity || !options.login) throw new Error("A personal connection needs its login to be known before a statement can run as a person");
+    const login = options.login;
+    const client = clientFor("service");
+    try {
+      await ensureCreateChecked(`${identity.connectionId}\u0000${login}`, async (query) => {
+        await client.command({ query, role: resolved.role, query_id: makeQueryId(serviceActor("health-check"), undefined, true), clickhouse_settings: { log_comment: logCommentFor(serviceActor("health-check"), { source: "create_recheck" }), max_execution_time: 10 } });
+        return "";
+      }, login);
+    } catch (error) {
+      throw connectionUnavailable(`This connection is not available: ${error instanceof Error ? error.message : String(error)}`, identity);
+    }
+  };
+  /** Text CHouse built, and its settings, as this request sends them. */
+  const built = (resolved: RequestIdentity, query: string, given: ClickHouseSettings | undefined): { query: string; settings: ClickHouseSettings } => {
+    const settings = settingsFor(actor, options, given);
+    if (!resolved.executeAs) return { query, settings };
+    // `readonly` on the URL would apply to the wrapper, and ClickHouse refuses the whole request (observed): it goes into the statement.
+    const { readonly, ...rest } = settings;
+    return { query: wrapBuilt(resolved.executeAs.user, query, readonly !== undefined && String(readonly) !== "0"), settings: rest };
+  };
+  /** A checked statement's text and settings, as this request sends them. */
+  const checked = (resolved: RequestIdentity, statement: CheckedStatement, given: ClickHouseSettings | undefined, feature: ReadOnlyLevel | undefined): { query: string; settings: ClickHouseSettings } => {
+    const settings = settingsFor(actor, options, checkedSettings(actor, options.connectionId, statement, given, feature));
+    if (!resolved.executeAs) {
+      if (statement.impersonated) throw new Error("A statement checked for a personal connection can only be sent on one");
+      return { query: statement.sql, settings };
+    }
+    const wrapped = statement.impersonated;
+    if (!wrapped || wrapped.user !== resolved.executeAs.user) {
+      throw new AppError("Your link to a ClickHouse user on this connection changed while the statement was being checked. Run it again.", "IDENTITY_UNAVAILABLE", "permission", 403);
+    }
+    const { readonly, ...rest } = settings;
+    // A read is sent as a read whenever it can be; a statement that must be one and cannot carry it is refused.
+    if (wrapped.readOnlySql !== null) return { query: wrapped.readOnlySql, settings: rest };
+    if (readonly !== undefined) {
+      throw new AppError("This statement must be a read here, and CHouse could not send it as one. If it has a FORMAT clause, remove it.", "READ_ONLY", "permission", 403);
+    }
+    return { query: wrapped.sql, settings: rest };
+  };
   return {
     actor,
-    query<Format extends DataFormat = "JSON">(args: QueryArgs<Format>): Promise<ResultSet<Format>> {
+    async query<Format extends DataFormat = "JSON">(args: QueryArgs<Format>): Promise<ResultSet<Format>> {
       const clean = withoutOwned(args);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
       const queryId = idFor(clean.query_id);
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
+      const resolved = await resolve();
+      const { query, settings } = built(resolved, clean.query, clean.clickhouse_settings);
+      return sendWithQuotaKey(client, (withKey) => client.query({ ...clean, query, ...envelope(queryId, settings, withKey, resolved.role) }), true);
     },
-    command(args: CommandArgs) {
+    async command(args: CommandArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
+      const resolved = await resolve();
+      const { query, settings } = built(resolved, clean.query, clean.clickhouse_settings);
+      return sendWithQuotaKey(client, (withKey) => client.command({ ...clean, query, ...envelope(queryId, settings, withKey, resolved.role) }), true);
     },
-    exec(args: ExecArgs) {
+    async exec(args: ExecArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
+      const resolved = await resolve();
+      const { query, settings } = built(resolved, clean.query, clean.clickhouse_settings);
+      return sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, query, ...envelope(queryId, settings, withKey, resolved.role) }), true);
     },
-    insert<T>(args: InsertArgs<T>) {
+    async insert<T>(args: InsertArgs<T>) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), false));
+      const resolved = await resolve();
+      const settings = settingsFor(actor, options, clean.clickhouse_settings);
+      if (resolved.executeAs) {
+        return importAs(resolved.executeAs.user, resolved.role, {
+          open: (query, sessionId) => sendWithQuotaKey(client, (withKey) => client.command({ query, session_id: sessionId, ...envelope(idFor(undefined), { log_comment: settings.log_comment, session_timeout: String(IMPORT_SESSION_SECONDS) }, withKey, resolved.role) }), true),
+          // The one request on a personal connection that names no role: the session already runs as the person (§7.7).
+          insert: (sessionId) => {
+            const { readonly: _readonly, ...rest } = settings;
+            return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, session_id: sessionId, ...envelope(queryId, { ...rest, session_check: 1 }, withKey, undefined) }), false);
+          },
+        });
+      }
+      return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...envelope(queryId, settings, withKey, resolved.role) }), false);
     },
-    queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
+    async queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
-      const settings = checkedSettings(actor, options.connectionId, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
       const queryId = idFor(rest.query_id);
-      const call = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...identity(queryId, settings, withKey, role) }), true));
+      const resolved = await resolve();
+      const { query, settings } = checked(resolved, statement, rest.clickhouse_settings, readOnlyFeature);
+      const call = { ...rest, query, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
+      return sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...envelope(queryId, settings, withKey, resolved.role) }), true);
     },
-    commandChecked(statement: CheckedStatement, args: CheckedCommandArgs = {}) {
+    async commandChecked(statement: CheckedStatement, args: CheckedCommandArgs = {}) {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
-      const settings = checkedSettings(actor, options.connectionId, statement, rest.clickhouse_settings, readOnlyFeature);
       const client = clientFor(lane);
       const queryId = idFor(rest.query_id);
-      const call: CommandArgs = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) };
-      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...identity(queryId, settings, withKey, role) }), true));
+      const resolved = await resolve();
+      const { query, settings } = checked(resolved, statement, rest.clickhouse_settings, readOnlyFeature);
+      const call: CommandArgs = { ...rest, query, ...(statement.params ? { query_params: statement.params } : {}) };
+      return sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...envelope(queryId, settings, withKey, resolved.role) }), true);
     },
     async ping(): Promise<boolean> {
       return (await clientFor(lane).ping()).success;
     },
     session(signal?: AbortSignal, sessionId?: string): ChSession {
       const client = clientFor(lane);
+      /** A pinned session cannot switch user for each statement, so it is not available to a person on a personal connection (§7.5). */
+      const forSession = async (): Promise<RequestIdentity> => {
+        const resolved = await resolve();
+        if (resolved.executeAs && sessionId) {
+          throw new AppError("This needs one ClickHouse session for several statements, which is not available on a personal connection.", "UNAVAILABLE_ON_CONNECTION", "validation", 400);
+        }
+        return resolved;
+      };
       return buildSession(
         {
-          query: (args) => {
+          query: async (args) => {
             const queryId = idFor(args.query_id);
-            return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...args, ...identity(queryId, args.clickhouse_settings, withKey, role) }), true));
+            const resolved = await forSession();
+            const { query, settings } = built(resolved, args.query, args.clickhouse_settings);
+            return sendWithQuotaKey(client, (withKey) => client.query({ ...args, query, ...envelope(queryId, settings, withKey, resolved.role) }), true);
           },
-          command: (args) => {
+          command: async (args) => {
             const queryId = idFor(args.query_id);
-            return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...args, ...identity(queryId, args.clickhouse_settings, withKey, role) }), true));
+            const resolved = await forSession();
+            const { query, settings } = built(resolved, args.query, args.clickhouse_settings);
+            return sendWithQuotaKey(client, (withKey) => client.command({ ...args, query, ...envelope(queryId, settings, withKey, resolved.role) }), true);
           },
         },
         signal,
@@ -232,9 +318,9 @@ export function setExecutorClientForTests(factory: ((connectionId: string | unde
 export function executorForConfig(config: ConnectionConfig, actor: Actor, options: ExecutorOptions = {}): ChExecutor {
   if (testClient) {
     const stand = testClient;
-    return executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...options, identity: options.identity ?? config.identity });
+    return executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...options, identity: options.identity ?? config.identity, login: config.username });
   }
-  return executorOverClient((lane) => ClientManager.getInstance().getClient(config, lane), actor, { ...options, identity: options.identity ?? config.identity });
+  return executorOverClient((lane) => ClientManager.getInstance().getClient(config, lane), actor, { ...options, identity: options.identity ?? config.identity, login: config.username });
 }
 
 /** The stored login of a connection, as a client config. */
@@ -280,7 +366,7 @@ export function ephemeralExecutor(
   const { requestTimeoutMs, ...rest } = options;
   if (testClient) {
     const stand = testClient;
-    return { executor: executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...rest, identity: rest.identity ?? config.identity }), close: async () => undefined };
+    return { executor: executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...rest, identity: rest.identity ?? config.identity, login: config.username }), close: async () => undefined };
   }
   const client = createClient({
     url: config.url,
@@ -289,5 +375,5 @@ export function ephemeralExecutor(
     database: config.database || "default",
     request_timeout: requestTimeoutMs,
   });
-  return { executor: executorOverClient(() => client, actor, { ...rest, identity: rest.identity ?? config.identity }), close: () => client.close() };
+  return { executor: executorOverClient(() => client, actor, { ...rest, identity: rest.identity ?? config.identity, login: config.username }), close: () => client.close() };
 }

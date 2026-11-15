@@ -139,6 +139,15 @@ const mockDb = {
 // Wire up the mocks before importing the module under test
 // ------------------------------------------------------------------
 
+// Adding or removing a sign-in identity suspends the account's ClickHouse links (ADR 0033 §7.4).
+const suspended: Array<{ userId: string; reason: string }> = [];
+mock.module("../services/clickhouseBindings", () => ({
+  suspendBindingsOf: async (userId: string, reason: string) => {
+    suspended.push({ userId, reason });
+    return 0;
+  },
+}));
+
 mock.module("../db", () => ({
   getDatabase: () => mockDb,
   getSchema:   () => mockSchema,
@@ -409,6 +418,7 @@ describe("SSO DB Store", () => {
       const ids = await deleteIdentitiesByProvider("okta");
 
       expect(ids).toEqual(["u1", "u2"]);
+      expect(suspended.map((entry) => entry.userId)).toEqual(["u1", "u2"]);
       expect(mockDb.delete).toHaveBeenCalled();
       expect(deletedTables[0]).toBe(mockSchema.userIdentities);
     });

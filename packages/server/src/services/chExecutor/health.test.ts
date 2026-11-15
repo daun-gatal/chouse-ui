@@ -18,6 +18,8 @@ interface FakeLogin {
   takesRole?: boolean;
   /** True models select_from_system_db_requires_grant = 0: a bare request reads system tables. */
   openSystemTables?: boolean;
+  /** How the server answers the self-test of a personal connection. Default: as 26.3.63 does. */
+  selfTest?: "passes" | "create_unchecked" | "no_execute_as";
 }
 
 function chError(code: number, message: string): Error {
@@ -51,6 +53,28 @@ function fakeServer(logins: Record<string, FakeLogin>, asked: Array<{ user: stri
         throw new Error(`fake server: unexpected statement ${args.query}`);
       })();
       return { query_id: "q", text: async () => text, json: async () => ({ data: [] }) };
+    },
+    /** The self-test statements, sent with the impersonation role. */
+    async exec(args: { query: string; role?: string }) {
+      const user = (config as ConnectionConfig).username;
+      const login = logins[user];
+      asked.push({ user, role: args.role, query: args.query });
+      const mode = login?.selfTest ?? "passes";
+      const body = ((): string => {
+        if (mode === "no_execute_as") throw chError(62, "Syntax error: failed at position 1 (EXECUTE)");
+        const mayActAsSelf = (login.roles[args.role ?? ""] ?? []).some((line) => line.startsWith(`GRANT IMPERSONATE ON ${user} `));
+        if (!mayActAsSelf) throw chError(497, `${user}: Not enough privileges. To execute this query, it's necessary to have the grant IMPERSONATE ON ${user}. (ACCESS_DENIED)`);
+        const wrapper = `EXECUTE AS \`${user}\` `;
+        if (args.query === `${wrapper}SELECT 1`) return "1\n";
+        if (args.query === `${wrapper}CREATE DATABASE IF NOT EXISTS system`) {
+          if (mode === "create_unchecked") return "";
+          throw chError(497, `${user}: Not enough privileges. To execute this query, it's necessary to have the grant CREATE DATABASE ON system.*. (ACCESS_DENIED)`);
+        }
+        if (args.query === `${wrapper}SELECT 1 AS a FORMAT JSONEachRow`) return '{"a":1}\n';
+        if (args.query === `${wrapper}${wrapper}SELECT 1`) throw chError(62, "Syntax error: failed at position 18 (EXECUTE)");
+        throw new Error(`fake server: unexpected statement ${args.query}`);
+      })();
+      return { query_id: "q", stream: (async function* () { yield body; })() };
     },
   }));
 }
@@ -183,9 +207,74 @@ describe("identity checks (ADR 0033 §5)", () => {
   });
 
   it("fails a kind it does not know", async () => {
-    const { verdict } = await failed({ svc: empty() }, { mode: "personal" });
+    const { verdict } = await failed({ svc: empty() }, { mode: "federated" });
     expect(verdict.ok).toBe(false);
-    expect(verdict.reason).toContain("personal");
+    expect(verdict.reason).toContain("federated");
+  });
+
+  describe("a personal connection (§7.1)", () => {
+    const IMPERSONATE = ["GRANT IMPERSONATE ON alice TO chouse_impersonate", "GRANT IMPERSONATE ON svc TO chouse_impersonate"];
+    const personal = (over: Partial<FakeLogin> = {}, roleGrants: string[] = IMPERSONATE): Record<string, FakeLogin> => ({
+      svc: { grants: ["GRANT chouse_impersonate, chouse_system TO svc"], roles: { chouse_system: SYSTEM, chouse_impersonate: roleGrants }, ...over },
+    });
+    const asPersonal = { mode: "personal", impersonationRole: "chouse_impersonate" };
+
+    it("passes a login with a system role, an impersonation role that only impersonates, and a server that passes the self-test", async () => {
+      const { verdict, failing } = await failed(personal(), asPersonal);
+      expect(failing).toEqual([]);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.impersonationTargets).toEqual(["alice", "svc"]);
+      expect(verdict.checks.map((check) => check.id)).toEqual(expect.arrayContaining(["impersonation_role", "impersonation", "create_checked", "format", "no_nesting"]));
+    });
+
+    it("fails a build that runs CREATE under EXECUTE AS unchecked, and one without EXECUTE AS", async () => {
+      expect((await failed(personal({ selfTest: "create_unchecked" }), asPersonal)).failing).toEqual(["create_checked"]);
+      const old = await failed(personal({ selfTest: "no_execute_as" }), asPersonal);
+      expect(old.failing).toContain("impersonation");
+      expect(old.verdict.ok).toBe(false);
+    });
+
+    it("fails when the role may not act as the login itself", async () => {
+      const { failing, verdict } = await failed(personal({}, ["GRANT IMPERSONATE ON alice TO chouse_impersonate"]), asPersonal);
+      expect(failing).toContain("impersonation");
+      expect(verdict.checks.find((check) => check.id === "impersonation")?.detail).toContain("GRANT IMPERSONATE ON svc");
+    });
+
+    it("fails an impersonation role that holds anything but IMPERSONATE on one named user", async () => {
+      for (const extra of [
+        "GRANT SELECT ON public.* TO chouse_impersonate",
+        "GRANT IMPERSONATE ON *.* TO chouse_impersonate",
+        "GRANT IMPERSONATE ON * TO chouse_impersonate",
+        "GRANT IMPERSONATE ON alice TO chouse_impersonate WITH GRANT OPTION",
+        "GRANT IMPERSONATE ON `odd-name` TO chouse_impersonate",
+        "GRANT other_role TO chouse_impersonate",
+        "GRANT IMPERSONATE, SELECT ON alice TO chouse_impersonate",
+        "GRANT IMPERSONATE ON default TO chouse_impersonate",
+      ]) {
+        const { failing } = await failed(personal({}, [...IMPERSONATE, extra]), asPersonal);
+        expect({ extra, failed: failing.includes("impersonation_role") }).toEqual({ extra, failed: true });
+      }
+    });
+
+    it("fails without an impersonation role, with one that is the system role, and with one not granted", async () => {
+      expect((await failed(personal(), { mode: "personal" })).failing).toContain("impersonation_role");
+      expect((await failed(personal(), { mode: "personal", impersonationRole: "bad role" })).failing).toContain("impersonation_role");
+      expect((await failed(personal(), { mode: "personal", impersonationRole: "chouse_system" })).failing).toContain("impersonation_role");
+      const notGranted = await failed({ svc: { grants: ["GRANT chouse_system TO svc"], roles: { chouse_system: SYSTEM } } }, asPersonal);
+      expect(notGranted.failing).toEqual(["impersonation_role"]);
+      expect(notGranted.verdict.reason).toContain("GRANT chouse_impersonate TO svc");
+    });
+
+    it("still fails IMPERSONATE on any other role of the login, and on a role-ceiling connection", async () => {
+      const other = await failed({ svc: { grants: ["GRANT chouse_impersonate, chouse_system, analyst_ro TO svc"], roles: { chouse_system: SYSTEM, chouse_impersonate: IMPERSONATE, analyst_ro: [...ANALYST, "GRANT IMPERSONATE ON alice TO analyst_ro"] } } }, asPersonal);
+      expect(other.failing).toEqual(["roles"]);
+      expect((await failed(personal(), { mode: "shared_ceiling" })).failing).toEqual(["roles"]);
+    });
+
+    it("keeps every empty-login check: a direct grant or a default role fails a personal login too", async () => {
+      expect((await failed(personal({ grants: ["GRANT chouse_impersonate, chouse_system TO svc", "GRANT SELECT ON public.* TO svc"] }), asPersonal)).failing).toContain("empty_login");
+      expect((await failed(personal({ defaultRoles: ["chouse_system"] }), asPersonal)).failing).toContain("empty_login");
+    });
   });
 
   it("asks nothing of a shared login but that no connection of another kind uses it", async () => {

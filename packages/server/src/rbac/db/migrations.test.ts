@@ -29,7 +29,7 @@ import { parseDashboardDocument } from "../../services/dashboards/legacy";
 import { AI_ACTION_GRANT_INDEX_NAMES, AI_ACTION_GRANT_TABLE_NAMES, AI_ACTION_TIER_COLUMNS, MCP_TOKEN_POLICY_TABLE_NAMES } from "./aiAssistantSchema";
 import { ALERT_EVENT_COLUMNS, NOTIFY_INDEX_NAMES, NOTIFY_TABLE_NAMES } from "./notifySchema";
 import { API_KEY_OAUTH_COLUMNS, MCP_OAUTH_INDEX_NAMES, MCP_OAUTH_TABLE_NAMES } from "./mcpOAuthSchema";
-import { CONNECTION_IDENTITY_COLUMNS, CONNECTION_IDENTITY_INDEX_NAMES, CONNECTION_IDENTITY_TABLE_NAMES } from "./connectionIdentitySchema";
+import { BINDING_INDEX_NAMES, BINDING_TABLE_NAMES, CONNECTION_IDENTITY_COLUMNS, CONNECTION_IDENTITY_INDEX_NAMES, CONNECTION_IDENTITY_TABLE_NAMES, PERSONAL_CONNECTION_COLUMNS } from "./connectionIdentitySchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -567,6 +567,17 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     for (const c of ["connection_id", "role_id", "clickhouse_role", "created_by", "created_at", "updated_at"]) expect(await h.columnExists("rbac_connection_role_map", c)).toBe(true);
     const unkinded = await h.rawAll(sql`SELECT COUNT(*) AS n FROM rbac_clickhouse_connections WHERE identity_mode IS NULL OR identity_mode <> 'shared'`);
     expect(Number(unkinded[0]?.n ?? 0)).toBe(0);
+  },
+  "1.78.0": async () => {
+    // ADR 0033 §7: personal connections. A new column and an empty table; no connection changes kind.
+    for (const c of PERSONAL_CONNECTION_COLUMNS) expect(await h.columnExists("rbac_clickhouse_connections", c.name)).toBe(true);
+    for (const t of BINDING_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of BINDING_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["user_id", "connection_id", "clickhouse_user", "clickhouse_user_id", "default_database", "state", "reason", "created_by", "created_at", "updated_at", "checked_at"]) {
+      expect(await h.columnExists("rbac_clickhouse_bindings", c)).toBe(true);
+    }
+    const personal = await h.rawAll(sql`SELECT COUNT(*) AS n FROM rbac_clickhouse_connections WHERE impersonation_role IS NOT NULL OR identity_mode = 'personal'`);
+    expect(Number(personal[0]?.n ?? 0)).toBe(0);
   },
 };
 
@@ -1684,6 +1695,75 @@ for (const dialect of DIALECTS) {
       await migration.up(getDatabase());
       const rows = await h.rawAll(sql`SELECT identity_mode, system_role FROM rbac_clickhouse_connections WHERE id = 'c-old'`);
       expect(rows[0]).toMatchObject({ identity_mode: "shared_ceiling", system_role: "chouse_system" });
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
+    });
+  });
+
+  // ADR 0033 §7: 1.78.0 adds the impersonation role and the bindings table.
+  // Connections of every earlier kind keep their kind, login and role names.
+  describe(`migrations · ADR 0033 personal connections [${dialect}]`, () => {
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.77.0" });
+      for (const c of PERSONAL_CONNECTION_COLUMNS) expect(await h.columnExists("rbac_clickhouse_connections", c.name)).toBe(false);
+      expect(await h.tableExists("rbac_clickhouse_bindings")).toBe(false);
+      await h.rawRun(dialect === "sqlite"
+        ? sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, is_default, is_active, ssl_enabled, identity_mode, system_role, identity_health, created_at, updated_at) VALUES ('c-ceiling', 'ceiling', 'ch.internal', 8443, 'svc', 'enc', 0, 1, 1, 'shared_ceiling', 'chouse_system', 'ok', unixepoch(), unixepoch()), ('c-shared', 'shared', 'h', 8123, 'u', 'enc2', 1, 1, 0, 'shared', NULL, NULL, unixepoch(), unixepoch())`
+        : sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, is_default, is_active, ssl_enabled, identity_mode, system_role, identity_health) VALUES ('c-ceiling', 'ceiling', 'ch.internal', 8443, 'svc', 'enc', false, true, true, 'shared_ceiling', 'chouse_system', 'ok'), ('c-shared', 'shared', 'h', 8123, 'u', 'enc2', true, true, false, 'shared', NULL, NULL)`);
+      await h.rawRun(dialect === "sqlite"
+        ? sql`INSERT INTO rbac_users (id, email, username, password_hash, is_active, created_at, updated_at) VALUES ('u-ann', 'ann@t.local', 'ann', 'x', 1, unixepoch(), unixepoch()), ('u-ben', 'ben@t.local', 'ben', 'x', 1, unixepoch(), unixepoch())`
+        : sql`INSERT INTO rbac_users (id, email, username, password_hash, is_active) VALUES ('u-ann', 'ann@t.local', 'ann', 'x', true), ('u-ben', 'ben@t.local', 'ben', 'x', true)`);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("leaves every existing connection's kind, login and role names as they were", async () => {
+      const rows = await h.rawAll(sql`SELECT id, username, password_encrypted, identity_mode, system_role, identity_health, impersonation_role FROM rbac_clickhouse_connections ORDER BY id`);
+      expect(rows.map((row) => ({ ...row }))).toMatchObject([
+        { id: "c-ceiling", username: "svc", password_encrypted: "enc", identity_mode: "shared_ceiling", system_role: "chouse_system", identity_health: "ok" },
+        { id: "c-shared", username: "u", password_encrypted: "enc2", identity_mode: "shared" },
+      ]);
+      for (const row of rows) expect(row.impersonation_role ?? null).toBeNull();
+      expect(await h.rowCount("rbac_clickhouse_bindings")).toBe(0);
+    });
+
+    const link = (id: string, user: string, connection: string, chUserId: string) =>
+      h.rawRun(sql`INSERT INTO rbac_clickhouse_bindings (id, user_id, connection_id, clickhouse_user, clickhouse_user_id, state, created_at, updated_at) VALUES (${id}, ${user}, ${connection}, 'alice', ${chUserId}, 'pending_grant', 1, 1)`);
+    const refused = async (work: () => Promise<unknown>): Promise<boolean> => {
+      try {
+        await work();
+      } catch {
+        return true;
+      }
+      return false;
+    };
+
+    it("allows one link per account and connection, and one account per ClickHouse user on a connection", async () => {
+      await link("b1", "u-ann", "c-shared", "ch-1");
+      // The same account again on the connection, and another account on the same ClickHouse user.
+      expect(await refused(() => link("b2", "u-ann", "c-shared", "ch-2"))).toBe(true);
+      expect(await refused(() => link("b3", "u-ben", "c-shared", "ch-1"))).toBe(true);
+      // The same ClickHouse user id on another connection is another server's user.
+      await link("b4", "u-ben", "c-ceiling", "ch-1");
+      await link("b5", "u-ben", "c-shared", "ch-2");
+      expect(await h.rowCount("rbac_clickhouse_bindings")).toBe(3);
+    });
+
+    it("removes an account's links with the account, and a connection's with the connection", async () => {
+      await h.rawRun(sql`DELETE FROM rbac_users WHERE id = 'u-ann'`);
+      expect((await h.rawAll(sql`SELECT id FROM rbac_clickhouse_bindings ORDER BY id`)).map((row) => String(row.id))).toEqual(["b4", "b5"]);
+      await h.rawRun(sql`DELETE FROM rbac_clickhouse_connections WHERE id = 'c-ceiling'`);
+      expect((await h.rawAll(sql`SELECT id FROM rbac_clickhouse_bindings ORDER BY id`)).map((row) => String(row.id))).toEqual(["b5"]);
+    });
+
+    it("is idempotent when re-run, and keeps the links and an impersonation role set since", async () => {
+      await h.rawRun(sql`UPDATE rbac_clickhouse_connections SET identity_mode = 'personal', system_role = 'chouse_system', impersonation_role = 'chouse_impersonate' WHERE id = 'c-shared'`);
+      const migration = MIGRATIONS.find((m) => m.version === "1.78.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      await migration.up(getDatabase());
+      const rows = await h.rawAll(sql`SELECT identity_mode, impersonation_role FROM rbac_clickhouse_connections WHERE id = 'c-shared'`);
+      expect(rows[0]).toMatchObject({ identity_mode: "personal", impersonation_role: "chouse_impersonate" });
+      expect(await h.rowCount("rbac_clickhouse_bindings")).toBe(1);
       expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
     });
   });

@@ -23,6 +23,8 @@ const mockRbacService = {
 };
 
 mock.module("../rbac/services/dataAccess", () => mockRbacService);
+// The check reads the connection's kind; these cases run on a shared login.
+mock.module("../rbac/services/connections", () => ({ getConnectionById: async () => null }));
 
 // Cleanup mocks to prevent leakage to other tests
 import { afterAll } from "bun:test";

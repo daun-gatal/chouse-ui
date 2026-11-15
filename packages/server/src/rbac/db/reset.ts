@@ -114,6 +114,7 @@ export const RBAC_TABLES: readonly string[] = [
   "rbac_ai_providers",
   "rbac_api_keys",
   "rbac_audit_logs",
+  "rbac_clickhouse_bindings",
   "rbac_clickhouse_connections",
   "rbac_connection_role_map",
   "rbac_clickhouse_role_state",

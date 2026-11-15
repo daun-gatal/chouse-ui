@@ -59,6 +59,9 @@ export async function createUserIdentity(input: {
     lastLoginAt: new Date(),
   };
   await db.insert(schema.userIdentities).values(row);
+  // A new way to sign in as this account: its links to ClickHouse users wait for a super admin (ADR 0033 §7.4).
+  const { suspendBindingsOf } = await import('../services/clickhouseBindings');
+  await suspendBindingsOf(input.userId, 'A sign-in identity was added to the account.');
   return row;
 }
 

@@ -128,7 +128,7 @@ async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheck> {
  * can name grants, roles and other connections.
  */
 function withoutIdentityDetail(connection: ConnectionResponse): ConnectionResponse {
-  return { ...connection, systemRole: null, identityHealthReason: null, identityServerVersion: null };
+  return { ...connection, systemRole: null, impersonationRole: null, identityHealthReason: null, identityServerVersion: null };
 }
 
 /** Whether an update changes anything the ClickHouse login or the privilege check depends on. */

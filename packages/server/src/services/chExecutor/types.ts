@@ -123,6 +123,8 @@ export interface ExecutorOptions {
    * settings; never pass one taken from a request.
    */
   roleOverride?: string | null;
+  /** The stored login this handle authenticates with. Set by the executor's own factories; a personal connection's self-test names it. */
+  login?: string;
   /** The saved connection this handle sends on, when known. A checked statement for another connection is refused. */
   connectionId?: string;
   /** True for a feature's own requests (collection, dashboard panels): their query ids are marked so reports leave them out. */

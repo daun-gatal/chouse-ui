@@ -20,6 +20,7 @@ const mockAudit = mock(async () => undefined);
 mock.module("../services/connections", () => ({ getConnectionById: mockGetConnectionById }));
 mock.module("../services/connectionIdentity", () => ({
   ceilingSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_system;"],
+  personalSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_impersonate;"],
   checkIdentityChange: mockCheck,
   getIdentity: async () => IDENTITY,
   getRoleMap: mockGetRoleMap,

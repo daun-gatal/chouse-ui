@@ -241,6 +241,14 @@ ssoAdminRoutes.patch(
     }
     const patch = c.req.valid("json");
     await assertMayChangeRoleAssignment(user.roles, patch.roleMapping !== undefined || patch.roleMappingClaim !== undefined);
+    // A provider decides who signs in as the accounts linked to it. When someone who is not a super admin changes
+    // it, those accounts' links to ClickHouse users wait for a super admin (ADR 0033 §7.4).
+    if (!user.roles.includes("super_admin")) {
+      const { suspendBindingsOf } = await import("../services/clickhouseBindings");
+      for (const userId of new Set(await store.listIdentityUserIdsByProvider(id))) {
+        await suspendBindingsOf(userId, "The sign-in provider of the account was changed.", user.sub);
+      }
+    }
     await store.updateDbProvider(id, patch);
     await applySsoConfigChange();
     const { clientSecret: _cs, ...safeChanges } = patch;

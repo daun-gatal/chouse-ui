@@ -65,6 +65,12 @@ function parseText(sql: string): string {
   return lexed.ok && lexed.dataStart !== undefined ? sql.slice(0, lexed.dataStart) : sql;
 }
 
+/** True when the statement is an INSERT that carries its rows in the text (`VALUES (…)`, `FORMAT … <data>`). */
+export function hasInlineData(sql: string): boolean {
+  const lexed = lex(sql);
+  return lexed.ok && lexed.dataStart !== undefined;
+}
+
 export type ImpersonationCheck = { ok: true } | { ok: false; code: DenyCode; reason: string };
 
 /**

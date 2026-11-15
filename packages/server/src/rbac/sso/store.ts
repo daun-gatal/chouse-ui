@@ -222,5 +222,8 @@ export async function deleteIdentitiesByProvider(provider: string): Promise<stri
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
   await db.delete(schema.userIdentities).where(eq(schema.userIdentities.provider, provider));
+  // How these accounts sign in just changed (ADR 0033 §7.4).
+  const { suspendBindingsOf } = await import('../services/clickhouseBindings');
+  for (const userId of new Set(userIds)) await suspendBindingsOf(userId, 'A sign-in identity was removed from the account.');
   return userIds;
 }

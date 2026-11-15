@@ -143,8 +143,8 @@ export interface QueryLogRow {
 }
 
 /** What the person is told about a failed statement: CHouse's wording for a grant or read-only refusal, else ClickHouse's own. */
-export function personMessage(error: unknown, mode?: string): string {
-  const classified = classifyClickHouseError(error, { mode });
+export function personMessage(error: unknown, mode?: string, login?: string): string {
+  const classified = classifyClickHouseError(error, { mode, login });
   if (classified) return classified.message;
   return error instanceof Error ? error.message : String(error);
 }
@@ -471,7 +471,7 @@ export class ClickHouseService {
         });
         void commandResult;
       } catch (error) {
-        const msg = personMessage(error, this.identityMode);
+        const msg = personMessage(error, this.identityMode, this.config.username);
         yield JSON.stringify({ t: "err", message: msg });
         throw error;
       }
@@ -522,7 +522,7 @@ export class ClickHouseService {
           } catch (error) {
             // Fail closed for SELECT-like queries: a malformed row is a real
             // error, not a committed-DDL case (DDL is branched above).
-            const msg = personMessage(error, this.identityMode);
+            const msg = personMessage(error, this.identityMode, this.config.username);
             yield JSON.stringify({ t: "err", message: msg });
             throw error;
           }
@@ -551,7 +551,7 @@ export class ClickHouseService {
         }
       }
     } catch (error) {
-      const msg = personMessage(error, this.identityMode);
+      const msg = personMessage(error, this.identityMode, this.config.username);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -596,7 +596,7 @@ export class ClickHouseService {
         query_id: queryId,
       });
     } catch (error) {
-      const msg = personMessage(error, this.identityMode);
+      const msg = personMessage(error, this.identityMode, this.config.username);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -605,7 +605,7 @@ export class ClickHouseService {
     try {
       envelope = await result.json();
     } catch (error) {
-      const msg = personMessage(error, this.identityMode);
+      const msg = personMessage(error, this.identityMode, this.config.username);
       if (isJsonParseErrorMessage(msg)) {
         // Server accepted the statement (HTTP 200) but the body is not JSON.
         // The DDL committed — never re-run it.  Surface success with the raw
@@ -701,6 +701,9 @@ export class ClickHouseService {
       /^\s*ALTER\s+/i,
       /^\s*DROP\s+/i,
       /^\s*TRUNCATE\s+/i,
+      // Lightweight DELETE and UPDATE return no rows either; sent as a query they got a FORMAT clause ClickHouse refuses.
+      /^\s*DELETE\s+/i,
+      /^\s*UPDATE\s+/i,
       /^\s*RENAME\s+/i,
       /^\s*OPTIMIZE\s+/i,
       /^\s*ATTACH\s+/i,
@@ -2851,7 +2854,7 @@ export class ClickHouseService {
     if (error instanceof AppError) return error;
     // A refusal by ClickHouse is a message for the person, never a sign-in
     // failure: ClickHouse answers a grant error with HTTP 403 (ADR 0033 §8).
-    const classified = classifyClickHouseError(error, { mode: this.config.identity?.mode });
+    const classified = classifyClickHouseError(error, { mode: this.config.identity?.mode, login: this.config.username });
     if (classified) return classifiedAppError(classified);
     const err = error as Error & { response?: { status?: number } };
     const message = err?.message || defaultMessage;

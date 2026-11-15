@@ -28,6 +28,8 @@ setExecutorClientForTests(() => ({
 
 let decision: GovernanceResult["decision"]["decision"] = "allow";
 const recorded: Array<{ outcome: string; readBytes: number }> = [];
+// The access check reads the connection's kind; these cases run on a shared login.
+mock.module("../../rbac/services/connections", () => ({ getConnectionById: async () => null }));
 mock.module("../agents/governance", () => ({
   governAgentQuery: async (): Promise<GovernanceResult> => ({
     decision: { decision, reasons: decision === "block" ? ["daily budget exceeded"] : [], notices: [], estimatedBytes: 0 },
