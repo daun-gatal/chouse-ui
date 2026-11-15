@@ -64,6 +64,10 @@ For each collector you choose:
 
 Next to each collector you see its last run on that connection — how long it took, how many queries it ran and how much it read — and **Read per day**: that read multiplied by the runs a day at the chosen interval. In the schedule for every connection, **Read per day** is summed over the active connections. Changes apply within a few seconds on every server, with no restart, and are recorded in the audit log as `observe.collectors_update`.
 
+## Kind: shared login or role ceiling
+
+A connection is a **shared login** unless a super admin switches it to a **role ceiling**, where its ClickHouse user holds no grant and each person is limited to the ClickHouse role mapped to their CHouse role. On such a connection the host, port, TLS setting, user and password are changed in its Identity panel. See [Connection kinds and the role ceiling](/docs/connection-identity/).
+
 ## Remediation credential
 
 In the same dialog, **Remediation credential** stores a second ClickHouse login, used only to run approved [fixes](/docs/data-incidents/#set-up-fixes-for-a-connection). It is encrypted like the main password and can be removed at any time; without it, fixes can't run on this connection.

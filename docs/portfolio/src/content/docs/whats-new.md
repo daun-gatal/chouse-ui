@@ -14,9 +14,11 @@
 
 **A job runs as whoever last changed what it does** — A scheduled query or data health check with no owner used to run with no access check. It now fails with a message that says why, shows **No owner**, and offers **Assign to me**. Saving a change to a job's SQL, output or channels makes you its owner, so nobody's job runs a statement someone else wrote under their name. → [Who a job runs as](/docs/scheduled-queries/#who-a-job-runs-as)
 
+**Limit each person to a ClickHouse role** — A connection can now be a *role ceiling*: its ClickHouse user holds no grant of its own, each CHouse role is mapped to one ClickHouse role, and every statement is sent with the role of the person it is for. ClickHouse itself then refuses anything outside that role, for administrators too. CHouse UI checks the login before the switch and every five minutes after. Needs ClickHouse 24.4 or newer; existing connections are unchanged. → [Connection kinds and the role ceiling](/docs/connection-identity/)
+
 ## Upgrading from 3.17
 
-The RBAC database gains one column (`scheduled_queries.owner_id`, filled from each job's creator). It is added automatically at start-up. Check these:
+The RBAC database gains a column for each job's owner (`scheduled_queries.owner_id`, filled from its creator), the kind and health columns of each connection (every existing connection becomes a shared login) and the role map table. They are added automatically at start-up. Check these:
 
 | What changed | What to do |
 | --- | --- |
@@ -28,6 +30,7 @@ The RBAC database gains one column (`scheduled_queries.owner_id`, filled from ea
 | Saving a change to a job's SQL, output or channels makes the saver its owner | Nothing to do. Expect the owner shown on a job to change after someone else edits it; the next run is checked against the new owner's access |
 | A typed read of the statement logs (`system.query_log`, `system.processes`, `system.text_log`, …) needs `query:history:view:all`, and of the access tables (`system.users`, `system.grants`, …) needs `clickhouse:users:view` | Give the permission to roles whose saved queries, dashboard panels, scheduled queries or agents read these tables. The built-in `admin` and `super_admin` roles are not affected. A panel or job that reads them for someone without the permission now fails with a message naming it |
 | Reads are sent with `readonly = 2` | Nothing to do for most installs. A statement CHouse UI used to send as a read that in fact writes is now refused by ClickHouse (error 164). A connection whose ClickHouse login has `readonly = 2` keeps working |
+| A CHouse role that is mapped to a ClickHouse role on a connection can be assigned only by a super admin | Nothing to do until you use the role ceiling. After that, an admin who used to assign such a role must ask a super admin |
 | Ownership in Live Queries, Logs, lineage and usage is read from the query id | Nothing to do. Statements logged before the upgrade are still attributed from `log_comment` |
 | Every request sends an `X-ClickHouse-Quota` header, on servers that accept it (24.8 and 26.5 do; 23.8 does not and gets none) | Nothing to do. It has an effect only if you create a ClickHouse quota `KEYED BY client_key` |
 

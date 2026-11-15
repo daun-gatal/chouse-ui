@@ -67,6 +67,8 @@ Whether a statement is a read comes from ClickHouse's parse of it, not from its 
 
 A connection whose ClickHouse login is itself limited with `readonly = 2` keeps working. A login limited with `readonly = 1` has never worked with CHouse UI, because ClickHouse then refuses the settings CHouse UI sends with every request.
 
+On a [role-ceiling connection](/docs/connection-identity/) the request also names a ClickHouse role: the one mapped to the person's CHouse role, or the system role for CHouse UI's own work. The stored ClickHouse user holds no grant of its own there, so ClickHouse refuses whatever that role is not granted, for administrators too.
+
 The design and the stages that follow it are in [ADR 0033](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
 
 ## AI

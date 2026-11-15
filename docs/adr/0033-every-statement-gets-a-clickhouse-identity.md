@@ -1292,6 +1292,57 @@ The report gains a `kind` field only when the kind is not `shared`.
 | `.github/workflows/ci.yml`, `scripts/verify-all.sh` | A job that runs `scripts/e2e-connection-identity.sh`. |
 | `charts/chouse-ui/Chart.yaml`, `charts/chouse-ui/README.md` (generated) | Chart version bump for the new background check (`.rules/HELM_CHART.md`). No new setting: the timer runs in every pod and needs no flag. |
 
+**What delivery 3 built, and where it differs from the plan above.**
+
+| Planned | Built | Why |
+| --- | --- | --- |
+| An account with more than one role is refused | The check is there, but the state cannot occur: `rbac_user_roles.user_id` is unique | Found while testing; the refusal stays as a second guard |
+| The save gate lets a super admin edit host, port, TLS and login of a non-`shared` connection and runs the checks | `PATCH` refuses those fields with 409 `IDENTITY_MANAGED_LOGIN`; they are changed only through `PUT …/identity`, which runs the checks | One path for a login change instead of two that must agree |
+| The executor reads the verdict with the connection row on each request | The kind and verdict are read when the connection's config is built, which every request and every background run does anew; the mapped role is read from the database on each request | No second read of the same row per request |
+| A switch clears every result cache for the connection | Cache keys carry the login, the kind and the role, so an old entry is never read | Works on every replica without a broadcast |
+| `IDENTITY_UNAVAILABLE` for 512 | Also for 511 (`UNKNOWN_ROLE`), which is what ClickHouse answers for a mapped role that does not exist (observed) | |
+| A failed AI cost estimate blocks the statement on a ceiling connection | Not built | The statement is then refused by ClickHouse with the grant it lacks, which says more than a blocked estimate |
+| Table profiling, diagnostics and the upgrade replay report "not checked: outside your ClickHouse role" | Profiling runs with the person's role and fails quietly as before; the upgrade replay skips a statement that fails today, which covers a role that cannot run it | The existing handling already says "not checked" |
+| Chart version bump | Not bumped | No chart file, setting or value changes; the timer runs in every pod with no flag (`.rules/HELM_CHART.md` asks for a bump when the chart changes) |
+| `scripts/docs-screenshots.mjs`, a screenshot of the panel | Not added | Screenshots are captured by hand for a release (see the 3.17 docs PR) |
+| `S/services/chExecutor/identity.ts` reads the kind | It also holds the health refusal and the cache key | They are one decision: what identity this request has, or why it has none |
+
+Also built: `POST …/identity/recheck` and `PUT …/identity/contact`; the
+privilege report's `source` per feature; and the access check passes a
+connection's refusal through instead of reporting "ClickHouse didn't answer"
+(found by the real-server suite).
+
+Observed while building (24.3.18.7, 24.4.4.113, 26.5.7.64): an empty login's
+`SHOW GRANTS` is one line of role grants and `currentRoles()` is empty; a
+request naming a granted role can `SHOW GRANTS FOR` that role; naming a
+role that does not exist answers 511; 24.3 answers any `role=` with 115. A
+login given `DEFAULT ROLE NONE` and later granted a privilege directly is
+caught by the next check.
+
+**Known and left for later.**
+
+- SSO role mapping can give an account a mapped role at sign-in. Who may
+  edit an SSO provider's role mapping is not restricted to super admins.
+- The collectors run with the system role, which has no grant on user
+  tables, so background reads of table data (column profiles) are refused on
+  a ceiling connection and reported as missing privileges.
+- Monitoring charts whose statements the browser builds run with the
+  person's mapped role, like any typed statement, so a role with no grant on
+  `system` tables sees empty tiles. The server's own monitoring reads (live
+  queries, the statement log, the metrics routes) name the system role, as
+  purpose `monitoring`, which the real-app run showed was needed. Sending
+  browser-built system reads with the system role would make them work
+  without a grant, at the cost of showing every role the metadata of every
+  table; that is the owner's call, so it is documented and left as is.
+- An admin can still change, or reset the password of, an account whose role
+  is not mapped; accounts with a mapped role, the default role when it is
+  mapped, and SSO's role assignment once any role is mapped, are a super
+  admin's (added after an independent review, with quoted role names, more
+  refused privileges and a per-login verdict write).
+- The checks do not verify that each ClickHouse role in the role map is
+  granted to the login. A mapping to a missing role is refused per request
+  (511) with a message that says so.
+
 #### 10.4 Delivery 4: personal connections and bindings
 
 **Schema** (migration 1.78.0, both dialects).
