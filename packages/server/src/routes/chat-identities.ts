@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
-import { getRbacUser, rbacAuthMiddleware } from "../rbac/middleware/rbacAuth";
+import { getRbacUser, rbacAuthMiddleware, requireJwtSession } from "../rbac/middleware/rbacAuth";
 import { AUDIT_ACTIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { listChannels } from "../services/alerting/store";
@@ -42,6 +42,8 @@ chatIdentities.get("/", async (c) => {
 });
 
 chatIdentities.post("/telegram/link-code", zValidator("json", z.object({ bot: z.string().trim().regex(/^[A-Za-z0-9_]{5,32}$/) })), async (c) => {
+  // Linking a chat account decides who may act as this person from chat: a browser session only (ADR 0011).
+  requireJwtSession(c);
   const user = getRbacUser(c);
   const { bot } = c.req.valid("json");
   if (!(await linkableBots()).includes(bot)) throw AppError.badRequest("That bot cannot take links right now. Ask an admin to check its channel in Admin › Alerting.");
@@ -50,6 +52,7 @@ chatIdentities.post("/telegram/link-code", zValidator("json", z.object({ bot: z.
 });
 
 chatIdentities.delete("/:id", async (c) => {
+  requireJwtSession(c);
   const user = getRbacUser(c);
   const id = requireParam(c, "id");
   if (!(await unlinkIdentity(user.sub, id))) throw AppError.notFound("Linked account not found");

@@ -20,7 +20,7 @@ import { zValidator } from '@hono/zod-validator';
 
 import { all, num, sql } from '../../services/observe/db';
 import { AppError, requireParam } from '../../types';
-import { getRbacUser, rbacAuthMiddleware } from '../middleware';
+import { getRbacUser, rbacAuthMiddleware, refuseScopedToken } from '../middleware';
 import {
   bindingCounts,
   confirmBinding,
@@ -44,6 +44,8 @@ const createSchema = z.object({
 });
 
 function requireSuperAdmin(c: Context): string {
+  // The role is all that gates these routes; a token that names a scope does not carry it, and is told so.
+  refuseScopedToken(c);
   const user = getRbacUser(c);
   if (!user.roles.includes('super_admin')) {
     throw AppError.forbidden('Only a super admin can link an account to a ClickHouse user.');

@@ -168,7 +168,7 @@ async function ownerAccess(job: ScheduledQueryRow, params: Record<string, string
   const bound = Object.fromEntries(Object.keys(names).map((name) => [name, params[name] ?? names[name]]));
   let result: Awaited<ReturnType<typeof validateQueryAccess>>;
   try {
-    result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params: bound, connectionId: job.connectionId });
+    result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params: bound, connectionId: job.connectionId, asAccount: true });
   } catch (error) {
     // The owner has no usable ClickHouse identity on the connection (no role, no active link), or the connection refuses: the run is refused with that reason.
     if (error instanceof AppError && (error.code === "IDENTITY_UNAVAILABLE" || error.code === "CONNECTION_UNAVAILABLE")) return { denial: error.message };

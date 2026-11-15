@@ -372,6 +372,15 @@ export async function checkConnectionBindings(connectionId: string): Promise<voi
   }
 }
 
+/**
+ * An account name as the text of a SQL line comment. The script is handed to
+ * a ClickHouse administrator to run, and an account name is free text: a line
+ * break in one would end the comment and start a statement of its author's.
+ */
+export function commentText(value: string): string {
+  return value.replace(/[^A-Za-z0-9._@+ -]/g, '_').slice(0, 80);
+}
+
 export interface GrantScript {
   /** Statements for the ClickHouse administrator: one grant per binding that waits for it. */
   grants: string[];
@@ -390,7 +399,7 @@ export async function grantScript(connectionId: string): Promise<GrantScript> {
   const role = isRoleName(stored) ? stored : '<impersonation role>';
   const grants = bindings
     .filter((binding) => binding.state === 'pending_grant')
-    .map((binding) => `GRANT IMPERSONATE ON ${binding.clickhouseUser} TO ${role};  -- ${binding.accountName ?? binding.userId}`);
+    .map((binding) => `GRANT IMPERSONATE ON ${binding.clickhouseUser} TO ${role};  -- ${commentText(binding.accountName ?? binding.userId)}`);
   const unbound: GrantScript['unbound'] = [];
   if (rows.length > 0 && str(rows[0].identity_mode) === 'personal' && isRoleName(stored)) {
     try {

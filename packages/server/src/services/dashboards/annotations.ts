@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { evaluateRules, getRulesForUser } from "../../rbac/services/dataAccess";
+import { narrowedAdminToken } from "../../rbac/services/tokenScope";
 import { all, num, one, run, str, strOrNull } from "../observe/db";
 import { incidentTitle } from "../observe/incidents";
 import type { Permission } from "../../rbac/schema/base";
@@ -55,7 +56,7 @@ type TablePredicate = (objectRef: string | null) => boolean;
 
 /** Whether the viewer may read the table an event is about (admins: all; system tables: admins only, as in Observe). */
 async function tablePredicate(viewer: Viewer, connectionId: string): Promise<TablePredicate> {
-  if (isAdmin(viewer)) return () => true;
+  if (isAdmin(viewer) || narrowedAdminToken(viewer.id)) return () => true;
   const rules = await getRulesForUser(viewer.id, connectionId);
   return (objectRef) => {
     if (!objectRef) return true;

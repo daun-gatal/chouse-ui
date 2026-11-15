@@ -17,6 +17,7 @@ import {
 } from '../services/dataAccess';
 import { rbacAuthMiddleware, getRbacUser } from '../middleware';
 import { requestLogger } from '../../utils/logger';
+import { narrowedAdminToken } from '../services/tokenScope';
 
 const dataAccessRoutes = new Hono();
 
@@ -77,7 +78,8 @@ dataAccessRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
+      // An administrator, or an administrator's scoped token: rules never restricted the account (ADR 0011).
+      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin') || narrowedAdminToken(user.sub);
       const { databases, connectionId } = c.req.valid('json');
 
       // Admins get all databases
@@ -109,7 +111,8 @@ dataAccessRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
+      // An administrator, or an administrator's scoped token: rules never restricted the account (ADR 0011).
+      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin') || narrowedAdminToken(user.sub);
       const { database, tables, connectionId } = c.req.valid('json');
 
       // Admins get all tables

@@ -18,6 +18,7 @@ import { PERMISSIONS } from "../schema/base";
 import { AppError } from "../../types";
 import { logger } from "../../utils/logger";
 import { getUserById, getUserPermissions, getUserRoles } from "./rbac";
+import { PRIVILEGED_ROLES } from "./tokenScope";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
@@ -67,6 +68,10 @@ export interface VerifiedPat {
   roles: string[];
   /** Live owner permissions intersected with the token scopes. */
   permissions: string[];
+  /** True when the token names a scope, so it carries less than its owner holds. */
+  scoped: boolean;
+  /** True when the owner is an administrator, whatever roles the token itself carries. */
+  adminOwner: boolean;
   patId: string;
   patName: string;
 }
@@ -439,8 +444,10 @@ export async function verifyPatToken(rawToken: string): Promise<VerifiedPat> {
 /**
  * The live identity behind a credential row (a PAT or an agent's OAuth grant):
  * fails closed when it is revoked, expired, or its owner is gone or inactive,
- * and intersects the owner's live permissions with the row's scopes.
+ * and intersects the owner's live permissions with the row's scopes. A row
+ * that names a scope does not carry its owner's administrator roles.
  */
+
 export async function resolveKeyIdentity(
   row: { id: string; userId: string; name: string; scopes: unknown; expiresAt: unknown; revokedAt: unknown },
   invalidMessage: string,
@@ -468,12 +475,19 @@ export async function resolveKeyIdentity(
   const permissions =
     scopes.length === 0 ? livePermissions : livePermissions.filter((p) => scopes.includes(p));
 
+  // A role is a shortcut past permission checks in many features ("an administrator may"). A token that names a
+  // scope must not carry one: its scope would mean nothing wherever a role decides. It keeps its other roles.
+  const scoped = scopes.length > 0;
+  const adminOwner = roles.some((role) => PRIVILEGED_ROLES.has(role));
+
   return {
     userId: row.userId,
     email: owner.email,
     username: owner.username,
-    roles,
+    roles: scoped ? roles.filter((role) => !PRIVILEGED_ROLES.has(role)) : roles,
     permissions,
+    scoped,
+    adminOwner,
     patId: row.id,
     patName: row.name,
   };

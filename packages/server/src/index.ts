@@ -1,3 +1,4 @@
+import { withRequestScope } from "./rbac/services/tokenScope";
 import "./utils/configLoader";
 import { Hono } from "hono";
 import { serve } from "bun";
@@ -128,6 +129,9 @@ const app = new Hono();
 // ============================================
 
 app.use("*", requestId);
+// One holder per request for the scope of the token it authenticates with (ADR 0011). Outermost, so it covers
+// every handler however a router runs its auth middleware.
+app.use("*", (_c, next) => withRequestScope(() => next()));
 
 // Security headers (XSS protection, clickjacking prevention, etc.)
 app.use("*", async (c, next) => {

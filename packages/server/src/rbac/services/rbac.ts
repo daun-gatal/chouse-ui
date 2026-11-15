@@ -4,6 +4,7 @@
  * Core service for managing users, roles, and permissions.
  */
 
+import { tokenPermissionsFor } from './tokenScope';
 import { eq, and, inArray, sql, desc, asc, like, or, gte, lte, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite, type RbacDb } from '../db';
@@ -715,8 +716,17 @@ export async function userHasPermission(
   userId: string,
   permission: PermissionName
 ): Promise<boolean> {
-  const permissions = await getUserPermissions(userId);
+  const permissions = await effectivePermissions(userId);
   return permissions.includes(permission);
+}
+
+/**
+ * The permissions a check about `userId` is answered from: the token's own
+ * list when the request was made with a token of that account (its scope must
+ * hold wherever a route asks), else the account's permissions through its roles.
+ */
+async function effectivePermissions(userId: string): Promise<readonly string[]> {
+  return tokenPermissionsFor(userId) ?? getUserPermissions(userId);
 }
 
 /**
@@ -726,7 +736,7 @@ export async function userHasAnyPermission(
   userId: string,
   permissions: PermissionName[]
 ): Promise<boolean> {
-  const userPerms = await getUserPermissions(userId);
+  const userPerms = await effectivePermissions(userId);
   return permissions.some(p => userPerms.includes(p));
 }
 
@@ -737,7 +747,7 @@ export async function userHasAllPermissions(
   userId: string,
   permissions: PermissionName[]
 ): Promise<boolean> {
-  const userPerms = await getUserPermissions(userId);
+  const userPerms = await effectivePermissions(userId);
   return permissions.every(p => userPerms.includes(p));
 }
 

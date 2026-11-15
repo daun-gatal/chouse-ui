@@ -41,7 +41,12 @@ mock.module("../../services/chExecutor/health", () => ({ checkSavedConnection: m
 mock.module("../services/rbac", () => ({ createAuditLogWithContext: mockAudit }));
 
 let roles = ["super_admin"];
+/** True for a request made with a token that names a scope. */
+let scopedToken = false;
 mock.module("../middleware", () => ({
+  refuseScopedToken: () => {
+    if (scopedToken) throw new AppError("This action is not within this token's scope. Use a browser session, or a token without a scope.", "FORBIDDEN", "permission", 403);
+  },
   rbacAuthMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
   getRbacUser: () => ({ sub: "u1", roles }),
   getClientIp: () => "127.0.0.1",
@@ -61,6 +66,27 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockGetRoleMap, mockSetContact, mockRecheck, mockAudit]) m.mockClear();
     mockGetConnectionById.mockImplementation(async () => CONNECTION);
     mockSwitch.mockImplementation(async () => PASS);
+  });
+
+  it("refuses a super admin's token that names a scope, on every route: a role cannot hold it to that scope", async () => {
+    scopedToken = true;
+    try {
+      for (const [method, path, body] of [
+        ["GET", "/connections/c1/identity", undefined],
+        ["POST", "/connections/c1/identity/check", CHANGE],
+        ["PUT", "/connections/c1/identity", CHANGE],
+        ["PUT", "/connections/c1/identity/contact", { accessContact: "x" }],
+        ["GET", "/connections/c1/identity/role-map", undefined],
+        ["PUT", "/connections/c1/identity/role-map", { entries: [] }],
+        ["POST", "/connections/c1/identity/recheck", undefined],
+      ] as const) {
+        const res = await app.request(path, json(method, body));
+        expect({ method, path, status: res.status }).toEqual({ method, path, status: 403 });
+      }
+    } finally {
+      scopedToken = false;
+    }
+    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit]) expect(m).not.toHaveBeenCalled();
   });
 
   it("answers only a super admin, on every route, and does nothing for anyone else", async () => {
