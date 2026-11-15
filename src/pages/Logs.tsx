@@ -74,6 +74,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { rbacUsersApi, rbacRolesApi } from "@/api/rbac";
 import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 import { SkeletonRows } from "@/components/common/Skeletons";
+import { STATEMENT_LOGS_PERMISSION_HINT, StatementLogsNotice } from "@/components/common/StatementLogsNotice";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { QueryTimelineChart } from "@/components/monitoring/QueryTimelineChart";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import type { TimelineBucket } from "@/hooks/useMonitoringTimeline";
@@ -1042,7 +1044,12 @@ export default function LogsPage({
         )}
 
         {/* Histogram view sits on its own — own card, no pagination */}
-        {view === "histogram" ? (
+        {(view === "patterns" || view === "tables" || view === "redash") && !canViewAllLogs ? (
+          // These views group everyone's statements; your own are under Queries.
+          <div className="flex-1 min-h-0 overflow-auto rounded-xs border border-ink-500 bg-ink-100">
+            <StatementLogsNotice subject="This view" />
+          </div>
+        ) : view === "histogram" ? (
           <div className="flex-1 min-h-0 overflow-auto">
             <QueryHistogramChart
               hoursBack={effectiveHours}
@@ -2598,7 +2605,19 @@ interface ProfileEventsBlockProps {
  */
 function ProfileEventsBlock({ queryId }: ProfileEventsBlockProps) {
   const [showAll, setShowAll] = useState(false);
+  const canReadStatementLogs = useCanReadStatementLogs();
   const { data: events = [], isLoading, error } = useQueryProfileEvents(queryId);
+
+  if (!canReadStatementLogs) {
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Profile events</span>
+        <div className="rounded-xs border border-ink-500 bg-ink-200 p-3 font-mono text-[11px] text-paper-faint">
+          {STATEMENT_LOGS_PERMISSION_HINT}
+        </div>
+      </div>
+    );
+  }
 
   const visible = showAll ? events : events.slice(0, 20);
   const maxValue = events[0]?.value ?? 0;

@@ -20,7 +20,7 @@ import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
 import { quoteStringLiteral } from "../utils/sqlIdentifier";
-import { isNonce, makeQueryId, parseQueryId, personActor } from "../services/chExecutor";
+import { isNonce, makeQueryId, ownerAccount, parseQueryId, personActor } from "../services/chExecutor";
 
 // ============================================
 // Types
@@ -149,21 +149,13 @@ liveQueries.get("/", async (c) => {
     `, "JSON");
 
         const rawQueries = (result.data || []) as any[];
-        let queries: LiveQuery[] = rawQueries.map(q => {
-            let rbac_user_id: string | undefined;
-            try {
-                if (q.log_comment_json) {
-                    const parsed = JSON.parse(q.log_comment_json);
-                    rbac_user_id = parsed.rbac_user_id;
-                }
-            } catch (e) {
-                // Ignore parse errors (might be plain text comment)
-            }
-            return {
-                ...q,
-                rbac_user_id
-            };
-        });
+        // Whose query it is comes from the query id the executor made (ADR 0033 §2);
+        // a statement can set its own log_comment, so that never decides it.
+        const login = service.loginUser;
+        let queries: LiveQuery[] = rawQueries.map(q => ({
+            ...q,
+            rbac_user_id: ownerAccount({ queryId: q.query_id, logComment: q.log_comment_json, user: q.user }, login) ?? undefined,
+        }));
 
         // SECURITY: Filter queries by ownership for non-admin users
         // Users without live_queries:kill_all can only see their own queries
@@ -285,14 +277,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
             `, "JSON");
             const rawInfo = ((checkResult.data || [])[0]) as any;
             if (rawInfo) {
-                let rbac_user_id: string | undefined;
-                try {
-                    if (rawInfo.log_comment_json) {
-                        const parsed = JSON.parse(rawInfo.log_comment_json);
-                        rbac_user_id = parsed.rbac_user_id;
-                    }
-                } catch { }
-
+                const rbac_user_id = ownerAccount({ queryId: rawInfo.query_id, logComment: rawInfo.log_comment_json, user: rawInfo.user }, service.loginUser) ?? undefined;
                 queryInfo = { ...rawInfo, rbac_user_id } as LiveQuery;
             }
         } catch {

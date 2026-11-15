@@ -11,7 +11,7 @@
  * privilege tree in `system.privileges`.
  */
 
-import type { ChExecutor } from "./chExecutor";
+import { clickhouseErrorType, isGrantError, requiredGrantFromError, type ChExecutor } from "./chExecutor";
 
 import { OBSERVED_SYSTEM_TABLES } from "./observe/systemTables";
 
@@ -441,27 +441,13 @@ export function holdsPrivilege(grantSets: readonly (readonly ParsedGrant[])[], t
 // Probing
 // ============================================
 
-/** "…necessary to have the grant SELECT(a, b) ON system.metric_log. (ACCESS_DENIED)" → "SELECT ON system.metric_log". */
-export function requiredGrantFromError(message: string): string | null {
-  const match = /necessary to have the grant (.+?)\.\s*\(ACCESS_DENIED\)/s.exec(message);
-  if (!match) return null;
-  return match[1].replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
-}
-
 interface ErrorInfo {
   message: string;
   type: string;
 }
 
-/** The client's ClickHouseError carries the server's error name in `type` (e.g. "ACCESS_DENIED"). */
 function errorInfo(error: unknown): ErrorInfo {
-  const message = error instanceof Error ? error.message : String(error);
-  const type = typeof error === "object" && error !== null && "type" in error && typeof error.type === "string" ? error.type : "";
-  return { message, type };
-}
-
-function isAccessDenied({ type, message }: ErrorInfo): boolean {
-  return type === "ACCESS_DENIED" || /Not enough privileges/i.test(message);
+  return { message: error instanceof Error ? error.message : String(error), type: clickhouseErrorType(error) };
 }
 
 /** The table is not on this server, or needs config it doesn't have (distributed_ddl_queue without Keeper). */
@@ -482,7 +468,7 @@ async function probeTable(client: ChExecutor, table: string): Promise<TableProbe
     return { kind: "ok" };
   } catch (error) {
     const info = errorInfo(error);
-    if (isAccessDenied(info)) return { kind: "denied", grant: requiredGrantFromError(info.message) ?? `SELECT ON system.${table}` };
+    if (isGrantError(error)) return { kind: "denied", grant: requiredGrantFromError(info.message) ?? `SELECT ON system.${table}` };
     if (UNAVAILABLE_TYPES.has(info.type)) return { kind: "unavailable" };
     return { kind: "error", reason: info.message.split("\n")[0].trim().slice(0, 200) };
   }

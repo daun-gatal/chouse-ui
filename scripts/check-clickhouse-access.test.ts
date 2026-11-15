@@ -25,6 +25,27 @@ describe("check-clickhouse-access", () => {
     expect(violationsIn(`${SRC}/services/remediation/store.ts`, "export async function getCredential(connectionId: string) {}")).toEqual([]);
   });
 
+  it("flags making a checked statement anywhere but the access check", () => {
+    const mint = 'import { mintCheckedStatement } from "../services/chExecutor/checked";';
+    expect(violationsIn(`${SRC}/routes/query.ts`, mint)).toHaveLength(1);
+    expect(violationsIn(`${SRC}/routes/query.test.ts`, mint)).toHaveLength(1);
+    expect(violationsIn(`${SRC}/services/chExecutor/index.ts`, 'export { mintCheckedStatement } from "./checked";')).toHaveLength(1);
+    expect(violationsIn(`${SRC}/middleware/dataAccess.ts`, mint)).toEqual([]);
+    expect(violationsIn(`${SRC}/services/chExecutor/checked.ts`, "export function mintCheckedStatement() {}")).toEqual([]);
+  });
+
+  it("keeps the test helpers out of code the server runs", () => {
+    const util = 'import { checkedForTests } from "../services/chExecutor/checked.test-util";';
+    expect(violationsIn(`${SRC}/routes/query.ts`, util)).toHaveLength(1);
+    expect(violationsIn(`${SRC}/routes/query.test.ts`, util)).toEqual([]);
+    for (const form of ['from "../services/chExecutor/checked.test-util.ts";', 'await import("../services/chExecutor/checked.test-util");', 'require("../services/chExecutor/checked.test-util");']) {
+      expect(violationsIn(`${SRC}/routes/query.ts`, form)).toHaveLength(1);
+    }
+    expect(violationsIn(`${SRC}/routes/query.ts`, "setAccessOverrideForTests(() => true);")).toHaveLength(1);
+    expect(violationsIn(`${SRC}/services/chExecutor/shared.e2e.test.ts`, "setAccessOverrideForTests(() => true);")).toEqual([]);
+    expect(violationsIn(`${SRC}/middleware/dataAccess.ts`, "export function setAccessOverrideForTests() {}")).toEqual([]);
+  });
+
   it("ignores files outside the server source", () => {
     expect(violationsIn("src/api/query.ts", 'import { createClient } from "@clickhouse/client-web";')).toEqual([]);
   });

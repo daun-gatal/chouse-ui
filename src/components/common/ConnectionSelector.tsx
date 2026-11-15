@@ -6,7 +6,7 @@
  * Persists the selected connection across browser reloads.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Server,
@@ -49,6 +49,22 @@ const SELECTED_CONNECTION_KEY = "clickhouse_selected_connection_id";
 
 const TOOLTIP_CLASS =
   "z-[100] rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted shadow-lg";
+
+const SHARED_LOGIN_TITLE =
+  "Everyone using this connection in CHouse sends statements as this ClickHouse user.";
+
+/**
+ * The ClickHouse user a connection's statements run as. The surrounding label
+ * is uppercased; the username is not, because ClickHouse user names are
+ * case-sensitive.
+ */
+function SharedLogin({ username }: { username: string }): ReactElement {
+  return (
+    <span title={SHARED_LOGIN_TITLE}>
+      Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>
+    </span>
+  );
+}
 
 function getStoredConnectionId(): string | null {
   try {
@@ -356,7 +372,7 @@ export default function ConnectionSelector({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-[12px] font-medium text-paper">{conn.name}</span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Connect"}
+                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} />
                 </span>
               </div>
             )}
@@ -364,7 +380,7 @@ export default function ConnectionSelector({
         </TooltipTrigger>
         {isCollapsed && (
           <TooltipContent side="right" className={TOOLTIP_CLASS}>
-            {conn.name} · {isConnected ? "Connected" : "Connect"}
+            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} />
           </TooltipContent>
         )}
       </Tooltip>
@@ -401,7 +417,7 @@ export default function ConnectionSelector({
                   {activeConnection.name}
                 </span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Not connected"}
+                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} />
                 </span>
               </div>
             )}
@@ -450,7 +466,7 @@ export default function ConnectionSelector({
                     )}
                   </div>
                   <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                    {conn.username}
+                    <SharedLogin username={conn.username} />
                   </span>
                 </div>
                 {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />}

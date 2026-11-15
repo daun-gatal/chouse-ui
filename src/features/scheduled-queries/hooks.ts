@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { rbacUsersApi } from "@/api/rbac";
 import { useAuthStore } from "@/stores";
 import {
+  assignScheduledQueryToMe,
   createScheduledQuery,
   deleteRuns,
   deleteScheduledQuery,
@@ -119,6 +120,15 @@ export function useDeleteScheduledQuery() {
   });
 }
 
+/** Take ownership of a job that has no owner; the refreshed list carries the new owner. */
+export function useAssignScheduledQueryToMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => assignScheduledQueryToMe(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: sqKeys.all }),
+  });
+}
+
 export function useRunScheduledQuery() {
   const qc = useQueryClient();
   return useMutation({
@@ -143,7 +153,8 @@ export interface OwnerOption {
 
 /**
  * Owner (RBAC user) options derived from the jobs the caller can see, mapped to
- * display names. Only fetched when `enabled` (i.e. the user has view_all and so
+ * display names. The owner is the account a job runs as (`ownerId`), not who
+ * created it; `nameOf` resolves any user id, so it also names the creator. Only fetched when `enabled` (i.e. the user has view_all and so
  * can see jobs across owners). Returns the distinct owners + a name lookup.
  */
 export function useJobOwners(jobs: ScheduledQuery[] | undefined, enabled: boolean) {
@@ -162,7 +173,7 @@ export function useJobOwners(jobs: ScheduledQuery[] | undefined, enabled: boolea
     // The list holds active users only; never fall back to a raw id.
     const nameOf = (id: string | null): string => (id ? byId.get(id) ?? "Inactive or deleted user" : "—");
     const ownerIds = new Set<string>();
-    for (const j of jobs ?? []) if (j.createdBy) ownerIds.add(j.createdBy);
+    for (const j of jobs ?? []) if (j.ownerId) ownerIds.add(j.ownerId);
     const options: OwnerOption[] = [...ownerIds]
       .map((id) => ({ id, name: nameOf(id) }))
       .sort((a, b) => a.name.localeCompare(b.name));

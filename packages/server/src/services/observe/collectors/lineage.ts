@@ -13,6 +13,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import type { CollectorContext, ConnectionCollector } from "../collector";
 import { all, runBatch, str } from "../db";
+import { ownerAccountSql } from "../../chExecutor";
 import { NOT_OBSERVE, selectRows } from "../clickhouse";
 import { externalNodeId, parseSelectSources, tableNodeId } from "../catalogParse";
 import { pruneLineage } from "../orphans";
@@ -186,7 +187,7 @@ export const lineageCollector: ConnectionCollector = {
         JSONExtractString(log_comment, 'source') AS src,
         JSONExtractString(log_comment, 'job_id') AS job_id,
         JSONExtractString(log_comment, 'pat_id') AS pat_id,
-        JSONExtractString(log_comment, 'rbac_user_id') AS rbac_user_id,
+        ${ownerAccountSql()} AS rbac_user_id,
         user,
         if(client_name != '', client_name, splitByChar(' ', http_user_agent)[1]) AS client,
         count() AS runs,

@@ -28,6 +28,7 @@ const JOB: ScheduledQuery = {
   maxAttempts: 2,
   retentionDays: 30,
   createdBy: "user-1",
+  ownerId: "user-1",
   createdAt: 1,
   updatedAt: 1,
   channelIds: ["channel-1"],

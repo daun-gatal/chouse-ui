@@ -12,6 +12,12 @@
  *   3. read a stored ClickHouse password: call `getConnectionWithPassword` and
  *      use its `password`, or call the remediation store's `getCredential`.
  *
+ * And typed text reaches ClickHouse only as a checked statement:
+ *   4. only `middleware/dataAccess.ts` may make one (`mintCheckedStatement`);
+ *   5. the test helpers that make one without a check, or force the check to
+ *      allow (`checked.test-util`, `setAccessOverrideForTests`), may be used
+ *      only by test files.
+ *
  * Rule 3 is checked by name: a file that mentions `getCredential` or reads
  * `.password` off a connection must be on the allow-list below, with a reason.
  * Tests that set up a real server (`*.e2e.test.ts`, `*.integration.test.ts`)
@@ -41,6 +47,18 @@ const CLIENT_IMPORT = /from\s+["']@clickhouse\/client(?:-common|-web)?["']|requi
 const POOL_IMPORT = /from\s+["'][^"']*chExecutor\/clientPool["']/;
 const CREDENTIAL_READ = /\bgetCredential\s*\(/;
 const REAL_SERVER_TEST = /\.(?:e2e|integration)\.test\.ts$/;
+const MINT = /\bmintCheckedStatement\b/;
+// Any mention: a static, dynamic or required import, with or without the extension.
+const TEST_UTIL_IMPORT = /checked\.test-util/;
+const ACCESS_OVERRIDE = /\bsetAccessOverrideForTests\b/;
+
+/** Files that may name `mintCheckedStatement`, and why. */
+export const MINT_ALLOWED: Record<string, string> = {
+  [`${EXECUTOR}checked.ts`]: "defines it",
+  [`${EXECUTOR}checked.test-util.ts`]: "test helper; refuses to run outside a test",
+  [`${SERVER_SRC}/middleware/dataAccess.ts`]: "the access check: the one place a checked statement is made",
+};
+const ACCESS_CHECK = `${SERVER_SRC}/middleware/dataAccess.ts`;
 
 export interface Violation {
   file: string;
@@ -50,9 +68,22 @@ export interface Violation {
 
 /** Violations in one file's text. `file` is repo-relative with forward slashes. */
 export function violationsIn(file: string, text: string): Violation[] {
-  if (!file.startsWith(`${SERVER_SRC}/`) || file.startsWith(EXECUTOR)) return [];
+  if (!file.startsWith(`${SERVER_SRC}/`)) return [];
   const out: Violation[] = [];
   const lines = text.split("\n");
+  const isTest = file.endsWith(".test.ts");
+  lines.forEach((line, index) => {
+    if (MINT.test(line) && !(file in MINT_ALLOWED)) {
+      out.push({ file, line: index + 1, rule: "makes a checked statement outside the access check" });
+    }
+    if (!isTest && TEST_UTIL_IMPORT.test(line) && !file.endsWith("checked.test-util.ts")) {
+      out.push({ file, line: index + 1, rule: "uses the checked-statement test helper outside a test" });
+    }
+    if (!isTest && ACCESS_OVERRIDE.test(line) && file !== ACCESS_CHECK) {
+      out.push({ file, line: index + 1, rule: "forces the access check to allow outside a test" });
+    }
+  });
+  if (file.startsWith(EXECUTOR)) return out;
   lines.forEach((line, index) => {
     if (CLIENT_IMPORT.test(line) && !(file in CLIENT_IMPORT_ALLOWED) && !REAL_SERVER_TEST.test(file)) {
       out.push({ file, line: index + 1, rule: "imports @clickhouse/client outside services/chExecutor" });

@@ -17,6 +17,8 @@ import {
   type HistogramMetric,
 } from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
+import { StatementLogsNotice } from "@/components/common/StatementLogsNotice";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { useChartColors } from "@/hooks/useChartColors";
 import { cn, formatBytes, formatCompactNumber } from "@/lib/utils";
 
@@ -54,6 +56,7 @@ export function QueryHistogramChart({
   onMetricChange,
 }: QueryHistogramChartProps) {
   const c = useChartColors();
+  const canReadLogs = useCanReadStatementLogs();
   const { data = [], isLoading, isFetching, error } = useQueryHistogram(
     metric,
     hoursBack,
@@ -138,7 +141,9 @@ export function QueryHistogramChart({
 
       {/* Chart body */}
       <div className="p-4">
-        {isLoading ? (
+        {!canReadLogs ? (
+          <StatementLogsNotice subject="The query histogram" className="h-60 py-0" />
+        ) : isLoading ? (
           <SkeletonChart height={240} />
         ) : error ? (
           <div className="flex h-60 items-center justify-center text-[13px] text-paper-muted">

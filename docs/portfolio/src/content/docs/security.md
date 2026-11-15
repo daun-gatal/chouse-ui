@@ -40,14 +40,32 @@ Every statement CHouse UI sends to ClickHouse goes through one server module, an
 | --- | --- | --- |
 | `query_id` | `chouse:p:<account id>:<random>` for a person, `chouse:s:<purpose>:<random>` for background work | A ClickHouse administrator can see in `system.query_log` and `system.processes` which CHouse account a statement was sent for. A statement cannot change its own query id. |
 | `log_comment` | JSON with the account or purpose, plus context such as the dashboard or job | Context for reading the log. A statement can overwrite it with its own `SETTINGS log_comment`, so treat it as a hint, not as proof. |
-| Quota key (`X-ClickHouse-Quota` header) | The account id, or `chouse-<purpose>` | Lets a ClickHouse quota created with `KEYED BY client_key` count each CHouse account separately. ClickHouse 23.8 refuses a quota key next to the way CHouse UI authenticates, so no key is sent to such a server; 24.8 and 26.5 accept it. Nothing changes until you create such a quota. On ClickHouse 26.5.7 an account that had already sent statements kept its earlier quota after a keyed one was created; we did not measure for how long, so create the quota before relying on it and check `system.quota_usage`. |
+| Quota key (`X-ClickHouse-Quota` header) | The account id, or `chouse-<purpose>` | Lets a ClickHouse quota created with `KEYED BY client_key` count each CHouse account separately. ClickHouse 23.8 refuses a quota key next to the way CHouse UI authenticates, so no key is sent to such a server; 24.8 and 26.5 accept it. Nothing changes until you create such a quota. On ClickHouse 26.5.7 an account that had already sent statements kept its earlier quota after a keyed one was created; we did not measure for how long, so create the quota before relying on it and check `system.quotas_usage`. With such a quota in place, ClickHouse 26.5.7 refused an `INSERT … VALUES` that it ran as an asynchronous insert (error 496, "requires a client supplied key"), even though the request carried the key; the same insert with `SETTINGS async_insert = 0` ran. If you create a keyed quota, turn `async_insert` off for the connection's ClickHouse user. |
 
 A query id proves who sent a statement only on rows whose ClickHouse `user` is the connection's own login. Someone with their own ClickHouse login can choose any id for statements they send directly.
 
-Two rules apply to everyone, administrators included:
+CHouse UI's own reports read the account from the query id, not from `log_comment`: Live Queries, the Logs page, lineage, table usage and the AI tools that list your own queries. A statement that sets its own `log_comment` does not change who it is shown for, and cannot hide itself from those reports. On rows logged before 3.18, which have no such id, the account is still read from `log_comment`.
+
+Three rules apply to everyone, administrators included:
 
 - **`EXECUTE AS` is refused.** CHouse UI decides which ClickHouse user a statement runs as. The check reads ClickHouse's own parse of the statement, so a comment or a wrapper cannot hide the keyword.
 - **Every typed statement is parsed by ClickHouse before it runs.** Administrators still skip permission and data access checks, but a statement ClickHouse cannot parse, or cannot parse right now, is not run.
+- **Typed text runs only after it is checked.** The server sends a typed statement to ClickHouse only as the exact text, parameters, connection and account that the access check approved. This holds for the SQL editor, saved and scheduled queries, dashboard panels, notebook cells and the SQL the AI tools write.
+
+### Reads are sent read-only
+
+CHouse UI also asks ClickHouse to refuse a write, so a mistake in CHouse UI's own check cannot turn a read into a write:
+
+| Statement | `readonly` on the request |
+| --- | --- |
+| A read (`SELECT`, `SHOW`, `DESCRIBE`, `EXISTS`, `CHECK`, `EXPLAIN`), from anyone | `2` |
+| Anything from a person whose roles hold no permission to change data, tables or settings | `2` |
+| Every statement of a feature that only reads: dashboard panels, data health checks, notebook cells, the fleet AI's investigation queries | `1`, or `2` for scheduled queries |
+| A write from a person who may write | none |
+
+Whether a statement is a read comes from ClickHouse's parse of it, not from its first word. With `readonly = 2` ClickHouse refuses every write (error 164, shown as "You may only read here") but still lets a statement set its own settings, such as `SETTINGS max_threads = 4`; it cannot switch `readonly` off.
+
+A connection whose ClickHouse login is itself limited with `readonly = 2` keeps working. A login limited with `readonly = 1` has never worked with CHouse UI, because ClickHouse then refuses the settings CHouse UI sends with every request.
 
 The design and the stages that follow it are in [ADR 0033](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
 

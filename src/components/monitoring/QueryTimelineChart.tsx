@@ -22,6 +22,8 @@ import {
   type TimelineBucket,
 } from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
+import { StatementLogsNotice } from "@/components/common/StatementLogsNotice";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { useChartColors, type ChartColors } from "@/hooks/useChartColors";
 import { cn } from "@/lib/utils";
 
@@ -109,6 +111,7 @@ export function QueryTimelineChart({
   const [dimension, setDimension] = useState<Dimension>("kind");
   const [chartType, setChartType] = useState<ChartType>("bar");
   const chartColors = useChartColors();
+  const canReadLogs = useCanReadStatementLogs();
 
   const isKind = dimension === "kind";
   const kind = useQueryTimeline(hoursBack, bucket, undefined, customRange, {
@@ -121,6 +124,7 @@ export function QueryTimelineChart({
   const { isLoading, isFetching, error, refetch } = active;
 
   useEffect(() => {
+    if (!canReadLogs) return;
     if (refreshKey !== undefined && refreshKey > 0) refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
@@ -243,7 +247,9 @@ export function QueryTimelineChart({
 
       {/* Chart body */}
       <div className="p-4">
-        {isLoading ? (
+        {!canReadLogs ? (
+          <StatementLogsNotice subject="The query timeline" className="h-40 py-0" />
+        ) : isLoading ? (
           <SkeletonChart height={192} />
         ) : error ? (
           <div className="flex h-40 items-center justify-center text-[13px] text-paper-muted">
@@ -265,7 +271,7 @@ export function QueryTimelineChart({
         )}
 
         {/* Legend — only for the query-kind breakdown */}
-        {isKind && !isLoading && !isEmpty && (
+        {canReadLogs && isKind && !isLoading && !isEmpty && (
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-ink-500 pt-3">
             {SERIES.map((s) => (
               <div key={s.key} className="flex items-center gap-2">

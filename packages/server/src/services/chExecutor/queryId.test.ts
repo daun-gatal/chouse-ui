@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { accountOfQueryId, accountQueryIdLike, isNonce, makeQueryId, parseQueryId, purposeQueryIdLike } from "./queryId";
+import { accountOfQueryId, accountQueryIdLike, internalTrafficSql, isNonce, makeQueryId, ownerAccount, ownerAccountSql, parseQueryId, purposeQueryIdLike } from "./queryId";
 import { personActor, serviceActor } from "./types";
 
 describe("query ids", () => {
@@ -52,5 +52,59 @@ describe("query ids", () => {
     expect(accountQueryIdLike("user_1")).toBe("chouse:p:user\\_1:%");
     expect(purposeQueryIdLike("collector")).toBe("chouse:s:collector:%");
     expect(() => accountQueryIdLike("a%")).toThrow();
+  });
+});
+
+describe("internal requests", () => {
+  it("marks a feature's own request, and never lets a caller's nonce carry the mark", () => {
+    expect(makeQueryId(personActor("u1"), undefined, true)).toMatch(/^chouse:p:u1:i-[0-9a-f-]{36}$/);
+    expect(makeQueryId(personActor("u1"), "panel-7", true)).toBe("chouse:p:u1:i-panel-7");
+    expect(makeQueryId(personActor("u1"), "i-panel-7", true)).toBe("chouse:p:u1:i-panel-7");
+    const forged = makeQueryId(personActor("u1"), "i-hide-me");
+    expect(forged).not.toContain(":i-");
+    expect(forged.startsWith("chouse:p:u1:")).toBe(true);
+    // A nonce too long to take the mark is replaced, not truncated into another id.
+    expect(makeQueryId(personActor("u1"), "x".repeat(64), true)).toMatch(/^chouse:p:u1:i-[0-9a-f-]{36}$/);
+  });
+
+  it("writes a condition that matches CHouse's own traffic", () => {
+    const condition = internalTrafficSql(["observe", "dash'boards"]);
+    expect(condition).toContain("startsWith(initial_query_id, 'chouse:s:collector:')");
+    expect(condition).toContain("'^chouse:p:[A-Za-z0-9_-]{1,64}:i-'");
+    expect(condition).toContain("IN ('observe', 'dashboards')");
+  });
+});
+
+describe("ownerAccount", () => {
+  const login = "svc";
+  it("reads the account from the id on a row of the connection's own login", () => {
+    expect(ownerAccount({ queryId: "chouse:p:u1:n", user: "svc" }, login)).toBe("u1");
+    expect(ownerAccount({ queryId: "chouse:p:u1:n", user: "svc", logComment: JSON.stringify({ rbac_user_id: "victim" }) }, login)).toBe("u1");
+  });
+
+  it("names no one for a service request, even when its log_comment names an account", () => {
+    expect(ownerAccount({ queryId: "chouse:s:collector:n", user: "svc", logComment: JSON.stringify({ rbac_user_id: "u1" }) }, login)).toBeNull();
+    expect(ownerAccount({ queryId: "chouse:x:broken", user: "svc", logComment: JSON.stringify({ rbac_user_id: "u1" }) }, login)).toBeNull();
+  });
+
+  it("falls back to log_comment only for an id that is not one of ours", () => {
+    expect(ownerAccount({ queryId: "9f2c", user: "svc", logComment: JSON.stringify({ rbac_user_id: "u1" }) }, login)).toBe("u1");
+    expect(ownerAccount({ queryId: "9f2c", user: "svc", logComment: "plain text" }, login)).toBeNull();
+    expect(ownerAccount({ queryId: "9f2c", user: "svc", logComment: JSON.stringify({ rbac_user_id: 7 }) }, login)).toBeNull();
+    expect(ownerAccount({ queryId: "9f2c", user: "svc" }, login)).toBeNull();
+  });
+
+  it("names no one on a row of another ClickHouse login, whatever it claims", () => {
+    expect(ownerAccount({ queryId: "chouse:p:u1:n", user: "mallory" }, login)).toBeNull();
+    expect(ownerAccount({ queryId: "9f2c", user: "mallory", logComment: JSON.stringify({ rbac_user_id: "u1" }) }, login)).toBeNull();
+  });
+
+  it("as SQL, reads the id first and only then log_comment, on rows of the current login", () => {
+    const expr = ownerAccountSql();
+    expect(expr.startsWith("if(user = currentUser(), ")).toBe(true);
+    // initial_query_id: on a shard the row's own query id is not ours, and its log_comment is the statement's to set.
+    expect(expr.indexOf("splitByChar(':', initial_query_id)[3]")).toBeLessThan(expr.indexOf("JSONExtractString(log_comment, 'rbac_user_id')"));
+    expect(expr).not.toMatch(/[^_]query_id/);
+    expect(ownerAccountSql({ queryId: "q.query_id", logComment: "Settings['log_comment']", user: "q.user" })).toContain("Settings['log_comment']");
   });
 });

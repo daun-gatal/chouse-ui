@@ -155,13 +155,13 @@ export async function startAssessment(input: StartInput): Promise<string> {
     tryQueries: input.tryQueries !== false,
   };
   await run(sql`INSERT INTO upgrade_assessments (id, connection_id, target_version, status, summary, created_by, created_at) VALUES (${id}, ${input.connectionId}, ${target}, 'running', ${JSON.stringify(summary)}, ${input.actorId}, ${Date.now()})`);
-  void runCheck(id, input.connectionId, summary).catch((error: unknown) => {
+  void runCheck(id, input.connectionId, summary, input.actorId ?? undefined).catch((error: unknown) => {
     logger.error({ module: "Upgrades", assessmentId: id, err: checkErrorText(error) }, "Upgrade check crashed");
   });
   return id;
 }
 
-async function runCheck(id: string, connectionId: string, summary: CheckSummary): Promise<void> {
+async function runCheck(id: string, connectionId: string, summary: CheckSummary, startedBy: string | undefined): Promise<void> {
   const s = summary;
   try {
     const enabled = upgradeCheckEnabled();
@@ -170,7 +170,7 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     s.stage = "current";
     await setSummary(id, s);
     const context = { source: "observe", collector: "upgrades" };
-    const client = await executorForConnection(connectionId, serviceActor("upgrade-check"), { context });
+    const client = await executorForConnection(connectionId, serviceActor("upgrade-check", startedBy), { context });
     const current = await readSnapshot(client);
     const currentVersion = plainVersion(current.version) ?? current.version;
     const currentLine = lineOf(currentVersion);
@@ -186,7 +186,7 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     if (s.reference) {
       s.stage = "target";
       await setSummary(id, s);
-      const refClient = await executorForConnection(s.reference.connectionId, serviceActor("upgrade-check"), { context });
+      const refClient = await executorForConnection(s.reference.connectionId, serviceActor("upgrade-check", startedBy), { context });
       const target = await readSnapshot(refClient);
       const refVersion = plainVersion(target.version) ?? target.version;
       s.reference.version = refVersion;

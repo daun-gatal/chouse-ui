@@ -16,13 +16,17 @@ import {
   filterTablesForUser,
   type AccessType
 } from '../rbac/services/dataAccess';
+import { PERMISSIONS } from '../rbac/schema/base';
+import { systemTablePermission, systemTableRefusal } from '../rbac/services/systemTables';
 import { isMcpSubrequestFor } from '../mcp/inProcess';
+import { mintCheckedStatement, type CheckedStatement } from '../services/chExecutor/checked';
 import { AppError } from '../types';
 import {
   clickhouseParsePort,
   parseStatementAccess,
   refuseImpersonation,
   type DenyCode,
+  type ParsedAccess,
   type SqlParsePort,
   type StatementType,
 } from './sqlAccess';
@@ -189,6 +193,14 @@ export interface QueryAccessResult {
   /** HTTP status for a refusal: 400 for bad SQL, 503 when the check couldn't run, else 403. */
   status?: 400 | 403 | 503;
   statementType?: StatementType;
+  /** The statement to hand to the executor. Present exactly when `allowed` is true. */
+  statement?: CheckedStatement;
+}
+
+/** The statement of an allowed check, for the executor. A refusal has none, so callers return before this. */
+export function checkedOf(result: QueryAccessResult): CheckedStatement {
+  if (!result.allowed || !result.statement) throw AppError.internal('The statement was not checked');
+  return result.statement;
 }
 
 /** HTTP status for a refusal code. */
@@ -217,21 +229,93 @@ const ACCESS_TYPE: Record<StatementType, AccessType> = {
   create: 'admin', drop: 'admin', alter: 'admin', truncate: 'admin',
 };
 
+/** Statement kinds that only read, as ClickHouse parsed them. */
+const READ_KINDS: ReadonlySet<StatementType> = new Set(['select', 'show', 'describe', 'exists', 'check', 'explain']);
+
+/** Permissions that let a person change something through typed text. Holding none means every statement is sent read-only. */
+const WRITE_PERMISSIONS: readonly string[] = [
+  PERMISSIONS.QUERY_EXECUTE_DML, PERMISSIONS.QUERY_EXECUTE_DDL, PERMISSIONS.QUERY_EXECUTE_MISC,
+  PERMISSIONS.TABLE_INSERT, PERMISSIONS.TABLE_UPDATE, PERMISSIONS.TABLE_DELETE,
+  PERMISSIONS.TABLE_CREATE, PERMISSIONS.TABLE_ALTER, PERMISSIONS.TABLE_DROP,
+  PERMISSIONS.DB_CREATE, PERMISSIONS.DB_DROP, PERMISSIONS.LIVE_QUERIES_KILL_ALL,
+];
+
+/** Which check a test may force to allow. */
+export type AccessCheckStage = 'permission' | 'table';
+
+let accessOverride: ((stage: AccessCheckStage) => boolean) | null = null;
+
+/**
+ * Force a stage of the access check to allow, so a real-server test can prove
+ * that ClickHouse itself refuses what CHouse would have refused first
+ * (ADR 0033 §10.5). Throws outside `bun test`; nothing the server starts
+ * imports a caller of it.
+ */
+export function setAccessOverrideForTests(fn: ((stage: AccessCheckStage) => boolean) | null): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('setAccessOverrideForTests is only available under test');
+  accessOverride = fn;
+}
+
+function forced(stage: AccessCheckStage): boolean {
+  return accessOverride !== null && accessOverride(stage);
+}
+
+/** One `EXPLAIN AST` answers both the impersonation check and the statement's kind. */
+function rememberingPort(port: SqlParsePort): SqlParsePort {
+  const answers = new Map<string, ReturnType<SqlParsePort['explainAst']>>();
+  return {
+    explainAst(sql, params) {
+      const key = `${JSON.stringify(params ?? null)}\u0000${sql}`;
+      let answer = answers.get(key);
+      if (!answer) {
+        answer = port.explainAst(sql, params);
+        answers.set(key, answer);
+      }
+      return answer;
+    },
+    defaultDatabase: () => port.defaultDatabase(),
+  };
+}
+
+function allow(input: QueryAccessInput, accountId: string, type: StatementType | undefined, mayWrite: boolean): QueryAccessResult {
+  const statement = mintCheckedStatement({
+    sql: input.sql,
+    params: input.params,
+    connectionId: input.connectionId,
+    accountId,
+    isRead: type !== undefined && READ_KINDS.has(type),
+    mayWrite,
+  });
+  return { allowed: true, statementType: type, statement };
+}
+
 /**
  * An admin's statement (ADR 0033 §3). Admins keep their bypass of permissions
  * and data access rules, but ClickHouse must be able to parse the statement and
  * the parsed tree must hold no `EXECUTE AS`: CHouse alone decides which
  * ClickHouse user a statement runs as. When the parse cannot run, the statement
- * is refused, as it is for everyone else.
+ * is refused, as it is for everyone else. The statement's kind is read from the
+ * same parse when it is one the policy knows, so an admin's read is sent
+ * read-only too; any other shape is sent as a possible write.
  */
 async function validateAdminStatement(input: QueryAccessInput): Promise<QueryAccessResult> {
-  if (!input.sql.trim()) return { allowed: true };
+  if (!input.userId) {
+    return refuse('PERMISSION_DENIED', 'RBAC authentication is required. Please login with RBAC credentials.');
+  }
+  if (!input.sql.trim()) return allow(input, input.userId, undefined, true);
   if (!input.connectionId && !input.parser) {
     return refuse('CHECK_UNAVAILABLE', 'No ClickHouse connection is selected, so the statement can\'t be checked.');
   }
-  const parser = input.parser ?? clickhouseParsePort(input.connectionId as string);
+  const parser = rememberingPort(input.parser ?? clickhouseParsePort(input.connectionId as string));
   const checked = await refuseImpersonation(input.sql, input.params, parser);
-  return checked.ok ? { allowed: true } : refuse(checked.code, checked.reason);
+  if (!checked.ok) return refuse(checked.code, checked.reason);
+  let parsed: ParsedAccess | null = null;
+  try {
+    parsed = await parseStatementAccess(input.sql, input.params, parser);
+  } catch {
+    parsed = null;
+  }
+  return allow(input, input.userId, parsed?.ok ? parsed.access.type : undefined, true);
 }
 
 /**
@@ -257,7 +341,7 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
 
   const { access, defaultDatabase } = parsed;
   const permissions = input.permissions ?? [];
-  if (!permissions.includes(access.permission)) {
+  if (!permissions.includes(access.permission) && !forced('permission')) {
     return { ...refuse('PERMISSION_DENIED', `Permission '${access.permission}' required for this ${access.type} statement`), statementType: access.type };
   }
 
@@ -268,6 +352,11 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
     const key = `${database}\u0000${ref.table}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    if (forced('table')) continue;
+    const needed = systemTablePermission(database, ref.table);
+    if (needed && !permissions.includes(needed)) {
+      return { ...refuse('TABLE_DENIED', systemTableRefusal(ref.table, needed)), statementType: access.type };
+    }
     const result = await checkUserAccess(input.userId, database, ref.table, accessType, input.connectionId);
     if (!result.allowed) {
       return { ...refuse('TABLE_DENIED', `Access denied to ${database}.${ref.table} (requires ${accessType} permission)`), statementType: access.type };
@@ -275,11 +364,48 @@ export async function validateQueryAccess(input: QueryAccessInput): Promise<Quer
   }
   for (const name of access.databases) {
     const database = name || defaultDatabase;
+    if (forced('table')) continue;
     const result = await checkUserAccess(input.userId, database, null, accessType, input.connectionId);
     if (!result.allowed) {
       return { ...refuse('TABLE_DENIED', `Access denied to database ${database}`), statementType: access.type };
     }
   }
 
-  return { allowed: true, statementType: access.type };
+  return allow(input, input.userId, access.type, WRITE_PERMISSIONS.some((p) => permissions.includes(p)));
+}
+
+const SYSTEM_ONLY = new Set(['system', 'information_schema']);
+
+/**
+ * May this person run this read of system tables? For tools that let a model
+ * write SQL against `system.*` on a person's behalf (the fleet AI's
+ * `query_node`). It asks for no table permission and no data access rule,
+ * since those tools are gated by their own feature permission, but the
+ * statement must parse as a single SELECT that reads nothing outside the
+ * system databases, and the tables that show other people's work need their
+ * permission as everywhere else (ADR 0033 §4). Admins keep their bypass.
+ */
+export async function validateSystemRead(input: QueryAccessInput): Promise<QueryAccessResult> {
+  if (input.isAdmin) return validateAdminStatement(input);
+  if (!input.userId) return refuse('PERMISSION_DENIED', 'RBAC authentication is required. Please login with RBAC credentials.');
+  if (!input.connectionId && !input.parser) {
+    return refuse('CHECK_UNAVAILABLE', 'No ClickHouse connection is selected, so the query can\'t be checked.');
+  }
+  const parser = input.parser ?? clickhouseParsePort(input.connectionId as string);
+  const parsed = await parseStatementAccess(input.sql, input.params, parser);
+  if (!parsed.ok) return refuse(parsed.code, parsed.reason);
+  const { access, defaultDatabase } = parsed;
+  if (access.type !== 'select' || access.targets.length > 0 || access.databases.length > 0) {
+    return refuse('UNSUPPORTED_SHAPE', 'Only a single SELECT on system tables is allowed here.');
+  }
+  const permissions = input.permissions ?? [];
+  for (const ref of access.reads) {
+    const database = ref.database ?? defaultDatabase;
+    if (!SYSTEM_ONLY.has(database.toLowerCase())) {
+      return refuse('TABLE_DENIED', `Only system tables can be read here, not ${database}.${ref.table}.`);
+    }
+    const needed = systemTablePermission(database, ref.table);
+    if (needed && !permissions.includes(needed)) return refuse('TABLE_DENIED', systemTableRefusal(ref.table, needed));
+  }
+  return allow(input, input.userId, access.type, false);
 }

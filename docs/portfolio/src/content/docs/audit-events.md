@@ -1,7 +1,7 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 176 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 177 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
@@ -26,7 +26,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 176 in al
 | Doctor | `doctor.scan_run`, `doctor.schedule_update`, `doctor.report_delete` |
 | Alerting | `alerting.channel_create`, `alerting.channel_update`, `alerting.channel_delete`, `alerting.channel_test`, `alerting.channel_message`, `alerting.events_clear`, `alerting.chat_action`, `alerting.settings_update` |
 | Linked chat accounts | `chat_identity.link`, `chat_identity.unlink` |
-| Scheduled queries | `scheduled_query.create`, `scheduled_query.update`, `scheduled_query.delete`, `scheduled_query.run` |
+| Scheduled queries | `scheduled_query.create`, `scheduled_query.update`, `scheduled_query.delete`, `scheduled_query.run`, `scheduled_query.owner_changed` |
 | Data health | `data_health.promise_create`, `data_health.promise_update`, `data_health.promise_delete`, `data_health.promise_run`, `data_health.incident_acknowledge`, `data_health.incident_snooze`, `data_health.incident_note` |
 | Data observability | `observe.suggestion_accept`, `observe.suggestion_dismiss`, `observe.criticality_pin`, `observe.incident_acknowledge`, `observe.cost_rates_update`, `observe.codec_trial`, `observe.collectors_update` |
 | Context | `context.update`, `context.metric_upsert`, `context.metric_delete`, `context.dbt_import`, `context.ai_draft` |

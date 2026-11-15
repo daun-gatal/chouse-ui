@@ -69,8 +69,8 @@ is not an admin, checking every table and database the printout shows
 `node-sql-parser` (`middleware/sqlParser.ts`) is a hint for read-only checks,
 never the access decision.
 
-Two rules hold for every caller, admins included
-([ADR 0033](../docs/adr/0033-every-statement-gets-a-clickhouse-identity.md) §2, §3):
+These rules hold for every caller, admins included
+([ADR 0033](../docs/adr/0033-every-statement-gets-a-clickhouse-identity.md) §2, §3, §4):
 
 - **Only the statement executor talks to ClickHouse.** Server code gets a handle
   from `services/chExecutor/` for a connection and an actor (a person, or a named
@@ -83,6 +83,36 @@ Two rules hold for every caller, admins included
   ClickHouse to parse an admin's statement too and refuses any printout that holds
   an `ExecuteAsQuery` node, wherever it sits. Read the parse, never the text. An
   admin's statement is refused when the parse cannot run.
+- **Typed text runs only as a checked statement.** Text a person or a model wrote
+  (the editor, saved and scheduled queries, panels, notebook cells, AI tools) goes
+  to ClickHouse only through `queryChecked` / `commandChecked`
+  (`ClickHouseService.executeChecked`), which take a `CheckedStatement`: the exact
+  text, parameters, connection and account `validateQueryAccess` (or
+  `validateSystemRead`) approved. Only `middleware/dataAccess.ts` can make one
+  (`bun run check:clickhouse-access`). `query` / `command` / `executeQuery` are for
+  text CHouse builds; never pass typed text to them, and never check one text and
+  build another to send. Tests get a statement from `checked.test-util.ts`.
+- **The executor decides `readonly`, from ClickHouse's parse.** A checked read, and
+  anything from a person with no write permission, is sent with `readonly = 2`; a
+  feature that only reads passes `readOnlyFeature`. Do not set `readonly` on a
+  checked call (it is dropped) and do not decide "is this a read" from the text.
+  CHouse-built reads keep sending their own `readonly`.
+- **Ownership comes from the query id.** "Whose statement is this" is
+  `ownerAccount` / `ownerAccountSql` from `services/chExecutor`, on rows of the
+  connection's own login. Never read `rbac_user_id` or `source` out of
+  `log_comment` to decide what a person may see, stop, or what a report leaves
+  out: a statement can set its own `log_comment`. Hide CHouse's own traffic with
+  `NOT_OBSERVE` and send a feature's own requests with `internal: true`.
+- **System tables that show other people's work need a permission.**
+  `rbac/services/systemTables.ts` lists the statement logs
+  (`query:history:view:all`) and the access tables (`clickhouse:users:view`);
+  `validateQueryAccess` applies it to every table a statement reads. Do not build
+  such a read in the browser for a person without the permission: add a server
+  route that scopes it (as `POST /metrics/query-logs` does), and gate the UI with
+  `useCanReadStatementLogs`.
+- **A ClickHouse refusal is never a sign-in failure.** Word grant and read-only
+  errors with `classifyClickHouseError`; never map a ClickHouse HTTP 403 or an
+  authentication failure of the stored login to a CHouse 401.
 
 - **Check exactly what runs.** Pass `validateQueryAccess` the text and
   `query_params` that will execute, after any `LIMIT`/`EXPLAIN` you add. Never
@@ -389,6 +419,10 @@ areas above.
 - [ ] ClickHouse is reached only through `services/chExecutor/`, with the right
       actor: the signed-in person for anything a person asked for, a named
       service purpose only for work CHouse does on its own
+- [ ] Typed or model-written SQL is sent only as a `CheckedStatement`, with no
+      `readonly` of its own; ownership and "hide our own traffic" read the query
+      id, not `log_comment`; a read of the statement logs or access tables is
+      permission-checked or scoped on the server
 - [ ] Restricted-user test: could a user limited to one database reach another
       through this change (SQL shape, button, upload, AI tool, export,
       schedule)?

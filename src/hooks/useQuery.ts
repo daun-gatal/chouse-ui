@@ -13,6 +13,7 @@ import {
   UseMutationOptions,
 } from '@tanstack/react-query';
 import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
+import { useCanReadStatementLogs } from './useCanReadStatementLogs';
 import { log as appLog } from '@/lib/log';
 import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
 import { useAuthStore } from '@/stores';
@@ -495,20 +496,17 @@ export function useTableSchema(
 /**
  * Hook to fetch query logs
  */
-/**
- * SQL column → sort target mapping. Whitelist keeps the dynamic ORDER BY
- * safe from injection.
- */
-const QUERY_LOG_SORT_COLUMNS: Record<string, string> = {
-  event_time: '__table1.event_time',
-  type: 'type',
-  query: 'query',
-  user: 'user',
-  query_duration_ms: 'query_duration_ms',
-  read_rows: 'read_rows',
-  read_bytes: 'read_bytes',
-  memory_usage: 'memory_usage',
-  query_id: 'query_id',
+/** Columns the statement log can be sorted by; the server holds the same list and refuses any other. */
+const QUERY_LOG_SORT_COLUMNS: Record<string, true> = {
+  event_time: true,
+  type: true,
+  query: true,
+  user: true,
+  query_duration_ms: true,
+  read_rows: true,
+  read_bytes: true,
+  memory_usage: true,
+  query_id: true,
 };
 
 export interface QueryLogRange {
@@ -555,22 +553,6 @@ export function useQueryLogs(
   // Check if there's an active connection
   const { activeConnectionId } = useAuthStore();
 
-  // Build user filter clause (legacy support for ClickHouse username)
-  const userFilter = username ? `AND user = '${username}'` : '';
-
-  const orderColumn = QUERY_LOG_SORT_COLUMNS[sortBy] ?? '__table1.event_time';
-  const orderDir = sortDir === 'asc' ? 'ASC' : 'DESC';
-
-  // Custom absolute range overrides the relative hoursBack window.
-  const timeFilter = customRange
-    ? `__table1.event_time >= toDateTime('${customRange.start}') AND __table1.event_time <= toDateTime('${customRange.end}')`
-    : `__table1.event_time >= now() - INTERVAL ${hoursBack} HOUR`;
-  // For custom ranges we extend the partition prune so multi-day windows still
-  // get a tight `event_date >=` bound; the substring extracts YYYY-MM-DD.
-  const datePrune = customRange
-    ? `event_date >= toDate('${customRange.start.substring(0, 10)}')`
-    : `event_date >= today() - 1`;
-
   return useQuery({
     queryKey: [
       'queryLogs',
@@ -585,77 +567,18 @@ export function useQueryLogs(
       activeConnectionId,
     ] as const,
     queryFn: async () => {
-      // event_date >= today() - 1 keeps partition pruning for the common 24h window;
-      // event_time provides sub-day precision for narrower selections (15m/1h/6h).
-      // substring(query, 1, 2000) caps payload — full query texts can run to
-      // hundreds of KB on ETL workloads and dominate transfer time. type IN
-      // (...) is more selective than `!= 'QueryStart'` for the index.
-      const result = await queryApi.executeQuery(`
-          SELECT
-            type,
-            event_date,
-            formatDateTime(event_time, '%H:%i:%S') as event_time,
-            toUnixTimestamp(__table1.event_time) as event_timestamp,
-            query_id,
-            substring(query, 1, 2000) as query,
-            query_duration_ms,
-            read_rows,
-            read_bytes,
-            memory_usage,
-            user,
-            substring(exception, 1, 2000) as exception,
-            -- The RBAC actor is tagged into log_comment when a query runs through
-            -- the app. Prefer the dedicated log_comment column (always populated
-            -- when set) and fall back to the Settings map, which can be empty on
-            -- some ClickHouse versions -- otherwise app queries show only the bare
-            -- ClickHouse user.
-            if(log_comment != '', log_comment, Settings['log_comment']) as log_comment_json
-          FROM system.query_log AS __table1
-          WHERE ${datePrune}
-          AND ${timeFilter}
-          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
-          ${userFilter}
-          ORDER BY ${orderColumn} ${orderDir}
-          LIMIT ${limit}
-        `);
-
-      // ClickHouse serializes UInt64 / Float64 fields as JSON strings to
-      // preserve precision past 2^53. The TypeScript type below says `number`,
-      // but at runtime they arrive as strings — so reduce/sum at the consumer
-      // does string concatenation. Coerce every numeric field at the boundary.
-      const num = (v: unknown): number => {
-        const n = typeof v === 'number' ? v : Number(v);
-        return Number.isFinite(n) ? n : 0;
-      };
-      const logs = result.data.map((log: any) => ({
-        type: log.type,
-        event_date: log.event_date,
-        event_time: log.event_time,
-        event_timestamp: num(log.event_timestamp),
-        query_id: log.query_id,
-        query: log.query,
-        query_duration_ms: num(log.query_duration_ms),
-        read_rows: num(log.read_rows),
-        read_bytes: num(log.read_bytes),
-        memory_usage: num(log.memory_usage),
-        user: log.user,
-        exception: log.exception,
-        log_comment_json: log.log_comment_json,
-      })) as Array<{
-        type: string;
-        event_date: string;
-        event_time: string;
-        event_timestamp: number;
-        query_id: string;
-        query: string;
-        query_duration_ms: number;
-        read_rows: number;
-        read_bytes: number;
-        memory_usage: number;
-        user: string;
-        exception?: string;
-        log_comment_json?: string;
-      }>;
+      // The server builds and scopes this read (ADR 0033 §4): everyone's
+      // statements with query:history:view:all, else only the caller's own. It
+      // also says which CHouse account each row was sent for, read from the
+      // query id, so nothing here trusts what a statement says about itself.
+      const logs = await metricsApi.getQueryLogs({
+        limit,
+        hoursBack,
+        sortBy: sortBy in QUERY_LOG_SORT_COLUMNS ? sortBy : 'event_time',
+        sortDir,
+        ...(customRange ? { range: customRange } : {}),
+        ...(username ? { username } : {}),
+      });
 
       // Fetch audit logs for query execution to get RBAC users
       try {
@@ -682,11 +605,11 @@ export function useQueryLogs(
         }
 
         // Fetch audit logs (best-effort) for the timestamp-based fallback.
-        // This MUST NOT gate log_comment-based resolution below: right after a
+        // This MUST NOT gate the server-resolved accounts below: right after a
         // login the audit endpoint can transiently fail or lag, and previously
         // any failure here threw out of the whole block and dropped EVERY row
         // back to the bare ClickHouse user. Degrade to "no audit matches"
-        // instead, so log_comment-tagged queries still resolve to their RBAC user.
+        // instead, so rows the server attributed still resolve to their RBAC user.
         const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
         let allAuditLogs: Awaited<ReturnType<typeof rbacAuditApi.list>>['logs'] = [];
         try {
@@ -701,7 +624,7 @@ export function useQueryLogs(
           });
           allAuditLogs = auditResult.logs;
         } catch (auditError) {
-          appLog.warn('[QueryLogs] Audit-log fetch failed; relying on log_comment for RBAC user resolution', auditError);
+          appLog.warn('[QueryLogs] Audit-log fetch failed; relying on the accounts the server resolved', auditError);
         }
 
         // Create a map of timestamp -> Array<{ userId, connectionId, query, usernameSnapshot, emailSnapshot, displayNameSnapshot }>
@@ -771,17 +694,9 @@ export function useQueryLogs(
           appLog.debug('[QueryLogs] Audit logs found', { count: allAuditLogs.length, uniqueUsers: new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId });
         }
 
-        // Get unique user IDs to fetch user details (from both Audit Logs and log_comment)
+        // Get unique user IDs to fetch user details (from both audit logs and the accounts the server resolved)
         const auditUserIds = Array.from(auditMap.values()).flat().map(d => d.userId).filter(Boolean) as string[];
-        const logCommentUserIds = logs.map(l => {
-          try {
-            if (l.log_comment_json) {
-              const parsed = JSON.parse(l.log_comment_json);
-              return parsed.rbac_user_id;
-            }
-          } catch (e) { return null; }
-          return null;
-        }).filter(Boolean) as string[];
+        const logCommentUserIds = logs.map(l => l.rbac_user_id).filter((id): id is string => Boolean(id));
 
         const uniqueUserIds = Array.from(new Set([...auditUserIds, ...logCommentUserIds]));
         // Fetch user details in parallel ONLY for users not already in userMap (from snapshots)
@@ -858,14 +773,9 @@ export function useQueryLogs(
               }
             }
 
-            // Priority: Check log_comment for RBAC User ID
-            if (log.log_comment_json) {
-              try {
-                const parsed = JSON.parse(log.log_comment_json);
-                if (parsed.rbac_user_id) {
-                  rbacUserId = parsed.rbac_user_id;
-                }
-              } catch (e) { }
+            // The account the server read from the statement's query id wins over a timestamp match.
+            if (log.rbac_user_id) {
+              rbacUserId = log.rbac_user_id;
             }
 
 
@@ -997,8 +907,10 @@ export function useMetrics(
   const { activeConnectionId, sessionId } = useAuthStore();
   const hasConnection = !!(activeConnectionId && sessionId);
 
+  const canReadStatementLogs = useCanReadStatementLogs();
+
   return useQuery({
-    queryKey: ['metrics', timeRange, activeConnectionId] as const,
+    queryKey: ['metrics', timeRange, activeConnectionId, canReadStatementLogs] as const,
     enabled: hasConnection, // Only fetch when connected
     queryFn: async () => {
       // Convert timeRange to interval for query
@@ -1028,7 +940,9 @@ export function useMetrics(
       // 3. QueryFinish entries with exception_code != 0
       // 4. QueryStart entries with exception field (non-empty)
       // This matches the logic used in the Logs page
-      const queriesData = await safeQuery(`
+      // Reading the statement log needs query:history:view:all (the server
+      // refuses it otherwise), so without it the per-kind series stay empty.
+      const queriesData = !canReadStatementLogs ? [] : await safeQuery(`
         SELECT 
           toUnixTimestamp(toStartOfMinute(event_time)) as ts,
           countIf(query_kind = 'Select' AND type = 'QueryFinish') as select_count,
@@ -1101,7 +1015,7 @@ export function useMetrics(
             (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
              FROM system.metric_log 
              WHERE event_time >= now() - INTERVAL ${interval}) as cpuLoad,
-            (SELECT count() FROM system.processes) as activeQueries,
+            (SELECT value FROM system.metrics WHERE metric = 'Query' LIMIT 1) as activeQueries,
             (SELECT sum(value) FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection')) as connections,
             (SELECT value FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1) as uptime,
             (SELECT coalesce(sum(total_rows), 0) FROM system.tables) as totalRows,

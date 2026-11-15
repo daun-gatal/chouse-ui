@@ -8,10 +8,10 @@
 
 import { randomUUID } from "crypto";
 
-import type { ChExecutor } from "../chExecutor";
+import type { ChExecutor, CheckedStatement } from "../chExecutor";
 
 import { logger } from "../../utils/logger";
-import { validateQueryAccess } from "../../middleware/dataAccess";
+import { checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import { getUserPermissions, getUserRoles } from "../../rbac/services/rbac";
 import { SYSTEM_ROLES } from "../../rbac/schema/base";
 import { executorForConnection, personActor, type Actor } from "../chExecutor";
@@ -77,10 +77,13 @@ function buildParamValues(window: WindowParams): Record<string, string> {
  * Who a job runs as: its owner. A job with no owner is refused (ADR 0033 §4);
  * it used to run with no access check at all.
  */
-export function jobActor(job: Pick<ScheduledQueryRow, "createdBy">): Actor {
-  if (!job.createdBy) throw new Error("This job has no owner, so it cannot run. Open it and save it to become its owner.");
-  return personActor(job.createdBy);
+export function jobActor(job: Pick<ScheduledQueryRow, "ownerId">): Actor {
+  if (!job.ownerId) throw new Error(NO_OWNER);
+  return personActor(job.ownerId);
 }
+
+/** What a run of a job with no owner records. The API code for the same refusal is `JOB_HAS_NO_OWNER`. */
+export const NO_OWNER = "This job has no owner, so it cannot run. Open it and choose Assign to me, or save a change to it.";
 
 function clickhouseSettings(job: ScheduledQueryRow): Record<string, string | number> {
   const settings: Record<string, string | number> = {
@@ -106,17 +109,15 @@ interface SelectOutcome {
 async function runSelect(
   client: ChExecutor,
   job: ScheduledQueryRow,
-  execSql: string,
-  params: Record<string, string>,
+  statement: CheckedStatement,
   runId: string,
   signal: AbortSignal,
 ): Promise<SelectOutcome> {
-  const rs = await client.query({
-    query: execSql,
+  const rs = await client.queryChecked(statement, {
     format: "JSON",
     query_id: runId,
     abort_signal: signal,
-    query_params: params,
+    readOnlyFeature: 2,
     clickhouse_settings: clickhouseSettings(job) as never,
   });
   const json = (await rs.json()) as {
@@ -150,19 +151,22 @@ async function runSelect(
  * Re-evaluate the job OWNER's CURRENT data-access policy at run time, so a job
  * keeps failing once the owner loses access to a table it reads — access isn't
  * frozen at create time. Admin/super-admin owners bypass (as interactively).
- * Returns `null` when allowed, or a human-readable reason when denied.
+ * The check runs on the text and the parameter values this run sends, and
+ * returns the checked statement to send (ADR 0033 §2), or the reason it was
+ * refused.
  */
-async function ownerDataAccessDenial(job: ScheduledQueryRow): Promise<string | null> {
-  const ownerId = job.createdBy;
-  if (!ownerId) return null; // system/legacy job with no owner to evaluate
+async function ownerAccess(job: ScheduledQueryRow, params: Record<string, string>): Promise<{ statement: CheckedStatement } | { denial: string }> {
+  const ownerId = job.ownerId;
+  if (!ownerId) return { denial: NO_OWNER };
   const [roles, permissions] = await Promise.all([
     getUserRoles(ownerId),
     getUserPermissions(ownerId),
   ]);
   const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
-  const { sql, params } = executableForAccessCheck(job.query);
-  const result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params, connectionId: job.connectionId });
-  return result.allowed ? null : (result.reason ?? "data access denied for one or more tables");
+  const { sql, params: names } = executableForAccessCheck(job.query);
+  const bound = Object.fromEntries(Object.keys(names).map((name) => [name, params[name] ?? names[name]]));
+  const result = await validateQueryAccess({ userId: ownerId, isAdmin, permissions, sql, params: bound, connectionId: job.connectionId });
+  return result.allowed ? { statement: checkedOf(result) } : { denial: result.reason ?? "data access denied for one or more tables" };
 }
 
 // --- run lifecycle phases ---------------------------------------------------
@@ -257,12 +261,12 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
 
     // Re-check the owner's CURRENT data access every run — revoking access to a
     // table mid-life must start failing the job, not keep running on stale grants.
-    const denial = await ownerDataAccessDenial(executionJob);
-    if (denial) throw new Error(`data access denied: ${denial}`);
+    const access = await ownerAccess(executionJob, params);
+    if ("denial" in access) throw new Error(`data access denied: ${access.denial}`);
 
     const { sql: execSql } = buildExecutableQuery(executionJob.query);
     if (executionJob.outputMode === "none") {
-      const outcome = await runSelect(client, executionJob, execSql, params, runId, controller.signal);
+      const outcome = await runSelect(client, executionJob, access.statement, runId, controller.signal);
       rowCount = outcome.rowCount;
       truncated = outcome.truncated;
       resultJson = JSON.stringify({

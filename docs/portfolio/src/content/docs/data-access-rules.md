@@ -46,6 +46,19 @@ Because the first match wins, a higher-priority allow beats a lower-priority den
 
 > **Note:** Queries against `system` and `information_schema` are allowed by default, so monitoring and metadata lookups keep working; those databases are hidden from the Explorer tree for non-admins. What a user sees in the Monitoring tabs is governed by the per-tab permissions (`logs:view`, `parts:view`, …).
 
+### System tables that show other people's work
+
+Two groups of `system` tables are the exception. A statement that reads one needs a permission, wherever the table appears in it (a join, a subquery, a CTE):
+
+| Tables in `system` | Needs | Why |
+| --- | --- | --- |
+| `query_log`, `query_thread_log`, `query_views_log`, `processes`, `text_log`, `session_log`, `crash_log`, `asynchronous_insert_log`, `opentelemetry_span_log`, `asynchronous_inserts`, `query_cache`, `zookeeper_log` | `query:history:view:all` | They hold the text of statements other people ran |
+| `users`, `roles`, `grants`, `role_grants`, `row_policies`, `quotas`, `quota_usage`, `quotas_usage`, `settings_profiles`, `settings_profile_elements`, `user_directories`, `quota_limits`, `zookeeper` | `clickhouse:users:view` | They list ClickHouse users and what each may do |
+
+An old log table that ClickHouse kept after an upgrade (`query_log_0`, `query_log_1`, …) counts as the log. Every other system table stays open. That includes `system.mutations`, `system.distributed_ddl_queue` and `system.errors`, which the Monitoring pages read and which can show parts of other people's statements (the text of a mutation or an `ON CLUSTER` statement, a fragment in an error message); treat `SELECT` on the `system` database as showing those.
+
+Without `query:history:view:all` you still see your own statements: the [Logs](/docs/monitoring-query-logs/) page and Live Queries ask the server, which returns only the statements CHouse UI sent for your account. The parts of the monitoring pages that read these tables directly show a note naming the permission instead. Admins are not affected.
+
 ### What gets checked
 
 ClickHouse itself parses each query before it runs: the server asks the

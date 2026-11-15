@@ -269,7 +269,7 @@ export const draftTableContextCapability: StructuredCapability<{ connectionId: s
     const tablePii = (context.curated?.tags ?? []).some((t) => t.toLowerCase() === "pii");
     let profile: TableProfile | null = null;
     try {
-      profile = await profileTable(input.connectionId, input.database, input.table, context.derived.columns, { tablePii, catalogRows: context.derived.totalRows });
+      profile = await profileTable(input.connectionId, input.database, input.table, context.derived.columns, { tablePii, catalogRows: context.derived.totalRows, accountId: ctx.userId || undefined });
     } catch (error) {
       // The draft still works from metadata alone; a failed profile only narrows the evidence.
       logger.warn({ module: "ContextDraft", err: error instanceof Error ? error.message : String(error) }, "Table profile failed");

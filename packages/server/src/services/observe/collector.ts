@@ -10,7 +10,7 @@
 
 import { randomUUID } from "crypto";
 
-import type { ChExecutor } from "../chExecutor";
+import { deniedSystemTables, type ChExecutor } from "../chExecutor";
 
 import { listConnections } from "../../rbac/services/connections";
 import { logger } from "../../utils/logger";
@@ -110,11 +110,6 @@ async function setWatermark(connectionId: string, collector: string, value: numb
     INSERT INTO obs_watermarks (connection_id, collector, watermark, updated_at) VALUES (${connectionId}, ${collector}, ${value}, ${now})
     ON CONFLICT (connection_id, collector) DO UPDATE SET watermark = ${value}, updated_at = ${now}
   `);
-}
-
-function accessDeniedTables(message: string): string[] {
-  const tables = [...message.matchAll(/system\.([a-z_0-9]+)/gi)].map((m) => m[1]);
-  return /ACCESS_DENIED|Not enough privileges/i.test(message) ? [...new Set(tables)] : [];
 }
 
 export class ObserveService {
@@ -264,7 +259,7 @@ export class ObserveService {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
-      const denied = accessDeniedTables(message);
+      const denied = deniedSystemTables(error);
       await recordStatus(conn.id, collector.name, {
         ok: false,
         error: message,

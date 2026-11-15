@@ -95,7 +95,7 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
     return [...(jobs ?? [])]
       .filter((j) => (enabledFilter === "all" ? true : enabledFilter === "enabled" ? j.enabled : !j.enabled))
       .filter((j) => (stateFilter === "all" ? true : lastState(j) === stateFilter))
-      .filter((j) => (ownerFilter === "all" ? true : j.createdBy === ownerFilter))
+      .filter((j) => (ownerFilter === "all" ? true : j.ownerId === ownerFilter))
       .filter((j) => (term ? j.name.toLowerCase().includes(term) || (j.description ?? "").toLowerCase().includes(term) : true))
       .sort((a, b) => {
         const ra = statusRank[a.lastRun?.status ?? "success"] ?? 3;
@@ -239,11 +239,21 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
             {pageItems.map((job) => (
               <Card key={job.id} className="flex items-center justify-between gap-4 rounded-xs border-ink-500 bg-ink-100 p-3">
                 <button type="button" onClick={() => onSelectedJobChange(job.id)} className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-medium text-paper">{job.name}</span>
+                  {/* Badges wrap under the name on a narrow screen instead of squeezing it out. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="min-w-0 max-w-full truncate text-[13px] font-medium text-paper">{job.name}</span>
                     {job.lastRun && <StatusBadge status={job.lastRun.status} />}
                     {!job.enabled && <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">disabled</span>}
-                    {canViewAll && <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{ownerName(job.createdBy)}</span>}
+                    {job.ownerId === null ? (
+                      <span
+                        className="inline-flex shrink-0 items-center rounded-xs border border-amber-500/40 px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-amber-500"
+                        title="This job cannot run until it has an owner."
+                      >
+                        No owner
+                      </span>
+                    ) : (
+                      canViewAll && <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{ownerName(job.ownerId)}</span>
+                    )}
                   </div>
                   <p className="mt-0.5 truncate font-mono text-[11px] text-paper-muted">
                     {scheduleLabel(job)} · last run {formatRelative(job.lastRun?.startedAt)}

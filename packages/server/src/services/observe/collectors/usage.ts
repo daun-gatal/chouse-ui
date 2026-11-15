@@ -6,6 +6,7 @@
 
 import { sql, type SQL } from "drizzle-orm";
 
+import { ownerAccountSql } from "../../chExecutor";
 import { NOT_OBSERVE, selectRows } from "../clickhouse";
 import type { CollectorContext, ConnectionCollector } from "../collector";
 import { all, num, runBatch, str } from "../db";
@@ -198,7 +199,7 @@ export const usageCollector: ConnectionCollector = {
     const rows = since >= until ? [] : await selectRows<{ tbl: string; src: string; job_id: string; pat_id: string; rbac_user_id: string; user: string; client: string; day_ms: number; reads: number; bytes: number }>(ctx.client, `
       SELECT arrayJoin(arrayFilter(t -> NOT startsWith(t, 'system.') AND position(t, '.') > 0, tables)) AS tbl,
         JSONExtractString(log_comment, 'source') AS src, JSONExtractString(log_comment, 'job_id') AS job_id,
-        JSONExtractString(log_comment, 'pat_id') AS pat_id, JSONExtractString(log_comment, 'rbac_user_id') AS rbac_user_id,
+        JSONExtractString(log_comment, 'pat_id') AS pat_id, ${ownerAccountSql()} AS rbac_user_id,
         user, if(client_name != '', client_name, splitByChar(' ', http_user_agent)[1]) AS client,
         toUnixTimestamp(toStartOfDay(event_time)) * 1000 AS day_ms, count() AS reads, sum(read_bytes) AS bytes
       FROM system.query_log

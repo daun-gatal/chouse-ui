@@ -9,7 +9,7 @@
 import { PERMISSIONS } from "../../rbac/schema/base";
 import { getUserById } from "../../rbac/services/rbac";
 import { AppError } from "../../types";
-import { NOT_OBSERVE } from "../observe/clickhouse";
+import { NOT_CHOUSE_BY_SOURCE } from "../observe/clickhouse";
 import { dashboardAccess, has, type Viewer } from "./access";
 import { loadAnnotations, type AnnotationEvent } from "./annotations";
 import type { ExplainRequest } from "./explainSchemas";
@@ -79,7 +79,7 @@ export async function gatherEvidence(request: ExplainRequest, userId: string | u
   const weekBefore = await run("the panel a week earlier", panel.sql, { from: from - WEEK_SECONDS, to: to - WEEK_SECONDS, intervalSeconds: window.intervalSeconds });
   const slowestQueries = await run("the slowest queries (system.query_log)", `SELECT toString(normalized_query_hash) AS shape, any(substring(query, 1, 300)) AS sample, count() AS runs,
   round(quantile(0.95)(query_duration_ms)) AS p95_ms, sum(read_bytes) AS read_bytes, any(tables) AS tables
-FROM system.query_log WHERE type = 'QueryFinish' AND event_time >= {{from}} AND event_time < {{to}} AND ${NOT_OBSERVE}
+FROM system.query_log WHERE type = 'QueryFinish' AND event_time >= {{from}} AND event_time < {{to}} AND ${NOT_CHOUSE_BY_SOURCE}
 GROUP BY normalized_query_hash ORDER BY p95_ms DESC LIMIT 10`);
   const mutations = await run("mutations (system.mutations)", `SELECT database, table, mutation_id, substring(command, 1, 300) AS command, create_time, is_done, parts_to_do, latest_fail_reason
 FROM system.mutations WHERE (create_time >= {{from}} - INTERVAL 1 HOUR AND create_time < {{to}}) OR is_done = 0

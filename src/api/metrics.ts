@@ -307,6 +307,43 @@ export async function getRecentQueries(limit: number = 10, username?: string): P
   });
 }
 
+/** One row of the statement log, as the Logs page shows it. */
+export interface QueryLogRow {
+  type: string;
+  event_date: string;
+  event_time: string;
+  event_timestamp: number;
+  query_id: string;
+  query: string;
+  query_duration_ms: number;
+  read_rows: number;
+  read_bytes: number;
+  memory_usage: number;
+  user: string;
+  exception: string;
+  /** The CHouse account the statement was sent for, read by the server from its query id. */
+  rbac_user_id: string | null;
+}
+
+export interface QueryLogRequest {
+  limit: number;
+  hoursBack: number;
+  sortBy: string;
+  sortDir: 'asc' | 'desc';
+  /** An absolute window (`YYYY-MM-DD HH:MM:SS`); it replaces `hoursBack`. */
+  range?: { start: string; end: string };
+  /** A ClickHouse user to narrow to. */
+  username?: string;
+}
+
+/**
+ * Get the statement log. The server builds the query and scopes it: everyone's
+ * statements with query:history:view:all, otherwise only the caller's own.
+ */
+export async function getQueryLogs(request: QueryLogRequest): Promise<QueryLogRow[]> {
+  return api.post<QueryLogRow[]>('/metrics/query-logs', request);
+}
+
 /**
  * Get all production metrics in one optimized call
  * @param interval - Time interval in minutes (default: 60)

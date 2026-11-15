@@ -108,6 +108,7 @@ function toJobRow(r: Record<string, unknown>): ScheduledQueryRow {
     maxAttempts: Number(r.max_attempts ?? 2),
     retentionDays: Number(r.retention_days ?? 90),
     createdBy: strOrNull(r.created_by),
+    ownerId: strOrNull(r.owner_id),
     createdAt: Number(r.created_at ?? 0),
     updatedAt: Number(r.updated_at ?? 0),
   };
@@ -183,9 +184,19 @@ export interface JobInput {
 /** List jobs for one producer, optionally scoped to a single owner. */
 export async function listJobs(ownerId?: string | null, kind: SqKind = "sql_query"): Promise<ScheduledQueryRow[]> {
   const rows = ownerId
-    ? await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} AND created_by = ${ownerId} ORDER BY name`)
+    ? await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} AND (owner_id = ${ownerId} OR (owner_id IS NULL AND created_by = ${ownerId})) ORDER BY name`)
     : await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} ORDER BY name`);
   return rows.map(toJobRow);
+}
+
+/**
+ * Whether a job is this account's: it is its owner, or the job has no owner
+ * and this account created it. A creator stops seeing a job once someone else
+ * owns it, because its results are then read with the new owner's access.
+ */
+export function isJobOf(job: Pick<ScheduledQueryRow, "ownerId" | "createdBy">, accountId: string | undefined): boolean {
+  if (!accountId) return false;
+  return job.ownerId ? job.ownerId === accountId : job.createdBy === accountId;
 }
 
 export async function listEnabledJobs(): Promise<ScheduledQueryRow[]> {
@@ -198,7 +209,8 @@ export async function getJob(id: string): Promise<ScheduledQueryRow | null> {
   return rows[0] ? toJobRow(rows[0]) : null;
 }
 
-export async function createJob(input: JobInput, createdBy: string | null, kind: SqKind = "sql_query"): Promise<string> {
+/** Create a job. It runs as `ownerId`: the person saving it, unless the caller names someone else. */
+export async function createJob(input: JobInput, createdBy: string | null, kind: SqKind = "sql_query", ownerId: string | null = createdBy): Promise<string> {
   const id = randomUUID();
   const now = Date.now();
   const outputConfig = input.outputConfig ? JSON.stringify(input.outputConfig) : null;
@@ -213,7 +225,7 @@ export async function createJob(input: JobInput, createdBy: string | null, kind:
       output_mode, dest_database, dest_table, output_config,
       max_rows, timeout_secs, use_final, seq_consistency,
       last_run_at, last_run_by, max_attempts, retention_days,
-      created_by, created_at, updated_at
+      created_by, owner_id, created_at, updated_at
     ) VALUES (
       ${id}, ${input.name}, ${input.description}, ${kind}, ${input.connectionId}, ${input.query}, ${input.enabled ? 1 : 0},
       ${input.frequency}, ${input.hour}, ${input.dayOfWeek}, ${input.dayOfMonth}, ${input.cronExpr}, ${input.timezone},
@@ -221,7 +233,7 @@ export async function createJob(input: JobInput, createdBy: string | null, kind:
       ${input.outputMode}, ${input.destDatabase}, ${input.destTable}, ${outputConfig},
       ${input.maxRows}, ${input.timeoutSecs}, ${input.useFinal ? 1 : 0}, ${input.seqConsistency ? 1 : 0},
       0, NULL, ${input.maxAttempts}, ${input.retentionDays},
-      ${createdBy}, ${now}, ${now}
+      ${createdBy}, ${ownerId}, ${now}, ${now}
     )
   `);
   return id;
@@ -249,14 +261,18 @@ export async function updateJob(id: string, input: JobInput): Promise<boolean> {
 }
 
 /**
- * Give a job with no owner to `userId`. A job loses its owner when that
- * account is deleted, and a job with no owner does not run (ADR 0033 §4).
- * Returns true when the job was taken; a job that has an owner is left alone.
+ * Make `userId` the account a job runs as (ADR 0033 §4). Returns true when the
+ * owner changed. With `onlyIfUnowned`, a job that has an owner is left alone.
  */
-export async function adoptOwnerlessJob(id: string, userId: string): Promise<boolean> {
+export async function setJobOwner(id: string, userId: string, onlyIfUnowned = false): Promise<boolean> {
   const existing = await getJob(id);
-  if (!existing || existing.createdBy) return false;
-  await run(sql`UPDATE scheduled_queries SET created_by = ${userId}, updated_at = ${Date.now()} WHERE id = ${id} AND created_by IS NULL`);
+  if (!existing || existing.ownerId === userId) return false;
+  if (onlyIfUnowned && existing.ownerId) return false;
+  if (onlyIfUnowned) {
+    await run(sql`UPDATE scheduled_queries SET owner_id = ${userId}, updated_at = ${Date.now()} WHERE id = ${id} AND owner_id IS NULL`);
+    return (await getJob(id))?.ownerId === userId;
+  }
+  await run(sql`UPDATE scheduled_queries SET owner_id = ${userId}, updated_at = ${Date.now()} WHERE id = ${id}`);
   return true;
 }
 

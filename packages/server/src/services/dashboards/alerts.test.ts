@@ -195,6 +195,63 @@ describe("evaluator end to end", () => {
     expect(status.lastError).toContain("not numbers");
   });
 
+  // ADR 0033 §4: an alert and a report run later as their owner, so a save
+  // that changes what the panel runs makes the saver that owner.
+  describe("who an alert and a report run as after a save", () => {
+    const EDITOR = "panel-editor";
+    const owners = async (): Promise<{ alert: string; report: string }> => ({
+      alert: String((await rawAll(sql`SELECT owner_id FROM dashboard_alerts WHERE id = ${alertId}`))[0].owner_id),
+      report: String((await rawAll(sql`SELECT owner_id FROM dashboard_reports WHERE id = 'report-1'`))[0].owner_id),
+    });
+    const save = async (userId: string | null, change: (input: ReturnType<typeof store.toInput>) => ReturnType<typeof store.toInput>) => {
+      const detail = (await store.getDashboard(dashboardId))!;
+      return store.updateDashboard(dashboardId, detail.dashboard.version, change(store.toInput(detail)), { userId, source: "ui" });
+    };
+    const reset = async (): Promise<void> => {
+      await rawRun(sql`UPDATE dashboard_alerts SET owner_id = ${OWNER} WHERE id = ${alertId}`);
+      await rawRun(sql`UPDATE dashboard_reports SET owner_id = ${OWNER} WHERE id = 'report-1'`);
+    };
+
+    beforeAll(async () => {
+      await rawRun(sql`INSERT INTO dashboard_reports (id, dashboard_id, owner_id, name, connection_id, schedule, time_range, only_if_alert, enabled, next_run_at, created_at, updated_at)
+        VALUES ('report-1', ${dashboardId}, ${OWNER}, 'Weekly', 'conn-a', '{}', '6h', 0, 1, 0, 1, 1)`);
+    });
+    beforeEach(reset);
+
+    it("stays with its owner when someone else saves without changing a statement", async () => {
+      const result = await save(EDITOR, (input) => ({ ...input, title: "Shop (renamed)", panels: input.panels.map((p) => ({ ...p, title: `${p.title}!` })) }));
+      expect(result.rerunAsSaverPanelIds).toEqual([]);
+      expect(await owners()).toEqual({ alert: OWNER, report: OWNER });
+    });
+
+    it("moves to whoever changes the panel's SQL", async () => {
+      const result = await save(EDITOR, (input) => ({ ...input, panels: input.panels.map((p) => (p.kind === "chart" ? { ...p, sql: "SELECT now() AS t, count() AS v FROM shop.orders WHERE 1" } : p)) }));
+      expect(result.rerunAsSaverPanelIds).toEqual([panelId]);
+      expect(await owners()).toEqual({ alert: EDITOR, report: EDITOR });
+    });
+
+    it("moves when the dashboard's variables change, since they are part of every statement", async () => {
+      const result = await save(EDITOR, (input) => ({ ...input, variables: [{ name: "db", label: "DB", kind: "identifier", options: { source: "static", values: ["shop"] }, default: "shop" }] as never }));
+      expect(result.rerunAsSaverPanelIds).toEqual([panelId]);
+      expect(await owners()).toEqual({ alert: EDITOR, report: EDITOR });
+      await save(OWNER, (input) => ({ ...input, variables: [] }));
+    });
+
+    it("moves the reports, not the alerts of untouched panels, when a panel is added", async () => {
+      const result = await save(EDITOR, (input) => ({ ...input, panels: [...input.panels, { ...input.panels[0], id: null, title: "More", layout: { x: 0, y: 9, w: 12, h: 9 } }] }));
+      expect(result.rerunAsSaverPanelIds).toEqual([]);
+      expect(await owners()).toEqual({ alert: OWNER, report: EDITOR });
+      await save(OWNER, (input) => ({ ...input, panels: input.panels.filter((p) => p.title !== "More") }));
+    });
+
+    it("leaves owners alone for a system save and for the owner's own change", async () => {
+      await save(null, (input) => ({ ...input, panels: input.panels.map((p) => (p.kind === "chart" ? { ...p, sql: `${p.sql} AND 1` } : p)) }));
+      expect(await owners()).toEqual({ alert: OWNER, report: OWNER });
+      await save(OWNER, (input) => ({ ...input, panels: input.panels.map((p) => (p.kind === "chart" ? { ...p, sql: "SELECT now() AS t, count() AS v FROM shop.orders" } : p)) }));
+      expect(await owners()).toEqual({ alert: OWNER, report: OWNER });
+    });
+  });
+
   it("goes to error when the dashboard is no longer assigned to the alert's connection", async () => {
     const detail = (await store.getDashboard(dashboardId))!;
     await store.updateDashboard(dashboardId, detail.dashboard.version, {

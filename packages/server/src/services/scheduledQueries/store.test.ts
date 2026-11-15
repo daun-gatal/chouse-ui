@@ -87,14 +87,45 @@ describe("a job with no owner", () => {
     const ownerless = await store.createJob(jobInput("orphan", "connection-1"), null);
     const owned = await store.createJob(jobInput("owned", "connection-1"), "owner-1");
 
-    expect(await store.adoptOwnerlessJob(ownerless, "editor-9")).toBe(true);
-    expect((await store.getJob(ownerless))?.createdBy).toBe("editor-9");
-    // A second save by someone else does not move it again.
-    expect(await store.adoptOwnerlessJob(ownerless, "other-2")).toBe(false);
-    expect((await store.getJob(ownerless))?.createdBy).toBe("editor-9");
+    expect((await store.getJob(ownerless))?.ownerId).toBeNull();
+    expect((await store.getJob(owned))?.ownerId).toBe("owner-1");
+    // A job with no owner stays with whoever created it, until someone takes it.
+    expect(store.isJobOf({ ownerId: null, createdBy: "maker-1" }, "maker-1")).toBe(true);
+    expect(store.isJobOf({ ownerId: null, createdBy: null }, "maker-1")).toBe(false);
 
-    expect(await store.adoptOwnerlessJob(owned, "editor-9")).toBe(false);
-    expect((await store.getJob(owned))?.createdBy).toBe("owner-1");
-    expect(await store.adoptOwnerlessJob("no-such-job", "editor-9")).toBe(false);
+    expect(await store.setJobOwner(ownerless, "editor-9", true)).toBe(true);
+    expect((await store.getJob(ownerless))?.ownerId).toBe("editor-9");
+    // Who created it is history and does not move.
+    expect((await store.getJob(ownerless))?.createdBy).toBeNull();
+    // "Assign to me" by someone else does not move it again.
+    expect(await store.setJobOwner(ownerless, "other-2", true)).toBe(false);
+    expect((await store.getJob(ownerless))?.ownerId).toBe("editor-9");
+
+    expect(await store.setJobOwner(owned, "editor-9", true)).toBe(false);
+    expect((await store.getJob(owned))?.ownerId).toBe("owner-1");
+    expect(await store.setJobOwner("no-such-job", "editor-9")).toBe(false);
+  });
+
+  it("moves to whoever saves a change to what the job does, and is then theirs alone", async () => {
+    const id = await store.createJob(jobInput("handed-over", "connection-1"), "owner-1");
+    expect(await store.setJobOwner(id, "editor-9")).toBe(true);
+    expect(await store.setJobOwner(id, "editor-9")).toBe(false);
+    const job = await store.getJob(id);
+    expect(job?.ownerId).toBe("editor-9");
+    expect(job?.createdBy).toBe("owner-1");
+    // Its results are now read with the new owner's access, so the creator no longer sees it.
+    expect((await store.listJobs("owner-1")).some((j) => j.id === id)).toBe(false);
+    expect(store.isJobOf(job!, "owner-1")).toBe(false);
+    expect(store.isJobOf(job!, "editor-9")).toBe(true);
+    expect(store.isJobOf(job!, undefined)).toBe(false);
+    expect((await store.listJobs("editor-9")).some((j) => j.id === id)).toBe(true);
+    expect((await store.listJobs("other-2")).some((j) => j.id === id)).toBe(false);
+  });
+
+  it("can be created to run as someone other than the account recorded as its creator", async () => {
+    const id = await store.createJob(jobInput("watch", "connection-1"), "responsible-1", "data_health_check", "saver-2");
+    const job = await store.getJob(id);
+    expect(job?.createdBy).toBe("responsible-1");
+    expect(job?.ownerId).toBe("saver-2");
   });
 });

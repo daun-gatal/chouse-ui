@@ -31,7 +31,8 @@ Custom dashboards (ADR 0021, ADR 0023): the strict document spec, storage with v
 - Writes `dashboards`, `dashboard_panels`, `dashboard_versions`, `dashboard_shares`, `dashboard_pins` (`[store.ts:createDashboard]`, `[store.ts:setShares]`, `[store.ts:pin]`); `dashboard_alerts`, `dashboard_alert_state`, `dashboard_alert_channels` (`[alertStore.ts:createAlert]`, `[alertStore.ts:saveStatus]`); `dashboard_reports`, `dashboard_report_channels` (`[reports.ts:createReport]`); `dashboard_snapshots` (`[snapshots.ts:createSnapshot]`); `dashboard_notes` (`[annotations.ts:addNote]`).
 - `deleteDashboard` deletes, in one atomic batch, the dashboard's panels, shares, pins, notes, versions, snapshots, report channels, reports and panel alerts (`[store.ts:deleteDashboard]`).
 - Each report scheduler tick (every 60 s) first deletes expired rows from `dashboard_snapshots` (`[reports.ts:DashboardReportScheduler]`, `[snapshots.ts:deleteExpiredSnapshots]`).
-- Read-only ClickHouse queries (`[runner.ts:execute]`).
+- Read-only ClickHouse queries (`[runner.ts:execute]`): it takes the `CheckedStatement` that `[runner.ts:assertDataAccess]` returned and sends it with `readonly = 1` for every viewer, admins included.
+- A save that changes a panel's SQL, or the dashboard's variables, makes the saver the owner of that panel's alerts; that, or a new panel, makes the saver the owner of the dashboard's reports, in the same transaction as the save (`[store.ts:updateDashboard]`, ADR 0033 §4).
 - `setInterval` ticks with `obs_leases` claims; notifications via the shared notify layer and `alert_events` (`[alerts.ts:DashboardAlertEvaluator]`, `[reports.ts:DashboardReportScheduler]`).
 - Per-pod in-memory caches (`[cache.ts:ResultCache]`, `[baseline.ts:clearBaselineCache]`).
 

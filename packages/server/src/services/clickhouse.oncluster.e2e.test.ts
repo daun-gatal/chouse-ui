@@ -15,6 +15,7 @@
  */
 
 import { personActor } from "./chExecutor";
+import { checkedForTests } from "./chExecutor/checked.test-util";
 import { describe, it, expect } from "bun:test";
 import { ClickHouseService } from "./clickhouse";
 
@@ -47,6 +48,9 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
     }, personActor("e2e-user"));
   }
 
+  /** DDL an admin typed: a write, sent as the checked statement the stream takes (ADR 0033 §2). */
+  const ddl = (sql: string) => checkedForTests({ sql, accountId: "e2e-user", connectionId: undefined, isRead: false, mayWrite: true });
+
   function uniqueTable(prefix: string): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -62,8 +66,8 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
     const table = uniqueTable("e2e_oc_create");
     try {
       const lines = await collectLines(
-        service.streamQueryRows(
-          `CREATE TABLE ${table} ON CLUSTER fleet_cluster (id UInt32) ENGINE MergeTree ORDER BY id`
+        service.streamQueryRows(ddl(
+          `CREATE TABLE ${table} ON CLUSTER fleet_cluster (id UInt32) ENGINE MergeTree ORDER BY id`)
         )
       );
 
@@ -80,7 +84,7 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
       }
     } finally {
       try {
-        await drain(service.streamQueryRows(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`));
+        await drain(service.streamQueryRows(ddl(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`)));
       } catch {
         // Best-effort cleanup only.
       }
@@ -91,13 +95,13 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
     const service = makeService();
     const table = uniqueTable("e2e_oc_drop");
     await drain(
-      service.streamQueryRows(
-        `CREATE TABLE ${table} ON CLUSTER fleet_cluster (id UInt32) ENGINE MergeTree ORDER BY id`
+      service.streamQueryRows(ddl(
+        `CREATE TABLE ${table} ON CLUSTER fleet_cluster (id UInt32) ENGINE MergeTree ORDER BY id`)
       )
     );
     try {
       const lines = await collectLines(
-        service.streamQueryRows(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`)
+        service.streamQueryRows(ddl(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`))
       );
 
       expect(errorLines(lines)).toEqual([]);
@@ -105,7 +109,7 @@ describe.skipIf(!E2E_URL)("clickhouse ON CLUSTER e2e (issue #336)", () => {
       expect(isRecord(end) && end["t"]).toBe("e");
     } finally {
       try {
-        await drain(service.streamQueryRows(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`));
+        await drain(service.streamQueryRows(ddl(`DROP TABLE IF EXISTS ${table} ON CLUSTER fleet_cluster`)));
       } catch {
         // Best-effort cleanup only.
       }

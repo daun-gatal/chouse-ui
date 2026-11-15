@@ -30,9 +30,11 @@ export interface Release {
 export const RELEASE: Release = {
   version: "3.18",
   kind: "minor",
-  summary: "Every statement CHouse UI sends to ClickHouse now says which account it is for, and EXECUTE AS is refused for everyone.",
+  summary: "Every statement CHouse UI sends to ClickHouse now says which account it is for, reads are sent read-only, and EXECUTE AS is refused for everyone.",
   highlights: [
     { label: "Who a statement runs as", href: "/docs/security/#who-a-statement-runs-as" },
+    { label: "Reads are sent read-only", href: "/docs/security/#reads-are-sent-read-only" },
+    { label: "System tables that need a permission", href: "/docs/data-access-rules/#system-tables-that-show-other-peoples-work" },
     { label: "Who a job runs as", href: "/docs/scheduled-queries/#who-a-job-runs-as" },
     { label: "Killing queries", href: "/docs/monitoring-live-queries/#killing-queries" },
   ],

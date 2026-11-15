@@ -1,3 +1,4 @@
+import { checkedForTests } from "../services/chExecutor/checked.test-util";
 import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 
@@ -10,6 +11,8 @@ const mockGetVersion = mock();
 
 class MockClickHouseService {
     executeQuery = mockExecuteQuery;
+    // Typed text arrives as a checked statement; the assertions below read its text.
+    executeChecked = (statement: { sql: string }, ...rest: unknown[]) => mockExecuteQuery(statement.sql, ...rest);
     getIntellisenseData = mockGetIntellisenseData;
     close = mockClose;
     ping = mockPing;
@@ -64,7 +67,11 @@ mock.module("../middleware/dataAccess", () => ({
         }
         await next();
     }),
-    validateQueryAccess: mockValidateQueryAccess
+    validateQueryAccess: mockValidateQueryAccess,
+    checkedOf: (result: { statement?: unknown }) => {
+        if (!result.statement) throw new Error("test: the access check stub returned no statement");
+        return result.statement;
+    },
 }));
 
 import queryRoutes from "./query";
@@ -94,7 +101,7 @@ describe("Query Routes", () => {
         });
 
         // Default allow access
-        mockValidateQueryAccess.mockResolvedValue({ allowed: true });
+        mockValidateQueryAccess.mockImplementation(async (input: { sql: string }) => ({ allowed: true, statement: checkedForTests({ sql: input.sql, accountId: "user1" }) }));
     });
 
     afterAll(() => {

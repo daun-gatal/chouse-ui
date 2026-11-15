@@ -1,4 +1,19 @@
-import { executorForConfig, type Actor, type ChExecutor } from "./chExecutor";
+import {
+  classifiedAppError,
+  classifyClickHouseError,
+  clickhouseErrorCode,
+  executorForConfig,
+  ownerAccount,
+  ownerAccountSql,
+  type Actor,
+  type ChExecutor,
+  type CheckedCommandArgs,
+  type CheckedQueryArgs,
+  type CheckedStatement,
+  type CommandResult,
+  type ReadOnlyLevel,
+} from "./chExecutor";
+import type { DataFormat, ResultSet } from "./chExecutor";
 import type {
   ConnectionConfig,
   QueryResult,
@@ -81,6 +96,58 @@ function toHostRows(envelope: unknown, maxResultRows?: number): HostTableShape {
   return { names, types, rows };
 }
 
+/** Columns the Logs page may sort by. An allow-list, since the name goes into ORDER BY. */
+export const QUERY_LOG_SORT_COLUMNS: Record<string, string> = {
+  event_time: "__table1.event_time",
+  type: "type",
+  query: "query",
+  user: "user",
+  query_duration_ms: "query_duration_ms",
+  read_rows: "read_rows",
+  read_bytes: "read_bytes",
+  memory_usage: "memory_usage",
+  query_id: "query_id",
+};
+
+export const QUERY_LOG_MAX_ROWS = 10_000;
+
+export interface QueryLogOptions {
+  limit: number;
+  hoursBack: number;
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  /** An absolute window, `YYYY-MM-DD HH:MM:SS` at both ends; it replaces `hoursBack`. */
+  range?: { start: string; end: string };
+  /** A ClickHouse user to narrow to. */
+  username?: string;
+  /** When set, only statements CHouse sent for this account. */
+  ownAccountId?: string;
+}
+
+export interface QueryLogRow {
+  type: string;
+  event_date: string;
+  event_time: string;
+  event_timestamp: number;
+  query_id: string;
+  query: string;
+  query_duration_ms: number;
+  read_rows: number;
+  read_bytes: number;
+  memory_usage: number;
+  user: string;
+  exception: string;
+  /** The CHouse account the statement was sent for, or null. */
+  rbac_user_id: string | null;
+}
+
+/** What the person is told about a failed statement: CHouse's wording for a grant or read-only refusal, else ClickHouse's own. */
+export function personMessage(error: unknown): string {
+  const classified = classifyClickHouseError(error);
+  if (classified) return classified.message;
+  return error instanceof Error ? error.message : String(error);
+}
+
 // ============================================
 // ClickHouse Service
 // ============================================
@@ -105,6 +172,20 @@ export class ClickHouseService {
   /** The executor handle every statement goes through. It sets the query id, log_comment and quota key. */
   private get client(): ChExecutor {
     return executorForConfig(this.config, this.actor, { context: this.tags });
+  }
+
+  /** The ClickHouse login this service sends with: the `user` of every row it logs. */
+  get loginUser(): string {
+    return this.config.username;
+  }
+
+  /**
+   * The same handle for text CHouse builds around a statement a person typed
+   * (`EXPLAIN …`, a row count for a mutation's predicate). The typed part was
+   * checked, and these only read, so ClickHouse is asked to refuse a write.
+   */
+  private get readOnlyClient(): ChExecutor {
+    return executorForConfig(this.config, this.actor, { context: this.tags, defaults: { readonly: "2" } });
   }
 
   /** The connection's default database (used to resolve unqualified table refs). */
@@ -143,25 +224,71 @@ export class ClickHouseService {
   // Query Execution
   // ============================================
 
+  /** Run CHouse-built text. Typed text goes through `executeChecked`. */
   async executeQuery<T = Record<string, unknown>>(
     query: string,
     format: string = "JSON",
     queryId?: string,
     maxResultRows?: number
   ): Promise<QueryResult<T>> {
+    return this.run<T>(query, format, queryId, maxResultRows);
+  }
+
+  /**
+   * Run typed text (ADR 0033 §2): only a statement the access check returned.
+   * The executor decides `readonly` for it; `readOnlyFeature` is for a feature
+   * that only ever reads.
+   */
+  async executeChecked<T = Record<string, unknown>>(
+    statement: CheckedStatement,
+    format: string = "JSON",
+    queryId?: string,
+    maxResultRows?: number,
+    readOnlyFeature?: ReadOnlyLevel
+  ): Promise<QueryResult<T>> {
+    return this.run<T>(statement, format, queryId, maxResultRows, readOnlyFeature);
+  }
+
+  /** `query` and `command` for one input: CHouse-built text as it is, typed text through the checked calls. */
+  private sender(client: ChExecutor, input: string | CheckedStatement, readOnlyFeature?: ReadOnlyLevel): {
+    query<Format extends DataFormat>(args: CheckedQueryArgs<Format>): Promise<ResultSet<Format>>;
+    command(args: CheckedCommandArgs): Promise<CommandResult>;
+  } {
+    if (typeof input === "string") {
+      const text = input.trim();
+      return {
+        query: (args) => client.query({ ...args, query: text }),
+        command: (args) => client.command({ ...args, query: text }),
+      };
+    }
+    return {
+      query: (args) => client.queryChecked(input, { ...args, readOnlyFeature }),
+      command: (args) => client.commandChecked(input, { ...args, readOnlyFeature }),
+    };
+  }
+
+  private async run<T>(
+    input: string | CheckedStatement,
+    format: string,
+    queryId?: string,
+    maxResultRows?: number,
+    readOnlyFeature?: ReadOnlyLevel
+  ): Promise<QueryResult<T>> {
+    const query = typeof input === "string" ? input : input.sql;
     // An AI usage run observing this call (ADR 0020) names the query and tags
     // its log_comment per query, so query_log ties it to the AI request.
     const observer = activeQueryObserver();
     const effectiveQueryId = queryId ?? observer?.nextQueryId();
     const observerTags = observer?.logTags();
     const client = observerTags && Object.keys(observerTags).length > 0 ? this.client.withContext(observerTags) : this.client;
+    const send = this.sender(client, input, readOnlyFeature);
     const startedAt = performance.now();
     try {
       const trimmedQuery = query.trim();
 
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
-        const result = await client.command({ query: trimmedQuery, query_id: effectiveQueryId });
+        const result = await send.command({ query_id: effectiveQueryId });
         return {
           meta: [],
           data: [],
@@ -191,8 +318,7 @@ export class ClickHouseService {
         clickhouse_settings.result_overflow_mode = "break";
       }
 
-      const result = await client.query({
-        query: trimmedQuery,
+      const result = await send.query({
         format: format as "JSON" | "JSONEachRow",
         clickhouse_settings,
         query_id: effectiveQueryId,
@@ -276,10 +402,12 @@ export class ClickHouseService {
    * and are entirely unaffected.
    */
   async *streamQueryRows(
-    query: string,
+    statement: CheckedStatement,
     queryId?: string,
     maxResultRows?: number
   ): AsyncGenerator<string> {
+    const query = statement.sql;
+    const send = this.sender(this.client, statement);
     const clickhouse_settings: Record<string, string | number> = {};
 
     if (maxResultRows !== undefined) {
@@ -296,14 +424,13 @@ export class ClickHouseService {
     // streaming an empty body through the row parser.
     if (this.isCommand(trimmedQuery) && !this.isOnClusterDdl(trimmedQuery)) {
       try {
-        const commandResult = await this.client.command({
-          query: trimmedQuery,
+        const commandResult = await send.command({
           query_id: queryId,
           clickhouse_settings,
         });
         void commandResult;
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = personMessage(error);
         yield JSON.stringify({ t: "err", message: msg });
         throw error;
       }
@@ -326,15 +453,14 @@ export class ClickHouseService {
     // `JSON Parse error: Unexpected identifier "chi"...` (issue #336) even
     // though the DDL committed.
     if (this.isOnClusterDdl(trimmedQuery)) {
-      yield* this.streamOnClusterDdl(trimmedQuery, queryId, clickhouse_settings, startMs, maxResultRows);
+      yield* this.streamOnClusterDdl(statement, queryId, clickhouse_settings, startMs, maxResultRows);
       return;
     }
 
     // JSONCompactEachRowWithNamesAndTypes: line 0 = names[], line 1 = types[],
     // lines 2+ = compact value arrays.  The ClickHouse client exposes these as
     // regular rows in the stream — we track lineIndex to distinguish them.
-    const result = await this.client.query({
-      query: trimmedQuery,
+    const result = await send.query({
       format: "JSONCompactEachRowWithNamesAndTypes",
       clickhouse_settings,
       query_id: queryId,
@@ -355,7 +481,7 @@ export class ClickHouseService {
           } catch (error) {
             // Fail closed for SELECT-like queries: a malformed row is a real
             // error, not a committed-DDL case (DDL is branched above).
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = personMessage(error);
             yield JSON.stringify({ t: "err", message: msg });
             throw error;
           }
@@ -384,7 +510,7 @@ export class ClickHouseService {
         }
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -406,7 +532,7 @@ export class ClickHouseService {
    * without re-executing the DDL.  Anything else fails closed with `t:err`.
    */
   private async *streamOnClusterDdl(
-    trimmedQuery: string,
+    statement: CheckedStatement,
     queryId: string | undefined,
     clickhouse_settings: Record<string, string | number>,
     startMs: number,
@@ -423,14 +549,13 @@ export class ClickHouseService {
     };
     let result: { json: () => Promise<unknown>; query_id: string };
     try {
-      result = await this.client.query({
-        query: trimmedQuery,
+      result = await this.sender(this.client, statement).query({
         format: "JSON",
         clickhouse_settings: ddlSettings,
         query_id: queryId,
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -439,7 +564,7 @@ export class ClickHouseService {
     try {
       envelope = await result.json();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = personMessage(error);
       if (isJsonParseErrorMessage(msg)) {
         // Server accepted the statement (HTTP 200) but the body is not JSON.
         // The DDL committed — never re-run it.  Surface success with the raw
@@ -833,6 +958,87 @@ export class ClickHouseService {
     }
   }
 
+  /**
+   * Rows of `system.query_log` for the Logs page, built here so the scope is
+   * the server's decision (ADR 0033 §4). With `ownAccountId` only statements
+   * CHouse sent for that account come back; the account is read from the query
+   * id the executor made, never from what the statement says about itself.
+   */
+  async getQueryLogs(options: QueryLogOptions): Promise<QueryLogRow[]> {
+    const order = QUERY_LOG_SORT_COLUMNS[options.sortBy] ?? QUERY_LOG_SORT_COLUMNS.event_time;
+    const direction = options.sortDir === "asc" ? "ASC" : "DESC";
+    const limit = Math.min(QUERY_LOG_MAX_ROWS, Math.max(1, Math.trunc(options.limit) || 100));
+    const hours = Math.min(24 * 90, Math.max(1, Math.trunc(options.hoursBack) || 24));
+    const params: Record<string, unknown> = {};
+    let window: string;
+    if (options.range) {
+      params.start = options.range.start;
+      params.end = options.range.end;
+      window = "event_date >= toDate(substring({start:String}, 1, 10)) AND __table1.event_time >= toDateTime({start:String}) AND __table1.event_time <= toDateTime({end:String})";
+    } else {
+      window = `event_date >= today() - ${Math.ceil(hours / 24)} AND __table1.event_time >= now() - INTERVAL ${hours} HOUR`;
+    }
+    const filters: string[] = [];
+    if (options.username) {
+      params.username = options.username;
+      filters.push("AND user = {username:String}");
+    }
+    if (options.ownAccountId !== undefined) {
+      params.account = options.ownAccountId;
+      filters.push(`AND ${ownerAccountSql()} = {account:String}`);
+    }
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT
+            type,
+            event_date,
+            formatDateTime(event_time, '%H:%i:%S') AS event_time,
+            toUnixTimestamp(__table1.event_time) AS event_timestamp,
+            query_id,
+            substring(query, 1, 2000) AS query,
+            query_duration_ms,
+            read_rows,
+            read_bytes,
+            memory_usage,
+            user,
+            substring(exception, 1, 2000) AS exception,
+            initial_query_id,
+            log_comment
+          FROM system.query_log AS __table1
+          WHERE ${window}
+            AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+            ${filters.join(" ")}
+          ORDER BY ${order} ${direction}
+          LIMIT ${limit}
+        `,
+        format: "JSONEachRow",
+        query_params: params,
+        clickhouse_settings: { readonly: "2", max_result_rows: String(QUERY_LOG_MAX_ROWS), max_result_bytes: "0", max_execution_time: 60 },
+      });
+      const rows = (await result.json()) as Array<Record<string, unknown>>;
+      const login = this.loginUser;
+      return rows.map((row) => ({
+        type: String(row.type ?? ""),
+        event_date: String(row.event_date ?? ""),
+        event_time: String(row.event_time ?? ""),
+        event_timestamp: Number(row.event_timestamp) || 0,
+        query_id: String(row.query_id ?? ""),
+        query: String(row.query ?? ""),
+        query_duration_ms: Number(row.query_duration_ms) || 0,
+        read_rows: Number(row.read_rows) || 0,
+        read_bytes: Number(row.read_bytes) || 0,
+        memory_usage: Number(row.memory_usage) || 0,
+        user: String(row.user ?? ""),
+        exception: String(row.exception ?? ""),
+        // A shard-side row belongs to whoever sent the statement that fanned out.
+        rbac_user_id: ownerAccount({ queryId: row.initial_query_id ?? row.query_id, logComment: row.log_comment, user: row.user }, login),
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch query logs");
+    }
+  }
+
   // ============================================
   // Production Metrics
   // ============================================
@@ -914,7 +1120,7 @@ export class ClickHouseService {
 
       // For text-based explain types (AST, SYNTAX, PIPELINE), get raw text
       if (explainType === 'ast' || explainType === 'syntax' || explainType === 'pipeline') {
-        const result = await this.client.query({
+        const result = await this.readOnlyClient.query({
           query: explainQuery,
           format: 'TabSeparatedRaw',
         });
@@ -1581,7 +1787,7 @@ export class ClickHouseService {
     const db = count.database;
 
     const scalar = async <T extends Record<string, unknown>>(query: string): Promise<T | undefined> => {
-      const res = await this.client.query({ query, format: "JSON" });
+      const res = await this.readOnlyClient.query({ query, format: "JSON" });
       const json = await res.json() as JsonResponse<T>;
       return json.data[0];
     };
@@ -2601,12 +2807,28 @@ export class ClickHouseService {
   }
 
   private handleError(error: unknown, defaultMessage: string): AppError {
+    if (error instanceof AppError) return error;
+    // A refusal by ClickHouse is a message for the person, never a sign-in
+    // failure: ClickHouse answers a grant error with HTTP 403 (ADR 0033 §8).
+    const classified = classifyClickHouseError(error);
+    if (classified) return classifiedAppError(classified);
     const err = error as Error & { response?: { status?: number } };
     const message = err?.message || defaultMessage;
     const statusCode = err?.response?.status;
 
-    if (statusCode === 401 || statusCode === 403 || message.includes("Authentication")) {
-      return AppError.unauthorized("Authentication failed. Please check your credentials.");
+    // By code where ClickHouse gave one (516: authentication failed): a typed
+    // statement can make any error text, and must not read as a login problem.
+    const chCode = clickhouseErrorCode(error);
+    const loginRefused = chCode !== null ? chCode === 516 : statusCode === 401 || statusCode === 403 || message.includes("Authentication");
+    if (loginRefused) {
+      // Not 401: that would make the browser refresh its own session, and the
+      // failure is this connection's stored login, not the person's sign-in.
+      return new AppError(
+        "ClickHouse refused this connection's login. Check its username and password in Admin › Connections.",
+        "CONNECTION_AUTH_FAILED",
+        "connection",
+        502
+      );
     }
 
     if (statusCode === 404) {

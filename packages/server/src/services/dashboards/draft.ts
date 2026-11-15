@@ -20,7 +20,7 @@
 
 import { z } from "zod";
 
-import { validateQueryAccess } from "../../middleware/dataAccess";
+import { checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import type { AgentRunContext } from "../ai/types";
 import { IMPORTANCES, ROLES, roleProblem } from "./layout";
 import { chartFit, lintPanel } from "./lint";
@@ -110,7 +110,7 @@ async function reviewPanel(raw: DashboardDraftOutput["panels"][number], variable
   let fit: DraftPanel["lint"];
   try {
     if (!ctx.userId) throw new Error("A panel draft needs a signed-in user");
-    const dry = await execute(ctx.userId, request.connectionId, compiled.compiled, { dashboardId: null, panelId: "ai-draft" });
+    const dry = await execute(checkedOf(access), { dashboardId: null, panelId: "ai-draft" });
     const have = new Set(dry.columns.map((c) => c.name));
     const absent = columnsNamed(panel.viz).filter((c) => !have.has(c));
     if (absent.length > 0) {

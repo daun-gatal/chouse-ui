@@ -9,7 +9,7 @@
  */
 
 import { redactSecrets } from "../../mcp/safety";
-import { executorForConnection, serviceActor } from "../chExecutor";
+import { executorForConnection, personActor, serviceActor } from "../chExecutor";
 
 /** Columns profiled per table; wide tables keep their first columns. */
 export const MAX_PROFILED_COLUMNS = 40;
@@ -157,10 +157,11 @@ export function parseProfile(row: Record<string, unknown>, planned: PlannedColum
   return { rows, partial: (catalogRows ?? 0) > PROFILE_MAX_ROWS, columns, skipped };
 }
 
-/** Run the profile under the connection's own credentials, read-only and capped. */
-export async function profileTable(connectionId: string, database: string, table: string, columns: ProfileColumn[], options: { tablePii: boolean; catalogRows: number | null }): Promise<TableProfile> {
+/** Run the profile under the connection's own credentials, read-only and capped, for the person who asked for the draft. */
+export async function profileTable(connectionId: string, database: string, table: string, columns: ProfileColumn[], options: { tablePii: boolean; catalogRows: number | null; accountId?: string }): Promise<TableProfile> {
   const { planned, skipped } = planProfile(columns, options.tablePii);
-  const client = await executorForConnection(connectionId, serviceActor("collector"), { context: { source: "observe", collector: "context_draft" } });
+  const actor = options.accountId ? personActor(options.accountId) : serviceActor("collector");
+  const client = await executorForConnection(connectionId, actor, { context: { source: "observe", collector: "context_draft" }, internal: true });
   const result = await client.query({
     query: buildProfileQuery(database, table, planned),
     format: "JSONEachRow",

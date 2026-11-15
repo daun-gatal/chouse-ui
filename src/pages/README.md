@@ -10,6 +10,7 @@ Route-level page components (default exports) wired up in `src/App.tsx`. Each pa
 
 ## Invariants
 - Route-level permission gating is declared in `src/App.tsx` (`AdminRoute requiredPermission=...`) using the lists in `src/lib/navAccess.ts`; in-page tabs also check permissions, e.g. Monitoring tabs via `hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW | LOGS_VIEW | PARTS_VIEW ...)` and Admin tabs via `ADMIN_TAB_PERMISSIONS` [Monitoring.tsx:Monitoring], [Admin.tsx:Admin].
+- Parts of a page that read a statement-log table need `useCanReadStatementLogs`: the Crashes view shows `StatementLogsNotice` and never refetches, while Server errors stays open; the Long queries chip shows a dash with the permission hint [Errors.tsx:ErrorsPage], [ClusterActivity.tsx:ClusterActivityPage].
 - SSO pages only follow same-app redirects: `safeClientRedirect` rejects targets that do not start with `/`, start with `//` or `/\`, or contain control characters, falling back to `/` [SsoCallback.tsx:safeClientRedirect], [SsoComplete.tsx:safeClientRedirect].
 - `/logs`, `/metrics` redirect to `/monitoring` and `/settings` to `/preferences` (in `src/App.tsx`).
 

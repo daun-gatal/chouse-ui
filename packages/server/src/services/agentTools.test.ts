@@ -32,8 +32,12 @@ describe("get_running_queries", () => {
 
     await tools.get_running_queries.invoke({});
 
-    expect(sent[0]).toContain("JSONExtractString(Settings['log_comment'], 'rbac_user_id') = 'user-1'");
-    expect(sent[0]).not.toContain("currentUser()");
+    // The account is read from the query id the executor made, on rows of the connection's own login.
+    expect(sent[0]).toContain("splitByChar(':', initial_query_id)[3]");
+    expect(sent[0]).toContain("user = currentUser()");
+    expect(sent[0]).toContain("JSONExtractString(Settings['log_comment'], 'rbac_user_id')), '') = 'user-1'");
+    // Sharing the connection's login is not ownership: the login only gates whether the id is trusted.
+    expect(sent[0]).not.toMatch(/(WHERE|AND) user = currentUser\(\)/);
   });
 
   it("gives an admin every running query", async () => {
@@ -60,8 +64,10 @@ describe("get_slow_queries", () => {
 
     await tools.get_slow_queries.invoke({ limit: 5, minDurationMs: 10 });
 
-    expect(sent[0]).toContain("AND JSONExtractString(log_comment, 'rbac_user_id') = 'user-1'");
-    expect(sent[0]).not.toContain("currentUser()");
+    expect(sent[0]).toContain("splitByChar(':', initial_query_id)[3]");
+    expect(sent[0]).toContain("JSONExtractString(log_comment, 'rbac_user_id')), '') = 'user-1'");
+    // Sharing the connection's login is not ownership: the login only gates whether the id is trusted.
+    expect(sent[0]).not.toMatch(/(WHERE|AND) user = currentUser\(\)/);
   });
 
   it("gives an admin everyone's slow queries", async () => {

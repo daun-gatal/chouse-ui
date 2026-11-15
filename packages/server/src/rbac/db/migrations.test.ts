@@ -552,6 +552,12 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     const unkinded = await h.rawAll(sql`SELECT COUNT(*) AS n FROM rbac_api_keys WHERE kind IS NULL OR kind NOT IN ('pat', 'oauth')`);
     expect(Number(unkinded[0]?.n ?? 0)).toBe(0);
   },
+  "1.76.0": async () => {
+    // ADR 0033: a job runs as its owner; every job that has a creator starts owned by them.
+    expect(await h.columnExists("scheduled_queries", "owner_id")).toBe(true);
+    const unowned = await h.rawAll(sql`SELECT COUNT(*) AS n FROM scheduled_queries WHERE created_by IS NOT NULL AND owner_id IS NULL`);
+    expect(Number(unowned[0]?.n ?? 0)).toBe(0);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1558,6 +1564,64 @@ for (const dialect of DIALECTS) {
       const rows = await h.rawAll(sql`SELECT kind FROM rbac_api_keys WHERE id = ${PAT_ID}`);
       expect(String(rows[0].kind)).toBe("pat");
       expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
+    });
+  });
+
+  // ADR 0033: a job made before 1.76.0 is owned by whoever created it, a job
+  // with no creator stays without an owner (and so does not run), and a later
+  // run of the migration never hands a job back to its creator.
+  describe(`migrations · ADR 0033 scheduled query owner [${dialect}]`, () => {
+    const job = async (id: string, createdBy: string | null, kind = "sql_query"): Promise<void> => {
+      await h.rawRun(sql`INSERT INTO scheduled_queries (id, name, kind, connection_id, query, frequency, created_by, created_at, updated_at)
+        VALUES (${id}, ${`Job ${id}`}, ${kind}, 'conn-1', 'SELECT 1', 'daily', ${createdBy}, 1, 1)`);
+    };
+    const owners = async (): Promise<Record<string, string | null>> => {
+      const rows = await h.rawAll(sql`SELECT id, owner_id FROM scheduled_queries ORDER BY id`);
+      return Object.fromEntries(rows.map((r) => [String(r.id), r.owner_id === null || r.owner_id === undefined ? null : String(r.owner_id)]));
+    };
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.75.0" });
+      expect(await h.columnExists("scheduled_queries", "owner_id")).toBe(false);
+      await job("job-a", "user-a");
+      await job("job-b", "user-b", "data_health_check");
+      await job("job-orphan", null);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("gives every job to its creator and leaves a job with no creator unowned", async () => {
+      expect(await owners()).toEqual({ "job-a": "user-a", "job-b": "user-b", "job-orphan": null });
+      const kept = await h.rawAll(sql`SELECT id, created_by FROM scheduled_queries ORDER BY id`);
+      expect(kept.map((r) => r.created_by ?? null)).toEqual(["user-a", "user-b", null]);
+    });
+
+    it("is a no-op when re-run, and never overwrites an owner that changed since", async () => {
+      await h.rawRun(sql`UPDATE scheduled_queries SET owner_id = 'editor-9' WHERE id = 'job-a'`);
+      const migration = MIGRATIONS.find((m) => m.version === "1.76.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await owners()).toEqual({ "job-a": "editor-9", "job-b": "user-b", "job-orphan": null });
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
+    });
+
+    it("finishes the backfill when an earlier start-up added the column and died before filling it", async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.75.0" });
+      await job("job-a", "user-a");
+      await job("job-orphan", null);
+      // The state a crash between the two statements leaves: the column is there, empty, and 1.76.0 is not recorded.
+      await h.rawRun(sql`ALTER TABLE scheduled_queries ADD COLUMN owner_id TEXT`);
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toContain("1.76.0");
+      expect(await owners()).toEqual({ "job-a": "user-a", "job-orphan": null });
+    });
+
+    it("applies cleanly to an install with no jobs", async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.75.0" });
+      await runMigrations({ skipSeed: true });
+      expect(await h.columnExists("scheduled_queries", "owner_id")).toBe(true);
+      expect(await h.rowCount("scheduled_queries")).toBe(0);
     });
   });
 

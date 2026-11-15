@@ -7,6 +7,8 @@ import {
   useTopCpuQueries,
   type TopResourceQueryRow,
 } from "@/hooks/useMonitoringTimeline";
+import { StatementLogsNotice } from "@/components/common/StatementLogsNotice";
+import { useCanReadStatementLogs } from "@/hooks/useCanReadStatementLogs";
 import { cn, formatBytes, formatCompactNumber } from "@/lib/utils";
 
 interface TopResourceQueriesPanelProps {
@@ -43,6 +45,7 @@ export function TopResourceQueriesPanel({
   limit = 10,
 }: TopResourceQueriesPanelProps) {
   const isMemory = metric === "memory";
+  const canReadLogs = useCanReadStatementLogs();
   const memQuery = useTopMemoryQueries(hoursBack, limit, undefined, { enabled: isMemory });
   const cpuQuery = useTopCpuQueries(hoursBack, limit, undefined, { enabled: !isMemory });
   const active = isMemory ? memQuery : cpuQuery;
@@ -52,7 +55,9 @@ export function TopResourceQueriesPanel({
     <div className="flex flex-col gap-3 px-4 py-4">
       <Header metric={metric} hoursBack={hoursBack} count={data.length} />
 
-      {isLoading ? (
+      {!canReadLogs ? (
+        <StatementLogsNotice subject={`Top ${metric} queries`} />
+      ) : isLoading ? (
         <div className="space-y-1">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-9 w-full animate-pulse rounded-xs bg-ink-300" />
