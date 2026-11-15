@@ -1,7 +1,7 @@
 ---
 generated: AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts
 ---
-Every action the [audit log](/docs/audit-log/) can record, by area — 179 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+Every action the [audit log](/docs/audit-log/) can record, by area — 182 in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
 
 | Area | Actions |
 | --- | --- |
@@ -20,6 +20,7 @@ Every action the [audit log](/docs/audit-log/) can record, by area — 179 in al
 | AI provider models | `ai_model.create`, `ai_model.update`, `ai_model.delete` |
 | AI deployments | `ai_config.create`, `ai_config.update`, `ai_config.delete` |
 | Connections | `connection.create`, `connection.update`, `connection.delete`, `connection.connect`, `connection.grant_access`, `connection.revoke_access`, `connection.identity_switched`, `connection.role_map_changed` |
+| Linked ClickHouse users | `binding.created`, `binding.state_changed`, `binding.removed` |
 | Data access | `data_access.create`, `data_access.update`, `data_access.delete`, `data_access.bulk_set`, `data_access.assign` |
 | Saved queries | `saved_query.create`, `saved_query.update`, `saved_query.delete` |
 | Fleet | `fleet.alert_config_update` |

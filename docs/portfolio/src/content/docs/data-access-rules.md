@@ -20,6 +20,8 @@ user ──has──▶ roles ──attach──▶ data access policies ──c
 
 There are no per-user rules: to give one person different access, give them a different role.
 
+On a [personal connection](/docs/personal-connections/) these rules do not decide which data a statement reaches: the person's own ClickHouse user does, and an account reaches the connection through its link to that user, not through a policy. Rules still limit which collected monitoring evidence a person sees there.
+
 ## Which connections a user sees
 
 A user can use a connection only when one of their policies has an **allow** rule scoped to that connection. Rules with no connection apply on every connection the user can already reach, but don't grant a connection by themselves. Super admins see every connection.

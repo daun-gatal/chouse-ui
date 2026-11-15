@@ -11,6 +11,7 @@ Every connection has a **kind**. It decides which ClickHouse identity a statemen
 | --- | --- | --- |
 | **Shared login** (the default) | Holds every grant CHouse UI needs | CHouse UI's [permissions](/docs/permissions/) and [data access rules](/docs/data-access-rules/) |
 | **Role ceiling** | Holds no grant of its own, only ClickHouse roles | The same checks, and under them the ClickHouse role mapped to the person's CHouse role |
+| **Personal** | Holds no grant of its own; it may act as the ClickHouse users linked to accounts | The person's own ClickHouse user. See [Personal connections](/docs/personal-connections/) |
 
 Every existing connection is a shared login and behaves as before. Only a super admin can see or change a connection's kind.
 

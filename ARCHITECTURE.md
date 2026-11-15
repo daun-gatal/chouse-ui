@@ -111,6 +111,13 @@ an ADR.
   when any other server file imports the ClickHouse client. See
   [services/chExecutor](packages/server/src/services/chExecutor/README.md) and
   [ADR 0033](docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
+- **A connection's kind decides whose ClickHouse grants a statement runs with.**
+  `shared`: the stored login's. `shared_ceiling`: the ClickHouse role mapped to
+  the person's CHouse role. `personal`: the person's own ClickHouse user,
+  through a binding and `EXECUTE AS`. On the last two the stored login holds no
+  grant, and CHouse checks that before the switch and every five minutes. See
+  [services/chExecutor](packages/server/src/services/chExecutor/README.md) and
+  [rbac/services](packages/server/src/rbac/services/README.md).
 - **Direct API access is refused.** Non-public `/api` requests must carry
   `X-Requested-With: XMLHttpRequest` or a PAT/MCP-subrequest bearer, or they get
   403 `DIRECT_ACCESS_DENIED`. See [routes](packages/server/src/routes/README.md).

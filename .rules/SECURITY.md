@@ -121,6 +121,32 @@ These rules hold for every caller, admins included
   a role name from a request, and key any result cache on `identityCacheKey`.
   Only a super admin changes a kind, a login of a non-`shared` connection, or a
   role map, and only a super admin assigns a mapped role (§2).
+- **On a `personal` connection a person's statement runs as their own
+  ClickHouse user.** The executor sends it as `EXECUTE AS <bound user> …` with
+  the impersonation role; the user comes from the account's active binding,
+  read per request (`chExecutor/identity.ts`), never from a request. Rules:
+  - Typed text is wrapped only by `validateQueryAccess`, which has ClickHouse
+    parse the wrapped text and accepts it only when the printout is the wrapper,
+    the bound user, and the typed statement's own tree unchanged under it
+    (`chExecutor/impersonate.ts`). The executor sends only the texts a checked
+    statement carries, for the user they were parsed for. Never build
+    `EXECUTE AS` anywhere else, and never loosen `isWrapOf`.
+  - A statement kind may be wrapped only with a real-server case showing a
+    user without the grant is refused (`WRAPPABLE_KINDS`,
+    `personal.e2e.test.ts`). The same holds for a new allowed user-name shape.
+  - `readonly` never goes on the URL there (ClickHouse refuses the whole
+    request); a read carries it in its own `SETTINGS` clause, and a statement
+    that must be a read and cannot carry it is refused, never sent without it.
+  - Only a build that passes `selfTest.ts` may be personal. Do not skip or
+    cache the `CREATE` check longer than `CREATE_RECHECK_MS`.
+  - Data access rules do not decide what a statement reaches there; do not add
+    a path that lets CHouse's own identity (the system role, the remediation
+    login) read user tables for a person on the strength of a rule.
+  - Creating, confirming and removing a binding is a super admin's alone, and a
+    change to how an account signs in made by someone else suspends its
+    bindings (`suspendBindingsOf`). A new way to change a password, an email or
+    a sign-in identity must call it. No route takes or stores a ClickHouse
+    password for a bound user.
 - **A ClickHouse refusal is never a sign-in failure.** Word grant and read-only
   errors with `classifyClickHouseError`; never map a ClickHouse HTTP 403 or an
   authentication failure of the stored login to a CHouse 401.
@@ -437,7 +463,7 @@ areas above.
 - [ ] On a connection that limits people to a role: does every request this
       change sends carry the connection's identity (so it names the person's or
       the system role), and could it let someone who is not a super admin change
-      a kind, a role map, a login, or hand out a mapped role
+      a kind, a role map, a login, a binding, or hand out a mapped role
 - [ ] Restricted-user test: could a user limited to one database reach another
       through this change (SQL shape, button, upload, AI tool, export,
       schedule)?
