@@ -292,6 +292,22 @@ describe("RBAC Connections Routes", () => {
             expect((await res.json()).data).not.toHaveProperty("privileges");
         });
 
+        // ADR 0033 §5: on a connection that limits people to a role, the login is replaced only through the switch.
+        it("refuses to change the login of a role-ceiling connection, and still lets it be renamed", async () => {
+            mockGetConnectionById.mockResolvedValue({ ...SAVED_PUBLIC, identityMode: "shared_ceiling" });
+            for (const change of [{ username: "other" }, { password: "new" }, { host: "elsewhere" }, { port: 9440 }, { sslEnabled: !SAVED.sslEnabled }]) {
+                const res = await app.request("/connections/c1", jsonRequest("PATCH", change));
+                expect(res.status).toBe(409);
+                expect((await res.json()).error.code).toBe("IDENTITY_MANAGED_LOGIN");
+            }
+            expect(mockTestConnection).not.toHaveBeenCalled();
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+
+            const rename = await app.request("/connections/c1", jsonRequest("PATCH", { name: "renamed" }));
+            expect(rename.status).toBe(200);
+            expect(mockUpdateConnection).toHaveBeenCalled();
+        });
+
         it("saves new settings that lack only optional privileges, returning the report", async () => {
             mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_OPTIONAL_MISSING });
 

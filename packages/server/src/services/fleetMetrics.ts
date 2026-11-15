@@ -8,7 +8,7 @@
  * back to a live fetch.
  */
 
-import { executorForConfig, serviceActor, type Actor } from "./chExecutor";
+import { executorForConfig, identityOfConnection, serviceActor, type Actor } from "./chExecutor";
 import { getConnectionWithPassword } from "../rbac/services/connections";
 import type { ConnectionConfig } from "../types";
 import { AppError } from "../types";
@@ -271,6 +271,7 @@ export async function buildFleetConfig(
     username: connection.username,
     password: connection.password || "",
     database: connection.database || undefined,
+    identity: identityOfConnection(connection),
   };
 }
 

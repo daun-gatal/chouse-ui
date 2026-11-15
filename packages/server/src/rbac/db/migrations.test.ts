@@ -29,6 +29,7 @@ import { parseDashboardDocument } from "../../services/dashboards/legacy";
 import { AI_ACTION_GRANT_INDEX_NAMES, AI_ACTION_GRANT_TABLE_NAMES, AI_ACTION_TIER_COLUMNS, MCP_TOKEN_POLICY_TABLE_NAMES } from "./aiAssistantSchema";
 import { ALERT_EVENT_COLUMNS, NOTIFY_INDEX_NAMES, NOTIFY_TABLE_NAMES } from "./notifySchema";
 import { API_KEY_OAUTH_COLUMNS, MCP_OAUTH_INDEX_NAMES, MCP_OAUTH_TABLE_NAMES } from "./mcpOAuthSchema";
+import { CONNECTION_IDENTITY_COLUMNS, CONNECTION_IDENTITY_INDEX_NAMES, CONNECTION_IDENTITY_TABLE_NAMES } from "./connectionIdentitySchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -557,6 +558,15 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("scheduled_queries", "owner_id")).toBe(true);
     const unowned = await h.rawAll(sql`SELECT COUNT(*) AS n FROM scheduled_queries WHERE created_by IS NOT NULL AND owner_id IS NULL`);
     expect(Number(unowned[0]?.n ?? 0)).toBe(0);
+  },
+  "1.77.0": async () => {
+    // ADR 0033: connection kinds and the role ceiling; every connection has a kind.
+    for (const c of CONNECTION_IDENTITY_COLUMNS) expect(await h.columnExists("rbac_clickhouse_connections", c.name)).toBe(true);
+    for (const t of CONNECTION_IDENTITY_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    for (const i of CONNECTION_IDENTITY_INDEX_NAMES) expect(await h.indexExists(i)).toBe(true);
+    for (const c of ["connection_id", "role_id", "clickhouse_role", "created_by", "created_at", "updated_at"]) expect(await h.columnExists("rbac_connection_role_map", c)).toBe(true);
+    const unkinded = await h.rawAll(sql`SELECT COUNT(*) AS n FROM rbac_clickhouse_connections WHERE identity_mode IS NULL OR identity_mode <> 'shared'`);
+    expect(Number(unkinded[0]?.n ?? 0)).toBe(0);
   },
 };
 
@@ -1622,6 +1632,59 @@ for (const dialect of DIALECTS) {
       await runMigrations({ skipSeed: true });
       expect(await h.columnExists("scheduled_queries", "owner_id")).toBe(true);
       expect(await h.rowCount("scheduled_queries")).toBe(0);
+    });
+  });
+
+  // ADR 0033: a connection saved before 1.77.0 becomes `shared` and keeps
+  // everything it had; nothing gets a system role, a verdict or a role map.
+  describe(`migrations · ADR 0033 connection kinds [${dialect}]`, () => {
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.76.0" });
+      for (const c of CONNECTION_IDENTITY_COLUMNS) expect(await h.columnExists("rbac_clickhouse_connections", c.name)).toBe(false);
+      await h.rawRun(dialect === "sqlite"
+        ? sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, is_default, is_active, ssl_enabled, created_at, updated_at) VALUES ('c-old', 'old', 'ch.internal', 8443, 'svc', 'enc', 1, 1, 1, unixepoch(), unixepoch())`
+        : sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, password_encrypted, is_default, is_active, ssl_enabled) VALUES ('c-old', 'old', 'ch.internal', 8443, 'svc', 'enc', true, true, true)`);
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("makes every existing connection shared and leaves its login alone", async () => {
+      const rows = await h.rawAll(sql`SELECT host, port, username, password_encrypted, identity_mode, system_role, access_contact, identity_health, identity_checked_at FROM rbac_clickhouse_connections WHERE id = 'c-old'`);
+      expect(rows.length).toBe(1);
+      expect(rows[0]).toMatchObject({ host: "ch.internal", username: "svc", password_encrypted: "enc", identity_mode: "shared" });
+      expect(Number(rows[0].port)).toBe(8443);
+      for (const column of ["system_role", "access_contact", "identity_health", "identity_checked_at"]) expect(rows[0][column] ?? null).toBeNull();
+      expect(await h.rowCount("rbac_connection_role_map")).toBe(0);
+    });
+
+    it("defaults a connection created afterwards to shared, and keeps one mapping per role and connection", async () => {
+      await h.rawRun(dialect === "sqlite"
+        ? sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, is_default, is_active, ssl_enabled, created_at, updated_at) VALUES ('c-new', 'new', 'h', 8123, 'u', 0, 1, 0, unixepoch(), unixepoch())`
+        : sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, is_default, is_active, ssl_enabled) VALUES ('c-new', 'new', 'h', 8123, 'u', false, true, false)`);
+      const rows = await h.rawAll(sql`SELECT identity_mode FROM rbac_clickhouse_connections WHERE id = 'c-new'`);
+      expect(String(rows[0].identity_mode)).toBe("shared");
+      const role = await h.rawAll(sql`SELECT id FROM rbac_roles LIMIT 1`);
+      const roleId = String(role[0].id);
+      await h.rawRun(sql`INSERT INTO rbac_connection_role_map (id, connection_id, role_id, clickhouse_role, created_at, updated_at) VALUES ('m1', 'c-new', ${roleId}, 'analyst_ro', 1, 1)`);
+      let duplicate: unknown = null;
+      try {
+        await h.rawRun(sql`INSERT INTO rbac_connection_role_map (id, connection_id, role_id, clickhouse_role, created_at, updated_at) VALUES ('m2', 'c-new', ${roleId}, 'other', 1, 1)`);
+      } catch (error) {
+        duplicate = error;
+      }
+      expect(duplicate).not.toBeNull();
+      await h.rawRun(sql`DELETE FROM rbac_clickhouse_connections WHERE id = 'c-new'`);
+      expect(await h.rowCount("rbac_connection_role_map")).toBe(0);
+    });
+
+    it("is idempotent when re-run, and does not reset a kind that changed since", async () => {
+      await h.rawRun(sql`UPDATE rbac_clickhouse_connections SET identity_mode = 'shared_ceiling', system_role = 'chouse_system' WHERE id = 'c-old'`);
+      const migration = MIGRATIONS.find((m) => m.version === "1.77.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      const rows = await h.rawAll(sql`SELECT identity_mode, system_role FROM rbac_clickhouse_connections WHERE id = 'c-old'`);
+      expect(rows[0]).toMatchObject({ identity_mode: "shared_ceiling", system_role: "chouse_system" });
+      expect((await runMigrations({ skipSeed: true })).migrationsApplied).toEqual([]);
     });
   });
 

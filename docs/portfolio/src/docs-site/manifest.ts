@@ -91,6 +91,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "configuration-env", title: "Environment variables", description: "Every setting the server reads, with its default, YAML key and what it does — checked against the code." },
           { slug: "configuration-secrets", title: "Secrets generation", description: "Generate JWT secrets and AES-256 encryption keys/salts with openssl, and what each secret protects." },
           { slug: "connections", title: "Connections", description: "Add and manage multiple ClickHouse servers, connection presets, encrypted credentials and quick switching." },
+          { slug: "connection-identity", title: "Connection kinds and the role ceiling", description: "Limit each person to a ClickHouse role: the empty login, the role map, the system role, the checks CHouse UI runs, and how to switch a connection." },
           { slug: "connection-privileges", title: "ClickHouse privileges", description: "What a connection's ClickHouse user needs for every feature, how Test and Save check it, and a ready-made GRANT script — generated from the server." },
         ],
       },

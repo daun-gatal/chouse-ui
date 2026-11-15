@@ -123,6 +123,23 @@ jobs:
       - name: Run observability e2e
         run: ./scripts/e2e-observe.sh
 
+  connection-identity-e2e:
+    name: Connection identity e2e (24.3, 24.4, 26.5)
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Three pinned ClickHouse versions with fixture users in Docker; the suite
+      # runs inside that network (ADR 0033 §10.5). 24.3 must fail closed.
+      - name: Run connection identity e2e
+        run: ./scripts/e2e-connection-identity.sh
+
   build:
     name: Build
     runs-on: ubuntu-latest

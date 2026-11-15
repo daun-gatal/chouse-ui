@@ -160,9 +160,18 @@ export interface PrivilegeFeatureReport {
   errors: string[];
   /** One GRANT statement per line, ready to run. */
   grants: string[];
+  /**
+   * On a connection that is not `shared` (ADR 0033 §5): who must hold this
+   * feature's privileges. `system_role` is checked here; `mapped_role` comes
+   * from each person's ClickHouse role and is not checked on the login;
+   * `unavailable` cannot be used on this kind. Absent on a `shared` connection.
+   */
+  source?: "system_role" | "mapped_role" | "unavailable";
 }
 
 export interface PrivilegeReport {
+  /** The connection's kind, present only when it is not `shared`. */
+  kind?: string;
   /** Every required feature is granted, so the connection may be saved. */
   ok: boolean;
   /** Every feature, optional ones included, is granted. */
@@ -541,7 +550,25 @@ export interface PrivilegeCheckInput {
   username: string;
   /** The connection's default database; data editing is checked there. */
   database?: string | null;
+  /**
+   * For a `shared_ceiling` connection: the system role. The handle passed in
+   * must already name it on its requests. The login itself holds nothing, so
+   * system reads and stopping queries are checked on this role, data editing
+   * comes from each person's mapped role, and ClickHouse users and roles are
+   * unavailable.
+   */
+  ceiling?: { kind: string; systemRole: string };
 }
+
+/** Which features a kind checks on the system role; the rest are not the login's to hold. */
+const CEILING_SOURCE: Record<PrivilegeFeatureId, "system_role" | "mapped_role" | "unavailable"> = {
+  core: "system_role",
+  monitoring: "system_role",
+  observability: "system_role",
+  query_control: "system_role",
+  data_editing: "mapped_role",
+  access_admin: "unavailable",
+};
 
 /**
  * Check the connected user against every feature. Connection and login
@@ -560,7 +587,13 @@ export async function checkConnectionPrivileges(client: ChExecutor, input: Privi
   ]);
   const probeOf = new Map(tables.map((table, i) => [table, probes[i]]));
 
+  const grantee = input.ceiling ? input.ceiling.systemRole : input.username;
   const features = PRIVILEGE_FEATURES.map((feature): PrivilegeFeatureReport => {
+    const source = input.ceiling ? CEILING_SOURCE[feature.id] : undefined;
+    if (source === "mapped_role" || source === "unavailable") {
+      // Not the login's or the system role's to hold, so nothing to check and nothing to block on.
+      return { id: feature.id, name: feature.name, description: feature.description, required: false, status: "granted", missing: [], unavailable: [], errors: [], grants: [], source };
+    }
     const missing: string[] = [];
     const unavailable: string[] = [];
     const errors: string[] = [];
@@ -591,7 +624,8 @@ export async function checkConnectionPrivileges(client: ChExecutor, input: Privi
       missing,
       unavailable,
       errors,
-      grants: grantStatements(missing, input.username),
+      grants: grantStatements(missing, grantee),
+      ...(source ? { source } : {}),
     };
   });
 
@@ -600,6 +634,7 @@ export async function checkConnectionPrivileges(client: ChExecutor, input: Privi
   const requiredMissing = new Set(required.flatMap((f) => f.missing));
   const requiredGrants = new Set(required.flatMap((f) => f.grants));
   return {
+    ...(input.ceiling ? { kind: input.ceiling.kind } : {}),
     ok: required.every((f) => f.status === "granted"),
     complete: features.every((f) => f.status === "granted"),
     username: input.username,
@@ -610,7 +645,8 @@ export async function checkConnectionPrivileges(client: ChExecutor, input: Privi
     features,
     grantScript: [...requiredGrants].join("\n"),
     optionalGrantScript: [...new Set(optional.flatMap((f) => f.grants).filter((g) => !requiredGrants.has(g)))].join("\n"),
-    otherDatabases: otherDatabasesReport(databaseNames, database, grantSets, tree, input.username),
+    // On a ceiling connection what a person may do in other databases is their mapped role's business.
+    otherDatabases: input.ceiling ? { total: null, databases: [], grantScript: "" } : otherDatabasesReport(databaseNames, database, grantSets, tree, input.username),
   };
 }
 

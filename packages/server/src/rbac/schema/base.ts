@@ -581,6 +581,8 @@ export const AUDIT_ACTIONS = {
   CONNECTION_CONNECT: 'connection.connect',
   CONNECTION_GRANT_ACCESS: 'connection.grant_access',
   CONNECTION_REVOKE_ACCESS: 'connection.revoke_access',
+  CONNECTION_IDENTITY_SWITCHED: 'connection.identity_switched',
+  CONNECTION_ROLE_MAP_CHANGED: 'connection.role_map_changed',
 
   // Data Access Rules / Policies
   DATA_ACCESS_CREATE: 'data_access.create',

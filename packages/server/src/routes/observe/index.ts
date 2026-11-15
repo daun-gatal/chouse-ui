@@ -80,7 +80,12 @@ observe.post("/privileges/check", requirePermission(PERMISSIONS.CONNECTIONS_EDIT
   if (!conn) throw AppError.notFound("Connection not found");
   const client = await observeClient(connectionId, "privileges");
   const caps = await probeCapabilities(connectionId, client, true);
-  const report = await checkConnectionPrivileges(client, { username: conn.username, database: conn.database });
+  const report = await checkConnectionPrivileges(client, {
+    username: conn.username,
+    database: conn.database,
+    // On a ceiling connection the collector's requests name the system role, and the report is about that role.
+    ceiling: conn.identityMode !== "shared" && conn.systemRole ? { kind: conn.identityMode, systemRole: conn.systemRole } : undefined,
+  });
   const observability = report.features.find((f) => f.id === "observability");
   return ok(c, {
     serverVersion: caps.serverVersion,

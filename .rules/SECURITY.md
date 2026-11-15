@@ -110,6 +110,17 @@ These rules hold for every caller, admins included
   such a read in the browser for a person without the permission: add a server
   route that scopes it (as `POST /metrics/query-logs` does), and gate the UI with
   `useCanReadStatementLogs`.
+- **A connection has a kind, and the executor gives each request its identity.**
+  On a `shared_ceiling` connection the stored login is empty and every request
+  names a role: the one mapped to the person's CHouse role, or the system role
+  for a service purpose (`chExecutor/identity.ts`). Build a `ConnectionConfig`
+  from a saved connection with `identityOfConnection`, or through
+  `connectionConfig` / `executorForConnection`, so the kind travels with it; a
+  config without it is sent bare, which an empty login answers with a refusal.
+  Never pass `roleOverride` outside the identity checks, never let a route take
+  a role name from a request, and key any result cache on `identityCacheKey`.
+  Only a super admin changes a kind, a login of a non-`shared` connection, or a
+  role map, and only a super admin assigns a mapped role (§2).
 - **A ClickHouse refusal is never a sign-in failure.** Word grant and read-only
   errors with `classifyClickHouseError`; never map a ClickHouse HTTP 403 or an
   authentication failure of the stored login to a CHouse 401.
@@ -423,6 +434,10 @@ areas above.
       `readonly` of its own; ownership and "hide our own traffic" read the query
       id, not `log_comment`; a read of the statement logs or access tables is
       permission-checked or scoped on the server
+- [ ] On a connection that limits people to a role: does every request this
+      change sends carry the connection's identity (so it names the person's or
+      the system role), and could it let someone who is not a super admin change
+      a kind, a role map, a login, or hand out a mapped role
 - [ ] Restricted-user test: could a user limited to one database reach another
       through this change (SQL shape, button, upload, AI tool, export,
       schedule)?

@@ -42,6 +42,7 @@ import {
   type ConnectResult,
 } from "@/api/rbac";
 import { setSessionId, setConnectionId, clearSession, getSessionId } from "@/api/client";
+import { IDENTITY_MODE_CEILING, identityKind } from "@/api/connectionIdentity";
 import { rbacUserPreferencesApi } from "@/api";
 import { useRbacStore, useAuthStore } from "@/stores";
 
@@ -53,12 +54,22 @@ const TOOLTIP_CLASS =
 const SHARED_LOGIN_TITLE =
   "Everyone using this connection in CHouse sends statements as this ClickHouse user.";
 
+const ROLE_CEILING_TITLE =
+  "Your statements on this connection run as this ClickHouse user, with only the ClickHouse role mapped to your CHouse role.";
+
 /**
  * The ClickHouse user a connection's statements run as. The surrounding label
  * is uppercased; the username is not, because ClickHouse user names are
  * case-sensitive.
  */
-function SharedLogin({ username }: { username: string }): ReactElement {
+export function SharedLogin({ username, identityMode }: { username: string; identityMode?: string | null }): ReactElement {
+  if (identityKind(identityMode) === IDENTITY_MODE_CEILING) {
+    return (
+      <span title={ROLE_CEILING_TITLE}>
+        Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>, limited to your ClickHouse role
+      </span>
+    );
+  }
   return (
     <span title={SHARED_LOGIN_TITLE}>
       Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>
@@ -372,7 +383,7 @@ export default function ConnectionSelector({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-[12px] font-medium text-paper">{conn.name}</span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} />
+                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} />
                 </span>
               </div>
             )}
@@ -380,7 +391,7 @@ export default function ConnectionSelector({
         </TooltipTrigger>
         {isCollapsed && (
           <TooltipContent side="right" className={TOOLTIP_CLASS}>
-            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} />
+            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} />
           </TooltipContent>
         )}
       </Tooltip>
@@ -417,7 +428,7 @@ export default function ConnectionSelector({
                   {activeConnection.name}
                 </span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} />
+                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} identityMode={activeConnection.identityMode} />
                 </span>
               </div>
             )}
@@ -466,7 +477,7 @@ export default function ConnectionSelector({
                     )}
                   </div>
                   <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                    <SharedLogin username={conn.username} />
+                    <SharedLogin username={conn.username} identityMode={conn.identityMode} />
                   </span>
                 </div>
                 {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />}

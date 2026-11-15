@@ -33,6 +33,17 @@ export async function getClickHouseService(c: Context): Promise<ClickHouseServic
   const resolved = connectionId
     ? await resolveRequestedConnection(rbacUserId, isSuperAdmin, connectionId)
     : await resolveDefaultConnection(rbacUserId, isSuperAdmin);
+  // The login of a connection that limits people to a role may hold no
+  // user-management privilege (ADR 0033 §5), so these pages cannot work on it.
+  const mode = resolved.config.identity?.mode ?? 'shared';
+  if (mode !== 'shared') {
+    throw new AppError(
+      "ClickHouse users and roles can't be managed from CHouse on this connection: it limits people to a ClickHouse role, and its login may not manage users. Use a ClickHouse client as an administrator.",
+      'CLICKHOUSE_ADMIN_UNAVAILABLE',
+      'permission',
+      400,
+    );
+  }
   return resolved.service;
 }
 
@@ -72,9 +83,12 @@ export function handleError(
   if (error instanceof AppError && error.code === 'CLICKHOUSE_ACCESS_DENIED') {
     return { code: error.code, message: error.message, statusCode: 403 };
   }
+  if (error instanceof AppError && error.code === 'CLICKHOUSE_ADMIN_UNAVAILABLE') {
+    return { code: error.code, message: error.message, statusCode: 400 };
+  }
   const classified = classifyClickHouseError(error);
   if (classified?.class === 'grant') {
-    return { code: classified.code, message: classified.message, statusCode: classified.status };
+    return { code: classified.code, message: classified.message, statusCode: 403 };
   }
   if (isRoleInUseError(error)) {
     return { code: 'ROLE_IN_USE', message: rawMessage, statusCode: 400 };

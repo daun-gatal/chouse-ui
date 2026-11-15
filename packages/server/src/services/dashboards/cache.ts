@@ -16,9 +16,15 @@ export const CACHE_MAX_ENTRIES = 500;
 export const CACHE_MAX_BYTES = 64 * 1024 * 1024;
 export const MAX_CONCURRENT_PER_CONNECTION = 4;
 
-export function cacheKey(connectionId: string, sql: string, params: Record<string, string | number | string[]>): string {
+/**
+ * `identity` is who ClickHouse ran the statement as: the login, and on a
+ * connection that limits people to a role, the kind and the role (ADR 0033
+ * §6). An entry made under one identity is never served under another, on
+ * any replica, after a switch or for a person with a different role.
+ */
+export function cacheKey(connectionId: string, sql: string, params: Record<string, string | number | string[]>, identity: string = ""): string {
   const sorted = Object.keys(params).sort().map((k) => [k, params[k]]);
-  return createHash("sha256").update(JSON.stringify([connectionId, sql, sorted])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([connectionId, sql, sorted, identity])).digest("hex");
 }
 
 interface Entry<T> {

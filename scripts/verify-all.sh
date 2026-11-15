@@ -54,6 +54,7 @@ gate 7 "Cluster e2e (existing)"
 
 gate 8 "Observability e2e"
 ./scripts/e2e-observe.sh
+./scripts/e2e-connection-identity.sh
 
 gate 9 "Helm"
 helm lint charts/chouse-ui --strict --values charts/chouse-ui/ci/default-values.yaml

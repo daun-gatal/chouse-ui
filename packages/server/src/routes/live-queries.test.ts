@@ -11,6 +11,8 @@ const mockPing = mock();
 
 class MockClickHouseService {
     executeQuery = mockExecuteQuery;
+    // The route's own reads of system.processes and its KILL go through the monitoring handle.
+    executeSystemQuery = mockExecuteQuery;
     close = mockClose;
     ping = mockPing;
 }

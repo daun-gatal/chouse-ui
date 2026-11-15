@@ -415,3 +415,38 @@ describe("checkConnectionPrivileges", () => {
     await expect(checkConnectionPrivileges(client as unknown as ChExecutor, { username: "u" })).rejects.toThrow("Authentication failed");
   });
 });
+
+// A `shared_ceiling` connection (ADR 0033 §5): the login holds nothing, so the
+// report is about the system role, and data editing is each person's mapped role's.
+describe("checkConnectionPrivileges on a role-ceiling connection", () => {
+  const SYSTEM_ROLE = { chouse_system: ["GRANT SELECT ON system.* TO chouse_system", "GRANT SHOW, KILL QUERY ON *.* TO chouse_system"] };
+  const ceiling = { kind: "shared_ceiling", systemRole: "chouse_system" };
+
+  it("passes with a system role that reads system tables and stops queries, with no data grant anywhere", async () => {
+    const { client } = fakeClient({ grantsFinal: "unsupported", grants: ["GRANT chouse_system TO svc"], roles: SYSTEM_ROLE, databases: ["system", "shop"] });
+    const report = await checkConnectionPrivileges(client, { username: "svc", database: "shop", ceiling });
+    expect(report).toMatchObject({ kind: "shared_ceiling", ok: true, missingCount: 0 });
+    const source = Object.fromEntries(report.features.map((f) => [f.id, f.source]));
+    expect(source).toEqual({ core: "system_role", monitoring: "system_role", observability: "system_role", query_control: "system_role", data_editing: "mapped_role", access_admin: "unavailable" });
+    // Not the login's to hold: never missing, never blocking, nothing to grant.
+    for (const id of ["data_editing", "access_admin"]) {
+      expect(report.features.find((f) => f.id === id)).toMatchObject({ required: false, status: "granted", missing: [], grants: [] });
+    }
+    expect(report.otherDatabases).toEqual({ total: null, databases: [], grantScript: "" });
+  });
+
+  it("names the system role, not the login, in the grants it asks for", async () => {
+    const { client } = fakeClient({ grantsFinal: "unsupported", grants: ["GRANT chouse_system TO svc"], roles: { chouse_system: ["GRANT SELECT ON system.* TO chouse_system"] }, databases: [] });
+    const report = await checkConnectionPrivileges(client, { username: "svc", database: "shop", ceiling });
+    expect(report.ok).toBe(false);
+    expect(report.grantScript).toBe("GRANT KILL QUERY ON *.* TO chouse_system;");
+    expect(report.grantScript).not.toContain("svc");
+  });
+
+  it("leaves a shared connection's report without the new fields", async () => {
+    const { client } = fakeClient({ grantsFinal: ["GRANT ALL ON *.* TO svc WITH GRANT OPTION"], databases: ["shop"] });
+    const report = await checkConnectionPrivileges(client, { username: "svc", database: "shop" });
+    expect("kind" in report).toBe(false);
+    expect(report.features.every((f) => !("source" in f))).toBe(true);
+  });
+});

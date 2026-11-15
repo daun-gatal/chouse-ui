@@ -8,7 +8,7 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
-import { ephemeralExecutor, serviceActor, type ChExecutor } from '../../services/chExecutor';
+import { ephemeralExecutor, identityOfConnection, serviceActor, type ChExecutor } from '../../services/chExecutor';
 import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
 
 // Type helper for working with dual database setup
@@ -47,6 +47,41 @@ export interface ConnectionResponse {
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
+  /** `shared`, `shared_ceiling` or `personal` (ADR 0033 §5). A value this build does not know makes the connection refuse. */
+  identityMode: string;
+  /** The ClickHouse role CHouse's own work names on a connection that is not `shared`. */
+  systemRole: string | null;
+  /** Whom to ask for access; shown with refusals. */
+  accessContact: string | null;
+  /** The latest verdict of the identity checks: `ok`, `failing`, or null when none ran. */
+  identityHealth: string | null;
+  identityHealthReason: string | null;
+  /** When that verdict was written, in unix milliseconds. */
+  identityCheckedAt: number | null;
+  identityServerVersion: string | null;
+}
+
+interface IdentityColumns {
+  identityMode?: string | null;
+  systemRole?: string | null;
+  accessContact?: string | null;
+  identityHealth?: string | null;
+  identityHealthReason?: string | null;
+  identityCheckedAt?: number | string | null;
+  identityServerVersion?: string | null;
+}
+
+/** The identity columns of a connection row, as the response carries them. */
+function identityFields(row: IdentityColumns): Pick<ConnectionResponse, 'identityMode' | 'systemRole' | 'accessContact' | 'identityHealth' | 'identityHealthReason' | 'identityCheckedAt' | 'identityServerVersion'> {
+  return {
+    identityMode: row.identityMode ?? 'shared',
+    systemRole: row.systemRole ?? null,
+    accessContact: row.accessContact ?? null,
+    identityHealth: row.identityHealth ?? null,
+    identityHealthReason: row.identityHealthReason ?? null,
+    identityCheckedAt: row.identityCheckedAt === null || row.identityCheckedAt === undefined ? null : Number(row.identityCheckedAt),
+    identityServerVersion: row.identityServerVersion ?? null,
+  };
 }
 
 export interface ConnectionWithPassword extends ConnectionResponse {
@@ -261,6 +296,7 @@ export async function getConnectionById(id: string): Promise<ConnectionResponse 
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
     metadata: conn.metadata,
+    ...identityFields(conn),
   };
 }
 
@@ -307,6 +343,7 @@ export async function getConnectionWithPassword(id: string): Promise<ConnectionW
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
     metadata: conn.metadata,
+    ...identityFields(conn),
   };
 }
 
@@ -320,7 +357,8 @@ export async function listConnectionDatabases(connectionId: string): Promise<str
 
   const protocol = conn.sslEnabled ? 'https' : 'http';
   const { executor: client, close } = ephemeralExecutor(
-    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default' },
+    // With the connection's identity, so on a role-ceiling connection the lookup names the system role.
+    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default', identity: identityOfConnection(conn) },
     serviceActor('connection-test'),
     { requestTimeoutMs: 15000 },
   );
@@ -342,7 +380,8 @@ export async function listConnectionTables(connectionId: string, database: strin
 
   const protocol = conn.sslEnabled ? 'https' : 'http';
   const { executor: client, close } = ephemeralExecutor(
-    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default' },
+    // With the connection's identity, so on a role-ceiling connection the lookup names the system role.
+    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default', identity: identityOfConnection(conn) },
     serviceActor('connection-test'),
     { requestTimeoutMs: 15000 },
   );
@@ -425,6 +464,7 @@ export async function listConnections(options?: {
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
     metadata: conn.metadata,
+    ...identityFields(conn),
   }));
 
   return { connections, total };
@@ -537,6 +577,7 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
       createdAt: conn.createdAt,
       updatedAt: conn.updatedAt,
       metadata: conn.metadata,
+    ...identityFields(conn),
     };
   }
 
@@ -555,6 +596,7 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
     metadata: conn.metadata,
+    ...identityFields(conn),
   };
 }
 
@@ -566,25 +608,26 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
  * Test a connection (without saving)
  */
 // Helper to create a client without caching
-const createEphemeralClient = (input: ConnectionInput): { executor: ChExecutor; close: () => Promise<void> } => {
+const createEphemeralClient = (input: ConnectionInput, role?: string): { executor: ChExecutor; close: () => Promise<void> } => {
   const protocol = input.sslEnabled ? 'https' : 'http';
   const url = `${protocol}://${input.host}:${input.port || 8123}`;
   // Short timeout and a fail-fast execution cap: this only tests the login.
   return ephemeralExecutor(
     { url, username: input.username, password: input.password || '', database: input.database || 'default' },
     serviceActor('connection-test'),
-    { requestTimeoutMs: 10000, defaults: { max_execution_time: 10 } },
+    // A login for a connection that is not `shared` holds nothing itself: its checks name the system role.
+    { requestTimeoutMs: 10000, defaults: { max_execution_time: 10 }, ...(role ? { roleOverride: role } : {}) },
   );
 };
 
 /**
  * Test a connection (without saving)
  */
-export async function testConnection(input: ConnectionInput): Promise<TestConnectionResult> {
+export async function testConnection(input: ConnectionInput, ceiling?: { kind: string; systemRole: string }): Promise<TestConnectionResult> {
   const startTime = Date.now();
 
   // Bypass ClientManager so a cached client in a bad state or with old config can't mask the result.
-  const { executor: client, close } = createEphemeralClient(input);
+  const { executor: client, close } = createEphemeralClient(input, ceiling?.systemRole);
   try {
     const versionResult = await client.query({
       query: 'SELECT version() as version',
@@ -602,7 +645,7 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
 
     let privileges: PrivilegeReport;
     try {
-      privileges = await checkConnectionPrivileges(client, { username: input.username, database: input.database });
+      privileges = await checkConnectionPrivileges(client, { username: input.username, database: input.database, ceiling });
     } catch (error) {
       return {
         success: false,
@@ -700,7 +743,7 @@ export async function testSavedConnection(id: string): Promise<TestConnectionRes
     password: conn.password || undefined,
     database: conn.database || undefined,
     sslEnabled: conn.sslEnabled,
-  });
+  }, conn.identityMode !== 'shared' && conn.systemRole ? { kind: conn.identityMode, systemRole: conn.systemRole } : undefined);
 }
 
 /**
@@ -776,6 +819,7 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
     metadata: conn.metadata,
+    ...identityFields(conn),
   }));
 }
 

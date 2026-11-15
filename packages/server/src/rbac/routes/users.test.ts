@@ -26,6 +26,16 @@ mock.module("../services/rbac", () => ({
     createAuditLog: mockCreateAuditLog,
 }));
 
+// Roles mapped to a ClickHouse role on some connection (ADR 0033 §6).
+const mappedRoles = new Set<string>();
+const mappedHolders = new Set<string>();
+let defaultRoleMapped = false;
+mock.module("../services/connectionIdentity", () => ({
+    mappedRoleIds: async (roleIds: string[]) => roleIds.filter((id) => mappedRoles.has(id)),
+    holdsMappedRole: async (userId: string) => mappedHolders.has(userId),
+    defaultRoleIsMapped: async () => defaultRoleMapped,
+}));
+
 mock.module("../services/password", () => ({
     validatePasswordStrength: mockValidatePasswordStrength,
     generateSecurePassword: mockGenerateSecurePassword
@@ -188,6 +198,64 @@ describe("RBAC Users Routes", () => {
             });
             expect(res.status).toBe(200);
             expect(mockUpdateUser).toHaveBeenCalledWith("admin-id", { roleIds: ["role-narrow"] });
+        });
+
+        // ADR 0033 §6: a role mapped to a ClickHouse role decides what ClickHouse lets its holder do.
+        it.each([
+            ["assign-roles", "POST", "/users/admin-id/assign-roles", { roleIds: ["role-narrow"] }],
+            ["create user", "POST", "/users", { email: "n@x.io", username: "newuser", password: "Password-123!", roleIds: ["role-narrow"] }],
+            ["update user", "PATCH", "/users/admin-id", { roleIds: ["role-narrow"] }],
+        ])("denies a non-super-admin a role mapped to a ClickHouse role via %s, though its permissions are within theirs", async (_label, method, path, body) => {
+            mappedRoles.add("role-narrow");
+            try {
+                const res = await app.request(path, { method, headers: json, body: JSON.stringify(body) });
+                expect(res.status).toBe(403);
+                expect((await res.json()).error.message).toContain("super admin");
+                expect(mockCreateUser).not.toHaveBeenCalled();
+                expect(mockUpdateUser).not.toHaveBeenCalled();
+            } finally {
+                mappedRoles.clear();
+            }
+        });
+
+        // Whoever can reset such an account's password can sign in as it.
+        it.each([
+            ["reset-password", "POST", "/users/admin-id/reset-password", { generatePassword: true }],
+            ["update", "PATCH", "/users/admin-id", { displayName: "x" }],
+        ])("denies a non-super-admin %s on an account that holds a mapped role", async (_label, method, path, body) => {
+            mappedHolders.add("admin-id");
+            try {
+                const res = await app.request(path, { method, headers: json, ...(body ? { body: JSON.stringify(body) } : {}) });
+                expect(res.status).toBe(403);
+                expect((await res.json()).error.message).toContain("super admin");
+                expect(mockUpdateUser).not.toHaveBeenCalled();
+            } finally {
+                mappedHolders.clear();
+            }
+        });
+
+        it("denies a non-super-admin creating an account with no role while the default role is mapped", async () => {
+            defaultRoleMapped = true;
+            try {
+                const res = await app.request("/users", { method: "POST", headers: json, body: JSON.stringify({ email: "n@x.io", username: "newuser", password: "Password-123!" }) });
+                expect(res.status).toBe(403);
+                expect(mockCreateUser).not.toHaveBeenCalled();
+            } finally {
+                defaultRoleMapped = false;
+            }
+        });
+
+        it("lets a super admin assign a mapped role", async () => {
+            mappedRoles.add("role-narrow");
+            mockTokenPayload.roles = ["super_admin"];
+            try {
+                const res = await app.request("/users/admin-id/assign-roles", {
+                    method: "POST", headers: json, body: JSON.stringify({ roleIds: ["role-narrow"] }),
+                });
+                expect(res.status).toBe(200);
+            } finally {
+                mappedRoles.clear();
+            }
         });
 
         it("lets a super admin assign any role", async () => {

@@ -8,6 +8,7 @@ Version combinations CHouse UI has been tested against end-to-end.
 | --- | --- | --- |
 | ClickHouse | 24.11 | Monitoring suite verified end-to-end against a production cluster |
 | ClickHouse | 25 | Query logs, metrics, fleet |
+| ClickHouse | 24.3, 24.4 and 26.5 | [Role ceiling](/docs/connection-identity/) end-to-end: it works from 24.4; on 24.3 the switch is refused and nothing is sent |
 | ClickHouse | 23.8 and 26.5 | Data observability end-to-end against every pipeline source (Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, PostgreSQL replication); features a version lacks show *unsupported on this version* |
 | PostgreSQL | 18 | RBAC database (`RBAC_DB_TYPE=postgres`) |
 | SQLite | 3.51.0 | RBAC database via Bun's built-in SQLite (`RBAC_DB_TYPE=sqlite`) |

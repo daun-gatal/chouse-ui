@@ -5,7 +5,7 @@
  * Ideal for production and multi-instance deployments.
  */
 
-import { pgTable, text, boolean, timestamp, integer, uniqueIndex, index, jsonb, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, text, boolean, timestamp, integer, bigint, uniqueIndex, index, jsonb, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { AiModelParams } from '../constants/aiModelParams';
 import type { AiModelPricing } from '../constants/aiModelPricing';
@@ -282,6 +282,14 @@ export const clickhouseConnections = pgTable('rbac_clickhouse_connections', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+  // ADR 0033 §5: the kind of the connection and the stored verdict of its identity checks.
+  identityMode: text('identity_mode').notNull().default('shared'),
+  systemRole: text('system_role'),
+  accessContact: text('access_contact'),
+  identityHealth: text('identity_health'),
+  identityHealthReason: text('identity_health_reason'),
+  identityCheckedAt: bigint('identity_checked_at', { mode: 'number' }),
+  identityServerVersion: text('identity_server_version'),
 }, (table) => ({
   nameIdx: index('ch_connections_name_idx').on(table.name),
   defaultIdx: index('ch_connections_default_idx').on(table.isDefault),

@@ -3,10 +3,15 @@
  * with the GRANT statements that fix it. Shown after Test connection, and in
  * place of the save when the server refused it (PRIVILEGES_MISSING). Only
  * required features block a save; optional ones only warn (ADR 0031).
+ *
+ * On a connection kind other than a shared login (`report.kind`, ADR 0033) the
+ * checked privileges are the system role's, and features that depend on each
+ * person's own ClickHouse role, or that the kind does not offer, say so
+ * instead of granted/missing.
  */
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, Copy, Info, Lock, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, Copy, Info, Lock, Minus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -27,15 +32,27 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** Who the checked privileges belong to: the login, or the system role on a kind that has one. */
+function holder(report: ConnectionPrivilegeReport): string {
+  return report.kind ? "the system role" : report.username;
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** One sentence on what blocks the save (required features only), for the banner. */
 export function privilegeSummary(report: ConnectionPrivilegeReport): string {
   const failing = report.features.filter((f) => f.required && f.status === "missing").length;
+  const who = holder(report);
+  // A ClickHouse user name is case-sensitive, so only the system-role wording is capitalised.
+  const subject = report.kind ? sentenceCase(who) : who;
   if (report.missingCount === 0) {
     return failing === 0
-      ? `${report.username} has every privilege CHouse UI needs.`
-      : `Some privileges for ${report.username} couldn't be checked. Check again.`;
+      ? `${subject} has every privilege CHouse UI needs.`
+      : `Some privileges for ${who} couldn't be checked. Check again.`;
   }
-  return `${report.username} is missing ${plural(report.missingCount, "privilege", "privileges")} across ${plural(failing, "feature", "features")}.`;
+  return `${subject} is missing ${plural(report.missingCount, "privilege", "privileges")} across ${plural(failing, "feature", "features")}.`;
 }
 
 /** One sentence on the optional features that won't work, or null when they all do. */
@@ -45,11 +62,11 @@ export function optionalSummary(report: ConnectionPrivilegeReport): string | nul
   const names = failing.map((f) => f.name).join(", ");
   const unchecked = failing.every((f) => f.missing.length === 0);
   return unchecked
-    ? `${names} couldn't be checked for ${report.username}; it may not work.`
-    : `${names} won't work: ${report.username} is missing ${plural(report.optionalMissingCount, "optional privilege", "optional privileges")}.`;
+    ? `${names} couldn't be checked for ${holder(report)}; it may not work.`
+    : `${names} won't work: ${holder(report)} is missing ${plural(report.optionalMissingCount, "optional privilege", "optional privileges")}.`;
 }
 
-function CopyButton({ text, label }: { text: string; label: string }): ReactElement {
+export function CopyButton({ text, label }: { text: string; label: string }): ReactElement {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +98,40 @@ function CopyButton({ text, label }: { text: string; label: string }): ReactElem
   );
 }
 
-function FeatureRow({ feature, open, onToggle }: { feature: PrivilegeFeatureReport; open: boolean; onToggle: () => void }): ReactElement {
+/** What a feature says in place of granted/missing when the checked role does not decide it. */
+const SOURCE_LABELS = {
+  mapped_role: "From each person's ClickHouse role",
+  unavailable: "Not available on this kind",
+} as const;
+
+/** A feature the system role does not hold: nothing was checked, so it neither passes nor fails. */
+function UncheckedFeatureRow({ feature, label }: { feature: PrivilegeFeatureReport; label: string }): ReactElement {
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2">
+      <Minus className="h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
+      <span className="flex min-w-0 flex-1 flex-col text-left">
+        <span className="text-[13px] font-medium text-paper">{feature.name}</span>
+        <span className="break-words text-[11px] leading-[1.45] text-paper-faint">{feature.description}</span>
+      </span>
+      <span className="shrink-0 rounded-xs bg-ink-200 px-1.5 py-0.5 text-right font-mono text-[10px] uppercase tracking-[0.1em] text-paper-muted">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+interface FeatureRowProps {
+  feature: PrivilegeFeatureReport;
+  /** The report is for a kind other than a shared login, so a feature's `source` applies. */
+  byKind: boolean;
+  open: boolean;
+  onToggle: () => void;
+}
+
+function FeatureRow({ feature, byKind, open, onToggle }: FeatureRowProps): ReactElement {
+  if (byKind && (feature.source === "mapped_role" || feature.source === "unavailable")) {
+    return <UncheckedFeatureRow feature={feature} label={SOURCE_LABELS[feature.source]} />;
+  }
   const failing = feature.status === "missing";
   // A missing optional feature is a warning, not a blocker.
   const warning = failing && !feature.required;
@@ -270,9 +320,15 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
         </p>
       )}
 
+      {report.kind && (
+        <p className="text-[11px] leading-[1.5] text-paper-faint">
+          Checked on the system role.
+        </p>
+      )}
+
       <div className="divide-y divide-ink-500 rounded-xs border border-ink-500 bg-ink-100">
         {report.features.map((feature) => (
-          <FeatureRow key={feature.id} feature={feature} open={open.has(feature.id)} onToggle={() => toggle(feature.id)} />
+          <FeatureRow key={feature.id} feature={feature} byKind={Boolean(report.kind)} open={open.has(feature.id)} onToggle={() => toggle(feature.id)} />
         ))}
         {report.otherDatabases && (report.otherDatabases.total ?? 0) > 0 && (
           <OtherDatabasesRow
@@ -288,7 +344,9 @@ export function PrivilegeReport({ report, blocked, isEditing, version, latencyMs
       {(report.grantScript || report.optionalGrantScript) && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] leading-[1.5] text-paper-faint">
-            If {report.username} gets its access through a role, grant these to the role instead.
+            {report.kind
+              ? `Grant these to the system role, not to ${report.username}.`
+              : `If ${report.username} gets its access through a role, grant these to the role instead.`}
           </p>
           {report.grantScript && (
             <CopyButton text={report.grantScript} label={report.optionalGrantScript ? "Copy required grants" : "Copy all grants"} />

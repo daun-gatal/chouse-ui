@@ -29,7 +29,7 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from 
 import { createAuditLogWithContext, userHasPermission } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService } from '../../services/clickhouse';
-import { personActor } from '../../services/chExecutor';
+import { identityOfConnection, personActor } from '../../services/chExecutor';
 import type { ConnectionConfig } from '../../types';
 
 const connectionsRoutes = new Hono();
@@ -119,6 +119,16 @@ async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheck> {
     };
   }
   return { failure: null, privileges: result.privileges };
+}
+
+/**
+ * A connection as someone who is not a super admin sees it: its kind, so the
+ * UI can say statements are limited to a role, and whether it is healthy, but
+ * not the system role, the server version or the reason a check failed, which
+ * can name grants, roles and other connections.
+ */
+function withoutIdentityDetail(connection: ConnectionResponse): ConnectionResponse {
+  return { ...connection, systemRole: null, identityHealthReason: null, identityServerVersion: null };
 }
 
 /** Whether an update changes anything the ClickHouse login or the privilege check depends on. */
@@ -227,7 +237,7 @@ connectionsRoutes.get(
       const connections = await getUserConnections(user.sub);
       return c.json({
         success: true,
-        data: connections,
+        data: connections.map(withoutIdentityDetail),
       });
     } catch (error) {
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'My connections error');
@@ -262,7 +272,7 @@ connectionsRoutes.get(
 
       return c.json({
         success: true,
-        data: connection,
+        data: getRbacUser(c).roles.includes('super_admin') ? connection : withoutIdentityDetail(connection),
       });
     } catch (error) {
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Get default error');
@@ -380,6 +390,19 @@ connectionsRoutes.patch(
             message: 'Connection not found',
           },
         }, 404);
+      }
+
+      // On a connection that is not `shared` the login is part of its kind
+      // (ADR 0033 §5): it is replaced only through the switch, which a super
+      // admin makes and which runs the identity checks.
+      if ((existing.identityMode ?? 'shared') !== 'shared' && changesCredentials(existing, input)) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'IDENTITY_MANAGED_LOGIN',
+            message: 'This connection limits people to a ClickHouse role, so its host, port, TLS, user and password are changed in its Identity panel, by a super admin.',
+          },
+        }, 409);
       }
 
       let privileges: PrivilegeReport | undefined;
@@ -651,6 +674,7 @@ connectionsRoutes.post(
         username: connection.username,
         password: connection.password || '',
         database: connection.database || undefined,
+        identity: identityOfConnection(connection),
       };
 
       // Create ClickHouse service to test connection

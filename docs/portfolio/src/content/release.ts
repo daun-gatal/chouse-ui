@@ -35,6 +35,7 @@ export const RELEASE: Release = {
     { label: "Who a statement runs as", href: "/docs/security/#who-a-statement-runs-as" },
     { label: "Reads are sent read-only", href: "/docs/security/#reads-are-sent-read-only" },
     { label: "System tables that need a permission", href: "/docs/data-access-rules/#system-tables-that-show-other-peoples-work" },
+    { label: "Role ceiling for connections", href: "/docs/connection-identity/" },
     { label: "Who a job runs as", href: "/docs/scheduled-queries/#who-a-job-runs-as" },
     { label: "Killing queries", href: "/docs/monitoring-live-queries/#killing-queries" },
   ],

@@ -957,6 +957,17 @@ export interface ClickHouseConnection {
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown> | null;
+  /** How statements reach ClickHouse (ADR 0033): `shared`, `shared_ceiling`, or a kind this build does not know. */
+  identityMode: string;
+  /** The ClickHouse role CHouse's own background work names; null on a shared login. */
+  systemRole: string | null;
+  /** Shown to people when ClickHouse refuses them on this connection. */
+  accessContact: string | null;
+  identityHealth: 'ok' | 'failing' | null;
+  identityHealthReason: string | null;
+  /** Unix milliseconds. */
+  identityCheckedAt: number | null;
+  identityServerVersion: string | null;
 }
 
 export interface CreateConnectionInput {
@@ -1007,6 +1018,12 @@ export interface PrivilegeFeatureReport {
   unavailable: string[];
   errors: string[];
   grants: string[];
+  /**
+   * On a kind other than `shared`: whose privileges decide this feature. The
+   * system role's are checked; a person's mapped role and a feature the kind
+   * does not offer are not.
+   */
+  source?: 'system_role' | 'mapped_role' | 'unavailable';
 }
 
 /** What a connection's ClickHouse user is missing for each CHouse UI feature. */
@@ -1028,6 +1045,8 @@ export interface ConnectionPrivilegeReport {
   optionalGrantScript: string;
   /** Information only: access to the server's other databases (data editing is only checked on the default one). */
   otherDatabases?: OtherDatabasesReport;
+  /** The connection kind the report was made for; absent on a shared login. */
+  kind?: string;
 }
 
 export interface DatabaseAccess {
