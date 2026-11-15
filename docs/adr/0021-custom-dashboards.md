@@ -1,6 +1,6 @@
 # 0021 — Custom Dashboards and AI-Drafted Dashboards
 
-- **Status:** Proposed
+- **Status:** Proposed (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-10-17
 - **Builds on:** [0002](0002-scheduled-queries.md) (read-only SELECT validation, `{{…}}` macros as native parameters, leases), [0010](0010-pod-local-state-and-multi-replica-correctness.md) (what may live in a pod), [0013](0013-chouse-mcp.md)/[0014](0014-mcp-destructive-client-approval.md) (MCP tools), [0016](0016-data-observability-platform.md) §7 (notebook query cells run under the caller's data access), [0019](0019-deepagents-managed-in-the-ui.md) (AI features run as registry agents), [0020](0020-ai-usage-and-data-egress-tracking.md) (AI usage is recorded)
 - **Scope:** a new **Dashboards** area (`/dashboards`, `/api/dashboards`), a chart view for results in the SQL workspace, panel threshold alerts, curated templates, an AI drafting feature, and dashboard access for MCP, the chat and the CLI.

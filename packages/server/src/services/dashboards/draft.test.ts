@@ -10,7 +10,7 @@ let rows: Array<Record<string, unknown>> = [];
 let dryRunError: Error | null = null;
 const dryRuns: string[] = [];
 mock.module("./runner", () => ({
-  execute: async (_connectionId: string, compiled: { sql: string }) => {
+  execute: async (_accountId: string, _connectionId: string, compiled: { sql: string }) => {
     dryRuns.push(compiled.sql);
     if (dryRunError) throw dryRunError;
     return { columns, rows, elapsedMs: 0, readRows: 0, readBytes: 0, ranAt: 0, timezone: "UTC" };

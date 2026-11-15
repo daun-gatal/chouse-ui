@@ -5,7 +5,7 @@
  * these, one per server, diff into exactly what an upgrade changes.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { selectRows } from "../observe/clickhouse";
 
@@ -29,7 +29,7 @@ export function normaliseValue(value: string): string {
   return bare.replace(/^auto\(\d+\)$/, "auto");
 }
 
-async function names(client: ClickHouseClient, query: string, fallback?: string): Promise<Set<string>> {
+async function names(client: ChExecutor, query: string, fallback?: string): Promise<Set<string>> {
   try {
     return new Set((await selectRows<{ name: string }>(client, query)).map((r) => r.name));
   } catch (error) {
@@ -38,7 +38,7 @@ async function names(client: ClickHouseClient, query: string, fallback?: string)
   }
 }
 
-export async function readSnapshot(client: ClickHouseClient): Promise<VersionSnapshot> {
+export async function readSnapshot(client: ChExecutor): Promise<VersionSnapshot> {
   const [v] = await selectRows<{ v: string }>(client, "SELECT version() AS v");
   let settingRows: Array<{ name: string; value: string; is_obsolete: number }>;
   try {

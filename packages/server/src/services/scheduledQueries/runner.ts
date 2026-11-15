@@ -8,13 +8,13 @@
 
 import { randomUUID } from "crypto";
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { logger } from "../../utils/logger";
 import { validateQueryAccess } from "../../middleware/dataAccess";
 import { getUserPermissions, getUserRoles } from "../../rbac/services/rbac";
 import { SYSTEM_ROLES } from "../../rbac/schema/base";
-import { clientForConnection } from "./chClient";
+import { executorForConnection, personActor, type Actor } from "../chExecutor";
 import * as store from "./store";
 import {
   buildExecutableQuery,
@@ -73,8 +73,13 @@ function buildParamValues(window: WindowParams): Record<string, string> {
  * SELECT and any materialize writes) to the job's owner in ClickHouse query_log,
  * not the bare ClickHouse user. Applied at the client level via clientForConnection.
  */
-function scheduledLogComment(job: ScheduledQueryRow): string {
-  return JSON.stringify({ rbac_user_id: job.createdBy ?? null, source: "scheduled_query", job_id: job.id });
+/**
+ * Who a job runs as: its owner. A job with no owner is refused (ADR 0033 §4);
+ * it used to run with no access check at all.
+ */
+export function jobActor(job: Pick<ScheduledQueryRow, "createdBy">): Actor {
+  if (!job.createdBy) throw new Error("This job has no owner, so it cannot run. Open it and save it to become its owner.");
+  return personActor(job.createdBy);
 }
 
 function clickhouseSettings(job: ScheduledQueryRow): Record<string, string | number> {
@@ -99,7 +104,7 @@ interface SelectOutcome {
 }
 
 async function runSelect(
-  client: ClickHouseClient,
+  client: ChExecutor,
   job: ScheduledQueryRow,
   execSql: string,
   params: Record<string, string>,
@@ -239,12 +244,12 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
   let conditionMet: boolean | null = null;
   let notified = false;
 
-  let client: ClickHouseClient | null = null;
+  let client: ChExecutor | undefined;
   const window = opts.window ?? await resolveWindow(job, opts.slotAt);
   const params = buildParamValues(window);
 
   try {
-    client = await clientForConnection(job.connectionId, scheduledLogComment(job));
+    client = await executorForConnection(job.connectionId, jobActor(job), { context: { source: "scheduled_query", job_id: job.id } });
     const executionJob = job.kind === "data_health_check" ? await currentDataHealthJob(job, client) : job;
     // Re-validate read-only on the SOURCE every run (an edit can't smuggle a write).
     const validation = validateReadOnlySelect(executionJob.query);
@@ -306,7 +311,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     // Best-effort real cancellation (the abort only drops the socket).
     if (client) {
       try {
-        await client.command({ query: `KILL QUERY WHERE query_id = {qid:String}`, query_params: { qid: runId } });
+        await client.onServiceLane().command({ query: `KILL QUERY WHERE query_id = {qid:String}`, query_params: { qid: client.queryIdFor(runId) } });
       } catch {
         /* best-effort */
       }

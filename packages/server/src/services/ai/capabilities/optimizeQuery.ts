@@ -87,8 +87,8 @@ export const optimizeQueryCapability: StructuredCapability<
         ? (await validateQueryAccess({ userId: ctx.userId, isAdmin: ctx.isAdmin, permissions: ctx.permissions, sql: optimizedQuery, connectionId: ctx.connectionId })).allowed
         : false;
       const [before, after] = await Promise.all([
-        explainEstimate(ctx.connectionId, prepared.query),
-        rewriteAllowed ? explainEstimate(ctx.connectionId, optimizedQuery) : Promise.resolve(null),
+        explainEstimate(ctx.connectionId, prepared.query, ctx.userId),
+        rewriteAllowed ? explainEstimate(ctx.connectionId, optimizedQuery, ctx.userId) : Promise.resolve(null),
       ]);
       if (before || after) estimate = { before: before ?? undefined, after: after ?? undefined };
     }

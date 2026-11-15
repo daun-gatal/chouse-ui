@@ -5,7 +5,7 @@
  * never kept, only names, counts, users and clients.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { NOT_OBSERVE, selectRows } from "../observe/clickhouse";
 
@@ -50,7 +50,7 @@ interface UseRow {
 const WINDOW = `event_date >= today() - ${WINDOW_DAYS} AND event_time > now() - INTERVAL ${WINDOW_DAYS} DAY AND type = 'QueryFinish' AND ${NOT_OBSERVE}`;
 const CALLERS = "uniqExact(normalized_query_hash) AS shapes, countIf(event_time > now() - INTERVAL 7 DAY) AS runs7d, groupUniqArray(5)(user) AS users, groupUniqArray(5)(if(client_name != '', client_name, substring(http_user_agent, 1, 60))) AS clients";
 
-async function uses(client: ClickHouseClient, column: string): Promise<Record<string, Use>> {
+async function uses(client: ChExecutor, column: string): Promise<Record<string, Use>> {
   const rows = await selectRows<UseRow>(client, `
     SELECT x AS name, ${CALLERS}
     FROM system.query_log ARRAY JOIN ${column} AS x
@@ -59,7 +59,7 @@ async function uses(client: ClickHouseClient, column: string): Promise<Record<st
   return Object.fromEntries(rows.map((r) => [r.name, { shapes: Number(r.shapes), runs7d: Number(r.runs7d), users: r.users.filter(Boolean), clients: r.clients.filter(Boolean) }]));
 }
 
-async function settingUses(client: ClickHouseClient): Promise<WorkloadFacts["queries"]["settings"]> {
+async function settingUses(client: ChExecutor): Promise<WorkloadFacts["queries"]["settings"]> {
   const rows = await selectRows<UseRow & { values: string[] }>(client, `
     SELECT k AS name, ${CALLERS}, groupUniqArray(5)(v) AS values
     FROM system.query_log ARRAY JOIN mapKeys(Settings) AS k, mapValues(Settings) AS v
@@ -70,7 +70,7 @@ async function settingUses(client: ClickHouseClient): Promise<WorkloadFacts["que
 
 const EMPTY_QUERIES: WorkloadFacts["queries"] = { functions: {}, types: {}, storages: {}, formats: {}, settings: {} };
 
-export async function gatherWorkload(client: ClickHouseClient): Promise<WorkloadFacts> {
+export async function gatherWorkload(client: ChExecutor): Promise<WorkloadFacts> {
   const columns = (await selectRows<{ db: string; tbl: string; name: string; type: string }>(client, `
     SELECT database AS db, table AS tbl, name, type FROM system.columns
     WHERE database NOT IN ${SYSTEM_DATABASES} LIMIT 50000`, { maxExecutionTime: 60 }))

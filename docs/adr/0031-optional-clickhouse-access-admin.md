@@ -1,6 +1,6 @@
 # 0031 — ClickHouse Access Admin Is Optional When Saving a Connection
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0033](0033-every-statement-gets-a-clickhouse-identity.md))
 - **Date:** 2026-11-11
 - **Amends:** [0027](0027-connection-privilege-check.md) §4 ("create and update refuse to save until every feature passes … There is no override")
 - **Scope:** `services/connectionPrivileges.ts`, the connection routes (`/api/rbac/connections` create and update), Admin › Connections, the docs. One PR.

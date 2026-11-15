@@ -29,6 +29,7 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from 
 import { createAuditLogWithContext, userHasPermission } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService } from '../../services/clickhouse';
+import { personActor } from '../../services/chExecutor';
 import type { ConnectionConfig } from '../../types';
 
 const connectionsRoutes = new Hono();
@@ -653,7 +654,7 @@ connectionsRoutes.post(
       };
 
       // Create ClickHouse service to test connection
-      const testService = new ClickHouseService(config);
+      const testService = new ClickHouseService(config, personActor(user.sub));
 
       // Test connection first
       const isConnected = await testService.ping();

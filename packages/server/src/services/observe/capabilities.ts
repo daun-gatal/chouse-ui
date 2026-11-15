@@ -6,7 +6,7 @@
  * `services/connectionPrivileges.ts`.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { json, num, one, run, sql, str } from "./db";
 import { selectRows } from "./clickhouse";
@@ -50,7 +50,7 @@ async function load(connectionId: string): Promise<Capabilities | null> {
   };
 }
 
-export async function probeCapabilities(connectionId: string, client: ClickHouseClient, force = false): Promise<Capabilities> {
+export async function probeCapabilities(connectionId: string, client: ChExecutor, force = false): Promise<Capabilities> {
   const cached = await load(connectionId);
   const [versionRow] = await selectRows<{ v: string }>(client, "SELECT version() AS v");
   const version = versionRow?.v ?? null;

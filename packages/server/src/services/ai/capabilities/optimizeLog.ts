@@ -67,7 +67,7 @@ export const optimizeLogCapability: StructuredCapability<
     let peakMemory: string | undefined;
     let user: string | undefined;
     if (input.queryId) {
-      const fetched = await fetchQueryById(ctx.connectionId, input.queryId);
+      const fetched = await fetchQueryById(ctx.connectionId, input.queryId, ctx.userId);
       if (fetched) {
         queryText = fetched.query;
         peakMemory = fetched.peakMemory;

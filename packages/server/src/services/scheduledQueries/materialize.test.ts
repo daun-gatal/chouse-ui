@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { ClickHouseClient } from "@clickhouse/client";
+import { executorOverClient, personActor, type ChExecutor, type ClientLike } from "../chExecutor";
 
 import { buildCreateStatements, buildStagingDDL, executeMaterialize, resolveWriteTarget, type DestInfo } from "./materialize";
-import { plainSession } from "./session";
+import { plainSession } from "../chExecutor";
 import type { ExpectedColumn, OutputConfig, ScheduledQueryRow } from "./types";
 
 const COLUMNS: ExpectedColumn[] = [
@@ -33,7 +33,7 @@ interface Recorded {
  * Fake client: answers system.* reads from `tables` (mutated by CREATE statements)
  * and records every statement with its session + settings.
  */
-function fakeClient(opts: { tables?: Record<string, TableRow>; clusterShards?: number; parts?: string[] } = {}): { client: ClickHouseClient; log: Recorded[] } {
+function fakeClient(opts: { tables?: Record<string, TableRow>; clusterShards?: number; parts?: string[] } = {}): { client: ChExecutor; log: Recorded[] } {
   const tables: Record<string, TableRow> = { ...opts.tables };
   const log: Recorded[] = [];
   const respond = (data: unknown[]) => ({ json: async () => ({ data }) });
@@ -68,12 +68,12 @@ function fakeClient(opts: { tables?: Record<string, TableRow>; clusterShards?: n
       return { query_id: "q", response_headers: { "x-clickhouse-summary": JSON.stringify({ written_rows: "7" }) } };
     },
   };
-  return { client: client as unknown as ClickHouseClient, log };
+  return { client: executorOverClient(() => client as unknown as ClientLike, personActor("owner-1")), log };
 }
 
 const commands = (log: Recorded[]): string[] => log.filter((r) => r.kind === "command").map((r) => r.query);
 
-function run(j: ScheduledQueryRow, client: ClickHouseClient): Promise<number | null> {
+function run(j: ScheduledQueryRow, client: ChExecutor): Promise<number | null> {
   return executeMaterialize({
     client,
     job: j,

@@ -105,6 +105,12 @@ an ADR.
   See [middleware](packages/server/src/middleware/README.md),
   [utils](packages/server/src/utils/README.md) and
   [.rules/SECURITY.md](.rules/SECURITY.md).
+- **One module talks to ClickHouse.** Every statement goes through the statement
+  executor, which needs to know who it is for and sets the query id,
+  `log_comment` and quota key from that. `bun run check:clickhouse-access` fails
+  when any other server file imports the ClickHouse client. See
+  [services/chExecutor](packages/server/src/services/chExecutor/README.md) and
+  [ADR 0033](docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
 - **Direct API access is refused.** Non-public `/api` requests must carry
   `X-Requested-With: XMLHttpRequest` or a PAT/MCP-subrequest bearer, or they get
   403 `DIRECT_ACCESS_DENIED`. See [routes](packages/server/src/routes/README.md).

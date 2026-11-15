@@ -3,8 +3,9 @@
  * real data-access rules; only ClickHouse is faked.
  */
 
+import { setExecutorClientForTests } from "../services/chExecutor";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
-import { ClickHouseError } from "@clickhouse/client";
+import { ClickHouseError } from "../services/chExecutor";
 import type { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { fakeExec } from "../middleware/sqlAccess/fixtures/fakeParser";
@@ -25,8 +26,7 @@ const ROWS = {
 };
 let respond: (connectionId: string, query: string) => unknown = () => ROWS;
 
-mock.module("../services/scheduledQueries/chClient", () => ({
-  clientForConnection: async (connectionId: string) => ({
+setExecutorClientForTests((connectionId: string) => ({
     exec: fakeExec,
     query: async (args: { query: string; query_params?: Record<string, unknown>; clickhouse_settings?: Record<string, unknown> }) => {
       sent.push({ connectionId, query: args.query, params: args.query_params ?? {}, settings: args.clickhouse_settings ?? {} });
@@ -34,7 +34,6 @@ mock.module("../services/scheduledQueries/chClient", () => ({
       if (result instanceof Error) throw result;
       return { response_headers: { "x-clickhouse-timezone": "UTC" }, json: async () => result };
     },
-  }),
 }));
 
 const delivered: Array<{ title: string; text: string }> = [];
@@ -357,7 +356,7 @@ describe("running panels", () => {
     expect(q.query).not.toContain("{{");
     expect(Object.keys(q.params).sort()).toEqual(["chouse_from", "chouse_interval_s", "chouse_to"]);
     expect(q.settings).toMatchObject({ readonly: "1", max_execution_time: 30, max_result_rows: "10000", result_overflow_mode: "throw", read_overflow_mode: "throw" });
-    expect(JSON.parse(String(q.settings.log_comment))).toEqual({ source: "dashboards", dashboardId: created.dashboard.id, panelId: p.id });
+    expect(JSON.parse(String(q.settings.log_comment))).toEqual({ source: "dashboards", dashboardId: created.dashboard.id, panelId: p.id, rbac_user_id: "u-owner" });
   });
 
   it("shares one execution between viewers of the same query", async () => {

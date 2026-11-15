@@ -109,7 +109,8 @@ async function reviewPanel(raw: DashboardDraftOutput["panels"][number], variable
 
   let fit: DraftPanel["lint"];
   try {
-    const dry = await execute(request.connectionId, compiled.compiled, { dashboardId: null, panelId: "ai-draft" });
+    if (!ctx.userId) throw new Error("A panel draft needs a signed-in user");
+    const dry = await execute(ctx.userId, request.connectionId, compiled.compiled, { dashboardId: null, panelId: "ai-draft" });
     const have = new Set(dry.columns.map((c) => c.name));
     const absent = columnsNamed(panel.viz).filter((c) => !have.has(c));
     if (absent.length > 0) {

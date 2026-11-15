@@ -9,7 +9,7 @@
  */
 
 import { redactSecrets } from "../../mcp/safety";
-import { clientForConnection } from "../scheduledQueries/chClient";
+import { executorForConnection, serviceActor } from "../chExecutor";
 
 /** Columns profiled per table; wide tables keep their first columns. */
 export const MAX_PROFILED_COLUMNS = 40;
@@ -160,7 +160,7 @@ export function parseProfile(row: Record<string, unknown>, planned: PlannedColum
 /** Run the profile under the connection's own credentials, read-only and capped. */
 export async function profileTable(connectionId: string, database: string, table: string, columns: ProfileColumn[], options: { tablePii: boolean; catalogRows: number | null }): Promise<TableProfile> {
   const { planned, skipped } = planProfile(columns, options.tablePii);
-  const client = await clientForConnection(connectionId, JSON.stringify({ source: "observe", collector: "context_draft" }));
+  const client = await executorForConnection(connectionId, serviceActor("collector"), { context: { source: "observe", collector: "context_draft" } });
   const result = await client.query({
     query: buildProfileQuery(database, table, planned),
     format: "JSONEachRow",

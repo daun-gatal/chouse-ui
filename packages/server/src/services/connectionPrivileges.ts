@@ -11,7 +11,7 @@
  * privilege tree in `system.privileges`.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "./chExecutor";
 
 import { OBSERVED_SYSTEM_TABLES } from "./observe/systemTables";
 
@@ -469,13 +469,13 @@ const UNAVAILABLE_TYPES: ReadonlySet<string> = new Set(["UNKNOWN_TABLE", "NO_ELE
 
 type TableProbe = { kind: "ok" } | { kind: "denied"; grant: string } | { kind: "unavailable" } | { kind: "error"; reason: string };
 
-async function textRows(client: ClickHouseClient, query: string): Promise<string[]> {
+async function textRows(client: ChExecutor, query: string): Promise<string[]> {
   const result = await client.query({ query, format: "TabSeparatedRaw" });
   const text = await result.text();
   return text.split("\n").filter((line) => line.trim().length > 0);
 }
 
-async function probeTable(client: ClickHouseClient, table: string): Promise<TableProbe> {
+async function probeTable(client: ChExecutor, table: string): Promise<TableProbe> {
   try {
     const result = await client.query({ query: `SELECT * FROM system.${table} LIMIT 0`, format: "JSONEachRow" });
     await result.json();
@@ -507,7 +507,7 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
  * in every role; servers without it (24.8 and older) get the user's own
  * grants plus `SHOW GRANTS FOR` each enabled role.
  */
-async function loadGrantSets(client: ClickHouseClient): Promise<ParsedGrant[][]> {
+async function loadGrantSets(client: ChExecutor): Promise<ParsedGrant[][]> {
   try {
     return [parseGrantLines(await textRows(client, "SHOW GRANTS FINAL"))];
   } catch (error) {
@@ -521,7 +521,7 @@ async function loadGrantSets(client: ClickHouseClient): Promise<ParsedGrant[][]>
   return sets;
 }
 
-async function loadPrivilegeTree(client: ClickHouseClient): Promise<PrivilegeTree> {
+async function loadPrivilegeTree(client: ChExecutor): Promise<PrivilegeTree> {
   try {
     const result = await client.query({ query: "SELECT privilege, aliases, level, parent_group FROM system.privileges", format: "JSONEachRow" });
     return buildPrivilegeTree((await result.json()) as PrivilegeTreeRow[]);
@@ -563,7 +563,7 @@ export interface PrivilegeCheckInput {
  * that fails for another reason is reported in that feature's `errors`,
  * and still fails the feature.
  */
-export async function checkConnectionPrivileges(client: ClickHouseClient, input: PrivilegeCheckInput): Promise<PrivilegeReport> {
+export async function checkConnectionPrivileges(client: ChExecutor, input: PrivilegeCheckInput): Promise<PrivilegeReport> {
   const database = input.database?.trim() || "default";
   const tables = [...new Set(PRIVILEGE_FEATURES.flatMap((f) => f.systemTables))];
   const [probes, grantSets, tree, databaseNames] = await Promise.all([
@@ -629,7 +629,7 @@ export async function checkConnectionPrivileges(client: ClickHouseClient, input:
 }
 
 /** The databases the user can see (ClickHouse lists only those it holds something on), or null when unreadable. */
-async function loadDatabaseNames(client: ClickHouseClient): Promise<string[] | null> {
+async function loadDatabaseNames(client: ChExecutor): Promise<string[] | null> {
   try {
     return await textRows(client, "SELECT name FROM system.databases ORDER BY name");
   } catch {

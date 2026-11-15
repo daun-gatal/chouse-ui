@@ -8,9 +8,8 @@
 import { randomUUID } from "crypto";
 
 import { getConnectionWithPassword } from "../../rbac/services/connections";
-import type { ConnectionConfig } from "../../types";
 import { logger } from "../../utils/logger";
-import { ClientManager } from "../clientManager";
+import { executorForConnection, personActor, serviceActor } from "../chExecutor";
 import { getCredential } from "../remediation/store";
 import { quoteIdent, quoteString } from "../remediation/catalog";
 import { selectRows } from "./clickhouse";
@@ -39,18 +38,21 @@ export async function startCodecTrial(input: TrialInput, actorId: string | null)
     INSERT INTO obs_codec_trials (id, connection_id, database_name, table_name, column_name, candidate_codec, status, requested_by, created_at)
     VALUES (${id}, ${input.connectionId}, ${input.database}, ${input.table}, ${input.column}, ${input.candidateCodec}, 'running', ${actorId}, ${Date.now()})
   `);
-  void runTrial(id, input, credential.username, credential.password);
+  void runTrial(id, input, actorId);
   return id;
 }
 
-async function runTrial(id: string, input: TrialInput, username: string, password: string): Promise<void> {
+async function runTrial(id: string, input: TrialInput, actorId: string | null): Promise<void> {
   const trialTable = `trial_${id.replace(/-/g, "").slice(0, 16)}`;
   const scratch = `${quoteIdent(SCRATCH_DATABASE)}.${quoteIdent(trialTable)}`;
   try {
     const conn = await getConnectionWithPassword(input.connectionId);
     if (!conn) throw new Error("Connection not found");
-    const config: ConnectionConfig = { url: `${conn.sslEnabled ? "https" : "http"}://${conn.host}:${conn.port}`, username, password, database: conn.database || undefined };
-    const client = ClientManager.getInstance().getClient(config, JSON.stringify({ source: "observe", collector: "codec_trial", trial_id: id }));
+    // Trials write a scratch table, so they run on the remediation login, for the person who asked.
+    const client = await executorForConnection(input.connectionId, actorId ? personActor(actorId) : serviceActor("remediation"), {
+      credential: "remediation",
+      context: { source: "observe", collector: "codec_trial", trial_id: id },
+    });
     const [column] = await selectRows<{ type: string; codec: string; compressed: number; uncompressed: number }>(client, `
       SELECT type, compression_codec AS codec, data_compressed_bytes AS compressed, data_uncompressed_bytes AS uncompressed
       FROM system.columns WHERE database = ${quoteString(input.database)} AND table = ${quoteString(input.table)} AND name = ${quoteString(input.column)}`);

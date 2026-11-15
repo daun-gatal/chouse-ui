@@ -46,6 +46,42 @@ function gate(tokens: Token[], params: Record<string, unknown> | undefined): Par
   return null;
 }
 
+const IMPERSONATION = "EXECUTE AS is not allowed. CHouse decides which ClickHouse user a statement runs as.";
+const UNAVAILABLE = "The query couldn't be checked against your data access rules because ClickHouse didn't answer. Try again.";
+
+/**
+ * True when ClickHouse's printout holds an `EXECUTE AS` node anywhere: as the
+ * root, behind a comment, or under `PARALLEL WITH` (ADR 0033 §3). Node names
+ * start a printout line after its indentation; a string literal that spells the
+ * name is printed on a `Literal` line and does not match.
+ */
+export function printoutImpersonates(lines: string[]): boolean {
+  return lines.some((line) => /^\s*ExecuteAsQuery\b/.test(line));
+}
+
+/** The statement text ClickHouse is asked to parse: raw INSERT data is cut off, since it isn't SQL. */
+function parseText(sql: string): string {
+  const lexed = lex(sql);
+  return lexed.ok && lexed.dataStart !== undefined ? sql.slice(0, lexed.dataStart) : sql;
+}
+
+export type ImpersonationCheck = { ok: true } | { ok: false; code: DenyCode; reason: string };
+
+/**
+ * The one check that applies to every caller, admins included: ClickHouse must
+ * be able to parse the statement, and the parsed tree must hold no `EXECUTE AS`.
+ * It reads ClickHouse's parse, never the text, so a comment cannot hide the keyword.
+ */
+export async function refuseImpersonation(sql: string, params: Record<string, unknown> | undefined, port: SqlParsePort): Promise<ImpersonationCheck> {
+  const printout = await port.explainAst(parseText(sql), params);
+  if (!printout.ok) {
+    if (printout.code === "CHECK_UNAVAILABLE") return { ok: false, code: "CHECK_UNAVAILABLE", reason: UNAVAILABLE };
+    return { ok: false, code: printout.code, reason: printout.message };
+  }
+  if (printoutImpersonates(printout.lines)) return { ok: false, code: "IMPERSONATION", reason: IMPERSONATION };
+  return { ok: true };
+}
+
 /** Parse one statement (the exact text that will run) and apply the policy. */
 export async function parseStatementAccess(sql: string, params: Record<string, unknown> | undefined, port: SqlParsePort): Promise<ParsedAccess> {
   const lexed = lex(sql);
@@ -64,6 +100,8 @@ export async function parseStatementAccess(sql: string, params: Record<string, u
     }
     return { ok: false, code: printout.code, reason: printout.message };
   }
+
+  if (printoutImpersonates(printout.lines)) return { ok: false, code: "IMPERSONATION", reason: IMPERSONATION };
 
   const tree = readExplainTree(printout.lines);
   if (!tree.ok) {

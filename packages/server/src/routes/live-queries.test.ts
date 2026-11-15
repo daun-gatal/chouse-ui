@@ -336,8 +336,35 @@ describe("Live Queries Routes", () => {
 
             expect(mockExecuteQuery).toHaveBeenCalled();
             for (const [sql] of mockExecuteQuery.mock.calls) {
-                expect(sql).toContain("query_id = 'q\\\\\\' x'");
+                expect(sql).toContain("'q\\\\\\' x'");
             }
+        });
+
+        it("stops the caller's own statement by the id the editor sent, and looks nowhere else", async () => {
+            mockRbacConfig = { userId: "user1", roles: ["developer"], permissions: ["live_queries:view", "live_queries:kill"], isRbacAdmin: false };
+            mockExecuteQuery.mockResolvedValueOnce({
+                data: [{ query_id: "chouse:p:user1:tab-42", user: "default", query: "SELECT sleep(10)", elapsed_seconds: 2, log_comment_json: JSON.stringify({ rbac_user_id: "user1" }) }],
+                meta: [], statistics: {}, rows: 1,
+            });
+
+            const res = await killRequest("tab-42");
+
+            expect(res.status).toBe(200);
+            const [lookup] = mockExecuteQuery.mock.calls[0];
+            expect(lookup).toContain("query_id IN ('tab-42', 'chouse:p:user1:tab-42')");
+            const [kill] = mockExecuteQuery.mock.calls[mockExecuteQuery.mock.calls.length - 1];
+            expect(kill).toContain("KILL QUERY WHERE query_id = 'chouse:p:user1:tab-42'");
+        });
+
+        it("does not rebuild an id for a value that already names an account", async () => {
+            mockRbacConfig = { userId: "user1", roles: ["developer"], permissions: ["live_queries:view", "live_queries:kill"], isRbacAdmin: false };
+            mockExecuteQuery.mockResolvedValueOnce({ data: [], meta: [], statistics: {}, rows: 0 });
+
+            const res = await killRequest("chouse:p:user2:tab-42");
+
+            expect(res.status).toBe(404);
+            const [lookup] = mockExecuteQuery.mock.calls[0];
+            expect(lookup).toContain("query_id IN ('chouse:p:user2:tab-42')");
         });
 
         it("should reject when queryId is missing", async () => {

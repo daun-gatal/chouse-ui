@@ -13,7 +13,7 @@
  * CHouse's own so it never shows up as workload.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { NOT_OBSERVE, selectRows, stripFormat } from "../observe/clickhouse";
 
@@ -139,7 +139,7 @@ function errorType(error: unknown): string {
 export type Explain = (query: string, settings: Record<string, string>) => Promise<string>;
 
 /** EXPLAIN PLAN on `client`, read-only and capped. Throws ExplainError. */
-export function explainOn(client: ClickHouseClient, comment: string): Explain {
+export function explainOn(client: ChExecutor, comment: string): Explain {
   return async (query, settings) => {
     const body = stripFormat(query).replace(/;\s*$/, "");
     try {
@@ -169,7 +169,7 @@ export function explainOn(client: ClickHouseClient, comment: string): Explain {
 const WINDOW = `event_date >= today() - 30 AND event_time > now() - INTERVAL 30 DAY AND type = 'QueryFinish' AND ${NOT_OBSERVE}`;
 
 /** The top read-only shapes by total time, each with the settings, callers and tables of its latest run. */
-export async function loadShapes(client: ClickHouseClient, limit = SHAPES): Promise<TryShape[]> {
+export async function loadShapes(client: ChExecutor, limit = SHAPES): Promise<TryShape[]> {
   const rows = await selectRows<{ hash: string; query: string; settings: Record<string, string>; users: string[]; clients: string[]; runs7d: number; tbls: string[] }>(client, `
     SELECT toString(normalized_query_hash) AS hash,
       argMax(query, event_time) AS query,

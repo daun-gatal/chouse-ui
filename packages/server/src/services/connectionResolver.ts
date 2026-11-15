@@ -6,10 +6,11 @@
  * RBAC database and build a service for it. Nothing about the answer depends on
  * which replica serves the request.
  *
- * This is cheap because it is not where pooling happens: `ClientManager` already
- * caches real ClickHouse clients keyed by connection config, with idle eviction.
+ * This is cheap because it is not where pooling happens: the executor's pool
+ * already caches real ClickHouse clients per login, with idle eviction.
  * Constructing a `ClickHouseService` just wraps that lookup.
  */
+import { personActor } from "./chExecutor";
 import { ClickHouseService } from "./clickhouse";
 import { getConnectionWithPassword, getUserConnections } from "../rbac/services/connections";
 import { AppError, type ConnectionConfig } from "../types";
@@ -154,7 +155,9 @@ export async function resolveRequestedConnection(
     connectionId,
     connectionName: match.name,
     config,
-    service: new ClickHouseService(config, { rbacUserId, tags }),
+    // The token id, when a token acts for the person, goes into the actor so
+    // every statement names both (ADR 0033 §2).
+    service: new ClickHouseService(config, personActor(rbacUserId, tags.pat_id || undefined), { tags }),
   };
 }
 

@@ -3,6 +3,7 @@
  * go only to readers whose own data access rules allow the cell's statement.
  */
 
+import { setExecutorClientForTests } from "../services/chExecutor";
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -14,14 +15,12 @@ const PUBLIC_ROW = { id: 1, name: "open" };
 
 // ClickHouse stand-in: EXPLAIN AST comes from the fake parser, and a SELECT
 // returns one row that says which table it read.
-mock.module("../services/scheduledQueries/chClient", () => ({
-  clientForConnection: async () => ({
+setExecutorClientForTests(() => ({
     exec: fakeExec,
     query: async (args: { query: string }) => ({
       response_headers: {},
       json: async () => (args.query.includes("secret.") ? [SECRET_ROW] : [PUBLIC_ROW]),
     }),
-  }),
 }));
 
 import { closeDatabase } from "../rbac/db";

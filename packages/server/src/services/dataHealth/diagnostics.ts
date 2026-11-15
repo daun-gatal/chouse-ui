@@ -1,4 +1,4 @@
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { escapeIdentifier, escapeQualifiedIdentifier } from "../../utils/sqlIdentifier";
 import { previousFireMs } from "../scheduledQueries/cadence";
@@ -106,7 +106,7 @@ export function buildFailingRowsQuery(
 }
 
 export async function runFailingRowsDiagnostic(
-  client: ClickHouseClient,
+  client: ChExecutor,
   promise: DataHealthPromiseRow,
   job: ScheduledQueryRow,
   check: DataHealthCheckDefinition,
@@ -132,7 +132,7 @@ export async function runFailingRowsDiagnostic(
 }
 
 export async function backtestDataHealth(
-  client: ClickHouseClient,
+  client: ChExecutor,
   job: ScheduledQueryRow,
   compiledSql: string,
   checks: DataHealthCheckDefinition[],

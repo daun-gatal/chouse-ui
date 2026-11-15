@@ -6,7 +6,15 @@
  * one replica and swapping on another (ADR 0015 §4).
  */
 
-import type { ClickHouseClient, ClickHouseSettings, CommandResult } from "@clickhouse/client";
+import type { ClickHouseSettings, CommandParams, CommandResult, ResultSet } from "@clickhouse/client";
+
+import type { ChExecutor, QueryParamsWithFormat } from "./types";
+
+/** The two sends a session needs. The executor supplies them with the identity already applied. */
+export interface SessionTransport {
+  query(args: QueryParamsWithFormat<"JSON">): Promise<ResultSet<"JSON">>;
+  command(args: CommandParams): Promise<CommandResult>;
+}
 
 export interface CommandOptions {
   queryId?: string;
@@ -20,7 +28,7 @@ export interface ChSession {
   command(query: string, opts?: CommandOptions): Promise<CommandResult>;
 }
 
-function build(client: ClickHouseClient, signal: AbortSignal | undefined, sessionId: string | undefined): ChSession {
+export function buildSession(client: SessionTransport, signal: AbortSignal | undefined, sessionId: string | undefined): ChSession {
   let opened = false;
   const settingsFor = (settings?: ClickHouseSettings): ClickHouseSettings | undefined => {
     if (!sessionId) return settings;
@@ -54,12 +62,12 @@ function build(client: ClickHouseClient, signal: AbortSignal | undefined, sessio
   };
 }
 
-/** Stateless executor (builder preview, save-time validation). */
-export function plainSession(client: ClickHouseClient, signal?: AbortSignal): ChSession {
-  return build(client, signal, undefined);
+/** Stateless sequence over a handle (builder preview, save-time validation). */
+export function plainSession(executor: ChExecutor, signal?: AbortSignal): ChSession {
+  return executor.session(signal);
 }
 
-/** Session-pinned executor for one materialize run. */
-export function pinnedSession(client: ClickHouseClient, sessionId: string, signal: AbortSignal): ChSession {
-  return build(client, signal, sessionId);
+/** Session-pinned sequence for one materialize run. */
+export function pinnedSession(executor: ChExecutor, sessionId: string, signal: AbortSignal): ChSession {
+  return executor.session(signal, sessionId);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import {
   databaseReplication,
@@ -60,18 +60,18 @@ describe("isSourceFailure", () => {
 });
 
 /** A ClickHouse client that answers each query with the rows of the first matching pattern. */
-function fakeClient(answers: Array<[RegExp, Array<Record<string, unknown>>]>): ClickHouseClient {
+function fakeClient(answers: Array<[RegExp, Array<Record<string, unknown>>]>): ChExecutor {
   const client = {
     query: async ({ query }: { query: string }) => ({
       json: async () => answers.find(([pattern]) => pattern.test(query))?.[1] ?? [],
     }),
   };
-  return client as unknown as ClickHouseClient;
+  return client as unknown as ChExecutor;
 }
 
 const NOW = 1_800_000_000_000;
 
-function adapterCtx(client: ClickHouseClient, tables: string[], extra: Partial<AdapterContext> = {}): AdapterContext {
+function adapterCtx(client: ChExecutor, tables: string[], extra: Partial<AdapterContext> = {}): AdapterContext {
   return {
     client,
     capabilities: { connectionId: "c", serverVersion: "26.5", systemTables: new Set(tables), systemColumns: new Map([["view_refreshes", new Set(["last_success_time"])]]), probedAt: NOW },

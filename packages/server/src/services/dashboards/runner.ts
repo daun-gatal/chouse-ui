@@ -15,13 +15,12 @@
  * replaced by an empty result.
  */
 
-import { ClickHouseError, type ClickHouseClient } from "@clickhouse/client";
+import { ClickHouseError, executorForConnection, personActor, type ChExecutor } from "../chExecutor";
 
 import { accessDeniedError, validateQueryAccess } from "../../middleware/dataAccess";
 import { governAgentQuery, recordAgentQuery, type AgentContext } from "../agents/governance";
 import type { ConnectionResponse } from "../../rbac/services/connections";
 import { AppError } from "../../types";
-import { clientForConnection } from "../scheduledQueries/chClient";
 import { validateReadOnlySelect } from "../scheduledQueries/validation";
 import { isAdmin, viewerConnections, type Viewer } from "./access";
 import { cacheKey, KeyedSemaphore, ResultCache, type Cached } from "./cache";
@@ -177,17 +176,20 @@ interface JsonResult {
   statistics?: { elapsed?: number; rows_read?: number; bytes_read?: number };
 }
 
-async function connectionClient(connectionId: string): Promise<ClickHouseClient> {
-  return clientForConnection(connectionId, JSON.stringify({ source: DASHBOARDS_SOURCE }));
+/** A handle that sends as `accountId`, tagged as dashboard traffic. */
+async function connectionClient(accountId: string, connectionId: string, tags: Record<string, string | null> = {}): Promise<ChExecutor> {
+  const context: Record<string, string> = { source: DASHBOARDS_SOURCE };
+  for (const [key, value] of Object.entries(tags)) if (value !== null) context[key] = value;
+  return executorForConnection(connectionId, personActor(accountId), { context });
 }
 
 /** Agent identity per connection for token callers; null for browser sessions. */
 export type AgentFor = (connectionId: string) => AgentContext | null;
 
-function estimator(connectionId: string): { executeQuery<T>(query: string): Promise<{ data: T[] }> } {
+function estimator(accountId: string, connectionId: string): { executeQuery<T>(query: string): Promise<{ data: T[] }> } {
   return {
     async executeQuery<T>(query: string): Promise<{ data: T[] }> {
-      const client = await connectionClient(connectionId);
+      const client = await connectionClient(accountId, connectionId);
       const result = await client.query({ query, format: "JSON", abort_signal: AbortSignal.timeout(ESTIMATE_TIMEOUT_MS), clickhouse_settings: { readonly: "1", max_execution_time: 10 } });
       return (await result.json()) as { data: T[] };
     },
@@ -195,10 +197,10 @@ function estimator(connectionId: string): { executeQuery<T>(query: string): Prom
 }
 
 /** Step 6: run a compiled statement with the dashboard caps. */
-export async function execute(connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS, connectionName: string | null = null): Promise<PanelData> {
+export async function execute(accountId: string, connectionId: string, compiled: Compiled, tags: Record<string, string | null>, maxRows: number = MAX_RESULT_ROWS, connectionName: string | null = null): Promise<PanelData> {
   const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
-    const client = await connectionClient(connectionId);
+    const client = await connectionClient(accountId, connectionId, tags);
     const result = await client.query({
       query: compiled.sql,
       query_params: compiled.params,
@@ -212,7 +214,6 @@ export async function execute(connectionId: string, compiled: Compiled, tags: Re
         max_bytes_to_read: String(MAX_BYTES_TO_READ),
         read_overflow_mode: "throw",
         output_format_json_quote_64bit_integers: 0,
-        log_comment: JSON.stringify({ source: DASHBOARDS_SOURCE, ...tags }),
       },
     });
     const json = (await result.json()) as JsonResult;
@@ -235,14 +236,14 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   const compiled = compilePanel(query, window);
   await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
-  const governance = agent ? await governAgentQuery(agent, compiled.validationSql, estimator(connection.id)) : null;
+  const governance = agent ? await governAgentQuery(agent, compiled.validationSql, estimator(viewer.id, connection.id)) : null;
   if (governance?.decision.decision === "block") {
     throw AppError.forbidden(`Blocked by agent policy: ${governance.decision.reasons.join("; ") || "agent access is restricted"}`);
   }
   let outcome: Cached<PanelData>;
   try {
     outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
-      const data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
+      const data = await semaphore.run(connection.id, () => execute(viewer.id, connection.id, compiled, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
   } catch (error) {
@@ -312,13 +313,13 @@ export async function runOptions(viewer: Viewer, connectionId: string, sql: stri
   const compiled: Compiled = { sql, params: {}, validationSql: sql };
   await assertDataAccess(viewer, compiled, connection);
   const agent = agentFor(connection.id);
-  const governance = agent ? await governAgentQuery(agent, sql, estimator(connection.id)) : null;
+  const governance = agent ? await governAgentQuery(agent, sql, estimator(viewer.id, connection.id)) : null;
   if (governance?.decision.decision === "block") {
     throw AppError.forbidden(`Blocked by agent policy: ${governance.decision.reasons.join("; ") || "agent access is restricted"}`);
   }
   let data: PanelData;
   try {
-    data = await semaphore.run(connection.id, () => execute(connection.id, compiled, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS, connection.name));
+    data = await semaphore.run(connection.id, () => execute(viewer.id, connection.id, compiled, { dashboardId: null, panelId: "options" }, MAX_OPTION_ROWS, connection.name));
   } catch (error) {
     if (agent && governance) await recordAgentQuery(agent, governance, sql, "error", 0, error instanceof Error ? error.message : String(error));
     throw error;

@@ -11,6 +11,7 @@
  * connectionId (via getUserConnections / super_admin override).
  */
 
+import { serviceActor } from "../services/chExecutor";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -116,6 +117,7 @@ fleet.post("/query", zValidator("json", fleetQuerySchema), async (c) => {
     const result = await runFleetMetric(
       connectionId,
       metric as (typeof FLEET_METRIC_KEYS)[number],
+      serviceActor("fleet-metrics", user.sub),
     );
     return c.json({ success: true, data: result });
   } catch (err) {

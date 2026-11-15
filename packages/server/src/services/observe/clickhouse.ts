@@ -8,18 +8,17 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { ClickHouseClient } from "@clickhouse/client";
-
-import { clientForConnection } from "../scheduledQueries/chClient";
+import { executorForConnection, serviceActor, type Actor, type ChExecutor } from "../chExecutor";
 
 export const OBSERVE_SOURCE = "observe";
 
-export function observeLogComment(collector: string): string {
-  return JSON.stringify({ source: OBSERVE_SOURCE, collector });
-}
-
-export async function observeClient(connectionId: string, collector: string): Promise<ClickHouseClient> {
-  return clientForConnection(connectionId, observeLogComment(collector));
+/**
+ * A handle tagged as observe traffic. Collection passes no actor and runs as
+ * the service purpose `collector`; a route acting for a signed-in person
+ * passes that person.
+ */
+export async function observeClient(connectionId: string, collector: string, actor: Actor = serviceActor("collector")): Promise<ChExecutor> {
+  return executorForConnection(connectionId, actor, { context: { source: OBSERVE_SOURCE, collector } });
 }
 
 /** What one collector run read from ClickHouse, summed over its queries. */
@@ -63,7 +62,7 @@ export interface QueryOptions {
 }
 
 export async function selectRows<T = Record<string, unknown>>(
-  client: ClickHouseClient,
+  client: ChExecutor,
   query: string,
   options: QueryOptions = {},
 ): Promise<T[]> {

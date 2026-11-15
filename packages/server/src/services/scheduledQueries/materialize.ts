@@ -6,7 +6,7 @@
  * windows, and at-least-once idempotency all hold.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { logger } from "../../utils/logger";
 import {
@@ -17,7 +17,7 @@ import {
   localTableName,
   parseDistributedEngine,
 } from "./cluster";
-import { pinnedSession, type ChSession } from "./session";
+import { pinnedSession, type ChSession } from "../chExecutor";
 import type { ExpectedColumn, OutputConfig, ScheduledQueryRow, SqOutputMode } from "./types";
 
 /** Backtick-quote a ClickHouse identifier. */
@@ -56,7 +56,7 @@ function readWrittenRows(result: unknown): number | null {
  * `DESCRIBE (SELECT …)`, binding the window params with the current slot values.
  */
 export async function describeSelectSchema(
-  client: ClickHouseClient,
+  client: ChExecutor,
   selectSql: string,
   params: Record<string, unknown>,
 ): Promise<ExpectedColumn[]> {
@@ -209,7 +209,7 @@ export function buildStagingDDL(stagingQ: string, destQ: string, dest: DestInfo)
 }
 
 export interface MaterializeArgs {
-  client: ClickHouseClient;
+  client: ChExecutor;
   job: ScheduledQueryRow;
   /** Executable SELECT with `{{…}}` already rewritten to native params. */
   selectSql: string;

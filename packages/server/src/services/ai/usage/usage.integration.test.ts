@@ -21,6 +21,7 @@ process.env.RBAC_SQLITE_PATH = ":memory:";
 
 const queryCalls: Array<{ query: string; query_id?: string; clickhouse_settings?: Record<string, unknown> }> = [];
 mock.module("@clickhouse/client", () => ({
+  ClickHouseError: class ClickHouseError extends Error {},
   createClient: () => ({
     query: async (params: { query: string; query_id?: string; clickhouse_settings?: Record<string, unknown> }) => {
       queryCalls.push(params);
@@ -138,7 +139,7 @@ beforeEach(async () => {
 
 describe("AI usage capture through deepagents", () => {
   it("records every model call, the tool's query and the data sent, then writes the request", async () => {
-    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { rbacUserId: "user-1" });
+    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { kind: "person", accountId: "user-1" });
     let requestId = "";
 
     await withUsageRun({ featureId: "chat", source: "chat", userId: "user-1", connectionId: "conn-1" }, persistUsageRun, async (run) => {
@@ -156,7 +157,8 @@ describe("AI usage capture through deepagents", () => {
 
     // The query was named for the run and tagged per query.
     expect(queryCalls).toHaveLength(1);
-    expect(queryCalls[0].query_id).toBe(`chouse-ai-${requestId}-1`);
+    // The executor wraps the run's name into the id it makes for the account.
+    expect(queryCalls[0].query_id).toBe(`chouse:p:user-1:chouse-ai-${requestId}-1`);
     expect(JSON.parse(String(queryCalls[0].clickhouse_settings?.log_comment))).toEqual({ rbac_user_id: "user-1", ai_request_id: requestId });
 
     const [req] = await rawAll(sql`SELECT * FROM ai_usage_requests WHERE id = ${requestId}`);
@@ -191,7 +193,7 @@ describe("AI usage capture through deepagents", () => {
     const toolStep = steps[2];
     expect(toolStep).toMatchObject({ name: "run_select_query", status: "ok" });
     const detail = JSON.parse(String(toolStep.detail)) as { queries: Array<Record<string, unknown>> };
-    expect(detail.queries[0]).toMatchObject({ queryId: `chouse-ai-${requestId}-1`, connectionId: "conn-1", tables: ["sales.orders"], readBytes: 80_000, elapsedMs: 250 });
+    expect(detail.queries[0]).toMatchObject({ queryId: `chouse:p:user-1:chouse-ai-${requestId}-1`, connectionId: "conn-1", tables: ["sales.orders"], readBytes: 80_000, elapsedMs: 250 });
 
     const egress = await rawAll(sql`SELECT kind, source, columns, row_count, provider_type, model_id, user_id FROM ai_usage_egress WHERE request_id = ${requestId}`);
     expect(egress).toHaveLength(1);
@@ -231,9 +233,10 @@ describe("AI usage capture through deepagents", () => {
   });
 
   it("leaves queries outside a run untouched", async () => {
-    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { rbacUserId: "user-1" });
+    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { kind: "person", accountId: "user-1" });
     await service.executeQuery("SELECT 1");
-    expect(queryCalls[0].query_id).toBeUndefined();
+    // Outside a run the id is still the executor's, with a random part.
+    expect(String(queryCalls[0].query_id)).toMatch(/^chouse:p:user-1:[0-9a-f-]{36}$/);
     expect(JSON.parse(String(queryCalls[0].clickhouse_settings?.log_comment))).toEqual({ rbac_user_id: "user-1" });
   });
 
@@ -258,7 +261,7 @@ describe("AI usage capture through deepagents", () => {
       },
     });
     try {
-      const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" });
+      const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { kind: "person", accountId: "user-1" });
       let requestId = "";
       await withUsageRun({ featureId: "chat", source: "chat", userId: "user-9", connectionId: "conn-1" }, persistUsageRun, async (run) => {
         requestId = run.id;
@@ -291,7 +294,7 @@ describe("AI usage capture through deepagents", () => {
   });
 
   it("prunes requests past retention with their steps, egress and orphans", async () => {
-    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" });
+    const service = new ClickHouseService({ url: "http://ch:8123", username: "u", password: "" }, { kind: "person", accountId: "user-1" });
     await withUsageRun({ featureId: "chat", source: "chat", userId: "u", connectionId: "c" }, persistUsageRun, async (run) => {
       const model = new ScriptedModel(happyScript, { callbacks: [new UsageCallbackHandler(run, PRICED)] });
       await buildAgents(model, service).root.invoke({ messages: [{ role: "user", content: "q" }] }, { recursionLimit: 40 });

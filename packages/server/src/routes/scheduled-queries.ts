@@ -30,7 +30,7 @@ import {
 } from "../services/scheduledQueries/types";
 import { validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { fireTimesBetween, isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
-import { clientForConnection } from "../services/scheduledQueries/chClient";
+import { executorForConnection, personActor, type Actor } from "../services/chExecutor";
 import {
   describeSelectSchema,
   describeDestination,
@@ -46,7 +46,7 @@ import {
   localTableName,
   type ClusterInspection,
 } from "../services/scheduledQueries/cluster";
-import { plainSession, type ChSession } from "../services/scheduledQueries/session";
+import { plainSession, type ChSession } from "../services/chExecutor";
 import { buildExecutableQuery, executableForAccessCheck, toDateTime64Param } from "../services/scheduledQueries/validation";
 import { buildLineage, clampWindowDays } from "../services/observe/jobLineage";
 import { listPromisesByUpstreamJobId } from "../services/dataHealth/store";
@@ -59,6 +59,11 @@ scheduledQueries.use("*", rbacAuthMiddleware);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ok(c: Context, data: unknown, status?: 200 | 201): any {
   return c.json({ success: true, data }, status ?? 200);
+}
+
+/** The signed-in person, as the actor every ClickHouse request of this route is sent for. */
+function requestActor(c: Context): Actor {
+  return personActor(getRbacUser(c).sub);
 }
 
 function userId(c: Context): string | undefined {
@@ -221,10 +226,10 @@ async function inspectBodyCluster(s: ChSession, body: JobBody): Promise<ClusterI
  * topology (+ resolved local table) into the stored config. Fails closed: any
  * unmet precondition rejects the save.
  */
-async function withVerifiedCluster(body: JobBody): Promise<JobBody> {
+async function withVerifiedCluster(c: Context, body: JobBody): Promise<JobBody> {
   const cluster = body.outputConfig?.cluster;
   if (!cluster || body.outputMode === "none") return body;
-  const client = await clientForConnection(body.connectionId);
+  const client = await executorForConnection(body.connectionId, requestActor(c), { context: { source: "scheduled_query_preview" } });
   const inspection = await inspectBodyCluster(plainSession(client), body);
   if (!inspection?.ok || !inspection.topology) {
     throw AppError.badRequest(`Cluster destination is not ready: ${inspection ? inspectionError(inspection) : "missing destination"}`);
@@ -350,10 +355,7 @@ scheduledQueries.get("/clusters", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
   const connectionId = c.req.query("connectionId");
   if (!connectionId) throw AppError.badRequest("connectionId is required");
   await assertConnectionAccess(c, connectionId);
-  const client = await clientForConnection(
-    connectionId,
-    JSON.stringify({ rbac_user_id: userId(c) ?? null, source: "scheduled_query_preview" }),
-  );
+  const client = await executorForConnection(connectionId, requestActor(c), { context: { source: "scheduled_query_preview" } });
   return ok(c, { clusters: await listClusters(plainSession(client)) });
 });
 
@@ -367,7 +369,7 @@ scheduledQueries.post(
     await assertConnectionAccess(c, raw.connectionId);
     const access = await dataAccessCheck(c, raw.query, raw.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
-    const body = await withVerifiedCluster(raw);
+    const body = await withVerifiedCluster(c, raw);
     const id = await store.createJob(bodyToInput(body), userId(c) ?? null);
     await store.setJobChannels(id, body.channelIds);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_CREATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { name: body.name } });
@@ -398,11 +400,13 @@ scheduledQueries.patch(
     await assertConnectionAccess(c, raw.connectionId);
     const access = await dataAccessCheck(c, raw.query, raw.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
-    const body = await withVerifiedCluster(raw);
+    const body = await withVerifiedCluster(c, raw);
     if (previous.outputMode !== "none" && body.outputMode === "none") {
       await assertNoChainedPromises(id, "remove this job's output");
     }
     await store.updateJob(id, bodyToInput(body));
+    // Saving a job that lost its owner makes the saver its owner, so it can run again.
+    const adopted = await store.adoptOwnerlessJob(id, getRbacUser(c).sub);
     await store.setJobChannels(id, body.channelIds);
     const changedFields = [
       previous.name !== body.name ? "name" : null,
@@ -412,7 +416,7 @@ scheduledQueries.patch(
       previous.timeoutSecs !== body.timeoutSecs || previous.maxAttempts !== body.maxAttempts ? "reliability" : null,
       previous.enabled !== body.enabled ? "enabled" : null,
     ].filter((field): field is string => field !== null);
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt } });
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt, ...(adopted ? { ownerTaken: true } : {}) } });
     const job = await store.getJob(id);
     return ok(c, await toJobResponse(job!, false));
   },
@@ -607,10 +611,7 @@ scheduledQueries.post(
         // Attribute the preview's DESCRIBE / destination reads to the RBAC user
         // in query_log (not the bare ClickHouse user). A distinct `source` keeps
         // these draft reads from being mistaken for job runs by lineage.
-        const client = await clientForConnection(
-          body.connectionId,
-          JSON.stringify({ rbac_user_id: userId(c) ?? null, source: "scheduled_query_preview" }),
-        );
+        const client = await executorForConnection(body.connectionId, requestActor(c), { context: { source: "scheduled_query_preview" } });
         const now = Date.now();
         const { sql: execSql } = buildExecutableQuery(body.query);
         const params = {

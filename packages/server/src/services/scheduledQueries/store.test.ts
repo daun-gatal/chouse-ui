@@ -81,3 +81,20 @@ describe("scheduled queries overview connection scope", () => {
     expect(empty.kpis.totalJobs).toBe(0);
   });
 });
+
+describe("a job with no owner", () => {
+  it("is taken by whoever saves it, and a job that has an owner is left alone", async () => {
+    const ownerless = await store.createJob(jobInput("orphan", "connection-1"), null);
+    const owned = await store.createJob(jobInput("owned", "connection-1"), "owner-1");
+
+    expect(await store.adoptOwnerlessJob(ownerless, "editor-9")).toBe(true);
+    expect((await store.getJob(ownerless))?.createdBy).toBe("editor-9");
+    // A second save by someone else does not move it again.
+    expect(await store.adoptOwnerlessJob(ownerless, "other-2")).toBe(false);
+    expect((await store.getJob(ownerless))?.createdBy).toBe("editor-9");
+
+    expect(await store.adoptOwnerlessJob(owned, "editor-9")).toBe(false);
+    expect((await store.getJob(owned))?.createdBy).toBe("owner-1");
+    expect(await store.adoptOwnerlessJob("no-such-job", "editor-9")).toBe(false);
+  });
+});

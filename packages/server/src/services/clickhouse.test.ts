@@ -1,4 +1,5 @@
 
+import { personActor } from "./chExecutor";
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { ClickHouseService } from "./clickhouse";
 
@@ -29,7 +30,7 @@ describe("ClickHouse Service", () => {
     };
 
     beforeEach(() => {
-        service = new ClickHouseService(config);
+        service = new ClickHouseService(config, personActor("test-user"));
         mockQueryFn.mockReset(); // Reset history and interactions
         mockQueryFn.mockImplementation(async () => ({ json: mockJsonFn })); // Restore default behavior
         mockCommandFn.mockClear();

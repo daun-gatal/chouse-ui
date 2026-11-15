@@ -20,6 +20,7 @@ import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
 import { quoteStringLiteral } from "../utils/sqlIdentifier";
+import { isNonce, makeQueryId, parseQueryId, personActor } from "../services/chExecutor";
 
 // ============================================
 // Types
@@ -261,6 +262,12 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
     // Initialize currentUsername (empty as we don't fetch full user details for performance/simplicity)
     const currentUsername = "";
 
+    // The editor knows its statement by the random part it sent; the executor
+    // put that inside an id for the caller's own account (ADR 0033 §2). Look
+    // for both, so a caller can never reach someone else's id this way.
+    const ownId = rbacUserId && !parseQueryId(queryId) && isNonce(queryId) ? makeQueryId(personActor(rbacUserId), queryId) : null;
+    const candidates = [queryId, ...(ownId ? [ownId] : [])].map(quoteStringLiteral).join(", ");
+
     try {
         // Get query info FIRST to verify ownership and for audit logging
         let queryInfo: LiveQuery | undefined;
@@ -273,7 +280,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                 elapsed as elapsed_seconds,
                 Settings['log_comment'] as log_comment_json
               FROM system.processes
-              WHERE query_id = ${quoteStringLiteral(queryId)}
+              WHERE query_id IN (${candidates})
               LIMIT 1
             `, "JSON");
             const rawInfo = ((checkResult.data || [])[0]) as any;
@@ -306,7 +313,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
         // Execute KILL QUERY command
         await service.executeQuery(
-            `KILL QUERY WHERE query_id = ${quoteStringLiteral(queryId)}`,
+            `KILL QUERY WHERE query_id = ${quoteStringLiteral(queryInfo?.query_id ?? ownId ?? queryId)}`,
             "JSON"
         );
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "drizzle-orm";
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { closeDatabase } from "../../rbac/db";
 import { runMigrations } from "../../rbac/db/migrations";
@@ -258,7 +258,7 @@ describe("Data Health store", () => {
     const job = await scheduledStore.getJob(jobId);
     if (!job) throw new Error("Scheduled job was not created");
     // No schema_contract checks are configured, so the client is never used.
-    const client = {} as unknown as ClickHouseClient;
+    const client = {} as unknown as ChExecutor;
     const params: Record<string, string> = {};
 
     // Live evaluation of slot 2000 → healthy baseline.

@@ -10,7 +10,7 @@ Scheduled Queries (ADR 0002, ADR 0015): read-only SELECT jobs on a cadence, with
 - `[validation.ts:validateReadOnlySelect]`, `[validation.ts:buildExecutableQuery]`, `[validation.ts:KNOWN_TOKENS]`.
 - `[materialize.ts:executeMaterialize]`, `[materialize.ts:buildCreateStatements]`, `[materialize.ts:diffSchema]`, `[materialize.ts:checkEngineFit]`.
 - `[cluster.ts:inspectClusterJob]`, `[cluster.ts:destinationChecks]`, `[cluster.ts:listClusters]`.
-- `[session.ts:plainSession]`, `[session.ts:pinnedSession]`; `[chClient.ts:clientForConnection]`.
+- `[runner.ts:jobActor]`. Sessions and the ClickHouse handle come from the statement executor (`[../chExecutor/session.ts:pinnedSession]`, `[../chExecutor/executor.ts:executorForConnection]`).
 - `[store.ts:createJob]`, `[store.ts:updateJob]`, `[store.ts:claimSlot]`, `[store.ts:insertRun]`, `[store.ts:finalizeRun]`, `[store.ts:reapOrphanedRuns]`, `[store.ts:enqueueOutbox]`, `[store.ts:claimOutboxRow]`, `[store.ts:pruneOldRuns]`.
 - `[types.ts:SQ_FREQUENCIES]`, `[types.ts:SQ_OUTPUT_MODES]`, `[types.ts:outputConfigSchema]`, `[types.ts:clusterConfigSchema]`.
 
@@ -19,9 +19,9 @@ Scheduled Queries (ADR 0002, ADR 0015): read-only SELECT jobs on a cadence, with
 - Users never author write SQL: materialize generates `INSERT ... SELECT` / `REPLACE PARTITION` idempotently (`[materialize.ts:executeMaterialize]`).
 - Firing schedule and `{{slot_start}}` lower bound share one cadence source (croner) so they never drift (`[cadence.ts:lastScheduledFireMs]`, `[cadence.ts:previousFireMs]`).
 - The scheduler is correct under N replicas with no leader election: the job row is the lease; recovery is crash-only (`[scheduler.ts:ScheduledQueryScheduler]`, `[store.ts:claimSlot]`).
-- Jobs run with the stored connection's own credentials, the data-access boundary (`[chClient.ts:clientForConnection]`).
+- Jobs run on the stored connection's own login, sent for the job's owner; a job with no owner is refused (`[runner.ts:jobActor]`, ADR 0033 §4).
 - Limits: `MAX_CONCURRENCY = 4` runs, outbox batches of 20 rows with a 5 min lease and at most 5 attempts (`[scheduler.ts:MAX_CONCURRENCY]`, `[scheduler.ts:OUTBOX_BATCH]`, `[scheduler.ts:OUTBOX_LEASE_TTL_MS]`, `[scheduler.ts:OUTBOX_MAX_ATTEMPTS]`).
-- A pinned session sends `session_check = 1` after the first statement so a moved session fails instead of silently splitting (`[session.ts:pinnedSession]`).
+- A pinned session sends `session_check = 1` after the first statement so a moved session fails instead of silently splitting (`[../chExecutor/session.ts:pinnedSession]`).
 
 ## Side Effects
 - Writes `scheduled_queries`, `scheduled_query_runs`, `scheduled_query_channels`, `scheduled_query_outbox` (`[store.ts:createJob]`, `[store.ts:insertRun]`, `[store.ts:setJobChannels]`, `[store.ts:enqueueOutbox]`).

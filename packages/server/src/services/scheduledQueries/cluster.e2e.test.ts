@@ -18,7 +18,7 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 
 import { inspectClusterJob } from "./cluster";
 import { describeDestination, executeMaterialize } from "./materialize";
-import { plainSession } from "./session";
+import { executorOverClient, personActor, plainSession, type ChExecutor } from "../chExecutor";
 import type { ExpectedColumn, OutputConfig, ScheduledQueryRow } from "./types";
 
 const URLS = (process.env["CH_E2E_URLS"] ?? "").split(",").map((u) => u.trim()).filter(Boolean);
@@ -36,6 +36,8 @@ const SELECT = "SELECT number AS id, toDate('2026-01-01') + (number % 2) AS day,
 describe.skipIf(URLS.length < 3)("scheduled query cluster materialize e2e (ADR 0015)", () => {
   let nodes: ClickHouseClient[] = [];
   const conn = (): ClickHouseClient => nodes[0]!;
+  /** The executor handle the code under test takes, over the first node. */
+  const handle = (): ChExecutor => executorOverClient(() => conn(), personActor("e2e-owner"));
 
   async function scalar(client: ClickHouseClient, query: string): Promise<number> {
     const rs = await client.query({ query, format: "JSON" });
@@ -45,7 +47,7 @@ describe.skipIf(URLS.length < 3)("scheduled query cluster materialize e2e (ADR 0
 
   /** Mirror the save route: derive + pin the topology before the job runs. */
   async function saveJob(name: string, outputMode: ScheduledQueryRow["outputMode"], cfg: OutputConfig): Promise<ScheduledQueryRow> {
-    const s = plainSession(conn());
+    const s = plainSession(handle());
     const inspection = await inspectClusterJob(s, {
       cluster: cfg.cluster!,
       outputMode,
@@ -67,7 +69,7 @@ describe.skipIf(URLS.length < 3)("scheduled query cluster materialize e2e (ADR 0
 
   function run(job: ScheduledQueryRow, slotAt: number, runId: string): Promise<number | null> {
     return executeMaterialize({
-      client: conn(),
+      client: handle(),
       job,
       selectSql: SELECT,
       params: {},

@@ -8,8 +8,7 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
-import { createClient, type ClickHouseClient } from '@clickhouse/client';
-import { ClientManager } from '../../services/clientManager';
+import { ephemeralExecutor, serviceActor, type ChExecutor } from '../../services/chExecutor';
 import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
 
 // Type helper for working with dual database setup
@@ -320,19 +319,17 @@ export async function listConnectionDatabases(connectionId: string): Promise<str
   if (!conn) throw new Error('Connection not found');
 
   const protocol = conn.sslEnabled ? 'https' : 'http';
-  const client = createClient({
-    url: `${protocol}://${conn.host}:${conn.port || 8123}`,
-    username: conn.username,
-    password: conn.password || '',
-    database: conn.database || 'default',
-    request_timeout: 15000,
-  });
+  const { executor: client, close } = ephemeralExecutor(
+    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default' },
+    serviceActor('connection-test'),
+    { requestTimeoutMs: 15000 },
+  );
   try {
     const result = await client.query({ query: 'SHOW DATABASES', format: 'JSONEachRow' });
     const rows = (await result.json()) as Array<{ name: string }>;
     return rows.map((r) => r.name);
   } finally {
-    await client.close();
+    await close();
   }
 }
 
@@ -344,13 +341,11 @@ export async function listConnectionTables(connectionId: string, database: strin
   if (!conn) throw new Error('Connection not found');
 
   const protocol = conn.sslEnabled ? 'https' : 'http';
-  const client = createClient({
-    url: `${protocol}://${conn.host}:${conn.port || 8123}`,
-    username: conn.username,
-    password: conn.password || '',
-    database: conn.database || 'default',
-    request_timeout: 15000,
-  });
+  const { executor: client, close } = ephemeralExecutor(
+    { url: `${protocol}://${conn.host}:${conn.port || 8123}`, username: conn.username, password: conn.password || '', database: conn.database || 'default' },
+    serviceActor('connection-test'),
+    { requestTimeoutMs: 15000 },
+  );
   try {
     // database is bound as a query parameter to avoid injection.
     const result = await client.query({
@@ -361,7 +356,7 @@ export async function listConnectionTables(connectionId: string, database: strin
     const rows = (await result.json()) as Array<{ name: string }>;
     return rows.map((r) => r.name);
   } finally {
-    await client.close();
+    await close();
   }
 }
 
@@ -571,21 +566,15 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
  * Test a connection (without saving)
  */
 // Helper to create a client without caching
-const createEphemeralClient = (input: ConnectionInput) => {
+const createEphemeralClient = (input: ConnectionInput): { executor: ChExecutor; close: () => Promise<void> } => {
   const protocol = input.sslEnabled ? 'https' : 'http';
   const url = `${protocol}://${input.host}:${input.port || 8123}`;
-
-  return createClient({
-    url,
-    username: input.username,
-    password: input.password || '',
-    database: input.database || 'default',
-    request_timeout: 10000, // Short timeout for testing
-    clickhouse_settings: {
-      // Fail fast
-      max_execution_time: 10,
-    },
-  });
+  // Short timeout and a fail-fast execution cap: this only tests the login.
+  return ephemeralExecutor(
+    { url, username: input.username, password: input.password || '', database: input.database || 'default' },
+    serviceActor('connection-test'),
+    { requestTimeoutMs: 10000, defaults: { max_execution_time: 10 } },
+  );
 };
 
 /**
@@ -595,7 +584,7 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
   const startTime = Date.now();
 
   // Bypass ClientManager so a cached client in a bad state or with old config can't mask the result.
-  const client = createEphemeralClient(input);
+  const { executor: client, close } = createEphemeralClient(input);
   try {
     const versionResult = await client.query({
       query: 'SELECT version() as version',
@@ -655,9 +644,12 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       for (const candidate of candidates) {
         try {
           // Try probing candidate
-          const probeClient = createEphemeralClient({ ...input, host: candidate.host });
-          await probeClient.ping(); // Just ping to check connectivity
-          await probeClient.close();
+          const probe = createEphemeralClient({ ...input, host: candidate.host });
+          try {
+            if (!(await probe.executor.ping())) throw new Error('unreachable');
+          } finally {
+            await probe.close().catch(() => undefined);
+          }
 
           // If probe succeeds, return a helpful error message
           return {
@@ -684,7 +676,7 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       latencyMs,
     };
   } finally {
-    await client.close().catch(() => undefined);
+    await close().catch(() => undefined);
   }
 }
 

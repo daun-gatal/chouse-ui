@@ -1,6 +1,13 @@
+import { createHash } from "node:crypto";
 import { createClient, ClickHouseClient, ClickHouseSettings } from "@clickhouse/client";
-import type { ConnectionConfig } from "../types";
-import { logger } from "../utils/logger";
+import type { ConnectionConfig } from "../../types";
+import { logger } from "../../utils/logger";
+
+/**
+ * Which pooled client a request uses. Parse, stop and health requests get their
+ * own client so they never wait behind long statements (ADR 0033 §2).
+ */
+export type ClientLane = "statements" | "service";
 
 type ClientFactory = (config: Parameters<typeof createClient>[0]) => ClickHouseClient;
 
@@ -31,10 +38,12 @@ export class ClientManager {
     }
 
     /**
-     * Get an existing client or create a new one for the given configuration
+     * Get an existing client or create a new one for a login and lane.
+     * Identity, `log_comment` and the query id are sent per request by the
+     * executor, so one client serves every actor.
      */
-    public getClient(config: ConnectionConfig, logComment?: string): ClickHouseClient {
-        const key = this.getConfigKey(config, logComment);
+    public getClient(config: ConnectionConfig, lane: ClientLane = "statements"): ClickHouseClient {
+        const key = this.getConfigKey(config, lane);
         const entry = this.clients.get(key);
 
         if (entry) {
@@ -44,16 +53,11 @@ export class ClientManager {
 
         logger.debug({ module: "ClientManager" }, "No existing client found, creating new one");
 
-        // A client-level `log_comment` default tags EVERY query this client runs
-        // (ping, version, system.* reads, etc.) — not just the few that set it
-        // per-call — so query_log attributes them to the RBAC user, not the bare
-        // ClickHouse user. Per-query `log_comment` still overrides this default.
         const baseSettings: Record<string, unknown> = {
             max_result_rows: "10000",
             max_result_bytes: "10000000",
             result_overflow_mode: "break",
         };
-        if (logComment) baseSettings.log_comment = logComment;
 
         const client = this.clientFactory({
             url: config.url,
@@ -120,17 +124,13 @@ export class ClientManager {
     }
 
     /**
-     * Generate a unique key for the connection configuration
+     * Pool key: a digest, so the stored password is not kept as a map key. A
+     * changed password or login gives a new key, and the old client idles out.
      */
-    private getConfigKey(config: ConnectionConfig, logComment?: string): string {
-        // Sort keys to ensure consistent order
-        return JSON.stringify({
-            url: config.url,
-            u: config.username,
-            p: config.password, // Include password in key to isolate different users
-            d: config.database,
-            c: logComment, // Isolate clients per RBAC actor so log_comment is correct
-        });
+    private getConfigKey(config: ConnectionConfig, lane: ClientLane): string {
+        return createHash("sha256")
+            .update(JSON.stringify([config.url, config.username, config.password ?? "", config.database ?? "", lane]))
+            .digest("hex");
     }
 
     private startCleanupInterval() {

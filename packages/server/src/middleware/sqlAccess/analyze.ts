@@ -21,6 +21,7 @@ export type DenyCode =
   | "UNSAFE_FUNCTION"
   | "UNSAFE_ENGINE"
   | "UNSUPPORTED_SHAPE"
+  | "IMPERSONATION"
   | "INCOMPLETE_TREE"
   | "PERMISSION_DENIED"
   | "TABLE_DENIED"
@@ -533,7 +534,10 @@ function analyzeRoot(root: AstNode, tokens: Token[], cteOf: Map<AstNode, string>
 
     case "KillQueryQuery": {
       expectVerb(tokens, ["KILL"]);
-      return { ...base, type: "kill", permission: PERMISSIONS.QUERY_EXECUTE_MISC, reads: readsUnder(root.children, cteOf) };
+      // A typed KILL picks its targets with any WHERE it likes, so it is the
+      // power to stop anyone's query. Stopping only your own goes through
+      // the live queries page, which checks who owns the query.
+      return { ...base, type: "kill", permission: PERMISSIONS.LIVE_QUERIES_KILL_ALL, reads: readsUnder(root.children, cteOf) };
     }
 
     default:

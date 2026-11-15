@@ -32,6 +32,25 @@ client ──▶ authenticate (JWT or PAT, checked live)
 
 Each layer stands alone: a role change applies on the next request, a revoked token fails on its next call, and a stolen session still can't reach tables its user's policies deny. ClickHouse's own grants on the connection user remain the outer limit.
 
+## Who a statement runs as
+
+Every statement CHouse UI sends to ClickHouse goes through one server module, and that module needs to know who the statement is for: a signed-in person, or a named background purpose such as the collector. It then sets three things on the request that the caller's code cannot change:
+
+| On the request | Value | What it is for |
+| --- | --- | --- |
+| `query_id` | `chouse:p:<account id>:<random>` for a person, `chouse:s:<purpose>:<random>` for background work | A ClickHouse administrator can see in `system.query_log` and `system.processes` which CHouse account a statement was sent for. A statement cannot change its own query id. |
+| `log_comment` | JSON with the account or purpose, plus context such as the dashboard or job | Context for reading the log. A statement can overwrite it with its own `SETTINGS log_comment`, so treat it as a hint, not as proof. |
+| Quota key (`X-ClickHouse-Quota` header) | The account id, or `chouse-<purpose>` | Lets a ClickHouse quota created with `KEYED BY client_key` count each CHouse account separately. ClickHouse 23.8 refuses a quota key next to the way CHouse UI authenticates, so no key is sent to such a server; 24.8 and 26.5 accept it. Nothing changes until you create such a quota. On ClickHouse 26.5.7 an account that had already sent statements kept its earlier quota after a keyed one was created; we did not measure for how long, so create the quota before relying on it and check `system.quota_usage`. |
+
+A query id proves who sent a statement only on rows whose ClickHouse `user` is the connection's own login. Someone with their own ClickHouse login can choose any id for statements they send directly.
+
+Two rules apply to everyone, administrators included:
+
+- **`EXECUTE AS` is refused.** CHouse UI decides which ClickHouse user a statement runs as. The check reads ClickHouse's own parse of the statement, so a comment or a wrapper cannot hide the keyword.
+- **Every typed statement is parsed by ClickHouse before it runs.** Administrators still skip permission and data access checks, but a statement ClickHouse cannot parse, or cannot parse right now, is not run.
+
+The design and the stages that follow it are in [ADR 0033](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0033-every-statement-gets-a-clickhouse-identity.md).
+
 ## AI
 
 - The [Doctor](/docs/doctor/) and [in-tab AI](/docs/ai-in-tab/) investigate with single `SELECT` statements on `system.*` under `readonly=1`.

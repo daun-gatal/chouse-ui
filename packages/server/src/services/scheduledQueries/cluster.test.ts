@@ -13,7 +13,7 @@ import {
   type ClusterJobInput,
   type TableShape,
 } from "./cluster";
-import type { ChSession } from "./session";
+import type { ChSession } from "../chExecutor";
 
 const MISSING: TableShape = { exists: false, engine: null, engineFull: null, sortingKey: null };
 

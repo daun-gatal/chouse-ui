@@ -2,9 +2,8 @@
  * The parse channel (ADR 0030 §4): `EXPLAIN AST` on the connection's own
  * ClickHouse client, so the parse uses the same server and user as execution.
  */
-import type { ClickHouseClient } from "@clickhouse/client";
 
-import { clientForConnection } from "../../services/scheduledQueries/chClient";
+import { executorForConnection, serviceActor, type ChExecutor } from "../../services/chExecutor";
 import { getConnectionById } from "../../rbac/services/connections";
 import { logger } from "../../utils/logger";
 
@@ -29,7 +28,6 @@ const PARSE_SETTINGS = {
   max_result_bytes: "0",
   result_overflow_mode: "throw",
   max_execution_time: 5,
-  log_comment: JSON.stringify({ source: "access_check" }),
 };
 
 /**
@@ -76,7 +74,7 @@ async function readAll(stream: AsyncIterable<unknown>): Promise<string> {
 }
 
 /** Run `EXPLAIN AST` on a client and return the printout lines. */
-export async function explainAstOn(client: ClickHouseClient, sql: string, params?: Record<string, unknown>): Promise<ExplainResult> {
+export async function explainAstOn(client: ChExecutor, sql: string, params?: Record<string, unknown>): Promise<ExplainResult> {
   try {
     const result = await client.exec({
       query: `${EXPLAIN_PREFIX}${sql}`,
@@ -110,8 +108,8 @@ export function resetDefaultDatabaseCache(): void {
 
 /** The parse port for a stored connection. */
 export function clickhouseParsePort(connectionId: string): SqlParsePort {
-  let client: Promise<ClickHouseClient> | null = null;
-  const getClient = (): Promise<ClickHouseClient> => (client ??= clientForConnection(connectionId));
+  let client: Promise<ChExecutor> | null = null;
+  const getClient = (): Promise<ChExecutor> => (client ??= executorForConnection(connectionId, serviceActor("access-parse"), { context: { source: "access_check" } }).then((executor) => executor.onServiceLane()));
 
   return {
     async explainAst(sql, params) {

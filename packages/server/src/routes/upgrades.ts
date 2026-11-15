@@ -20,7 +20,7 @@ import { getUserConnections, listConnections } from "../rbac/services/connection
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { json, one, sql, strOrNull } from "../services/observe/db";
 import { selectRows } from "../services/observe/clickhouse";
-import { clientForConnection } from "../services/scheduledQueries/chClient";
+import { executorForConnection, serviceActor } from "../services/chExecutor";
 import { CheckInputError, getAssessment, latestChecks, listAssessments, startAssessment, type Assessment } from "../services/upgrades/assess";
 import { upgradeCheckEnabled } from "../services/upgrades/fetch";
 import { getReleaseData, upgradeTargets, versionStatus } from "../services/upgrades/releaseData";
@@ -53,7 +53,7 @@ async function knownVersion(connectionId: string): Promise<string | null> {
 
 async function liveVersion(connectionId: string): Promise<string | null> {
   try {
-    const client = await clientForConnection(connectionId, JSON.stringify({ source: "observe", collector: "upgrades" }));
+    const client = await executorForConnection(connectionId, serviceActor("version-probe"), { context: { source: "observe", collector: "upgrades" } });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const [row] = await Promise.race([

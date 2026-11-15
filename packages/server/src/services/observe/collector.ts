@@ -10,7 +10,7 @@
 
 import { randomUUID } from "crypto";
 
-import type { ClickHouseClient } from "@clickhouse/client";
+import type { ChExecutor } from "../chExecutor";
 
 import { listConnections } from "../../rbac/services/connections";
 import { logger } from "../../utils/logger";
@@ -27,7 +27,7 @@ export interface ConnectionRef {
 
 export interface CollectorContext {
   connection: ConnectionRef;
-  client: ClickHouseClient;
+  client: ChExecutor;
   capabilities: Capabilities;
   nowMs: number;
   /** The collector's watermark, or a named sub-watermark for one of its steps. */

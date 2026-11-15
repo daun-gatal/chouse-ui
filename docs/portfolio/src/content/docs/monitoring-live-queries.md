@@ -39,6 +39,8 @@ Default triage flow:
 
 Every kill lands in the [audit log](/docs/audit-log/).
 
+A `KILL QUERY` typed in the SQL editor can target anyone's query, so it needs `live_queries:kill_all`. With `live_queries:kill` alone, stop your own queries from this page or with the editor's Stop button.
+
 ## Who is running what
 
 The list reflects all ClickHouse activity, not just CHouse UI queries — cron jobs, BI tools, anything connected to the server. To attribute load back to dashboards, use the [By Redash](/docs/monitoring-query-logs/) sub-view; for pattern-level cost, use [Patterns](/docs/monitoring-query-logs/).

@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 
 import { logger } from "../../utils/logger";
 import { all, json, num, numOrNull, one, run, sql, str, strOrNull } from "../observe/db";
-import { clientForConnection } from "../scheduledQueries/chClient";
+import { executorForConnection, serviceActor } from "../chExecutor";
 import { upgradeCheckEnabled, UpgradeSourceError } from "./fetch";
 import { matchFindings, nameKey, noteFindings, tryFindings, workloadNameList, type FindingDraft, type FindingEvidence, type Severity } from "./match";
 import { notesBetween, type NotesResult } from "./notes";
@@ -169,8 +169,8 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
 
     s.stage = "current";
     await setSummary(id, s);
-    const comment = JSON.stringify({ source: "observe", collector: "upgrades" });
-    const client = await clientForConnection(connectionId, comment);
+    const context = { source: "observe", collector: "upgrades" };
+    const client = await executorForConnection(connectionId, serviceActor("upgrade-check"), { context });
     const current = await readSnapshot(client);
     const currentVersion = plainVersion(current.version) ?? current.version;
     const currentLine = lineOf(currentVersion);
@@ -186,7 +186,7 @@ async function runCheck(id: string, connectionId: string, summary: CheckSummary)
     if (s.reference) {
       s.stage = "target";
       await setSummary(id, s);
-      const refClient = await clientForConnection(s.reference.connectionId, comment);
+      const refClient = await executorForConnection(s.reference.connectionId, serviceActor("upgrade-check"), { context });
       const target = await readSnapshot(refClient);
       const refVersion = plainVersion(target.version) ?? target.version;
       s.reference.version = refVersion;
