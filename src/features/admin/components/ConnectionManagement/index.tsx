@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   Clock,
   Timer,
+  KeyRound,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,7 +84,10 @@ import { ConnectionObservability } from '@/features/observe/ConnectionObservabil
 import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { IDENTITY_MODE_SHARED, identityKind, identityKindLabel } from '@/api/connectionIdentity';
 import { PrivilegeReport, optionalSummary, privilegeSummary } from './PrivilegeReport';
+import { IdentityPanel } from './IdentityPanel';
+import { HELP_CLASS, INPUT_CLASS, LABEL_CLASS } from './formStyles';
 
 // ============================================
 // Validation Schema
@@ -165,6 +169,8 @@ function ConnectionFormDialog({
   const reportRef = useRef<HTMLDivElement | null>(null);
 
   const isEditing = !!connection;
+  /** On any kind but a shared login the server refuses login and server changes here (409 IDENTITY_MANAGED_LOGIN). */
+  const loginManaged = isEditing && identityKind(connection.identityMode) !== IDENTITY_MODE_SHARED;
 
   const form = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionSchema) as any,
@@ -286,18 +292,20 @@ function ConnectionFormDialog({
 
     try {
       if (isEditing) {
-        // Only include password if it was changed
         const updateData: Partial<CreateConnectionInput> = {
           name: values.name,
-          host: values.host,
-          port: values.port,
-          username: values.username,
           database: values.database || undefined,
-          sslEnabled: values.sslEnabled,
           metadata: metadataWithEnvironment(connection.metadata, values.environment),
         };
-        if (values.password) {
-          updateData.password = values.password;
+        if (!loginManaged) {
+          updateData.host = values.host;
+          updateData.port = values.port;
+          updateData.username = values.username;
+          updateData.sslEnabled = values.sslEnabled;
+          // Only include password if it was changed
+          if (values.password) {
+            updateData.password = values.password;
+          }
         }
         const saved = await rbacConnectionsApi.update(connection.id, updateData);
         notifySaved('Connection updated successfully', saved.privileges);
@@ -333,11 +341,6 @@ function ConnectionFormDialog({
   };
 
   const privilegesFailing = privilegeView !== null && !privilegeView.report.ok;
-
-  const LABEL_CLASS = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
-  const INPUT_CLASS =
-    "h-9 rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0";
-  const HELP_CLASS = "text-[11px] text-paper-faint";
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -387,7 +390,7 @@ function ConnectionFormDialog({
                   <FormItem className="col-span-2 space-y-1.5">
                     <FormLabel className={LABEL_CLASS}>Host</FormLabel>
                     <FormControl>
-                      <Input placeholder="localhost" className={INPUT_CLASS} {...field} />
+                      <Input placeholder="localhost" className={INPUT_CLASS} {...field} disabled={loginManaged} />
                     </FormControl>
                     <FormMessage className="text-[11px] text-red-300" />
                   </FormItem>
@@ -406,6 +409,7 @@ function ConnectionFormDialog({
                         placeholder="8123"
                         className={INPUT_CLASS}
                         {...field}
+                        disabled={loginManaged}
                         value={field.value ?? 8123}
                         onChange={(e) =>
                           field.onChange(e.target.value === "" ? 8123 : Number(e.target.value))
@@ -431,6 +435,7 @@ function ConnectionFormDialog({
                         className={cn(INPUT_CLASS, privilegesFailing && "border-red-500 dark:border-red-400")}
                         aria-invalid={privilegesFailing || undefined}
                         {...field}
+                        disabled={loginManaged}
                       />
                     </FormControl>
                     <FormMessage className="text-[11px] text-red-300" />
@@ -458,6 +463,7 @@ function ConnectionFormDialog({
                           placeholder="••••••••"
                           className={cn(INPUT_CLASS, "pr-9")}
                           {...field}
+                          disabled={loginManaged}
                         />
                         <button
                           type="button"
@@ -519,11 +525,17 @@ function ConnectionFormDialog({
                     </div>
                   </div>
                   <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={loginManaged} />
                   </FormControl>
                 </FormItem>
               )}
             />
+
+            {loginManaged && (
+              <p className={cn(HELP_CLASS, "leading-[1.5]")}>
+                This is a {identityKindLabel(connection.identityMode).toLowerCase()} connection: host, port, TLS, user and password are changed in its ClickHouse login panel, by a super admin.
+              </p>
+            )}
 
             <FormField
               control={form.control}
@@ -659,8 +671,12 @@ export default function ConnectionManagement() {
   const [deleteConnection, setDeleteConnection] = useState<ClickHouseConnection | null>(null);
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  /** By id, so the panel follows the list when a save refreshes it. */
+  const [identityConnectionId, setIdentityConnectionId] = useState<string | null>(null);
 
-  const { hasPermission } = useRbacStore();
+  const { hasPermission, isSuperAdmin } = useRbacStore();
+  // Kinds and role maps decide what ClickHouse lets every account do: super admin only.
+  const canManageIdentity = isSuperAdmin();
   const canView = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canEdit = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_EDIT);
   const canDelete = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_DELETE);
@@ -859,6 +875,19 @@ export default function ConnectionManagement() {
                             Default
                           </span>
                         )}
+                        {identityKind(conn.identityMode) !== IDENTITY_MODE_SHARED && (
+                          <span className="inline-flex items-center rounded-xs border border-ink-700 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                            {identityKindLabel(conn.identityMode)}
+                          </span>
+                        )}
+                        {conn.identityHealth === 'failing' && (
+                          <Tooltip>
+                            <TooltipTrigger aria-label="ClickHouse login is failing its checks">
+                              <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" aria-hidden />
+                            </TooltipTrigger>
+                            <TooltipContent>{conn.identityHealthReason ?? 'The ClickHouse login is failing its checks.'}</TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -913,6 +942,23 @@ export default function ConnectionManagement() {
                           </TooltipTrigger>
                           <TooltipContent>Test Connection</TooltipContent>
                         </Tooltip>
+
+                        {canManageIdentity && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setIdentityConnectionId(conn.id)}
+                                aria-label={`ClickHouse login of ${conn.name}`}
+                                className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>ClickHouse login</TooltipContent>
+                          </Tooltip>
+                        )}
 
                         {canEdit && (
                           <>
@@ -984,6 +1030,15 @@ export default function ConnectionManagement() {
         connection={editingConnection}
         onSuccess={fetchConnections}
       />
+
+      {/* Kind, login and role map (ADR 0033), super admin only */}
+      {canManageIdentity && (
+        <IdentityPanel
+          connection={connections.find((conn) => conn.id === identityConnectionId) ?? null}
+          onClose={() => setIdentityConnectionId(null)}
+          onChanged={fetchConnections}
+        />
+      )}
 
       {/* Delete Confirmation */}
       <ConfirmationDialog

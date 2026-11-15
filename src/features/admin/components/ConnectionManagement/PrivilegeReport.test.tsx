@@ -281,4 +281,59 @@ describe("PrivilegeReport", () => {
     render(<PrivilegeReport report={ok} blocked={false} isEditing={false} version="26.5.7" />);
     expect(screen.getByText(/Connected to ClickHouse 26\.5\.7\. Every feature is available\./)).toBeTruthy();
   });
+
+  describe("on a kind other than a shared login", () => {
+    const CEILING: ConnectionPrivilegeReport = {
+      ...FAILING,
+      kind: "shared_ceiling",
+      username: "chouse_login",
+      missingCount: 1,
+      features: [
+        feature({ source: "system_role" }),
+        feature({ id: "query_control", name: "Query control", description: "Kill running queries", status: "missing", missing: ["KILL QUERY ON *.*"], grants: ["GRANT KILL QUERY ON *.* TO chouse_system;"], source: "system_role" }),
+        feature({ id: "data_editing", name: "Data editing", description: "Create and change tables", required: false, source: "mapped_role" }),
+        feature({ id: "access_admin", name: "ClickHouse access admin", description: "ClickHouse users and roles pages", required: false, source: "unavailable" }),
+      ],
+      grantScript: "GRANT KILL QUERY ON *.* TO chouse_system;",
+    };
+
+    it("says whose privileges were checked and where the grants go", () => {
+      render(<PrivilegeReport report={CEILING} blocked={false} isEditing />);
+      expect(screen.getByText("Checked on the system role.")).toBeTruthy();
+      expect(screen.getByText("Grant these to the system role, not to chouse_login.")).toBeTruthy();
+      expect(screen.queryByText(/gets its access through a role/)).toBeNull();
+    });
+
+    it("replaces granted/missing on features the system role does not decide", () => {
+      render(<PrivilegeReport report={CEILING} blocked={false} isEditing />);
+      expect(screen.getByText("From each person's ClickHouse role")).toBeTruthy();
+      expect(screen.getByText("Not available on this kind")).toBeTruthy();
+      // The two system-role features keep their usual badges, and only they do.
+      expect(screen.getAllByText("Granted")).toHaveLength(1);
+      expect(screen.getByText("1 missing")).toBeTruthy();
+      expect(screen.queryByText("Optional")).toBeNull();
+      // Nothing to expand: no grants belong to those rows.
+      expect(screen.queryByRole("button", { name: /Data editing/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /ClickHouse access admin/ })).toBeNull();
+      expect(screen.getByRole("button", { name: /Query control/ })).toBeTruthy();
+    });
+
+    it("names the system role, not the login, in the summaries", () => {
+      expect(privilegeSummary(CEILING)).toBe("The system role is missing 1 privilege across 1 feature.");
+      expect(privilegeSummary({ ...CEILING, ok: true, missingCount: 0, features: [feature({ source: "system_role" })] })).toBe("The system role has every privilege CHouse UI needs.");
+      render(<PrivilegeReport report={CEILING} blocked isEditing />);
+      expect(within(screen.getByRole("alert")).getByText(/The system role is missing 1 privilege across 1 feature\./)).toBeTruthy();
+    });
+
+    it("renders a report without a kind as before, whatever a feature's source says", () => {
+      const plain: ConnectionPrivilegeReport = { ...CEILING, kind: undefined };
+      render(<PrivilegeReport report={plain} blocked={false} isEditing />);
+      expect(screen.queryByText("Checked on the system role.")).toBeNull();
+      expect(screen.getByText("If chouse_login gets its access through a role, grant these to the role instead.")).toBeTruthy();
+      expect(screen.queryByText("From each person's ClickHouse role")).toBeNull();
+      expect(screen.queryByText("Not available on this kind")).toBeNull();
+      expect(screen.getAllByText("Granted")).toHaveLength(3);
+      expect(screen.getAllByText("Optional")).toHaveLength(2);
+    });
+  });
 });

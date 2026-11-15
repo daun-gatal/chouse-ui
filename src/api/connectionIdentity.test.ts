@@ -1,0 +1,238 @@
+/**
+ * Tests for the connection identity API client: request shaping, envelope
+ * unwrapping, and the checks a refused switch carries on its error.
+ */
+
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vitest";
+
+import { server } from "@/test/mocks/server";
+import { ApiError } from "./client";
+import {
+  CLICKHOUSE_ROLE_NAME,
+  checkConnectionIdentity,
+  getConnectionIdentity,
+  getConnectionRoleMap,
+  identityCheckFromError,
+  identityKind,
+  identityKindLabel,
+  recheckConnectionIdentity,
+  setConnectionAccessContact,
+  setConnectionRoleMap,
+  switchConnectionIdentity,
+  type ConnectionIdentity,
+  type IdentityChange,
+  type IdentityCheckResult,
+} from "./connectionIdentity";
+
+const IDENTITY: ConnectionIdentity = {
+  identityMode: "shared_ceiling",
+  username: "chouse_login",
+  systemRole: "chouse_system",
+  accessContact: "Ask #data-platform",
+  health: "ok",
+  healthReason: null,
+  checkedAt: 1_800_000_000_000,
+  serverVersion: "24.8.1.1",
+  roleMap: [{ roleId: "r-analyst", roleName: "analyst", clickhouseRole: "ch_analyst" }],
+};
+
+const CHANGE: IdentityChange = { identityMode: "shared_ceiling", username: "chouse_login", password: "secret", systemRole: "chouse_system" };
+
+const PASSING: IdentityCheckResult = {
+  ok: true,
+  reason: null,
+  verdict: {
+    ok: true,
+    reason: null,
+    serverVersion: "24.8.1.1",
+    checks: [{ id: "version", label: "ClickHouse 24.4 or newer", ok: true, detail: "24.8.1.1" }],
+  },
+};
+
+const FAILING: IdentityCheckResult = {
+  ok: false,
+  reason: "chouse_login holds grants of its own.",
+  verdict: {
+    ok: false,
+    reason: "chouse_login holds grants of its own.",
+    serverVersion: "24.8.1.1",
+    checks: [{ id: "empty_login", label: "The login holds no grants", ok: false, detail: "chouse_login holds grants of its own." }],
+  },
+};
+
+describe("Connection identity API", () => {
+  it("reads a connection's identity with its setup statements", async () => {
+    server.use(
+      http.get("/api/rbac/connections/:id/identity", ({ params }) =>
+        HttpResponse.json({ success: true, data: { ...IDENTITY, username: String(params.id), setupStatements: ["CREATE ROLE chouse_system;"] } }),
+      ),
+    );
+
+    const identity = await getConnectionIdentity("conn-1");
+    expect(identity.username).toBe("conn-1");
+    expect(identity.roleMap).toEqual(IDENTITY.roleMap);
+    expect(identity.setupStatements).toEqual(["CREATE ROLE chouse_system;"]);
+  });
+
+  it("escapes the connection id in the path", async () => {
+    let seen = "";
+    server.use(
+      http.get("/api/rbac/connections/:id/identity", ({ request }) => {
+        seen = new URL(request.url).pathname;
+        return HttpResponse.json({ success: true, data: { ...IDENTITY, setupStatements: [] } });
+      }),
+    );
+
+    await getConnectionIdentity("a/b");
+    expect(seen).toBe("/api/rbac/connections/a%2Fb/identity");
+  });
+
+  it("checks a change without saving and returns the result", async () => {
+    let body: unknown;
+    server.use(
+      http.post("/api/rbac/connections/conn-1/identity/check", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: FAILING });
+      }),
+    );
+
+    const result = await checkConnectionIdentity("conn-1", CHANGE);
+    expect(body).toEqual(CHANGE);
+    expect(result).toEqual(FAILING);
+  });
+
+  it("switches the identity and returns the stored identity with its check", async () => {
+    let body: unknown;
+    server.use(
+      http.put("/api/rbac/connections/conn-1/identity", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: { identity: IDENTITY, check: PASSING } });
+      }),
+    );
+
+    const result = await switchConnectionIdentity("conn-1", CHANGE);
+    expect(body).toEqual(CHANGE);
+    expect(result.identity).toEqual(IDENTITY);
+    expect(result.check).toEqual(PASSING);
+  });
+
+  it("keeps the message and the checks of a refused switch on the error", async () => {
+    server.use(
+      http.put("/api/rbac/connections/conn-1/identity", () =>
+        HttpResponse.json(
+          { success: false, error: { code: "IDENTITY_CHECK_FAILED", message: FAILING.reason, details: FAILING } },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const error = await switchConnectionIdentity("conn-1", CHANGE).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ statusCode: 422, code: "IDENTITY_CHECK_FAILED", message: "chouse_login holds grants of its own." });
+    expect(identityCheckFromError(error)).toEqual(FAILING);
+  });
+
+  it("finds no checks on other errors or malformed details", () => {
+    expect(identityCheckFromError(new Error("boom"))).toBeNull();
+    expect(identityCheckFromError(new ApiError("x", 403, "FORBIDDEN", "unknown", FAILING))).toBeNull();
+    expect(identityCheckFromError(new ApiError("x", 422, "IDENTITY_CHECK_FAILED"))).toBeNull();
+    expect(identityCheckFromError(new ApiError("x", 422, "IDENTITY_CHECK_FAILED", "unknown", { ok: false, verdict: null }))).toBeNull();
+    expect(identityCheckFromError(new ApiError("x", 422, "IDENTITY_CHECK_FAILED", "unknown", { ok: "no", verdict: { checks: [] } }))).toBeNull();
+  });
+
+  it("surfaces a 403 for someone who is not a super admin", async () => {
+    server.use(
+      http.get("/api/rbac/connections/conn-1/identity", () =>
+        HttpResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Only a super admin can change how a connection reaches ClickHouse." } }, { status: 403 }),
+      ),
+    );
+
+    await expect(getConnectionIdentity("conn-1")).rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
+  });
+
+  it("saves the access contact alone, including clearing it", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.put("/api/rbac/connections/conn-1/identity/contact", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ success: true, data: { ...IDENTITY, accessContact: null } });
+      }),
+    );
+
+    await setConnectionAccessContact("conn-1", "Ask #data-platform");
+    const cleared = await setConnectionAccessContact("conn-1", null);
+    expect(bodies).toEqual([{ accessContact: "Ask #data-platform" }, { accessContact: null }]);
+    expect(cleared.accessContact).toBeNull();
+  });
+
+  it("reads and replaces the role map, unwrapping the entries", async () => {
+    let body: unknown;
+    server.use(
+      http.get("/api/rbac/connections/conn-1/identity/role-map", () => HttpResponse.json({ success: true, data: { entries: IDENTITY.roleMap } })),
+      http.put("/api/rbac/connections/conn-1/identity/role-map", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: { entries: [] } });
+      }),
+    );
+
+    expect(await getConnectionRoleMap("conn-1")).toEqual(IDENTITY.roleMap);
+    expect(await setConnectionRoleMap("conn-1", [{ roleId: "r-analyst", clickhouseRole: "ch_analyst" }])).toEqual([]);
+    expect(body).toEqual({ entries: [{ roleId: "r-analyst", clickhouseRole: "ch_analyst" }] });
+  });
+
+  it("surfaces the server's message for a role map it refuses", async () => {
+    server.use(
+      http.put("/api/rbac/connections/conn-1/identity/role-map", () =>
+        HttpResponse.json({ success: false, error: { code: "BAD_REQUEST", message: "analyst is listed twice." } }, { status: 400 }),
+      ),
+    );
+
+    await expect(setConnectionRoleMap("conn-1", [])).rejects.toMatchObject({ statusCode: 400, message: "analyst is listed twice." });
+  });
+
+  it("rechecks the stored login, with a null verdict when there is nothing to check", async () => {
+    let method = "";
+    server.use(
+      http.post("/api/rbac/connections/conn-1/identity/recheck", ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({ success: true, data: { verdict: null, identity: IDENTITY } });
+      }),
+    );
+
+    const result = await recheckConnectionIdentity("conn-1");
+    expect(method).toBe("POST");
+    expect(result.verdict).toBeNull();
+    expect(result.identity).toEqual(IDENTITY);
+  });
+});
+
+describe("identityKind", () => {
+  it("reads a missing mode as a shared login and any other string as unknown", () => {
+    expect(identityKind("shared")).toBe("shared");
+    expect(identityKind(undefined)).toBe("shared");
+    expect(identityKind(null)).toBe("shared");
+    expect(identityKind("shared_ceiling")).toBe("shared_ceiling");
+    expect(identityKind("personal")).toBe("unknown");
+    expect(identityKind("")).toBe("unknown");
+  });
+
+  it("names each kind in plain words", () => {
+    expect(identityKindLabel("shared")).toBe("Shared login");
+    expect(identityKindLabel("shared_ceiling")).toBe("Role ceiling");
+    expect(identityKindLabel("personal")).toBe("Unknown kind");
+  });
+});
+
+describe("CLICKHOUSE_ROLE_NAME", () => {
+  it("accepts letters, digits and underscores, not starting with a digit, up to 128 characters", () => {
+    expect(CLICKHOUSE_ROLE_NAME.test("ch_analyst")).toBe(true);
+    expect(CLICKHOUSE_ROLE_NAME.test("_r2")).toBe(true);
+    expect(CLICKHOUSE_ROLE_NAME.test("a".repeat(128))).toBe(true);
+    expect(CLICKHOUSE_ROLE_NAME.test("a".repeat(129))).toBe(false);
+    expect(CLICKHOUSE_ROLE_NAME.test("2fast")).toBe(false);
+    expect(CLICKHOUSE_ROLE_NAME.test("ch-analyst")).toBe(false);
+    expect(CLICKHOUSE_ROLE_NAME.test("ch analyst")).toBe(false);
+    expect(CLICKHOUSE_ROLE_NAME.test("")).toBe(false);
+  });
+});
