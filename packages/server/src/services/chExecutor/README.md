@@ -9,6 +9,8 @@ The only code that talks to ClickHouse (ADR 0033 §2). Every other module gets a
 - Query ids: `[queryId.ts:makeQueryId]`, `[queryId.ts:parseQueryId]`, `[queryId.ts:accountOfQueryId]`, `[queryId.ts:isNonce]`, `[queryId.ts:accountQueryIdLike]`, `[queryId.ts:purposeQueryIdLike]`.
 - Checked statements: `[checked.ts:CheckedStatement]`, sent with `queryChecked` / `commandChecked` on `ChExecutor` (`[types.ts]`); `[settings.ts:readonlyFor]`. `[checked.ts:mintCheckedStatement]` is for `middleware/dataAccess.ts` only.
 - Whose statement a logged row is: `[queryId.ts:ownerAccount]`, `[queryId.ts:ownerAccountSql]`; CHouse's own traffic: `[queryId.ts:internalTrafficSql]`, `[queryId.ts:INTERNAL_NONCE_PREFIX]`.
+- Request identity (ADR 0033 §5, §6): `[identity.ts:requestRole]`, `[identity.ts:mappedRole]`, `[identity.ts:identityOfConnection]`, `[identity.ts:healthRefusal]`, `[identity.ts:identityCacheKey]`, `[identity.ts:isRoleName]`, `[identity.ts:isKnownMode]`, `[identity.ts:IDENTITY_MODES]`, `[identity.ts:VERDICT_MAX_AGE_MS]`, `[identity.ts:connectionUnavailable]`, `[identity.ts:identityUnavailable]`; type `ConnectionIdentity`.
+- Identity checks: `[health.ts:runIdentityChecks]`, `[health.ts:checkSavedConnection]`, `[health.ts:writeVerdict]`, `[health.ts:identityHealthTick]`, `[health.ts:startIdentityHealthTimer]`, `[health.ts:stopIdentityHealthTimer]`, `[health.ts:parseGrantLine]`, `[health.ts:forbiddenGrant]`.
 - Errors: `[errors.ts:classifyClickHouseError]`, `[errors.ts:classifiedAppError]`, `[errors.ts:isGrantError]`, `[errors.ts:isReadOnlyError]`, `[errors.ts:clickhouseErrorCode]`, `[errors.ts:clickhouseErrorType]`, `[errors.ts:requiredGrantFromError]`, `[errors.ts:deniedSystemTables]`.
 - Sessions: `[session.ts:plainSession]`, `[session.ts:pinnedSession]`, `[session.ts:buildSession]`.
 - `[executor.ts:logCommentFor]`, `[executor.ts:quotaKeyFor]`, `[lifecycle.ts:closeAllClients]`.
@@ -26,15 +28,20 @@ The only code that talks to ClickHouse (ADR 0033 §2). Every other module gets a
 - `readonly` for a checked statement is `[settings.ts:readonlyFor]`: a read-only feature's own level, else `2` when ClickHouse's parse says the statement is a read or the person holds no write permission, else none. It never comes from the statement's text.
 - A person's account is read from a logged row only when the row's ClickHouse `user` is the connection's login, from the query id first; `log_comment` is read only for an id that is not one of ours (`[queryId.ts:ownerAccount]`).
 - Only the executor can put `[queryId.ts:INTERNAL_NONCE_PREFIX]` on a query id (`ExecutorOptions.internal`); a caller's nonce that starts with it is replaced.
+- On a connection that is not `shared`, every request names a ClickHouse role, resolved for that request: the system role for a service actor, the role mapped to the account's CHouse role for a person (`[identity.ts:requestRole]`). A request is refused, and nothing is sent, when the kind is unknown to this build, when the stored verdict is failing, missing or older than `[identity.ts:VERDICT_MAX_AGE_MS]`, when there is no system role, or when the account has no role or its role has no mapping. A call cannot pass a role; the role is on every request of a pinned session too.
+- `ExecutorOptions.roleOverride` (a bare request, or a role under test, with no health refusal) is used only by `[health.ts]` and the login test in `rbac/services/connections.ts`. A remediation login carries no identity: it is outside the ceiling by design.
+- The identity checks send only CHouse-built statements with the purpose `health-check`; nothing a person types changes a verdict. The verdict lives on the connection row, so every replica reads the same one. The timer runs in every process under the lease `connection-identity-health`.
 - A classified error (`[errors.ts:classifyClickHouseError]`) is a 403 with code `READ_ONLY` or `CLICKHOUSE_ACCESS_DENIED`, never a 401, and never changes a connection's health.
 - A session id is sent only through `[session.ts:buildSession]`, for CHouse-built text; after the first statement it sends `session_check = 1` (ADR 0015 §4).
 - `[executor.ts:setExecutorClientForTests]` throws unless `NODE_ENV` is `test`.
 
 ## Side Effects
 - Opens pooled HTTP clients to ClickHouse, one per login and lane, closed after 10 idle minutes by an unref'd `setInterval` (`[clientPool.ts:ClientManager]`). The `service` lane keeps parse and stop requests from waiting behind long statements.
+- Reads `rbac_user_roles` and `rbac_connection_role_map` on each request of a connection that is not `shared` (`[identity.ts:mappedRole]`); writes the verdict columns of `rbac_clickhouse_connections` and holds a row in `obs_leases` every five minutes (`[health.ts:identityHealthTick]`).
 - Reads `rbac_clickhouse_connections` and `remediation_credentials` to resolve a login (`[executor.ts:connectionConfig]`).
 
 ## Verification
 - Run (from repo root): `cd packages/server && bun test src/services/chExecutor`
 - Run (from repo root): `bun run check:clickhouse-access`
 - Real servers (23.8 and 26.5), with the observability e2e gate: `./scripts/e2e-observe.sh` runs `shared.e2e.test.ts`
+- Real servers (24.3, 24.4 and 26.5): `./scripts/e2e-connection-identity.sh` runs `identity.e2e.test.ts`

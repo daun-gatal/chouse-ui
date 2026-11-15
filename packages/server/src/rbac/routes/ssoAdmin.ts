@@ -7,6 +7,7 @@
  * fully audited; deleting a provider force-unlinks all linked identities.
  */
 
+import { anyRoleMapped } from "../services/connectionIdentity";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -131,6 +132,19 @@ ssoAdminRoutes.get("/settings", requirePermission(PERMISSIONS.SSO_VIEW), async (
   });
 });
 
+/**
+ * The default role and a provider's role mapping decide which CHouse role an
+ * account gets at sign-in. Once any role is mapped to a ClickHouse role
+ * (ADR 0033 §6), that also decides what ClickHouse lets the account do, so
+ * only a super admin may change them. Before that, `sso:edit` is enough.
+ */
+async function assertMayChangeRoleAssignment(roles: readonly string[], changesAssignment: boolean): Promise<void> {
+  if (!changesAssignment || roles.includes("super_admin")) return;
+  if (await anyRoleMapped()) {
+    throw AppError.forbidden("Only a super admin can change which role SSO assigns: a role is mapped to a ClickHouse role on a connection.");
+  }
+}
+
 ssoAdminRoutes.put(
   "/settings",
   requirePermission(PERMISSIONS.SSO_EDIT),
@@ -138,6 +152,7 @@ ssoAdminRoutes.put(
   async (c) => {
     const input = c.req.valid("json");
     const user = getRbacUser(c);
+    await assertMayChangeRoleAssignment(user.roles, input.defaultRole !== undefined);
     // Env/YAML-provided settings are read-only: refuse to create a DB override
     // while config drives SSO (defense in depth — the UI also hides the form).
     const existing = await store.getDbSettings();
@@ -190,6 +205,7 @@ ssoAdminRoutes.post(
   async (c) => {
     const input = c.req.valid("json");
     const user = getRbacUser(c);
+    await assertMayChangeRoleAssignment(user.roles, input.roleMapping !== undefined || input.roleMappingClaim !== undefined);
     const cfg = getSsoConfig();
     const envHit = cfg.providers.get(input.id);
     if (envHit && envHit.source === "config") {
@@ -224,6 +240,7 @@ ssoAdminRoutes.patch(
       throw AppError.notFound("SSO provider not found (env providers are read-only)");
     }
     const patch = c.req.valid("json");
+    await assertMayChangeRoleAssignment(user.roles, patch.roleMapping !== undefined || patch.roleMappingClaim !== undefined);
     await store.updateDbProvider(id, patch);
     await applySsoConfigChange();
     const { clientSecret: _cs, ...safeChanges } = patch;

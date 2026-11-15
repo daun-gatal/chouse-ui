@@ -611,7 +611,7 @@ export function createCoreTools(ctx: AgentToolContext) {
           // The account comes from the query id the executor made (ADR 0033 §2).
           if (!ctx.isAdmin && !ctx.userId) return { queries: [] };
           const filter = ctx.isAdmin ? "" : `WHERE ${ownerAccountSql({ queryId: "initial_query_id", logComment: "Settings['log_comment']", user: "user" })} = ${quoteStringLiteral(ctx.userId)}`;
-          const result = await ctx.clickhouseService.executeQuery(
+          const result = await ctx.clickhouseService.executeSystemQuery(
             `SELECT 
                 query_id, user, query, elapsed, read_rows, 
                 formatReadableSize(memory_usage) as memory
@@ -899,7 +899,7 @@ export function createCoreTools(ctx: AgentToolContext) {
         try {
           if (!ctx.isAdmin && !ctx.userId) return { queries: [] };
           const filter = ctx.isAdmin ? "" : `AND ${ownerAccountSql()} = ${quoteStringLiteral(ctx.userId)}`;
-          const result = await ctx.clickhouseService.executeQuery(
+          const result = await ctx.clickhouseService.executeSystemQuery(
             `SELECT
                 query_id,
                 user,

@@ -424,7 +424,7 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
           controller.enqueue(encoder.encode(line + "\n"));
         }
       } catch (error) {
-        controller.enqueue(encoder.encode(JSON.stringify({ t: "err", message: personMessage(error) }) + "\n"));
+        controller.enqueue(encoder.encode(JSON.stringify({ t: "err", message: personMessage(error, service.identityMode) }) + "\n"));
       } finally {
         controller.close();
       }

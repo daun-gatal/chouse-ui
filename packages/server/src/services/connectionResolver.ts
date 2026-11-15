@@ -10,7 +10,7 @@
  * already caches real ClickHouse clients per login, with idle eviction.
  * Constructing a `ClickHouseService` just wraps that lookup.
  */
-import { personActor } from "./chExecutor";
+import { identityOfConnection, personActor } from "./chExecutor";
 import { ClickHouseService } from "./clickhouse";
 import { getConnectionWithPassword, getUserConnections } from "../rbac/services/connections";
 import { AppError, type ConnectionConfig } from "../types";
@@ -150,7 +150,7 @@ export async function resolveRequestedConnection(
     throw connectionContextStale("This ClickHouse connection no longer exists. Pick another connection.");
   }
 
-  const config = buildConfig(connection);
+  const config: ConnectionConfig = { ...buildConfig(connection), identity: identityOfConnection(connection) };
   return {
     connectionId,
     connectionName: match.name,

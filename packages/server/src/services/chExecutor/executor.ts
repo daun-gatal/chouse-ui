@@ -10,6 +10,7 @@ import { createClient, type ClickHouseClient, type ClickHouseSettings, type Data
 import type { ConnectionConfig } from "../../types";
 import { CheckedStatement } from "./checked";
 import { ClientManager, type ClientLane } from "./clientPool";
+import { identityOfConnection, requestRole } from "./identity";
 import { makeQueryId } from "./queryId";
 import { buildSession, type ChSession } from "./session";
 import { readonlyFor, type ReadOnlyLevel } from "./settings";
@@ -43,7 +44,9 @@ export function quotaKeyFor(actor: Actor): string {
 }
 
 function settingsFor(actor: Actor, options: ExecutorOptions, given: ClickHouseSettings | undefined): ClickHouseSettings {
-  return { ...options.defaults, ...given, log_comment: logCommentFor(actor, options.context) };
+  // The client writes every setting as a URL parameter, and `role` is one ClickHouse reads there.
+  const { role: _role, ...settings } = { ...options.defaults, ...given } as ClickHouseSettings & { role?: unknown };
+  return { ...settings, log_comment: logCommentFor(actor, options.context) };
 }
 
 /** Fields a call might still carry at run time (untyped callers, spreads) that only the executor may set. */
@@ -124,36 +127,46 @@ export function executorOverClient(
   lane: ClientLane = "statements",
 ): ChExecutor {
   const idFor = (nonce: string | undefined): string => makeQueryId(actor, nonce, options.internal === true);
-  const identity = (queryId: string, settings: ClickHouseSettings | undefined, withKey: boolean) => ({
+  const identity = (queryId: string, settings: ClickHouseSettings | undefined, withKey: boolean, role: string | undefined) => ({
     query_id: queryId,
     clickhouse_settings: settingsFor(actor, options, settings),
+    ...(role ? { role } : {}),
     ...(withKey ? { http_headers: { "X-ClickHouse-Quota": quotaKeyFor(actor) } } : {}),
   });
+  /**
+   * The ClickHouse role this request names (ADR 0033 §5, §6), resolved for
+   * every request so a removed role or a failing verdict stops the next one.
+   * It rejects when the request must not be sent. `roleOverride` is for
+   * checking a login: a bare request, or a role named from the connection's
+   * own settings, never from a request.
+   */
+  const withRole = async <T>(send: (role: string | undefined) => Promise<T>): Promise<T> =>
+    send(options.roleOverride !== undefined ? options.roleOverride ?? undefined : await requestRole(options.identity, actor));
   return {
     actor,
     query<Format extends DataFormat = "JSON">(args: QueryArgs<Format>): Promise<ResultSet<Format>> {
       const clean = withoutOwned(args);
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
       const queryId = idFor(clean.query_id);
-      return sendWithQuotaKey(client, (withKey) => client.query({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
     },
     command(args: CommandArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return sendWithQuotaKey(client, (withKey) => client.command({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
     },
     exec(args: ExecArgs) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), true);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.exec({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), true));
     },
     insert<T>(args: InsertArgs<T>) {
       const clean = withoutOwned(args);
       const client = clientFor(lane);
       const queryId = idFor(clean.query_id);
-      return sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey) }), false);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.insert({ ...clean, ...identity(queryId, clean.clickhouse_settings, withKey, role) }), false));
     },
     queryChecked<Format extends DataFormat = "JSON">(statement: CheckedStatement, args: CheckedQueryArgs<Format> = {}): Promise<ResultSet<Format>> {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
@@ -161,7 +174,7 @@ export function executorOverClient(
       const client = clientFor(lane) as { query(params: QueryArgs<Format>): Promise<ResultSet<Format>> };
       const queryId = idFor(rest.query_id);
       const call = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) } as QueryArgs<Format>;
-      return sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...identity(queryId, settings, withKey) }), true);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...call, ...identity(queryId, settings, withKey, role) }), true));
     },
     commandChecked(statement: CheckedStatement, args: CheckedCommandArgs = {}) {
       const { readOnlyFeature, ...rest } = withoutText(withoutOwned(args));
@@ -169,7 +182,7 @@ export function executorOverClient(
       const client = clientFor(lane);
       const queryId = idFor(rest.query_id);
       const call: CommandArgs = { ...rest, query: statement.sql, ...(statement.params ? { query_params: statement.params } : {}) };
-      return sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...identity(queryId, settings, withKey) }), true);
+      return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...call, ...identity(queryId, settings, withKey, role) }), true));
     },
     async ping(): Promise<boolean> {
       return (await clientFor(lane).ping()).success;
@@ -180,11 +193,11 @@ export function executorOverClient(
         {
           query: (args) => {
             const queryId = idFor(args.query_id);
-            return sendWithQuotaKey(client, (withKey) => client.query({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
+            return withRole((role) => sendWithQuotaKey(client, (withKey) => client.query({ ...args, ...identity(queryId, args.clickhouse_settings, withKey, role) }), true));
           },
           command: (args) => {
             const queryId = idFor(args.query_id);
-            return sendWithQuotaKey(client, (withKey) => client.command({ ...args, ...identity(queryId, args.clickhouse_settings, withKey) }), true);
+            return withRole((role) => sendWithQuotaKey(client, (withKey) => client.command({ ...args, ...identity(queryId, args.clickhouse_settings, withKey, role) }), true));
           },
         },
         signal,
@@ -219,9 +232,9 @@ export function setExecutorClientForTests(factory: ((connectionId: string | unde
 export function executorForConfig(config: ConnectionConfig, actor: Actor, options: ExecutorOptions = {}): ChExecutor {
   if (testClient) {
     const stand = testClient;
-    return executorOverClient(() => stand(undefined, config) as ClientLike, actor, options);
+    return executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...options, identity: options.identity ?? config.identity });
   }
-  return executorOverClient((lane) => ClientManager.getInstance().getClient(config, lane), actor, options);
+  return executorOverClient((lane) => ClientManager.getInstance().getClient(config, lane), actor, { ...options, identity: options.identity ?? config.identity });
 }
 
 /** The stored login of a connection, as a client config. */
@@ -236,7 +249,8 @@ export async function connectionConfig(connectionId: string, credential: Credent
     if (!stored) throw new Error(`Connection ${connectionId} has no remediation login`);
     return { url, username: stored.username, password: stored.password, database: connection.database || undefined };
   }
-  return { url, username: connection.username, password: connection.password || "", database: connection.database || undefined };
+  // The remediation login above carries no identity: it is outside the ceiling by design (ADR 0033 §5).
+  return { url, username: connection.username, password: connection.password || "", database: connection.database || undefined, identity: identityOfConnection(connection) };
 }
 
 /** A handle for a saved connection, by id. */
@@ -264,6 +278,10 @@ export function ephemeralExecutor(
   options: ExecutorOptions & { requestTimeoutMs: number },
 ): { executor: ChExecutor; close: () => Promise<void> } {
   const { requestTimeoutMs, ...rest } = options;
+  if (testClient) {
+    const stand = testClient;
+    return { executor: executorOverClient(() => stand(undefined, config) as ClientLike, actor, { ...rest, identity: rest.identity ?? config.identity }), close: async () => undefined };
+  }
   const client = createClient({
     url: config.url,
     username: config.username,
@@ -271,5 +289,5 @@ export function ephemeralExecutor(
     database: config.database || "default",
     request_timeout: requestTimeoutMs,
   });
-  return { executor: executorOverClient(() => client, actor, rest), close: () => client.close() };
+  return { executor: executorOverClient(() => client, actor, { ...rest, identity: rest.identity ?? config.identity }), close: () => client.close() };
 }

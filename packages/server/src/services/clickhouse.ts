@@ -3,6 +3,7 @@ import {
   classifyClickHouseError,
   clickhouseErrorCode,
   executorForConfig,
+  serviceActor,
   ownerAccount,
   ownerAccountSql,
   type Actor,
@@ -142,8 +143,8 @@ export interface QueryLogRow {
 }
 
 /** What the person is told about a failed statement: CHouse's wording for a grant or read-only refusal, else ClickHouse's own. */
-export function personMessage(error: unknown): string {
-  const classified = classifyClickHouseError(error);
+export function personMessage(error: unknown, mode?: string): string {
+  const classified = classifyClickHouseError(error, { mode });
   if (classified) return classified.message;
   return error instanceof Error ? error.message : String(error);
 }
@@ -188,6 +189,46 @@ export class ClickHouseService {
     return executorForConfig(this.config, this.actor, { context: this.tags, defaults: { readonly: "2" } });
   }
 
+  /**
+   * The handle for reads of system tables that CHouse builds for a monitoring
+   * page (metrics, live queries, the statement log). On a shared login it is
+   * the person's own handle, as before. On a connection that limits people to
+   * a ClickHouse role (ADR 0033 §6) these are CHouse's own work and name the
+   * system role: a person's role is granted their data, not `system.*`. The
+   * routes that call them decide who may see what, as on a shared login.
+   */
+  private get monitorClient(): ChExecutor {
+    const mode = this.config.identity?.mode ?? "shared";
+    if (mode === "shared") return this.client;
+    return executorForConfig(this.config, serviceActor("monitoring", this.rbacUserId), { context: this.tags });
+  }
+
+  /** The connection's kind, for wording a ClickHouse refusal. */
+  get identityMode(): string {
+    return this.config.identity?.mode ?? "shared";
+  }
+
+  /**
+   * Run a CHouse-built statement on system tables for a monitoring route (the
+   * running-queries list, stopping a query). Never typed text.
+   */
+  async executeSystemQuery<T = Record<string, unknown>>(query: string, format: string = "JSON"): Promise<QueryResult<T>> {
+    const client = this.monitorClient;
+    try {
+      const text = query.trim();
+      if (this.isCommand(text)) {
+        const result = await client.command({ query: text });
+        return { meta: [], data: [], statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 }, rows: 0, queryId: result.query_id, error: null };
+      }
+      const result = await client.query({ query: text, format: format as "JSON" });
+      const json = (await result.json()) as { meta?: { name: string; type: string }[]; data?: T[]; statistics?: { elapsed: number; rows_read: number; bytes_read: number }; rows?: number };
+      const data = json.data ?? [];
+      return { meta: json.meta ?? [], data, statistics: json.statistics ?? { elapsed: 0, rows_read: 0, bytes_read: 0 }, rows: json.rows ?? data.length, queryId: result.query_id, error: null };
+    } catch (error) {
+      throw this.handleError(error, "Query execution failed");
+    }
+  }
+
   /** The connection's default database (used to resolve unqualified table refs). */
   get defaultDatabase(): string | undefined {
     return this.config.database;
@@ -212,7 +253,7 @@ export class ClickHouseService {
 
   async getVersion(): Promise<string> {
     try {
-      const result = await this.client.query({ query: "SELECT version()" });
+      const result = await this.monitorClient.query({ query: "SELECT version()" });
       const response = await result.json() as JsonResponse<{ "version()": string }>;
       return response.data[0]?.["version()"] || "unknown";
     } catch (error) {
@@ -430,7 +471,7 @@ export class ClickHouseService {
         });
         void commandResult;
       } catch (error) {
-        const msg = personMessage(error);
+        const msg = personMessage(error, this.identityMode);
         yield JSON.stringify({ t: "err", message: msg });
         throw error;
       }
@@ -481,7 +522,7 @@ export class ClickHouseService {
           } catch (error) {
             // Fail closed for SELECT-like queries: a malformed row is a real
             // error, not a committed-DDL case (DDL is branched above).
-            const msg = personMessage(error);
+            const msg = personMessage(error, this.identityMode);
             yield JSON.stringify({ t: "err", message: msg });
             throw error;
           }
@@ -510,7 +551,7 @@ export class ClickHouseService {
         }
       }
     } catch (error) {
-      const msg = personMessage(error);
+      const msg = personMessage(error, this.identityMode);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -555,7 +596,7 @@ export class ClickHouseService {
         query_id: queryId,
       });
     } catch (error) {
-      const msg = personMessage(error);
+      const msg = personMessage(error, this.identityMode);
       yield JSON.stringify({ t: "err", message: msg });
       throw error;
     }
@@ -564,7 +605,7 @@ export class ClickHouseService {
     try {
       envelope = await result.json();
     } catch (error) {
-      const msg = personMessage(error);
+      const msg = personMessage(error, this.identityMode);
       if (isJsonParseErrorMessage(msg)) {
         // Server accepted the statement (HTTP 200) but the body is not JSON.
         // The DDL committed — never re-run it.  Surface success with the raw
@@ -817,7 +858,7 @@ export class ClickHouseService {
       // is absent on some builds). Run it on its own — in parallel — with a
       // fallback so a missing metric_log degrades CPU to 0 instead of failing
       // the whole stats call.
-      const cpuLoadPromise: Promise<number> = this.client
+      const cpuLoadPromise: Promise<number> = this.monitorClient
         .query({
           query: `
             SELECT (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000
@@ -841,12 +882,12 @@ export class ClickHouseService {
         connRes,
         activeQueriesRes,
       ] = await Promise.all([
-        this.client.query({ query: "SELECT version()" }),
-        this.client.query({ query: "SELECT uptime()" }),
-        this.client.query({ query: "SELECT count() FROM system.databases" }),
-        this.client.query({ query: "SELECT count() FROM system.tables" }),
-        this.client.query({ query: "SELECT coalesce(sum(total_bytes), 0) as size, coalesce(sum(total_rows), 0) as rows FROM system.tables" }),
-        this.client.query({
+        this.monitorClient.query({ query: "SELECT version()" }),
+        this.monitorClient.query({ query: "SELECT uptime()" }),
+        this.monitorClient.query({ query: "SELECT count() FROM system.databases" }),
+        this.monitorClient.query({ query: "SELECT count() FROM system.tables" }),
+        this.monitorClient.query({ query: "SELECT coalesce(sum(total_bytes), 0) as size, coalesce(sum(total_rows), 0) as rows FROM system.tables" }),
+        this.monitorClient.query({
           query: `
             SELECT
               (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) as mem_resident,
@@ -854,13 +895,13 @@ export class ClickHouseService {
               (SELECT value FROM system.metrics WHERE metric = 'MemoryTracking' LIMIT 1) as mem_tracking
           `
         }),
-        this.client.query({
+        this.monitorClient.query({
           query: "SELECT sum(value) as value FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection', 'InterserverConnection', 'MySQLConnection', 'PostgreSQLConnection')"
         }),
         // Exclude monitoring queries (which read system.processes) so the
         // count reflects real workload. CH has no portable "current query id"
         // function — currentQueryID() doesn't exist on 24.11.
-        this.client.query({ query: "SELECT count() as cnt FROM system.processes WHERE query NOT LIKE '%system.processes%'" }),
+        this.monitorClient.query({ query: "SELECT count() as cnt FROM system.processes WHERE query NOT LIKE '%system.processes%'" }),
       ]);
 
       // Note: .json() returns { data: [...], meta: [...], ... }, extract the data array
@@ -921,7 +962,7 @@ export class ClickHouseService {
   async getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
     const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit) || 10));
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             query,
@@ -988,7 +1029,7 @@ export class ClickHouseService {
       filters.push(`AND ${ownerAccountSql()} = {account:String}`);
     }
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             type,
@@ -1048,7 +1089,7 @@ export class ClickHouseService {
    */
   async getQueryLatencyMetrics(intervalMinutes: number = 60): Promise<import("../types").QueryLatencyMetrics> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             quantile(0.50)(query_duration_ms) as p50_ms,
@@ -1165,7 +1206,7 @@ export class ClickHouseService {
    */
   async getDiskMetrics(): Promise<import("../types").DiskMetrics[]> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             name,
@@ -1206,7 +1247,7 @@ export class ClickHouseService {
   async getMergeMetrics(intervalMinutes: number = 60): Promise<import("../types").MergeMetrics> {
     try {
       // Check if system.metric_log exists
-      const checkTable = await this.client.query({
+      const checkTable = await this.monitorClient.query({
         query: "EXISTS TABLE system.metric_log",
       });
       const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
@@ -1217,7 +1258,7 @@ export class ClickHouseService {
       }
 
       // 1. Get instantaneous metrics from system.metrics (always up to date)
-      const metricsResult = await this.client.query({
+      const metricsResult = await this.monitorClient.query({
         query: `
           SELECT metric, value 
           FROM system.metrics 
@@ -1228,7 +1269,7 @@ export class ClickHouseService {
       const metricsMap = new Map(metricsResponse.data.map(d => [d.metric, Number(d.value)]));
 
       // 2. Get rates from system.metric_log (historical deltas)
-      const logResult = await this.client.query({
+      const logResult = await this.monitorClient.query({
         query: `
           SELECT
             avg(ProfileEvent_MergedRows) as merged_rows_per_sec,
@@ -1253,7 +1294,7 @@ export class ClickHouseService {
       };
 
       // 3. Get pending mutations count
-      const mutationsResult = await this.client.query({
+      const mutationsResult = await this.monitorClient.query({
         query: "SELECT count() as cnt FROM system.mutations WHERE is_done = 0",
       });
       const mutationsResponse = await mutationsResult.json() as JsonResponse<{ cnt: number }>;
@@ -1284,7 +1325,7 @@ export class ClickHouseService {
   private async getMergeMetricsFallback(): Promise<import("../types").MergeMetrics> {
     const safeQuery = async <T>(query: string, defaultValue: T): Promise<T> => {
       try {
-        const result = await this.client.query({ query });
+        const result = await this.monitorClient.query({ query });
         const response = await result.json() as JsonResponse<T>;
         return response.data[0] || defaultValue;
       } catch {
@@ -1313,7 +1354,7 @@ export class ClickHouseService {
    */
   async getReplicationMetrics(): Promise<import("../types").ReplicationMetrics[]> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             database,
@@ -1362,7 +1403,7 @@ export class ClickHouseService {
    */
   async getCacheMetrics(): Promise<import("../types").CacheMetrics> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             sumIf(value, event = 'MarkCacheHits') as mark_hits,
@@ -1461,7 +1502,7 @@ export class ClickHouseService {
       // ... (implementation of the rest of the method would be here, assuming it continues)
 
 
-      const metricsResult = await this.client.query({
+      const metricsResult = await this.monitorClient.query({
         query: `
             SELECT 
               ${cpuLoadQuery} as cpu_load,
@@ -1534,7 +1575,7 @@ export class ClickHouseService {
    */
   private async checkTableExists(tableName: string): Promise<boolean> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `EXISTS TABLE ${tableName}`,
       });
       const response = await result.json() as JsonResponse<{ result: number }>;
@@ -1553,7 +1594,7 @@ export class ClickHouseService {
    */
   private async checkColumnExists(database: string, table: string, column: string): Promise<boolean> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `SELECT count() AS c FROM system.columns
                 WHERE database = '${database}' AND table = '${table}' AND name = '${column}'`,
       });
@@ -1576,7 +1617,7 @@ export class ClickHouseService {
    */
   async getErrorMetrics(intervalMinutes: number = 60): Promise<import("../types").ErrorMetrics[]> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             exception_code,
@@ -1621,7 +1662,7 @@ export class ClickHouseService {
    */
   async getInsertThroughput(intervalMinutes: number = 60): Promise<import("../types").InsertThroughputMetrics[]> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             toUnixTimestamp(toStartOfMinute(event_time)) as ts,
@@ -1670,7 +1711,7 @@ export class ClickHouseService {
   async getPartsPressure(intervalMinutes: number = 10): Promise<import("../types").PartsPressureRow[]> {
     try {
       const window = Math.max(1, Math.min(intervalMinutes, 1440));
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           WITH
             (SELECT toFloat64OrZero(value) FROM system.merge_tree_settings WHERE name = 'parts_to_throw_insert') AS global_threshold_raw,
@@ -1850,7 +1891,7 @@ export class ClickHouseService {
    */
   async getTopTablesBySize(limit: number = 10): Promise<import("../types").TopTableBySize[]> {
     try {
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT 
             database,
@@ -2027,7 +2068,7 @@ export class ClickHouseService {
 
       // Query metric_log for CurrentMetric_Query, CurrentMetric_Merge, CurrentMetric_PartMutation
       if (hasMetricLog) {
-        const metricResult = await this.client.query({
+        const metricResult = await this.monitorClient.query({
           query: `
             SELECT
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2050,7 +2091,7 @@ export class ClickHouseService {
 
       // Query asynchronous_metric_log for TotalPartsOfMergeTreeTables
       if (hasAsyncMetricLog) {
-        const asyncResult = await this.client.query({
+        const asyncResult = await this.monitorClient.query({
           query: `
             SELECT
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2097,7 +2138,7 @@ export class ClickHouseService {
   async getNetworkMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").NetworkHistoryMetric[]> {
     try {
       // Check if system.metric_log exists first
-      const checkTable = await this.client.query({
+      const checkTable = await this.monitorClient.query({
         query: "EXISTS TABLE system.metric_log",
       });
       const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
@@ -2117,7 +2158,7 @@ export class ClickHouseService {
       const hasAsyncLog = await this.checkTableExists('system.asynchronous_metric_log');
 
       if (hasAsyncLog) {
-        const asyncResult = await this.client.query({
+        const asyncResult = await this.monitorClient.query({
           query: `
             SELECT
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2145,7 +2186,7 @@ export class ClickHouseService {
       const hasMetricLog = await this.checkTableExists('system.metric_log');
       if (!hasMetricLog) return [];
 
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2176,7 +2217,7 @@ export class ClickHouseService {
    */
   async getPerformanceMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").PerformanceHistoryMetric[]> {
     try {
-      const checkTable = await this.client.query({
+      const checkTable = await this.monitorClient.query({
         query: "EXISTS TABLE system.metric_log",
       });
       const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
@@ -2192,7 +2233,7 @@ export class ClickHouseService {
       else bucketSeconds = 1800;
 
       // Query metric_log for ProfileEvents including new write I/O and delayed inserts
-      const metricResult = await this.client.query({
+      const metricResult = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2219,7 +2260,7 @@ export class ClickHouseService {
       });
 
       // Query asynchronous_metric_log for OS CPU metrics (Normalized) and Load Average
-      const asyncResult = await this.client.query({
+      const asyncResult = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2308,7 +2349,7 @@ export class ClickHouseService {
         // (older CH builds). Without it, arraySum([]) is Nothing-typed and
         // ClickHouse rejects "array aggregation function cannot be performed
         // on type Nothing".
-        const metricResult = await this.client.query({
+        const metricResult = await this.monitorClient.query({
           query: `
             SELECT
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2326,7 +2367,7 @@ export class ClickHouseService {
       }
 
       if (hasAsyncMetricLog) {
-        const asyncResult = await this.client.query({
+        const asyncResult = await this.monitorClient.query({
           query: `
             SELECT
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2385,7 +2426,7 @@ export class ClickHouseService {
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
 
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2442,7 +2483,7 @@ export class ClickHouseService {
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
 
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2489,7 +2530,7 @@ export class ClickHouseService {
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
 
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2537,7 +2578,7 @@ export class ClickHouseService {
       else bucketSeconds = 1800;
 
       // Query metric_log for current metrics
-      const metricResult = await this.client.query({
+      const metricResult = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2555,7 +2596,7 @@ export class ClickHouseService {
       });
 
       // Query asynchronous_metric_log for parts metrics
-      const asyncResult = await this.client.query({
+      const asyncResult = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2609,7 +2650,7 @@ export class ClickHouseService {
     try {
       // Check if system.asynchronous_metric_log exists first
       // This table might not be enabled in all setups
-      const checkTable = await this.client.query({
+      const checkTable = await this.monitorClient.query({
         query: "EXISTS TABLE system.asynchronous_metric_log",
       });
       const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
@@ -2626,7 +2667,7 @@ export class ClickHouseService {
       else if (intervalMinutes <= 360) bucketSeconds = 300; // 6h -> 72 points
       else bucketSeconds = 1800; // 24h -> 48 points
 
-      const result = await this.client.query({
+      const result = await this.monitorClient.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
@@ -2758,7 +2799,7 @@ export class ClickHouseService {
   async getNetworkMetrics(intervalMinutes: number = 60): Promise<import("../types").NetworkMetrics> {
     try {
       // Get connection metrics from system.metrics
-      const metricsResult = await this.client.query({
+      const metricsResult = await this.monitorClient.query({
         query: `
           SELECT metric, value FROM system.metrics
           WHERE metric IN ('TCPConnection', 'HTTPConnection', 'InterserverConnection', 'MySQLConnection', 'PostgreSQLConnection')
@@ -2773,7 +2814,7 @@ export class ClickHouseService {
 
       try {
         // Try to get average rate from last 15 seconds via metric_log
-        const logResult = await this.client.query({
+        const logResult = await this.monitorClient.query({
           query: `
              SELECT 
                avg(ProfileEvent_NetworkSendBytes) as send_speed,
@@ -2810,7 +2851,7 @@ export class ClickHouseService {
     if (error instanceof AppError) return error;
     // A refusal by ClickHouse is a message for the person, never a sign-in
     // failure: ClickHouse answers a grant error with HTTP 403 (ADR 0033 §8).
-    const classified = classifyClickHouseError(error);
+    const classified = classifyClickHouseError(error, { mode: this.config.identity?.mode });
     if (classified) return classifiedAppError(classified);
     const err = error as Error & { response?: { status?: number } };
     const message = err?.message || defaultMessage;

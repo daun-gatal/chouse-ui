@@ -387,6 +387,11 @@ initializeRbac().then(async () => {
   startTriageRunner();
   const { startObservability } = await import("./services/observe");
   await startObservability();
+  // Identity checks of connections that are not `shared` (ADR 0033 §5). Every
+  // process starts the timer; a lease keeps it to one round at a time. A
+  // connection whose verdict goes stale refuses, so this must run somewhere.
+  const { startIdentityHealthTimer } = await import("./services/chExecutor/health");
+  startIdentityHealthTimer();
   // Chouse AI scheduled scans (daily/weekly/monthly) — dormant until a schedule
   // is enabled in the UI; cheap to run (checks a config file every 60s).
   const { DoctorScheduler } = await import("./services/doctorScheduler");
@@ -487,6 +492,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
       stopApprovalSweeper();
     } catch (error) {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Approval sweeper stop failed");
+    }
+
+    try {
+      const { stopIdentityHealthTimer } = await import("./services/chExecutor/health");
+      stopIdentityHealthTimer();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Identity health timer stop failed");
     }
 
     try {

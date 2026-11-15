@@ -4,6 +4,7 @@
  * Handles CRUD operations for users.
  */
 
+import { defaultRoleIsMapped, holdsMappedRole, mappedRoleIds } from '../services/connectionIdentity';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -44,8 +45,20 @@ const userRoutes = new Hono();
  * `roles:assign` / `users:create` alone would otherwise let an admin give
  * themselves (or a new account) `super_admin`, or any role above their own.
  */
-async function assertCanGrantRoles(c: Context, roleIds: string[] | undefined): Promise<void> {
-  if (!roleIds?.length || isSuperAdmin(c)) return;
+async function assertCanGrantRoles(c: Context, roleIds: string[] | undefined, forNewAccount = false): Promise<void> {
+  if (isSuperAdmin(c)) return;
+  // An account created with no role gets the default role; that is an assignment too.
+  if (!roleIds?.length) {
+    if (forNewAccount && (await defaultRoleIsMapped())) {
+      throw AppError.forbidden('Only a super admin can create this account: the default role is mapped to a ClickHouse role on a connection.');
+    }
+    return;
+  }
+  // A role mapped to a ClickHouse role decides what ClickHouse lets its holder
+  // do on a connection, so only a super admin hands it out (ADR 0033 §6).
+  if ((await mappedRoleIds(roleIds)).length > 0) {
+    throw AppError.forbidden('Only a super admin can assign this role: it is mapped to a ClickHouse role on a connection.');
+  }
   const held = new Set<string>((c.get('rbacPermissions') as string[] | undefined) ?? []);
   for (const roleId of roleIds) {
     const role = await getRoleById(roleId);
@@ -53,6 +66,19 @@ async function assertCanGrantRoles(c: Context, roleIds: string[] | undefined): P
     if (role.name === 'super_admin' || role.permissions.some((permission) => !held.has(permission))) {
       throw AppError.forbidden(`Cannot assign role '${role.name}': it grants permissions you do not have`);
     }
+  }
+}
+
+/**
+ * An account whose role is mapped to a ClickHouse role (ADR 0033 §6) reaches
+ * what that role is granted. Changing it, resetting its password, removing a
+ * sign-in identity from it or deleting it is a super admin's to do: anyone
+ * else who could reset its password could sign in as it.
+ */
+async function assertMayActOnMappedHolder(c: Context, userId: string): Promise<void> {
+  if (isSuperAdmin(c)) return;
+  if (await holdsMappedRole(userId)) {
+    throw AppError.forbidden('Only a super admin can change this account: its role is mapped to a ClickHouse role on a connection.');
   }
 }
 
@@ -181,7 +207,7 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
     }
   }
 
-  await assertCanGrantRoles(c, input.roleIds);
+  await assertCanGrantRoles(c, input.roleIds, true);
 
   try {
     const user = await createUser({
@@ -239,6 +265,7 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot modify super administrator');
   }
+  await assertMayActOnMappedHolder(c, id);
 
   // Prevent deactivating yourself
   if (input.isActive === false && id === currentUser.sub) {
@@ -294,6 +321,7 @@ userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c)
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot delete super administrator');
   }
+  await assertMayActOnMappedHolder(c, id);
 
   try {
     await deleteUser(id);
@@ -338,6 +366,7 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot reset super administrator password');
   }
+  await assertMayActOnMappedHolder(c, id);
 
   // Handle password
   let newPassword = input.newPassword;
@@ -397,6 +426,7 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot modify super administrator roles');
   }
+  await assertMayActOnMappedHolder(c, id);
 
   await assertCanGrantRoles(c, roleIds);
 
@@ -468,6 +498,7 @@ userRoutes.delete('/:id/identities/:identityId', requirePermission(PERMISSIONS.U
   if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
     throw AppError.forbidden('Cannot modify super administrator');
   }
+  await assertMayActOnMappedHolder(c, id);
 
   // Ensure the identity belongs to this user before deleting it.
   const identities = await listUserIdentities(id);

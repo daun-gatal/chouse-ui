@@ -1,4 +1,5 @@
 import z from "zod";
+import type { ConnectionIdentity } from "../services/chExecutor/identity";
 
 // ============================================
 // Authentication & Session Types
@@ -11,7 +12,10 @@ export const ConnectionConfigSchema = z.object({
   database: z.string().optional(),
 });
 
-export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>;
+export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema> & {
+  /** The saved connection's kind and health, when the config was built from one (ADR 0033 §5). Absent for a login under test. */
+  identity?: ConnectionIdentity;
+};
 
 export interface Session {
   id: string;

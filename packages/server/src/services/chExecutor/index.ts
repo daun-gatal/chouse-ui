@@ -17,6 +17,7 @@ export {
 } from "./queryId";
 export { pinnedSession, plainSession, type ChSession, type CommandOptions } from "./session";
 export { closeAllClients } from "./lifecycle";
+export { identityCacheKey, identityOfConnection, isKnownMode, isRoleName, requestRole, type ConnectionIdentity } from "./identity";
 export { CheckedStatement, type CheckedFields } from "./checked";
 export { readonlyFor, type ReadOnlyLevel } from "./settings";
 export {

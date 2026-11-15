@@ -19,6 +19,7 @@ import type Stream from "node:stream";
 
 import type { ConnectionConfig } from "../../types";
 import type { CheckedStatement } from "./checked";
+import type { ConnectionIdentity } from "./identity";
 import type { ChSession } from "./session";
 import type { ReadOnlyLevel } from "./settings";
 
@@ -33,6 +34,8 @@ export const SERVICE_PURPOSES = [
   "upgrade-check",
   "connection-test",
   "remediation",
+  // System-table reads CHouse builds for a monitoring page, on a connection where a person's own role holds no system grant.
+  "monitoring",
 ] as const;
 export type ServicePurpose = (typeof SERVICE_PURPOSES)[number];
 
@@ -110,6 +113,16 @@ export interface ChExecutor {
 export interface ExecutorOptions {
   /** Context fields for `log_comment` (source, agent, token). Never identity. */
   context?: Record<string, string>;
+  /** The connection's kind and health. With it the handle names a ClickHouse role on each request, or refuses (`identity.ts`). */
+  identity?: ConnectionIdentity;
+  /**
+   * For checking a login (the identity checks, and the connection test):
+   * `null` sends a bare request, a name sends with that role, and neither is
+   * refused for the connection's health, since a check must run on a
+   * connection that is refusing. The name comes from the connection's own
+   * settings; never pass one taken from a request.
+   */
+  roleOverride?: string | null;
   /** The saved connection this handle sends on, when known. A checked statement for another connection is refused. */
   connectionId?: string;
   /** True for a feature's own requests (collection, dashboard panels): their query ids are marked so reports leave them out. */

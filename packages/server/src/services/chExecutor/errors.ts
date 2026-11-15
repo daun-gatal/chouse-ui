@@ -8,13 +8,13 @@
 
 import { AppError } from "../../types";
 
-export type ChErrorClass = "read-only" | "grant";
+export type ChErrorClass = "read-only" | "grant" | "identity" | "connection";
 
 export interface ClassifiedError {
   class: ChErrorClass;
   /** The CHouse error code the API returns. */
-  code: "READ_ONLY" | "CLICKHOUSE_ACCESS_DENIED";
-  status: 403;
+  code: "READ_ONLY" | "CLICKHOUSE_ACCESS_DENIED" | "IDENTITY_UNAVAILABLE" | "CONNECTION_UNAVAILABLE";
+  status: 403 | 503;
   /** What the person is told. */
   message: string;
   /** For a grant error: the grant ClickHouse named, e.g. `SELECT ON db.t`. */
@@ -23,6 +23,15 @@ export interface ClassifiedError {
 
 const READONLY = 164;
 const ACCESS_DENIED = 497;
+const UNKNOWN_SETTING = 115;
+const UNKNOWN_ROLE = 511;
+const SET_NON_GRANTED_ROLE = 512;
+
+/** What the classifier may know about where the statement ran. */
+export interface ErrorContext {
+  /** The connection's kind. On `shared_ceiling` a grant error is about the person's mapped role, not the login. */
+  mode?: string;
+}
 
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -81,7 +90,8 @@ export function deniedSystemTables(error: unknown): string[] {
 }
 
 /** Classify an error from ClickHouse; null when it is not one of the classes CHouse words itself. */
-export function classifyClickHouseError(error: unknown): ClassifiedError | null {
+export function classifyClickHouseError(error: unknown, context: ErrorContext = {}): ClassifiedError | null {
+  const ceiling = context.mode !== undefined && context.mode !== "shared";
   if (isGrantError(error)) {
     const raw = messageOf(error);
     const grant = requiredGrantFromError(raw) ?? undefined;
@@ -91,7 +101,27 @@ export function classifyClickHouseError(error: unknown): ClassifiedError | null 
       code: "CLICKHOUSE_ACCESS_DENIED",
       status: 403,
       grant,
-      message: `This connection's ClickHouse user isn't allowed to do this: ${detail} Test the connection in Admin › Connections to see the grants it needs.`,
+      message: ceiling
+        ? `Your ClickHouse role on this connection isn't allowed to do this: ${detail} A ClickHouse administrator can grant it to the role.`
+        : `This connection's ClickHouse user isn't allowed to do this: ${detail} Test the connection in Admin › Connections to see the grants it needs.`,
+    };
+  }
+  const code = clickhouseErrorCode(error);
+  // Only on a connection where CHouse names a role: there these codes are about the role it named.
+  if (ceiling && (code === UNKNOWN_ROLE || code === SET_NON_GRANTED_ROLE)) {
+    return {
+      class: "identity",
+      code: "IDENTITY_UNAVAILABLE",
+      status: 403,
+      message: `Your ClickHouse role on this connection can't be used: ${messageOf(error).split("\n")[0].trim()} A ClickHouse administrator must create the role and grant it to the connection's user.`,
+    };
+  }
+  if (ceiling && code === UNKNOWN_SETTING && /\bSetting role\b/.test(messageOf(error))) {
+    return {
+      class: "connection",
+      code: "CONNECTION_UNAVAILABLE",
+      status: 503,
+      message: "This connection limits people to a ClickHouse role, which needs ClickHouse 24.4 or newer. This server does not take a role on a request.",
     };
   }
   if (isReadOnlyError(error)) {
@@ -111,5 +141,5 @@ export function classifyClickHouseError(error: unknown): ClassifiedError | null 
 
 /** The `AppError` for a classified error. */
 export function classifiedAppError(classified: ClassifiedError): AppError {
-  return new AppError(classified.message, classified.code, "permission", classified.status, classified.grant ? { grant: classified.grant } : undefined);
+  return new AppError(classified.message, classified.code, classified.class === "connection" ? "connection" : "permission", classified.status, classified.grant ? { grant: classified.grant } : undefined);
 }

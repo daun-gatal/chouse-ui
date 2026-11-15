@@ -3,6 +3,7 @@
  * ClickHouse client, so the parse uses the same server and user as execution.
  */
 
+import { AppError } from "../../types";
 import { executorForConnection, serviceActor, type ChExecutor } from "../../services/chExecutor";
 import { getConnectionById } from "../../rbac/services/connections";
 import { logger } from "../../utils/logger";
@@ -53,11 +54,22 @@ function userPositions(message: string): string {
   return message.replace(/position (\d+)/g, (_match, n: string) => `position ${Math.max(0, Number(n) - EXPLAIN_PREFIX.length)}`);
 }
 
+/**
+ * The executor refused to send the parse at all: the connection failed its
+ * identity checks, or has no usable role (ADR 0033 §5). That is the answer the
+ * person needs, with its stored reason, not "ClickHouse didn't answer".
+ */
+export function rethrowRefusal(error: unknown): void {
+  if (error instanceof AppError && (error.code === "CONNECTION_UNAVAILABLE" || error.code === "IDENTITY_UNAVAILABLE")) throw error;
+}
+
 /** Classify a failed parse: bad SQL or parameters (400), an unbound parameter (400), or no answer (503). */
 export function classifyParseError(error: unknown): { code: ParseFailureCode; message: string } {
   const message = userPositions(error instanceof Error ? error.message : String(error));
   const code = errorCode(error);
   if (code === "456") return { code: "QUERY_PARAM_UNBOUND", message };
+  // A server older than 24.4 answering the role CHouse named: nothing about the statement.
+  if (code === "115" && /\bSetting role\b/.test(message)) return { code: "CHECK_UNAVAILABLE", message: "This connection limits people to a ClickHouse role, which needs ClickHouse 24.4 or newer." };
   // Any other ClickHouse error about the statement or its parameters is the
   // user's to fix; only errors with no ClickHouse code, or server-side ones, mean "try again".
   if (code && !UNAVAILABLE_CODES.has(code)) return { code: "SQL_SYNTAX", message };
@@ -94,6 +106,7 @@ export async function explainAstOn(client: ChExecutor, sql: string, params?: Rec
     }
     return { ok: true, lines };
   } catch (error) {
+    rethrowRefusal(error);
     return { ok: false, ...classifyParseError(error) };
   }
 }
@@ -116,6 +129,7 @@ export function clickhouseParsePort(connectionId: string): SqlParsePort {
       try {
         return await explainAstOn(await getClient(), sql, params);
       } catch (error) {
+        rethrowRefusal(error);
         return { ok: false, code: "CHECK_UNAVAILABLE", message: error instanceof Error ? error.message : String(error) };
       }
     },

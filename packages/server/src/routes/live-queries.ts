@@ -127,7 +127,7 @@ liveQueries.get("/", async (c) => {
         // 1. Our own SELECT FROM system.processes query (this query itself)
         // 2. Internal/system queries that are short-lived
         // 3. Queries that have already completed (very short elapsed time likely means it's finishing)
-        const result = await service.executeQuery(`
+        const result = await service.executeSystemQuery(`
       SELECT
         query_id,
         user,
@@ -264,7 +264,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
         // Get query info FIRST to verify ownership and for audit logging
         let queryInfo: LiveQuery | undefined;
         try {
-            const checkResult = await service.executeQuery(`
+            const checkResult = await service.executeSystemQuery(`
               SELECT 
                 query_id, 
                 user, 
@@ -297,7 +297,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
         }
 
         // Execute KILL QUERY command
-        await service.executeQuery(
+        await service.executeSystemQuery(
             `KILL QUERY WHERE query_id = ${quoteStringLiteral(queryInfo?.query_id ?? ownId ?? queryId)}`,
             "JSON"
         );

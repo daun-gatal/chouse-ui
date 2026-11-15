@@ -95,3 +95,33 @@ describe("grant helpers", () => {
     expect(deniedSystemTables(new Error("Table system.query_log does not exist"))).toEqual([]);
   });
 });
+
+describe("on a connection that limits people to a ClickHouse role", () => {
+  const ceiling = { mode: "shared_ceiling" };
+
+  it("words a grant error as the person's role's, not the login's", () => {
+    const classified = classifyClickHouseError(chError("497", "ACCESS_DENIED", GRANT), ceiling);
+    expect(classified).toMatchObject({ class: "grant", code: "CLICKHOUSE_ACCESS_DENIED", status: 403, grant: "SELECT ON shop.orders" });
+    expect(classified?.message).toContain("Your ClickHouse role");
+    expect(classifyClickHouseError(chError("497", "ACCESS_DENIED", GRANT))?.message).toContain("This connection's ClickHouse user");
+  });
+
+  it("classes a role ClickHouse does not know or did not grant as the person's identity being unavailable", () => {
+    for (const code of ["511", "512"]) {
+      expect(classifyClickHouseError(chError(code, "", "There is no role `analyst_ro` in user directories"), ceiling)).toMatchObject({ class: "identity", code: "IDENTITY_UNAVAILABLE", status: 403 });
+    }
+    // On a shared connection CHouse names no role, so these are just ClickHouse's errors.
+    expect(classifyClickHouseError(chError("511", "", "There is no role `x`"))).toBeNull();
+    expect(classifyClickHouseError(chError("511", "", "There is no role `x`"), { mode: "shared" })).toBeNull();
+  });
+
+  it("classes a server that takes no role on a request as the connection being unavailable, and nothing else with that code", () => {
+    const old = chError("115", "UNKNOWN_SETTING", "Setting role is neither a builtin setting nor started with the prefix 'SQL_'");
+    const classified = classifyClickHouseError(old, ceiling);
+    expect(classified).toMatchObject({ class: "connection", code: "CONNECTION_UNAVAILABLE", status: 503 });
+    expect(classified?.message).toContain("24.4");
+    expect(classifiedAppError(classified!)).toMatchObject({ statusCode: 503, category: "connection" });
+    expect(classifyClickHouseError(chError("115", "UNKNOWN_SETTING", "Setting max_thraeds is neither a builtin setting"), ceiling)).toBeNull();
+    expect(classifyClickHouseError(old)).toBeNull();
+  });
+});

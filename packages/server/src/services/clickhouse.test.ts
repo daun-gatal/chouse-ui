@@ -88,6 +88,47 @@ describe("ClickHouse Service", () => {
         });
     });
 
+    // ADR 0033 §6: a person's ClickHouse role is granted their data, not system.*.
+    describe("monitoring reads on a role-ceiling connection", () => {
+        const ceilingConfig = {
+            ...config,
+            identity: { connectionId: "c1", mode: "shared_ceiling", systemRole: "chouse_system", health: "ok", healthReason: null, checkedAt: Date.now(), accessContact: null },
+        };
+        const sentArgs = (): Record<string, unknown> => mockQueryFn.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
+        it("name the system role and are sent as the monitoring purpose, recording who asked", async () => {
+            const ceiling = new ClickHouseService(ceilingConfig, personActor("test-user"));
+            mockJsonFn.mockResolvedValue([]);
+            await ceiling.getQueryLogs({ limit: 10, hoursBack: 1, sortBy: "event_time", sortDir: "desc", ownAccountId: "test-user" });
+            expect(sentArgs().role).toBe("chouse_system");
+            expect(String(sentArgs().query_id).startsWith("chouse:s:monitoring:")).toBe(true);
+            expect(JSON.parse((sentArgs().clickhouse_settings as { log_comment: string }).log_comment)).toMatchObject({ purpose: "monitoring", triggered_by: "test-user" });
+
+            mockJsonFn.mockResolvedValue({ data: [], meta: [] });
+            await ceiling.executeSystemQuery("SELECT query_id FROM system.processes");
+            expect(sentArgs().role).toBe("chouse_system");
+        });
+
+        it("stay the person's own on a shared login, as before", async () => {
+            mockJsonFn.mockResolvedValue({ data: [], meta: [] });
+            await service.executeSystemQuery("SELECT query_id FROM system.processes");
+            expect("role" in sentArgs()).toBe(false);
+            expect(String(sentArgs().query_id).startsWith("chouse:p:test-user:")).toBe(true);
+        });
+
+        it("words a refused statement as the person's role's, in a stream too", async () => {
+            const ceiling = new ClickHouseService(ceilingConfig, personActor("nobody-mapped"));
+            // No role is mapped for this account in the test database, so the request is refused before it is sent.
+            const lines: string[] = [];
+            try {
+                for await (const line of ceiling.streamQueryRows(checkedForTests({ sql: "SELECT 1", accountId: "nobody-mapped" }))) lines.push(line);
+            } catch {
+                // the generator rethrows after its error line
+            }
+            expect(mockQueryFn).not.toHaveBeenCalled();
+        });
+    });
+
     describe("getQueryLogs", () => {
         const sent = (): { query: string; query_params: Record<string, unknown>; clickhouse_settings: Record<string, unknown> } =>
             mockQueryFn.mock.calls.at(-1)?.[0] as never;

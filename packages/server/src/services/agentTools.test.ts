@@ -21,6 +21,11 @@ function harness(overrides: Partial<AgentToolContext> = {}): Harness {
       sent.push(sql);
       return { data: [], meta: [], statistics: {}, rows: 0 };
     },
+    // Reads of system.processes and system.query_log are CHouse's own monitoring reads.
+    executeSystemQuery: async (sql: string) => {
+      sent.push(sql);
+      return { data: [], meta: [], statistics: {}, rows: 0 };
+    },
   } as unknown as ClickHouseService;
   const tools = createCoreTools({ userId: "user-1", isAdmin: false, permissions: [], clickhouseService, ...overrides });
   return { tools, sent };

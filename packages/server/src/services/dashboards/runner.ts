@@ -15,7 +15,7 @@
  * replaced by an empty result.
  */
 
-import { classifiedAppError, classifyClickHouseError, ClickHouseError, executorForConnection, personActor, type ChExecutor, type CheckedStatement } from "../chExecutor";
+import { classifiedAppError, classifyClickHouseError, ClickHouseError, executorForConnection, identityCacheKey, identityOfConnection, personActor, type ChExecutor, type CheckedStatement } from "../chExecutor";
 
 import { accessDeniedError, checkedOf, validateQueryAccess } from "../../middleware/dataAccess";
 import { governAgentQuery, recordAgentQuery, type AgentContext } from "../agents/governance";
@@ -245,7 +245,9 @@ async function runOn(viewer: Viewer, connection: ConnectionResponse, query: Pane
   }
   let outcome: Cached<PanelData>;
   try {
-    outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params), async () => {
+    // Resolving the identity also refuses here, before the cache, when the viewer has no ClickHouse role on the connection.
+    const ranAs = `${connection.username}\u0000${await identityCacheKey(identityOfConnection(connection), personActor(viewer.id))}`;
+    outcome = await resultCache.getOrRun(cacheKey(connection.id, compiled.sql, compiled.params, ranAs), async () => {
       const data = await semaphore.run(connection.id, () => execute(statement, { dashboardId: query.dashboardId, panelId: query.panelId }, MAX_RESULT_ROWS, connection.name));
       return { value: data, bytes: Buffer.byteLength(JSON.stringify(data.rows)) };
     });
