@@ -30,11 +30,11 @@
   "secrets": {
     "OPENAI_API_KEY": {
       "description": "Optional. Turns on the AI features in your lab with your own OpenAI key (billed to you). Leave empty to run without AI.",
-      "documentationUrl": "https://chouse-ui.com/docs/try-the-lab/"
+      "documentationUrl": "https://chouseui.dglabs-ai.dev/docs/try-the-lab/"
     },
     "ANTHROPIC_API_KEY": {
       "description": "Optional. Turns on the AI features in your lab with your own Anthropic key (billed to you). Used instead of OpenAI when both are set.",
-      "documentationUrl": "https://chouse-ui.com/docs/try-the-lab/"
+      "documentationUrl": "https://chouseui.dglabs-ai.dev/docs/try-the-lab/"
     }
   },
   // Runs on the first start and every restart; up.sh is safe to run again.

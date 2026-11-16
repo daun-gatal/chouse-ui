@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://chouse-ui.com">Website</a> •
-  <a href="https://chouse-ui.com/docs/">Documentation</a> •
+  <a href="https://chouseui.dglabs-ai.dev">Website</a> •
+  <a href="https://chouseui.dglabs-ai.dev/docs/">Documentation</a> •
   <a href="#try-it">Try it</a> •
   <a href="#quick-start">Quick start</a> •
   <a href="ARCHITECTURE.md">Architecture</a> •
@@ -61,8 +61,8 @@ It is open source under Apache 2.0.
 | 🤖 **AI platform** | The agent registry, guardrails, budgets, memory, evals and auto-triage are all managed in the UI. Approved write actions with undo, and Chobi, an in-app assistant. |
 | 🧩 **Automation** | A `chouse` CLI and an MCP endpoint (PAT or OAuth) give scripts and AI agents the same governed API as the UI. |
 
-See the [full feature tour](https://chouse-ui.com/docs/overview/) and
-[what's new](https://chouse-ui.com/docs/whats-new/).
+See the [full feature tour](https://chouseui.dglabs-ai.dev/docs/overview/) and
+[what's new](https://chouseui.dglabs-ai.dev/docs/whats-new/).
 
 ## Try it
 
@@ -73,7 +73,7 @@ with sample data and example content in every area, and you are the admin:
 
 It takes about 3 minutes to start and runs on your free Codespaces quota. The
 sign-in is printed in the terminal when it's ready. AI features need your own
-key, added as a Codespaces secret. See [Try the lab](https://chouse-ui.com/docs/try-the-lab/)
+key, added as a Codespaces secret. See [Try the lab](https://chouseui.dglabs-ai.dev/docs/try-the-lab/)
 for what's inside and how to delete it.
 
 ## Quick start
@@ -102,7 +102,7 @@ helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
 
 The default install runs a single replica with SQLite. For high availability,
 use PostgreSQL (`database.type=postgres`) and scale `replicaCount`. See the
-[Helm guide](https://chouse-ui.com/docs/deploy-helm/) and the
+[Helm guide](https://chouseui.dglabs-ai.dev/docs/deploy-helm/) and the
 [chart values](charts/chouse-ui/README.md).
 
 ### From source
@@ -116,15 +116,15 @@ bun run dev        # UI on :5173, API on :5521
 
 ## Documentation
 
-Everything about running CHouse UI lives at **[chouse-ui.com/docs](https://chouse-ui.com/docs/)**:
+Everything about running CHouse UI lives at **[chouseui.dglabs-ai.dev/docs](https://chouseui.dglabs-ai.dev/docs/)**:
 
 | Topic | Start here |
 |---|---|
-| Install and deploy | [Quick start](https://chouse-ui.com/docs/quick-start/) · [Docker](https://chouse-ui.com/docs/deploy-docker/) · [Helm](https://chouse-ui.com/docs/deploy-helm/) · [Compatibility](https://chouse-ui.com/docs/compatibility/) |
-| Configure | [YAML config](https://chouse-ui.com/docs/configuration-yaml/) · [Environment variables](https://chouse-ui.com/docs/configuration-env/) · [Secrets](https://chouse-ui.com/docs/configuration-secrets/) · [SSO](https://chouse-ui.com/docs/sso/) |
-| Secure | [Roles](https://chouse-ui.com/docs/rbac-roles/) · [Data access rules](https://chouse-ui.com/docs/data-access-rules/) · [Security model](https://chouse-ui.com/docs/security/) · [Production checklist](https://chouse-ui.com/docs/production-checklist/) |
-| Operate | [Upgrades and migrations](https://chouse-ui.com/docs/migrations-upgrades/) · [Troubleshooting](https://chouse-ui.com/docs/troubleshooting/) · [FAQ](https://chouse-ui.com/docs/faq/) |
-| Automate | [CLI](https://chouse-ui.com/docs/cli/) · [MCP](https://chouse-ui.com/docs/mcp/) · [Personal access tokens](https://chouse-ui.com/docs/personal-access-tokens/) |
+| Install and deploy | [Quick start](https://chouseui.dglabs-ai.dev/docs/quick-start/) · [Docker](https://chouseui.dglabs-ai.dev/docs/deploy-docker/) · [Helm](https://chouseui.dglabs-ai.dev/docs/deploy-helm/) · [Compatibility](https://chouseui.dglabs-ai.dev/docs/compatibility/) |
+| Configure | [YAML config](https://chouseui.dglabs-ai.dev/docs/configuration-yaml/) · [Environment variables](https://chouseui.dglabs-ai.dev/docs/configuration-env/) · [Secrets](https://chouseui.dglabs-ai.dev/docs/configuration-secrets/) · [SSO](https://chouseui.dglabs-ai.dev/docs/sso/) |
+| Secure | [Roles](https://chouseui.dglabs-ai.dev/docs/rbac-roles/) · [Data access rules](https://chouseui.dglabs-ai.dev/docs/data-access-rules/) · [Security model](https://chouseui.dglabs-ai.dev/docs/security/) · [Production checklist](https://chouseui.dglabs-ai.dev/docs/production-checklist/) |
+| Operate | [Upgrades and migrations](https://chouseui.dglabs-ai.dev/docs/migrations-upgrades/) · [Troubleshooting](https://chouseui.dglabs-ai.dev/docs/troubleshooting/) · [FAQ](https://chouseui.dglabs-ai.dev/docs/faq/) |
+| Automate | [CLI](https://chouseui.dglabs-ai.dev/docs/cli/) · [MCP](https://chouseui.dglabs-ai.dev/docs/mcp/) · [Personal access tokens](https://chouseui.dglabs-ai.dev/docs/personal-access-tokens/) |
 
 ## Architecture
 
@@ -155,7 +155,7 @@ Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Please report vulnerabilities privately, as described in
 [SECURITY.md](SECURITY.md), not in public issues. Before going to production, go
-through the [production checklist](https://chouse-ui.com/docs/production-checklist/).
+through the [production checklist](https://chouseui.dglabs-ai.dev/docs/production-checklist/).
 
 ## License
 

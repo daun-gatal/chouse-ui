@@ -234,7 +234,7 @@ function TerminalCard() {
                 <div key={idx} className="animate-fade-up opacity-0" style={style}>
                   <span className="text-paper-dim">→ </span>
                   <a
-                    href="https://chouse-ui.com"
+                    href="https://chouseui.dglabs-ai.dev"
                     className="text-paper underline decoration-ink-700 underline-offset-4 hover:decoration-accent"
                   >
                     http://localhost:5521

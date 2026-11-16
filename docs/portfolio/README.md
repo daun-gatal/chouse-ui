@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CHouse UI website (`chouse-ui.com`): a separate Vite 7 + React 19 + Tailwind app with its own `package.json` (`chouseui-portfolio`, version kept in sync with the root and server by the release workflow). It ships a single-page landing site and a statically generated `/docs` site, served in production by a small Bun file server.
+The CHouse UI website (`chouseui.dglabs-ai.dev`): a separate Vite 7 + React 19 + Tailwind app with its own `package.json` (`chouseui-portfolio`, version kept in sync with the root and server by the release workflow). It ships a single-page landing site and a statically generated `/docs` site, served in production by a small Bun file server.
 
 ## Interface
 

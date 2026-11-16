@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 
 const distPath = join(__dirname, '..', 'dist');
 const sitemapPath = join(distPath, 'sitemap.xml');
-const siteUrl = 'https://chouse-ui.com';
+const siteUrl = 'https://chouseui.dglabs-ai.dev';
 const lastMod = new Date().toISOString().split('T')[0];
 
 if (!existsSync(distPath)) {

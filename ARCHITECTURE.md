@@ -2,7 +2,7 @@
 
 How CHouse UI is put together, for contributors and coding agents. For what it
 does and how to run it, see the [README](README.md) and the
-[documentation](https://chouse-ui.com/docs/).
+[documentation](https://chouseui.dglabs-ai.dev/docs/).
 
 This file is the root of the **directory contracts**. Every code directory has a
 `README.md` with an Overview, Interface, Invariants, Side Effects and
@@ -75,7 +75,7 @@ Design decisions are recorded as ADRs in [docs/adr/](docs/adr/README.md).
 | `src/` | React SPA: routing and permission gating in `App.tsx`, feature modules, API clients, stores, shared components | [src](src/README.md) |
 | `packages/server/` | Bun + Hono API server: RBAC, `/api`, `/mcp`, OAuth, AI engine, background workers | [packages/server](packages/server/README.md) → [src](packages/server/src/README.md) |
 | `cli/` | Standalone Go module for the `chouse` CLI, versioned on its own (`cli/VERSION`, `cli-vX` tags) | [cli](cli/README.md) |
-| `docs/portfolio/` | The chouse-ui.com landing page and the static `/docs` site generator | [docs](docs/README.md) → [portfolio](docs/portfolio/README.md) |
+| `docs/portfolio/` | The chouseui.dglabs-ai.dev landing page and the static `/docs` site generator | [docs](docs/README.md) → [portfolio](docs/portfolio/README.md) |
 | `docs/adr/` | Architecture Decision Records | [index](docs/adr/README.md) |
 | `scripts/` | Release helpers, CLI build and installer, isolated test runners, Docker e2e suites, `verify-all.sh`, `check-contracts.ts` | [scripts](scripts/README.md) |
 | `charts/chouse-ui/` | Production Helm chart, published as an OCI artifact | [chart README](charts/chouse-ui/README.md) (generated) |
