@@ -9,7 +9,7 @@ Bun/Node build steps for the website. `bun run build` in `docs/portfolio` runs `
 - `[build-docs.ts:main]` - static-site generator for `/docs`: validates the manifest, content, frontmatter permissions, screenshots and links, then writes every page, hub, redirect stub, the search index, `docs-client.js` and `.docs-pages.json` into `dist/`.
 - `[gen-reference.ts:main]` - writes the generated pages (`permissions.md`, `configuration-env.md`, `mcp-tools.md`, `cli-reference.md`, `helm-values.md`, `audit-events.md`, `ai-features.md`, `ai-tools.md`, `connection-privileges.md`) and `src/content/reference/permissions.json`; `--check` reports stale pages and coverage gaps instead.
 - `[copy-404.js]` - copies `dist/index.html` to `dist/404.html` for GitHub Pages SPA routing.
-- `[generate-sitemap.js]` - writes `dist/sitemap.xml` for `https://chouse-ui.com`, including the docs pages listed in `dist/.docs-pages.json`.
+- `[generate-sitemap.js]` - writes `dist/sitemap.xml` for `https://chouseui.dglabs-ai.dev`, including the docs pages listed in `dist/.docs-pages.json`.
 
 ## Invariants
 

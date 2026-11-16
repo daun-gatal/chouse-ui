@@ -36,7 +36,7 @@ export function resolveHref(href: string | undefined): string | undefined {
 }
 
 /** Site URL used for canonical/OG/sitemap. */
-export const SITE_URL = "https://chouse-ui.com";
+export const SITE_URL = "https://chouseui.dglabs-ai.dev";
 
 export function slugify(text: string): string {
   return text

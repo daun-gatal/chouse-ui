@@ -82,4 +82,4 @@ you changed it).
   and paste what `up.sh` printed.
 
 Want to run CHouse UI for real? See the
-[quick start](https://chouse-ui.com/docs/quick-start/).
+[quick start](https://chouseui.dglabs-ai.dev/docs/quick-start/).
