@@ -71,7 +71,7 @@ import {
 } from "./loginForm";
 import { askWhom, errorMessage, Fact, KindBadge, Note, StatusPill } from "./panelParts";
 import { connectionBindingsKey } from "./PersonLinks";
-import { optionalSummary, PrivilegeReport, privilegeSummary } from "./PrivilegeReport";
+import { optionalSummary, PrivilegeReport } from "./PrivilegeReport";
 import { ScriptDialog } from "./ScriptDialog";
 
 type Outcome =
@@ -225,18 +225,13 @@ function LoginForm({
 
   const problemBeforeSending = (): string | null => lockOf(draft.kind) ?? loginProblem(draft, stored);
 
+  // Results are shown in the tab and scrolled into view, never as a toast: a toast sits over the footer's buttons.
   const showSharedTest = (result: TestConnectionResult, blockedBefore: boolean): void => {
     if (result.success && result.privileges) {
       showOutcome({ type: "shared", test: null, privileges: result.privileges, blocked: blockedBefore && !result.privileges.ok, passwordNeeded: false });
-      const optional = optionalSummary(result.privileges);
-      if (result.privileges.ok && !optional) toast.success("Connection successful", { description: "Every feature is available." });
-      else if (result.privileges.ok) toast.warning("Connected; some optional features are missing", { description: `${optional} You can still save it.` });
-      else toast.warning("Connected, but privileges are missing", { description: privilegeSummary(result.privileges) });
       return;
     }
     showOutcome({ type: "shared", test: result, privileges: null, blocked: false, passwordNeeded: false });
-    if (result.success) toast.success("Connection successful", { description: `Version: ${result.version}` });
-    else toast.error("Connection failed", { description: result.error });
   };
 
   const runTest = async (): Promise<void> => {
@@ -254,8 +249,6 @@ function LoginForm({
       const change = identityChangeFrom(draft);
       const result = route === "create_identity" ? await checkNewConnectionIdentity(change) : await checkConnectionIdentity(connection?.id ?? "", change);
       showOutcome({ type: "identity", action: "test", result, refused: false });
-      if (result.ok) toast.success("Every check passed", { description: "Nothing was saved." });
-      else toast.warning("The login did not pass the checks", { description: result.reason ?? undefined });
     } catch (error) {
       const message = errorMessage(error, "Test failed");
       log.error("[ConnectionPanel] Login test failed", { errorMessage: message });
@@ -264,7 +257,6 @@ function LoginForm({
       } else {
         setFormError(message);
       }
-      toast.error("Couldn't test the login", { description: message });
     } finally {
       setBusy(null);
     }
@@ -280,22 +272,18 @@ function LoginForm({
   const failSave = (error: unknown): void => {
     const message = errorMessage(error, "Save failed");
     const action: CheckAction = creating ? "create" : "save";
-    const title = creating ? "Couldn't create the connection" : "Couldn't save the login";
     if (error instanceof ApiError && error.code === "CONNECTION_CHANGED") {
       setChanged(true);
-      toast.error(title, { description: message });
       return;
     }
     const refusal = identityCheckFromError(error);
     if (refusal) {
       showOutcome({ type: "identity", action, result: refusal, refused: true });
-      toast.error(creating ? "Can't create this connection yet" : "Can't save this login yet", { description: message });
       return;
     }
     const report = privilegeReportFromError(error);
     if (report) {
       showOutcome({ type: "shared", test: null, privileges: report, blocked: true, passwordNeeded: false });
-      toast.error(creating ? "Can't create this connection yet" : "Can't save these changes yet", { description: privilegeSummary(report) });
       return;
     }
     if (error instanceof ApiError && (error.code === "CONNECTION_TEST_FAILED" || error.code === "PASSWORD_REQUIRED")) {
@@ -304,7 +292,6 @@ function LoginForm({
       setFormError(message);
     }
     log.error("[ConnectionPanel] Login save failed", { errorMessage: message });
-    toast.error(title, { description: message });
   };
 
   const save = async (): Promise<boolean> => {
