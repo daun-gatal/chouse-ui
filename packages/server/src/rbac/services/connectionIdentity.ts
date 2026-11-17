@@ -503,6 +503,15 @@ function reuseRefusal(reason: string, passed: IdentityCheckResult): IdentityChec
   };
 }
 
+async function refuseDuplicate(resolved: Pick<ResolvedChange, 'host' | 'port' | 'username' | 'mode'>): Promise<void> {
+  const same = await all(sql`
+    SELECT name FROM rbac_clickhouse_connections
+    WHERE host = ${resolved.host} AND port = ${resolved.port} AND username = ${resolved.username} AND identity_mode = ${resolved.mode} AND is_active`);
+  if (same.length > 0) {
+    throw new AppError(`Connection "${str(same[0].name)}" already uses this host, port, user and kind.`, 'CONNECTION_EXISTS', 'validation', 409);
+  }
+}
+
 export interface CreateWithIdentityInput extends IdentityChange {
   name: string;
   metadata?: Record<string, unknown>;
@@ -519,15 +528,12 @@ export async function createConnectionWithIdentity(input: CreateWithIdentityInpu
   const name = input.name.trim();
   if (!name) throw AppError.badRequest('A name is required.');
   const resolved = resolveLoginTarget(null, input);
-  // A retry after a timeout must not make a second connection to the same login.
-  const same = await all(sql`
-    SELECT name FROM rbac_clickhouse_connections
-    WHERE host = ${resolved.host} AND port = ${resolved.port} AND username = ${resolved.username} AND identity_mode = ${resolved.mode} AND is_active`);
-  if (same.length > 0) {
-    throw new AppError(`Connection "${str(same[0].name)}" already uses this host, port, user and kind.`, 'CONNECTION_EXISTS', 'validation', 409);
-  }
+  // A retry after a timeout must not make a second connection to the same login: asked before the slow checks
+  // and again just before the insert, since the first request may still have been checking.
+  await refuseDuplicate(resolved);
   const result = await verifyLoginForKind(resolved);
   if (!result.ok) return { result, connection: null };
+  await refuseDuplicate(resolved);
   const again = await reuseConflict(resolved, null);
   if (again) return { result: reuseRefusal(again, result), connection: null };
   const db = getDatabase() as AnyDb;
@@ -580,7 +586,7 @@ export async function setAccessContact(connectionId: string, accessContact: stri
  */
 export interface ConnectionReadiness {
   state: 'ready' | 'partial' | 'none' | 'refusing';
-  /** Data access policies with an allow rule on this connection. They admit people to `shared` and `shared_ceiling` connections. */
+  /** Data access policies, held by some role, with an allow rule on this connection or on every connection. */
   policies: number;
   /** On `shared_ceiling`: CHouse roles that have at least one account, and how many of them are mapped here. */
   roles?: { total: number; mapped: number; peopleRefused: number };
@@ -592,10 +598,16 @@ export interface ConnectionReadiness {
 export async function connectionReadiness(connections: ReadonlyArray<Pick<ConnectionResponse, 'id' | 'identityMode' | 'identityHealth'>>): Promise<Map<string, ConnectionReadiness>> {
   const out = new Map<string, ConnectionReadiness>();
   if (connections.length === 0) return out;
+  // A policy counts only when some role holds it; a rule with no connection applies to every connection.
   const policies = new Map<string, number>();
+  let everywhere = 0;
   for (const row of await all(sql`
-    SELECT connection_id, COUNT(DISTINCT policy_id) AS n FROM rbac_data_access_policy_rules
-    WHERE connection_id IS NOT NULL AND is_allowed GROUP BY connection_id`)) policies.set(str(row.connection_id), num(row.n));
+    SELECT r.connection_id AS connection_id, COUNT(DISTINCT r.policy_id) AS n FROM rbac_data_access_policy_rules r
+    WHERE r.is_allowed AND r.policy_id IN (SELECT policy_id FROM rbac_role_data_access_policies)
+    GROUP BY r.connection_id`)) {
+    if (row.connection_id === null || row.connection_id === undefined) everywhere = num(row.n);
+    else policies.set(str(row.connection_id), num(row.n));
+  }
   const peopleByRole = new Map<string, number>();
   for (const row of await all(sql`SELECT role_id, COUNT(*) AS n FROM rbac_user_roles GROUP BY role_id`)) peopleByRole.set(str(row.role_id), num(row.n));
   const mapped = new Map<string, Set<string>>();
@@ -615,7 +627,7 @@ export async function connectionReadiness(connections: ReadonlyArray<Pick<Connec
     links.set(id, entry);
   }
   for (const connection of connections) {
-    const policyCount = policies.get(connection.id) ?? 0;
+    const policyCount = (policies.get(connection.id) ?? 0) + everywhere;
     const mode = connection.identityMode ?? 'shared';
     if (mode === 'shared') {
       out.set(connection.id, { state: policyCount > 0 ? 'ready' : 'none', policies: policyCount });

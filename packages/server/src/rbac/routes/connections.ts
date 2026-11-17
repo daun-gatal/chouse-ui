@@ -187,6 +187,7 @@ function passwordRequired(message: string): SaveCheckFailure {
 }
 
 const PASSWORD_UNREADABLE = "The saved password can't be read any more. Enter it again.";
+const PASSWORD_FOR_NEW_USER = 'Enter the password of the new ClickHouse user.';
 const PASSWORD_FOR_NEW_SERVER = 'Enter the password again to use it with a different host, port or protocol.';
 
 // ============================================
@@ -438,6 +439,11 @@ connectionsRoutes.patch(
           }
           if (saved && !sameServer(existing, input)) {
             const failure = passwordRequired(PASSWORD_FOR_NEW_SERVER);
+            return c.json(failure.body, failure.status);
+          }
+          // The same rule as the switch (ADR 0034): a different user needs its own password.
+          if (saved && input.username !== undefined && input.username !== existing.username) {
+            const failure = passwordRequired(PASSWORD_FOR_NEW_USER);
             return c.json(failure.body, failure.status);
           }
           password = saved ?? undefined;

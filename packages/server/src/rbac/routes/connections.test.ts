@@ -320,6 +320,14 @@ describe("RBAC Connections Routes", () => {
             mockUpdateConnection.mockResolvedValue(SAVED_PUBLIC);
         });
 
+        it("asks for the password when the user changes, as the switch does (review)", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "another_user" }));
+            expect(res.status).toBe(400);
+            expect((await res.json()).error.code).toBe("PASSWORD_REQUIRED");
+            expect(mockTestConnection).not.toHaveBeenCalled();
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+
         it("refuses a login another kind of connection already uses (ADR 0034)", async () => {
             mockTestConnection.mockResolvedValue({ success: true, privileges: { ok: true, missingCount: 0 } });
             mockReuse.mockResolvedValueOnce({ ok: false, reason: 'Connection "lim" (shared_ceiling) uses the same host, port and user.', checks: [], serverVersion: null });
@@ -432,12 +440,12 @@ describe("RBAC Connections Routes", () => {
             expect(mockTestConnection).not.toHaveBeenCalled();
         });
 
-        it("re-checks a changed username with the saved password", async () => {
-            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "writer" }));
+        it("re-checks a changed username with its own password, never the saved one (ADR 0034)", async () => {
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "writer", password: "writer-pw" }));
 
             expect(res.status).toBe(200);
             expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({
-                host: SAVED.host, port: SAVED.port, username: "writer", password: "s3cret", database: "analytics", sslEnabled: true,
+                host: SAVED.host, port: SAVED.port, username: "writer", password: "writer-pw", database: "analytics", sslEnabled: true,
             }));
         });
 
@@ -457,7 +465,7 @@ describe("RBAC Connections Routes", () => {
         it("keeps the saved connection when the new settings lack privileges", async () => {
             mockTestConnection.mockResolvedValue({ ...PASSING_TEST, privileges: PRIVILEGES_MISSING });
 
-            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "reader2" }));
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "reader2", password: "reader2-pw" }));
 
             expect(res.status).toBe(422);
             expect((await res.json()).error.code).toBe("PRIVILEGES_MISSING");

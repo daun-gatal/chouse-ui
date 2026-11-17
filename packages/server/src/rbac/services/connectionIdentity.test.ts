@@ -6,7 +6,7 @@ import { closeDatabase } from "../db";
 import { runMigrations } from "../db/migrations";
 import { freshDatabase, rawAll, rawRun } from "../db/migrationTestHarness";
 import { anyRoleMapped, ceilingSetupStatements, checkIdentityChange, connectionKindSupport, connectionReadiness, createConnectionWithIdentity, defaultRoleIsMapped, getIdentity, getRoleMap, holdsMappedRole, mappedRoleIds, roleIsMapped, setAccessContact, setRoleMap, switchIdentity } from "./connectionIdentity";
-import { createConnection, getConnectionById, getConnectionWithPassword } from "./connections";
+import { createConnection, getConnectionById, getConnectionWithPassword, updateConnection } from "./connections";
 
 let connectionId = "";
 
@@ -266,7 +266,50 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
       await setRoleMap(connectionId, [{ roleId: "role-b", clickhouseRole: "finance_ro" }], "admin-1");
       expect((await connectionReadiness([row])).get(connectionId)).toMatchObject({ state: "partial", roles: { mapped: 1, peopleRefused: 1 } });
       expect((await connectionReadiness([{ ...row, identityHealth: "failing" }])).get(connectionId)?.state).toBe("refusing");
-      expect((await connectionReadiness([{ ...row, identityMode: "shared" }])).get(connectionId)).toEqual({ state: "none", policies: 0 });
+      // A shared login is ready exactly when some policy a role holds reaches it (here only the seeded ones).
+      const shared = (await connectionReadiness([{ ...row, identityMode: "shared" }])).get(connectionId);
+      expect(shared?.state).toBe(shared && shared.policies > 0 ? "ready" : "none");
+    });
+
+    it("refuses a second create of the same login and kind made while the first was still checking (review)", async () => {
+      server();
+      onVersion = async () => {
+        await rawRun(sql`INSERT INTO rbac_clickhouse_connections (id, name, host, port, username, is_default, is_active, ssl_enabled, created_at, updated_at, identity_mode)
+          VALUES ('raced-create', 'raced', 'h6', 8123, 'svc_ceiling', 0, 1, 0, unixepoch(), unixepoch(), 'shared_ceiling')`);
+      };
+      await expect(createConnectionWithIdentity({ name: "late", host: "h6", port: 8123, identityMode: "shared_ceiling", username: "svc_ceiling", password: "pw", systemRole: "chouse_system" }, "holder")).rejects.toMatchObject({ code: "CONNECTION_EXISTS" });
+      expect(await rawAll(sql`SELECT id FROM rbac_clickhouse_connections WHERE host = 'h6'`)).toEqual([{ id: "raced-create" }]);
+      await rawRun(sql`DELETE FROM rbac_clickhouse_connections WHERE id = 'raced-create'`);
+    });
+
+    it("keeps the default when a login change made with the default flag is refused or succeeds (review)", async () => {
+      const a = (await createConnection({ name: "def-a", host: "ha", port: 8123, username: "ua", password: "p", sslEnabled: false })).id;
+      const b = (await createConnection({ name: "def-b", host: "hb", port: 8123, username: "ub", password: "p", sslEnabled: false })).id;
+      await updateConnection(a, { isDefault: true });
+      const rowA = (await getConnectionById(a))!;
+      // Saving the default row again, with a login change and the flag, is no conflict and keeps it the default.
+      await updateConnection(a, { host: "ha2", isDefault: true }, { identityMode: rowA.identityMode, username: rowA.username, updatedAt: rowA.updatedAt });
+      expect((await getConnectionById(a))?.isDefault).toBe(true);
+      // A conditional write that is refused does not clear the old default.
+      const rowB = (await getConnectionById(b))!;
+      await expect(updateConnection(b, { host: "hb2", isDefault: true }, { identityMode: rowB.identityMode, username: "someone-else", updatedAt: rowB.updatedAt })).rejects.toMatchObject({ code: "CONNECTION_CHANGED" });
+      expect((await getConnectionById(a))?.isDefault).toBe(true);
+      expect((await getConnectionById(b))?.isDefault).toBe(false);
+      await updateConnection(b, { isDefault: true });
+      expect((await getConnectionById(a))?.isDefault).toBe(false);
+      expect((await getConnectionById(b))?.isDefault).toBe(true);
+      await rawRun(sql`DELETE FROM rbac_clickhouse_connections WHERE id IN (${a}, ${b})`);
+    });
+
+    it("counts a policy held by a role that applies to every connection, and not one no role holds (review)", async () => {
+      const row = (await getConnectionById(connectionId))!;
+      const shared = { ...row, identityMode: "shared" };
+      const base = (await connectionReadiness([shared])).get(connectionId)?.policies ?? 0;
+      await rawRun(sql`INSERT INTO rbac_data_access_policies (id, name, created_at, updated_at) VALUES ('pol-all', 'all', unixepoch(), unixepoch())`);
+      await rawRun(sql`INSERT INTO rbac_data_access_policy_rules (id, policy_id, connection_id, database_pattern, table_pattern, is_allowed, priority, created_at, updated_at) VALUES ('rule-all', 'pol-all', NULL, '*', '*', 1, 0, unixepoch(), unixepoch())`);
+      expect((await connectionReadiness([shared])).get(connectionId)?.policies).toBe(base);
+      await rawRun(sql`INSERT INTO rbac_role_data_access_policies (id, role_id, policy_id, created_at) VALUES ('rp-all', 'role-a', 'pol-all', unixepoch())`);
+      expect((await connectionReadiness([shared])).get(connectionId)).toEqual({ state: "ready", policies: base + 1 });
     });
 
     it("sets the access contact on its own, and refuses one that is too long", async () => {

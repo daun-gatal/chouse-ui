@@ -4,7 +4,7 @@
  * Manages ClickHouse server connections with encrypted password storage.
  */
 
-import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, like, ne, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
@@ -514,17 +514,8 @@ export async function updateConnection(
     updateData.passwordEncrypted = input.password ? encryptPassword(input.password) : null;
   }
 
-  // Handle default flag
-  if (input.isDefault === true) {
-    // Remove default from all other connections first
-    await db.update(schema.clickhouseConnections)
-      .set({ isDefault: false, updatedAt: now })
-      .where(eq(schema.clickhouseConnections.isDefault, true));
-
-    updateData.isDefault = true;
-  } else if (input.isDefault === false) {
-    updateData.isDefault = false;
-  }
+  if (input.isDefault === true) updateData.isDefault = true;
+  else if (input.isDefault === false) updateData.isDefault = false;
 
   const table = schema.clickhouseConnections;
   if (expect) {
@@ -535,12 +526,18 @@ export async function updateConnection(
     if (written.length === 0) {
       throw new AppError('This connection was changed by someone else while the checks ran. Reload it and try again.', 'CONNECTION_CHANGED', 'validation', 409);
     }
-    return getConnectionById(id);
+  } else {
+    await db.update(table)
+      .set(updateData)
+      .where(eq(table.id, id));
   }
 
-  await db.update(table)
-    .set(updateData)
-    .where(eq(table.id, id));
+  // Only once this row is the default, and never on this row: a refused or conditional write leaves the old default in place.
+  if (input.isDefault === true) {
+    await db.update(table)
+      .set({ isDefault: false, updatedAt: now })
+      .where(and(eq(table.isDefault, true), ne(table.id, id)));
+  }
 
   return getConnectionById(id);
 }

@@ -78,8 +78,9 @@ used it:
    switch clears the stored verdict in the same write, and runs the
    login-reuse query again just before writing.
 6. **One rule set for every path.**
-   - **Stored password:** kept only when host and port are unchanged and TLS
-     is not turned off. Turning TLS on keeps it.
+   - **Stored password:** kept only for the same user, when host and port are
+     unchanged and TLS is not turned off. Turning TLS on keeps it. A different
+     user always needs its own password.
    - **Limits:** port 1–65535, password at most 1000 characters.
    - **Reuse:** one ClickHouse user on one server serves one kind, and shared
      logins are checked too (`400 LOGIN_REUSED`).
