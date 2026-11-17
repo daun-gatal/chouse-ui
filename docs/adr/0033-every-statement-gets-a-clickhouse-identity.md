@@ -1,6 +1,6 @@
 # 0033 — Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0034](0034-one-home-for-the-clickhouse-login.md))
 - **Date:** 2026-11-15
 - **Amends:** [0027](0027-connection-privilege-check.md) and [0031](0031-optional-clickhouse-access-admin.md) (the privilege catalog becomes per connection kind; everything else in both stands), [0030](0030-clickhouse-parses-sql-access-checks.md) (admins are parsed too, `EXECUTE AS` is refused, a typed `KILL QUERY` needs `live_queries:kill_all`, and on a personal connection the default database comes from the person and file import sends a session), [0011](0011-personal-access-tokens.md) (what a token runs as on a personal connection), [0015](0015-cluster-aware-materialize-destinations.md) (materialize is unavailable on a personal connection), [0021](0021-custom-dashboards.md) (the result cache key gains the ClickHouse identity)
 - **Scope:** a new `packages/server/src/services/chExecutor/`; every server file that reaches ClickHouse; `middleware/sqlAccess/` and `middleware/dataAccess.ts`; RBAC migrations 1.76.0 to 1.78.0; the connection routes and two new route modules; Admin › Connections, Preferences and the connection switcher; `.rules/SECURITY.md`; `ARCHITECTURE.md`; the Helm chart version; docs; CI. Four deliveries, see §10.

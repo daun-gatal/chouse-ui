@@ -66,7 +66,9 @@ Next to each collector you see its last run on that connection — how long it t
 
 ## Kind: shared login, role ceiling or personal
 
-A connection is a **shared login** unless a super admin switches it. On a **role ceiling** its ClickHouse user holds no grant and each person is limited to the ClickHouse role mapped to their CHouse role. On a **personal** connection each person's statements run as their own ClickHouse user. On both, the host, port, TLS setting, user and password are changed in the connection's ClickHouse login panel. See [Connection kinds and the role ceiling](/docs/connection-identity/) and [Personal connections](/docs/personal-connections/).
+A connection is a **shared login** unless a super admin chooses another kind, when creating it or later. On a **role ceiling** its ClickHouse user holds no grant and each person is limited to the ClickHouse role mapped to their CHouse role. On a **personal** connection each person's statements run as their own ClickHouse user.
+
+A connection opens in one panel with three tabs: **General** (name, environment, active, default), **ClickHouse login** (kind, host, port, TLS, user, password, default database, roles and access contact) and **Who can query** (the role map, the person links, or the data access policies that apply). Each tab saves on its own, and **Test** on the login tab runs the checks without saving. Admins can create and edit shared-login connections; on the other kinds they see the login tab read-only. The **Who can query** column of the list says, for each connection, whether everyone it is meant for can use it; click it to open that tab. See [Connection kinds and the role ceiling](/docs/connection-identity/) and [Personal connections](/docs/personal-connections/).
 
 ## Remediation credential
 

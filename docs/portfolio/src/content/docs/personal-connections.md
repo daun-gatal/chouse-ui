@@ -31,7 +31,7 @@ ClickHouse must have `EXECUTE AS`, and must check the target user's grants for e
 | 26.5.7 | **Refused**: it runs `CREATE` under `EXECUTE AS` without checking the user's grants |
 | 25.10 and older | **Refused**: no `EXECUTE AS` |
 
-On a server without `EXECUTE AS`, **Personal** is disabled in the ClickHouse login panel, with the server's version, before you prepare a login. The **Linked ClickHouse users** panel says the same: links there cannot be used until the server is upgraded. A build that has `EXECUTE AS` but fails the self-test (26.5.7) is refused when you press **Check**, with the check that failed.
+On a server without `EXECUTE AS`, **Personal** is greyed out on the ClickHouse login tab, with the server's version, before you prepare a login. The **Who can query** tab says the same: links there cannot be used until the server is upgraded. A build that has `EXECUTE AS` but fails the self-test (26.5.7) is refused when you press **Test**, with the check that failed.
 
 The ClickHouse changelog lists the fix for the unchecked `CREATE` for 26.10. If you upgrade a server to a build that fails, the connection refuses every request until the server passes again. CHouse UI repeats the `CREATE` test at most a minute before any statement runs as a person, so an upgrade between two five-minute checks is caught.
 
@@ -49,7 +49,7 @@ Not covered: behind a load balancer whose nodes run different builds, the test c
 
 You need a super admin in CHouse UI and an administrator in ClickHouse.
 
-**1. Prepare the login in ClickHouse.** **Admin › Connections › ClickHouse login**, choose **Personal**, and copy the statements shown. They look like this:
+**1. Prepare the login in ClickHouse.** In **Admin › Connections**, open **New connection** (or **Edit** on an existing one) and its **ClickHouse login** tab, choose **Personal**, and use **Show the script for the admin**. The script never contains a password. They look like this:
 
 ```sql
 CREATE ROLE IF NOT EXISTS chouse_system;
@@ -65,7 +65,7 @@ ALTER USER svc_chouse DEFAULT ROLE NONE;
 
 The grant on the login itself lets CHouse UI test the server without acting as a real person.
 
-**2. Link accounts.** Open **Linked ClickHouse users** on the connection, pick an account and type its ClickHouse user name. You can do this while the connection is still a shared login; links are not used until the switch. See [Link an account to a ClickHouse user](/docs/guide-link-clickhouse-user/).
+**2. Link accounts.** Open the **Who can query** tab of the connection, pick an account and type its ClickHouse user name. You can do this while the connection is still a shared login; links are not used until the switch. See [Link an account to a ClickHouse user](/docs/guide-link-clickhouse-user/).
 
 **3. Run the grants.** The panel shows one statement per waiting link, for the ClickHouse administrator:
 
@@ -73,9 +73,9 @@ The grant on the login itself lets CHouse UI test the server without acting as a
 GRANT IMPERSONATE ON alice TO chouse_impersonate;  -- ann
 ```
 
-**4. Switch.** In **ClickHouse login**, enter the new user, its password, the system role and the impersonation role, press **Check**, then **Save**. Nothing is stored unless every check passes.
+**4. Create or switch.** On the **ClickHouse login** tab, enter the user, its password, the system role and the impersonation role, press **Test**, then **Create** (new connection) or **Save** (existing one). Nothing is stored unless every check passes, including the self-test. A new connection needs only this one user. Before you save a switch, the tab says what changes for people: data access policies stop applying, and only linked people can query. After a new connection is created, **Who can query** opens so you can link people.
 
-![The ClickHouse login panel of a personal connection](/docs/img/app/admin-connection-personal.jpg "A personal connection: its ClickHouse user, the system role, the impersonation role, and the health line with Check now")
+![The ClickHouse login tab of a personal connection](/docs/img/app/admin-connection-personal.jpg "A personal connection: its ClickHouse user, the system role, the impersonation role, and the health line with Re-run checks")
 
 ## What CHouse UI checks
 
@@ -93,7 +93,7 @@ No other role of the login may hold `IMPERSONATE`.
 
 ## Links
 
-![Linked ClickHouse users of a connection](/docs/img/app/admin-connection-links.jpg "Each account, its ClickHouse user and the state of the link, with the reason when a link is not active")
+![The Who can query tab of a personal connection](/docs/img/app/admin-connection-links.jpg "Each account, its ClickHouse user and the state of the link, with the reason when a link is not active")
 
 | State | Meaning | What changes it |
 | --- | --- | --- |
