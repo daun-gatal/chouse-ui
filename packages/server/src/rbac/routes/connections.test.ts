@@ -1,3 +1,4 @@
+import { AppError } from "../../types";
 
 import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
@@ -34,6 +35,11 @@ const mockUserHasPermission = mock();
 const mockUserHasAnyPermission = mock();
 const mockUserHasAllPermissions = mock();
 
+const mockReuse = mock(async (): Promise<{ ok: boolean; reason: string | null; checks: unknown[]; serverVersion: null }> => ({ ok: true, reason: null, checks: [], serverVersion: null }));
+const mockRecheckSaved = mock(async () => null);
+mock.module("../../services/chExecutor/health", () => ({ runIdentityChecks: mockReuse, checkSavedConnection: mockRecheckSaved }));
+const mockReadiness = mock(async (): Promise<Map<string, unknown>> => new Map());
+mock.module("../services/connectionIdentity", () => ({ connectionReadiness: mockReadiness }));
 mock.module("../services/rbac", () => ({
     createAuditLog: mockCreateAuditLog,
     userHasPermission: mockUserHasPermission,
@@ -120,6 +126,8 @@ describe("RBAC Connections Routes", () => {
         mockCreateConnection.mockClear();
         mockUpdateConnection.mockClear();
         mockDeleteConnection.mockClear();
+        mockRecheckSaved.mockClear();
+        mockReuse.mockClear();
         mockGetUserConnections.mockClear();
         mockGetConnectionWithPassword.mockReset();
         mockGetConnectionById.mockReset();
@@ -290,6 +298,60 @@ describe("RBAC Connections Routes", () => {
             expect(mockUpdateConnection).toHaveBeenCalled();
             // No check ran, so no report: "not checked" rather than "fine".
             expect((await res.json()).data).not.toHaveProperty("privileges");
+        });
+
+        it("saves a checked login change only if the row still has the kind, user and time the check saw (ADR 0034)", async () => {
+            mockTestConnection.mockResolvedValue({ success: true, privileges: { ok: true, missingCount: 0 } });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "next", password: "pw2" }));
+            expect(res.status).toBe(200);
+            const [, , expectArg] = mockUpdateConnection.mock.calls.at(-1) as unknown as [string, unknown, unknown];
+            expect(expectArg).toEqual({ identityMode: SAVED_PUBLIC.identityMode ?? "shared", username: SAVED_PUBLIC.username, updatedAt: SAVED_PUBLIC.updatedAt });
+        });
+
+        it("answers 409 CONNECTION_CHANGED, not 500, when the row moved while the check ran (ADR 0034)", async () => {
+            mockTestConnection.mockResolvedValue({ success: true, privileges: { ok: true, missingCount: 0 } });
+            mockUpdateConnection.mockImplementation(async () => {
+                throw new AppError("This connection was changed by someone else while the checks ran. Reload it and try again.", "CONNECTION_CHANGED", "validation", 409);
+            });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "next", password: "pw2" }));
+            expect(res.status).toBe(409);
+            expect((await res.json()).error.code).toBe("CONNECTION_CHANGED");
+            mockUpdateConnection.mockReset();
+            mockUpdateConnection.mockResolvedValue(SAVED_PUBLIC);
+        });
+
+        it("refuses a login another kind of connection already uses (ADR 0034)", async () => {
+            mockTestConnection.mockResolvedValue({ success: true, privileges: { ok: true, missingCount: 0 } });
+            mockReuse.mockResolvedValueOnce({ ok: false, reason: 'Connection "lim" (shared_ceiling) uses the same host, port and user.', checks: [], serverVersion: null });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { username: "svc_ceiling", password: "pw2" }));
+            expect(res.status).toBe(400);
+            expect((await res.json()).error.code).toBe("LOGIN_REUSED");
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+
+        it("will not make a role-ceiling connection nobody can query the default (ADR 0034)", async () => {
+            mockGetConnectionById.mockResolvedValue({ ...SAVED_PUBLIC, identityMode: "shared_ceiling", isDefault: false });
+            mockReadiness.mockResolvedValueOnce(new Map([["c1", { state: "none", policies: 0 }]]));
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { isDefault: true }));
+            expect(res.status).toBe(409);
+            expect((await res.json()).error.code).toBe("CONNECTION_NOT_READY");
+            expect(mockUpdateConnection).not.toHaveBeenCalled();
+        });
+
+        it("checks a role-ceiling connection again as soon as it is turned back on (ADR 0034)", async () => {
+            mockGetConnectionById.mockResolvedValue({ ...SAVED_PUBLIC, identityMode: "shared_ceiling", isActive: false });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { isActive: true }));
+            expect(res.status).toBe(200);
+            expect(mockRecheckSaved).toHaveBeenCalledWith("c1");
+        });
+
+        it("names the ClickHouse login tab and the default database when it refuses a login change on a role-ceiling connection", async () => {
+            mockGetConnectionById.mockResolvedValue({ ...SAVED_PUBLIC, identityMode: "shared_ceiling" });
+            const res = await app.request("/connections/c1", jsonRequest("PATCH", { database: "other_db" }));
+            expect(res.status).toBe(409);
+            const message = (await res.json()).error.message as string;
+            expect(message).toContain("ClickHouse login tab");
+            expect(message).toContain("default database");
         });
 
         // ADR 0033 §5: on a connection that limits people to a role, the login is replaced only through the switch.

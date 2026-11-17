@@ -31,9 +31,17 @@ import { createAuditLogWithContext, userHasPermission } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService } from '../../services/clickhouse';
 import { identityOfConnection, personActor } from '../../services/chExecutor';
-import type { ConnectionConfig } from '../../types';
+import { AppError, type ConnectionConfig } from '../../types';
+import { checkSavedConnection, runIdentityChecks } from '../../services/chExecutor/health';
+import { connectionReadiness, type ConnectionReadiness } from '../services/connectionIdentity';
 
 const connectionsRoutes = new Hono();
+
+/** Each connection with who can query it, computed now (ADR 0034). */
+async function withReadiness(connections: ConnectionResponse[]): Promise<Array<ConnectionResponse & { readiness: ConnectionReadiness | null }>> {
+  const readiness = await connectionReadiness(connections);
+  return connections.map((connection) => ({ ...connection, readiness: readiness.get(connection.id) ?? null }));
+}
 
 // ============================================
 // Validation Schemas
@@ -42,9 +50,9 @@ const connectionsRoutes = new Hono();
 const createConnectionSchema = z.object({
   name: z.string().min(1).max(255),
   host: z.string().min(1).max(255),
-  port: z.coerce.number().int().default(8123),
+  port: z.coerce.number().int().min(1).max(65535).default(8123),
   username: z.string().min(1).max(255),
-  password: z.string().optional(),
+  password: z.string().max(1000).optional(),
   database: z.string().max(255).optional(),
   sslEnabled: z.boolean().default(false),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -53,9 +61,9 @@ const createConnectionSchema = z.object({
 const updateConnectionSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   host: z.string().min(1).max(255).optional(),
-  port: z.coerce.number().int().optional(),
+  port: z.coerce.number().int().min(1).max(65535).optional(),
   username: z.string().min(1).max(255).optional(),
-  password: z.string().optional(),
+  password: z.string().max(1000).optional(),
   database: z.string().max(255).optional().nullable(),
   sslEnabled: z.boolean().optional(),
   isActive: z.boolean().optional(),
@@ -122,6 +130,24 @@ async function verifyBeforeSave(input: ConnectionInput): Promise<SaveCheck> {
   return { failure: null, privileges: result.privileges };
 }
 
+/**
+ * The login-reuse rule every kind follows (ADR 0034): one ClickHouse user on
+ * one server serves one kind. Asks the database only.
+ */
+async function reuseFailure(target: { host: string; port: number; username: string }, connectionId?: string): Promise<SaveCheckFailure | null> {
+  const verdict = await runIdentityChecks({ config: { url: '', username: target.username, password: '' }, mode: 'shared', systemRole: null, host: target.host, port: target.port, connectionId });
+  if (verdict.ok) return null;
+  return { status: 400, body: { success: false, error: { code: 'LOGIN_REUSED', message: verdict.reason ?? 'Another connection uses this login.' } } };
+}
+
+/** An AppError thrown inside a handler, answered with its own status instead of a 500. */
+function appErrorResponse(error: unknown): { body: { success: false; error: { code: string; message: string } }; status: 400 | 403 | 404 | 409 | 422 } | null {
+  if (!(error instanceof AppError)) return null;
+  const status = error.statusCode;
+  if (status !== 400 && status !== 403 && status !== 404 && status !== 409 && status !== 422) return null;
+  return { body: { success: false, error: { code: error.code, message: error.message } }, status };
+}
+
 /** Whether an update changes anything the ClickHouse login or the privilege check depends on. */
 function changesCredentials(existing: ConnectionResponse, input: z.infer<typeof updateConnectionSchema>): boolean {
   return (
@@ -186,7 +212,7 @@ connectionsRoutes.get(
       return c.json({
         success: true,
         data: {
-          connections: result.connections,
+          connections: await withReadiness(result.connections),
           total: result.total,
           limit: query.limit,
           offset: query.offset,
@@ -326,6 +352,9 @@ connectionsRoutes.post(
       const user = getRbacUser(c);
       const input = c.req.valid('json');
 
+      const reused = await reuseFailure({ host: input.host, port: input.port, username: input.username });
+      if (reused) return c.json(reused.body, reused.status);
+
       const check = await verifyBeforeSave(input);
       if (check.failure) return c.json(check.failure.body, check.failure.status);
 
@@ -348,6 +377,8 @@ connectionsRoutes.post(
         data: { ...connection, privileges: check.privileges },
       }, 201);
     } catch (error) {
+      const known = appErrorResponse(error);
+      if (known) return c.json(known.body, known.status);
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Create error');
       return c.json({
         success: false,
@@ -391,7 +422,7 @@ connectionsRoutes.patch(
           success: false,
           error: {
             code: 'IDENTITY_MANAGED_LOGIN',
-            message: 'This connection limits people to a ClickHouse role, so its host, port, TLS, user and password are changed in its Identity panel, by a super admin.',
+            message: 'On a role-ceiling or personal connection the host, port, TLS, user, password and default database are changed on its ClickHouse login tab, by a super admin.',
           },
         }, 409);
       }
@@ -422,9 +453,31 @@ connectionsRoutes.patch(
         });
         if (check.failure) return c.json(check.failure.body, check.failure.status);
         privileges = check.privileges;
+        const reused = await reuseFailure({ host: input.host ?? existing.host, port: input.port ?? existing.port, username: input.username ?? existing.username }, id);
+        if (reused) return c.json(reused.body, reused.status);
       }
 
-      const connection = await updateConnection(id, input);
+      // A connection whose people would land on a refusal is not offered to everyone as the default.
+      if (input.isDefault === true && !existing.isDefault && (existing.identityMode ?? 'shared') !== 'shared') {
+        const readiness = (await connectionReadiness([existing])).get(existing.id);
+        if (readiness && (readiness.state === 'none' || readiness.state === 'refusing')) {
+          return c.json({
+            success: false,
+            error: { code: 'CONNECTION_NOT_READY', message: 'Nobody can query this connection yet, so it cannot be the default. Map roles or link people on its Who can query tab first.' },
+          }, 409);
+        }
+      }
+
+      // The checks above were made against `existing`: the write applies only if the row still matches it.
+      const connection = await updateConnection(id, input, changesCredentials(existing, input)
+        ? { identityMode: existing.identityMode ?? 'shared', username: existing.username, updatedAt: existing.updatedAt }
+        : undefined);
+
+      // A role-ceiling or personal connection turned back on is checked now, so it is not refused for up to five
+      // minutes on a verdict that went stale while it was off.
+      if (connection && input.isActive === true && !existing.isActive && (existing.identityMode ?? 'shared') !== 'shared') {
+        await checkSavedConnection(id).catch(() => undefined);
+      }
 
       if (!connection) {
         return c.json({
@@ -453,6 +506,8 @@ connectionsRoutes.patch(
         data: { ...connection, privileges },
       });
     } catch (error) {
+      const known = appErrorResponse(error);
+      if (known) return c.json(known.body, known.status);
       requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Update error');
       return c.json({
         success: false,

@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { all, run, runBatch, sql, str, num } from '../../services/observe/db';
 import { identityOfConnection, isKnownMode, isRoleName, personActor } from '../../services/chExecutor';
@@ -21,7 +21,7 @@ import { resetCreateChecks } from '../../services/chExecutor/selfTest';
 import type { PrivilegeReport } from '../../services/connectionPrivileges';
 import { AppError } from '../../types';
 import { getDatabase, getSchema } from '../db';
-import { encryptPassword, getConnectionById, getConnectionWithPassword, getUserConnections, listConnections, testConnection, type ConnectionResponse } from './connections';
+import { encryptPassword, getConnectionById, getConnectionWithPassword, getUserConnections, listConnections, testConnection, type ConnectionResponse, type ConnectionWithPassword } from './connections';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
@@ -57,6 +57,8 @@ export interface IdentityChange {
   host?: string;
   port?: number;
   sslEnabled?: boolean;
+  /** The default database: absent keeps the stored one, null or empty clears it. Part of the login (ADR 0034). */
+  database?: string | null;
 }
 
 export interface IdentityCheckResult {
@@ -297,19 +299,41 @@ interface ResolvedChange {
   database: string | null;
 }
 
-async function resolveChange(connectionId: string, change: IdentityChange): Promise<ResolvedChange> {
-  const current = await getConnectionWithPassword(connectionId);
-  if (!current) throw AppError.notFound('Connection not found');
+/** The stored login a change is made against, or null when the connection is being created. */
+type CurrentLogin = Pick<ConnectionWithPassword, 'username' | 'password' | 'host' | 'port' | 'sslEnabled' | 'accessContact' | 'database'>;
+
+/**
+ * Whether the stored password may be sent to the target server: only to the
+ * same host and port, and never over plain HTTP when it was stored for HTTPS.
+ * Turning TLS on keeps it; the same rule holds for every kind.
+ */
+export function storedPasswordMayGo(current: Pick<CurrentLogin, 'host' | 'port' | 'sslEnabled'>, target: { host: string; port: number; sslEnabled: boolean }): boolean {
+  return target.host === current.host && target.port === current.port && !(current.sslEnabled && !target.sslEnabled);
+}
+
+/**
+ * Work out the full login a change asks for, from the change and the stored
+ * login (null when creating). Throws a 400 for anything incomplete. Nothing is
+ * read from or written to storage here.
+ */
+export function resolveLoginTarget(current: CurrentLogin | null, change: IdentityChange): ResolvedChange {
   if (!isKnownMode(change.identityMode)) throw AppError.badRequest(`Unknown connection kind "${String(change.identityMode).slice(0, 40)}".`);
   const username = change.username.trim();
   if (!username) throw AppError.badRequest('A ClickHouse user is required.');
+  const host = (change.host ?? current?.host ?? '').trim();
+  if (!host) throw AppError.badRequest('A host is required.');
+  const port = change.port ?? current?.port ?? 8123;
+  const sslEnabled = change.sslEnabled ?? current?.sslEnabled ?? false;
   let password = change.password ?? '';
   if (!password) {
-    if (username !== current.username) throw AppError.badRequest('Enter the password of the new ClickHouse user.');
-    // The stored password is for the stored server: never send it to another host, or over plain HTTP after TLS.
-    const sameServer = (change.host ?? current.host) === current.host && (change.port ?? current.port) === current.port && (change.sslEnabled ?? current.sslEnabled) === current.sslEnabled;
-    if (!sameServer) throw AppError.badRequest('Enter the password again when the host, port or TLS setting changes.');
-    password = current.password || '';
+    if (!current) {
+      // A login with no grants of its own still signs in: an empty password would leave it open to anyone who can reach the server.
+      if (change.identityMode !== 'shared') throw AppError.badRequest('Enter the password of the ClickHouse user.');
+    } else {
+      if (username !== current.username) throw AppError.badRequest('Enter the password of the new ClickHouse user.');
+      if (!storedPasswordMayGo(current, { host, port, sslEnabled })) throw AppError.badRequest('Enter the password again when the host or port changes, or when TLS is turned off.');
+      password = current.password || '';
+    }
   }
   const systemRole = change.identityMode === 'shared' ? null : (change.systemRole ?? '').trim() || null;
   if (change.identityMode !== 'shared' && !isRoleName(systemRole)) {
@@ -322,20 +346,17 @@ async function resolveChange(connectionId: string, change: IdentityChange): Prom
     }
     if (impersonationRole === systemRole) throw AppError.badRequest('The impersonation role and the system role must be two roles.');
   }
-  const accessContact = change.accessContact === undefined ? current.accessContact : (change.accessContact ?? '').trim() || null;
+  const accessContact = change.accessContact === undefined ? current?.accessContact ?? null : (change.accessContact ?? '').trim() || null;
   if (accessContact && accessContact.length > 500) throw AppError.badRequest('The access contact is at most 500 characters.');
-  return {
-    mode: change.identityMode,
-    host: change.host ?? current.host,
-    port: change.port ?? current.port,
-    sslEnabled: change.sslEnabled ?? current.sslEnabled,
-    username,
-    password,
-    systemRole,
-    impersonationRole,
-    accessContact,
-    database: current.database,
-  };
+  // An empty value clears the default database; absent keeps the stored one.
+  const database = change.database === undefined ? current?.database ?? null : (change.database ?? '').trim() || null;
+  return { mode: change.identityMode, host, port, sslEnabled, username, password, systemRole, impersonationRole, accessContact, database };
+}
+
+async function storedLogin(connectionId: string): Promise<ConnectionWithPassword> {
+  const current = await getConnectionWithPassword(connectionId);
+  if (!current) throw AppError.notFound('Connection not found');
+  return current;
 }
 
 /**
@@ -344,15 +365,18 @@ async function resolveChange(connectionId: string, change: IdentityChange): Prom
  * before anyone prepares a login for it.
  */
 export async function connectionKindSupport(connectionId: string): Promise<ServerSupport> {
-  const connection = await getConnectionWithPassword(connectionId);
-  if (!connection) throw AppError.notFound('Connection not found');
+  const connection = await storedLogin(connectionId);
   const url = `${connection.sslEnabled ? 'https' : 'http'}://${connection.host}:${connection.port}`;
   return probeKindSupport({ url, username: connection.username, password: connection.password || '', database: connection.database || undefined });
 }
 
-/** Check a login for a kind without saving anything: the identity checks, then the privilege check for that kind. */
-export async function checkIdentityChange(connectionId: string, change: IdentityChange): Promise<{ result: IdentityCheckResult; resolved: ResolvedChange }> {
-  const resolved = await resolveChange(connectionId, change);
+/**
+ * Every check a login must pass to be saved for a kind, with nothing read
+ * from or written to the connection row: whether the server can run the kind,
+ * the identity checks, then the privilege check for that kind. Create, Test
+ * and the switch all call this, so they cannot drift apart.
+ */
+export async function verifyLoginForKind(resolved: ResolvedChange, excludeConnectionId?: string): Promise<IdentityCheckResult> {
   const url = `${resolved.sslEnabled ? 'https' : 'http'}://${resolved.host}:${resolved.port}`;
   // First, whether this server can run the kind at all. A server that cannot is refused with that one reason,
   // not with a list of failed checks that each fail for it.
@@ -365,7 +389,7 @@ export async function checkIdentityChange(connectionId: string, change: Identity
       checks: [{ id: 'version', label: 'The server can run this kind of connection', ok: false, detail: kind.reason }],
       serverVersion: support.serverVersion,
     };
-    return { result: { ok: false, verdict, reason: kind.reason, unsupported: true, support }, resolved };
+    return { ok: false, verdict, reason: kind.reason, unsupported: true, support };
   }
   const verdict = await runIdentityChecks({
     config: { url, username: resolved.username, password: resolved.password, database: resolved.database || undefined },
@@ -374,35 +398,55 @@ export async function checkIdentityChange(connectionId: string, change: Identity
     impersonationRole: resolved.impersonationRole,
     host: resolved.host,
     port: resolved.port,
-    connectionId,
+    connectionId: excludeConnectionId,
   });
-  if (!verdict.ok) return { result: { ok: false, verdict, reason: verdict.reason, support }, resolved };
+  if (!verdict.ok) return { ok: false, verdict, reason: verdict.reason, support };
   const tested = await testConnection(
     { name: 'identity-check', host: resolved.host, port: resolved.port, username: resolved.username, password: resolved.password, database: resolved.database, sslEnabled: resolved.sslEnabled },
     resolved.mode !== 'shared' && resolved.systemRole ? { kind: resolved.mode, systemRole: resolved.systemRole } : undefined,
   );
-  if (!tested.success) return { result: { ok: false, verdict, reason: tested.error || 'Could not connect to ClickHouse.', support }, resolved };
+  if (!tested.success) return { ok: false, verdict, reason: tested.error || 'Could not connect to ClickHouse.', support };
   if (tested.privileges && !tested.privileges.ok) {
     const holder = resolved.mode === 'shared' ? resolved.username : resolved.systemRole;
-    return { result: { ok: false, verdict, privileges: tested.privileges, reason: `${holder} is missing ${tested.privileges.missingCount} privilege${tested.privileges.missingCount === 1 ? '' : 's'} CHouse needs.` }, resolved };
+    return { ok: false, verdict, privileges: tested.privileges, reason: `${holder} is missing ${tested.privileges.missingCount} privilege${tested.privileges.missingCount === 1 ? '' : 's'} CHouse needs.`, support };
   }
-  return { result: { ok: true, verdict, privileges: tested.privileges, reason: null, support }, resolved };
+  return { ok: true, verdict, privileges: tested.privileges, reason: null, support };
+}
+
+/** Check a login for a kind without saving anything. `connectionId` is null for a connection not created yet. */
+export async function checkIdentityChange(connectionId: string | null, change: IdentityChange): Promise<{ result: IdentityCheckResult; resolved: ResolvedChange }> {
+  const current = connectionId ? await storedLogin(connectionId) : null;
+  const resolved = resolveLoginTarget(current, change);
+  return { result: await verifyLoginForKind(resolved, connectionId ?? undefined), resolved };
+}
+
+/** What a refused write tells the form: the row moved after the checks ran, so they no longer hold. */
+export function connectionChanged(): AppError {
+  return new AppError('This connection was changed by someone else while the checks ran. Reload it and try again.', 'CONNECTION_CHANGED', 'validation', 409);
 }
 
 /**
  * Switch a connection's kind, or replace the login of a connection that is
  * not `shared`. Refused unless every check passes. One write stores the kind,
- * the login and the role names; pooled clients are keyed by login, so the next
- * request opens a client for the new one.
+ * the login and the role names, and only if the row still has the kind, user
+ * and update time the checks started from: a save that raced another one
+ * returns `CONNECTION_CHANGED` instead of storing a login nobody checked.
+ * Pooled clients are keyed by login, so the next request opens a client for
+ * the new one.
  */
 export async function switchIdentity(connectionId: string, change: IdentityChange): Promise<IdentityCheckResult> {
-  const { result, resolved } = await checkIdentityChange(connectionId, change);
+  const before = await storedLogin(connectionId);
+  const resolved = resolveLoginTarget(before, change);
+  const result = await verifyLoginForKind(resolved, connectionId);
   if (!result.ok) return result;
+  // The reuse check ran before the slow ClickHouse checks: run it again just before the write.
+  const again = await reuseConflict(resolved, connectionId);
+  if (again) return reuseRefusal(again, result);
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
-  const before = await getConnectionWithPassword(connectionId);
-  const movedServer = !before || before.host !== resolved.host || before.port !== resolved.port;
-  await db.update(schema.clickhouseConnections)
+  const table = schema.clickhouseConnections;
+  const movedServer = before.host !== resolved.host || before.port !== resolved.port;
+  const written = await db.update(table)
     .set({
       identityMode: resolved.mode,
       host: resolved.host,
@@ -410,6 +454,7 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
       sslEnabled: resolved.sslEnabled,
       username: resolved.username,
       passwordEncrypted: resolved.password ? encryptPassword(resolved.password) : null,
+      database: resolved.database,
       systemRole: resolved.systemRole,
       impersonationRole: resolved.impersonationRole,
       accessContact: resolved.accessContact,
@@ -419,7 +464,14 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
       identityServerVersion: null,
       updatedAt: new Date(),
     })
-    .where(eq(schema.clickhouseConnections.id, connectionId));
+    .where(and(
+      eq(table.id, connectionId),
+      eq(table.identityMode, before.identityMode),
+      eq(table.username, before.username),
+      eq(table.updatedAt, before.updatedAt),
+    ))
+    .returning({ id: table.id });
+  if (written.length === 0) throw connectionChanged();
   if (resolved.mode !== 'shared') await writeVerdict(connectionId, resolved.username, result.verdict);
   resetCreateChecks();
   const { checkConnectionBindings, resetBindingsOfConnection } = await import('./clickhouseBindings');
@@ -432,9 +484,161 @@ export async function switchIdentity(connectionId: string, change: IdentityChang
   return result;
 }
 
+/** Another connection of a different kind on the same host, port and user, named in one line; null when there is none. */
+async function reuseConflict(resolved: Pick<ResolvedChange, 'host' | 'port' | 'username' | 'mode'>, excludeConnectionId: string | null): Promise<string | null> {
+  const rows = await all(sql`
+    SELECT name, identity_mode FROM rbac_clickhouse_connections
+    WHERE host = ${resolved.host} AND port = ${resolved.port} AND username = ${resolved.username}
+      AND identity_mode <> ${resolved.mode} AND id <> ${excludeConnectionId ?? ''}`);
+  if (rows.length === 0) return null;
+  return `Connection "${str(rows[0].name)}" (${str(rows[0].identity_mode)}) uses the same host, port and user. Each kind needs its own ClickHouse user.`;
+}
+
+function reuseRefusal(reason: string, passed: IdentityCheckResult): IdentityCheckResult {
+  return {
+    ok: false,
+    verdict: { ok: false, reason, checks: [{ id: 'login_reuse', label: 'No connection of another kind uses the same login', ok: false, detail: reason }], serverVersion: passed.verdict.serverVersion },
+    reason,
+    support: passed.support,
+  };
+}
+
+export interface CreateWithIdentityInput extends IdentityChange {
+  name: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Create a connection that is `shared_ceiling` or `personal` from the start
+ * (ADR 0034). Every check a switch runs, runs first; then one insert writes
+ * the row with its kind, role names, access contact and the fresh verdict, so
+ * there is never a `shared` row with an empty login, nor a row with no verdict.
+ */
+export async function createConnectionWithIdentity(input: CreateWithIdentityInput, actorId: string): Promise<{ result: IdentityCheckResult; connection: ConnectionResponse | null }> {
+  if (input.identityMode === 'shared') throw AppError.badRequest('A shared-login connection is created through POST /connections.');
+  const name = input.name.trim();
+  if (!name) throw AppError.badRequest('A name is required.');
+  const resolved = resolveLoginTarget(null, input);
+  // A retry after a timeout must not make a second connection to the same login.
+  const same = await all(sql`
+    SELECT name FROM rbac_clickhouse_connections
+    WHERE host = ${resolved.host} AND port = ${resolved.port} AND username = ${resolved.username} AND identity_mode = ${resolved.mode} AND is_active`);
+  if (same.length > 0) {
+    throw new AppError(`Connection "${str(same[0].name)}" already uses this host, port, user and kind.`, 'CONNECTION_EXISTS', 'validation', 409);
+  }
+  const result = await verifyLoginForKind(resolved);
+  if (!result.ok) return { result, connection: null };
+  const again = await reuseConflict(resolved, null);
+  if (again) return { result: reuseRefusal(again, result), connection: null };
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(schema.clickhouseConnections).values({
+    id,
+    name,
+    host: resolved.host,
+    port: resolved.port,
+    username: resolved.username,
+    passwordEncrypted: encryptPassword(resolved.password),
+    database: resolved.database,
+    isDefault: false,
+    isActive: true,
+    sslEnabled: resolved.sslEnabled,
+    createdBy: actorId,
+    createdAt: now,
+    updatedAt: now,
+    metadata: input.metadata ?? null,
+    identityMode: resolved.mode,
+    systemRole: resolved.systemRole,
+    impersonationRole: resolved.impersonationRole,
+    accessContact: resolved.accessContact,
+    identityHealth: 'ok',
+    identityHealthReason: null,
+    identityCheckedAt: Date.now(),
+    identityServerVersion: result.verdict.serverVersion,
+  });
+  resetCreateChecks();
+  return { result, connection: await getConnectionById(id) };
+}
+
 /** Set only the access contact, which is not part of the login. */
 export async function setAccessContact(connectionId: string, accessContact: string | null): Promise<void> {
   const value = (accessContact ?? '').trim() || null;
   if (value && value.length > 500) throw AppError.badRequest('The access contact is at most 500 characters.');
   await run(sql`UPDATE rbac_clickhouse_connections SET access_contact = ${value} WHERE id = ${connectionId}`);
+}
+
+/**
+ * Who can query a connection, worked out from the role map, the links and the
+ * data access policies each time it is asked; nothing is stored (ADR 0034).
+ *
+ * - `refusing`: the login fails its checks, or has none yet, so nobody can.
+ * - `none`: nobody yet (no mapping, no active link, no policy).
+ * - `partial`: some people can, some cannot.
+ * - `ready`: everyone it is meant for can.
+ */
+export interface ConnectionReadiness {
+  state: 'ready' | 'partial' | 'none' | 'refusing';
+  /** Data access policies with an allow rule on this connection. They admit people to `shared` and `shared_ceiling` connections. */
+  policies: number;
+  /** On `shared_ceiling`: CHouse roles that have at least one account, and how many of them are mapped here. */
+  roles?: { total: number; mapped: number; peopleRefused: number };
+  /** On `personal`: links by state. */
+  links?: { active: number; pending: number; other: number };
+}
+
+/** Readiness for many connections at once, with one grouped query per table. */
+export async function connectionReadiness(connections: ReadonlyArray<Pick<ConnectionResponse, 'id' | 'identityMode' | 'identityHealth'>>): Promise<Map<string, ConnectionReadiness>> {
+  const out = new Map<string, ConnectionReadiness>();
+  if (connections.length === 0) return out;
+  const policies = new Map<string, number>();
+  for (const row of await all(sql`
+    SELECT connection_id, COUNT(DISTINCT policy_id) AS n FROM rbac_data_access_policy_rules
+    WHERE connection_id IS NOT NULL AND is_allowed GROUP BY connection_id`)) policies.set(str(row.connection_id), num(row.n));
+  const peopleByRole = new Map<string, number>();
+  for (const row of await all(sql`SELECT role_id, COUNT(*) AS n FROM rbac_user_roles GROUP BY role_id`)) peopleByRole.set(str(row.role_id), num(row.n));
+  const mapped = new Map<string, Set<string>>();
+  for (const row of await all(sql`SELECT connection_id, role_id FROM rbac_connection_role_map`)) {
+    const id = str(row.connection_id);
+    if (!mapped.has(id)) mapped.set(id, new Set());
+    mapped.get(id)?.add(str(row.role_id));
+  }
+  const links = new Map<string, { active: number; pending: number; other: number }>();
+  for (const row of await all(sql`SELECT connection_id, state, COUNT(*) AS n FROM rbac_clickhouse_bindings GROUP BY connection_id, state`)) {
+    const id = str(row.connection_id);
+    const entry = links.get(id) ?? { active: 0, pending: 0, other: 0 };
+    const state = str(row.state);
+    if (state === 'active') entry.active += num(row.n);
+    else if (state === 'pending_grant') entry.pending += num(row.n);
+    else entry.other += num(row.n);
+    links.set(id, entry);
+  }
+  for (const connection of connections) {
+    const policyCount = policies.get(connection.id) ?? 0;
+    const mode = connection.identityMode ?? 'shared';
+    if (mode === 'shared') {
+      out.set(connection.id, { state: policyCount > 0 ? 'ready' : 'none', policies: policyCount });
+      continue;
+    }
+    const refusing = connection.identityHealth !== 'ok' || !isKnownMode(mode);
+    if (mode === 'personal') {
+      const counts = links.get(connection.id) ?? { active: 0, pending: 0, other: 0 };
+      const state = refusing ? 'refusing' : counts.active === 0 ? 'none' : counts.pending + counts.other > 0 ? 'partial' : 'ready';
+      out.set(connection.id, { state, policies: policyCount, links: counts });
+      continue;
+    }
+    const here = mapped.get(connection.id) ?? new Set<string>();
+    let total = 0;
+    let mappedCount = 0;
+    let peopleRefused = 0;
+    for (const [roleId, people] of peopleByRole) {
+      total += 1;
+      if (here.has(roleId)) mappedCount += 1;
+      else peopleRefused += people;
+    }
+    const state = refusing ? 'refusing' : mappedCount === 0 ? 'none' : peopleRefused > 0 || policyCount === 0 ? 'partial' : 'ready';
+    out.set(connection.id, { state, policies: policyCount, roles: { total, mapped: mappedCount, peopleRefused } });
+  }
+  return out;
 }

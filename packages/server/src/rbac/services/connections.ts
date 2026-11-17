@@ -11,6 +11,7 @@ import { getDatabase, getSchema } from '../db';
 import { all, str } from '../../services/observe/db';
 import { ephemeralExecutor, identityOfConnection, serviceActor, type ChExecutor } from '../../services/chExecutor';
 import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
+import { AppError } from '../../types';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,7 +481,13 @@ export async function listConnections(options?: {
  */
 export async function updateConnection(
   id: string,
-  input: Partial<ConnectionInput> & { isDefault?: boolean; isActive?: boolean }
+  input: Partial<ConnectionInput> & { isDefault?: boolean; isActive?: boolean },
+  /**
+   * When set, the write applies only if the row still has this kind, user and
+   * update time: a login change checked against one row must not land on a
+   * row someone switched meanwhile (ADR 0034). Throws `CONNECTION_CHANGED`.
+   */
+  expect?: { identityMode: string; username: string; updatedAt: Date },
 ): Promise<ConnectionResponse | null> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
@@ -519,9 +526,21 @@ export async function updateConnection(
     updateData.isDefault = false;
   }
 
-  await db.update(schema.clickhouseConnections)
+  const table = schema.clickhouseConnections;
+  if (expect) {
+    const written = await db.update(table)
+      .set(updateData)
+      .where(and(eq(table.id, id), eq(table.identityMode, expect.identityMode), eq(table.username, expect.username), eq(table.updatedAt, expect.updatedAt)))
+      .returning({ id: table.id });
+    if (written.length === 0) {
+      throw new AppError('This connection was changed by someone else while the checks ran. Reload it and try again.', 'CONNECTION_CHANGED', 'validation', 409);
+    }
+    return getConnectionById(id);
+  }
+
+  await db.update(table)
     .set(updateData)
-    .where(eq(schema.clickhouseConnections.id, id));
+    .where(eq(table.id, id));
 
   return getConnectionById(id);
 }

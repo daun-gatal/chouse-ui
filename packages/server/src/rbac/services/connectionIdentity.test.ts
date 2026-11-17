@@ -5,7 +5,7 @@ import { setExecutorClientForTests } from "../../services/chExecutor";
 import { closeDatabase } from "../db";
 import { runMigrations } from "../db/migrations";
 import { freshDatabase, rawAll, rawRun } from "../db/migrationTestHarness";
-import { anyRoleMapped, ceilingSetupStatements, checkIdentityChange, connectionKindSupport, defaultRoleIsMapped, getIdentity, getRoleMap, holdsMappedRole, mappedRoleIds, roleIsMapped, setAccessContact, setRoleMap, switchIdentity } from "./connectionIdentity";
+import { anyRoleMapped, ceilingSetupStatements, checkIdentityChange, connectionKindSupport, connectionReadiness, createConnectionWithIdentity, defaultRoleIsMapped, getIdentity, getRoleMap, holdsMappedRole, mappedRoleIds, roleIsMapped, setAccessContact, setRoleMap, switchIdentity } from "./connectionIdentity";
 import { createConnection, getConnectionById, getConnectionWithPassword } from "./connections";
 
 let connectionId = "";
@@ -88,11 +88,18 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
     const SYSTEM = ["GRANT SHOW, KILL QUERY ON *.* TO chouse_system", "GRANT SELECT ON system.* TO chouse_system"];
     /** A ClickHouse that knows one empty login, `svc_ceiling`, and one login with a direct grant, `svc_direct`. */
     const asked: string[] = [];
+    /** Runs once, the next time a check asks the server its version: stands in for a save made meanwhile. */
+    let onVersion: (() => Promise<void>) | null = null;
     function server(takesRole = true, version = "26.5.7.64"): void {
       asked.length = 0;
       setExecutorClientForTests((_id, config) => ({
         async query(args: { query: string; role?: string }) {
           asked.push(args.query);
+          if (args.query.startsWith("SELECT version()") && onVersion) {
+            const hook = onVersion;
+            onVersion = null;
+            await hook();
+          }
           // A server older than 24.4 answers any role on a request this way.
           if (!takesRole && args.role !== undefined) throw Object.assign(new Error("Setting role is neither a builtin setting nor started with the prefix 'SQL_' registered for user-defined settings. (UNKNOWN_SETTING)"), { code: "115" });
           if (args.query.startsWith("EXPLAIN AST EXECUTE AS")) throw Object.assign(new Error("Syntax error: failed at position 21 ('AS')"), { code: "62" });
@@ -183,7 +190,7 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
 
     it("asks for the password again when the server changes, so the stored one is never sent elsewhere", async () => {
       server();
-      for (const change of [{ host: "other-host" }, { port: 9440 }, { sslEnabled: true }]) {
+      for (const change of [{ host: "other-host" }, { port: 9440 }]) {
         await expect(switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", ...change })).rejects.toMatchObject({ statusCode: 400 });
       }
       expect((await getConnectionById(connectionId))?.host).toBe("h");
@@ -194,6 +201,72 @@ describe("connection identity (ADR 0033 §5, §6)", () => {
       const result = await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system" });
       expect(result.ok).toBe(true);
       expect((await getConnectionWithPassword(connectionId))?.password).toBe("new-pw");
+    });
+
+    it("keeps the stored password when TLS is turned on, and asks for it when TLS is turned off (ADR 0034)", async () => {
+      server();
+      expect((await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", sslEnabled: true })).ok).toBe(true);
+      expect((await getConnectionWithPassword(connectionId))).toMatchObject({ sslEnabled: true, password: "new-pw" });
+      await expect(switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", sslEnabled: false })).rejects.toMatchObject({ statusCode: 400 });
+      expect((await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", password: "new-pw", systemRole: "chouse_system", sslEnabled: false })).ok).toBe(true);
+    });
+
+    it("changes the default database with the login, keeps it when absent, and clears it when empty (ADR 0034)", async () => {
+      server();
+      await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", database: "analytics" });
+      expect((await getConnectionById(connectionId))?.database).toBe("analytics");
+      await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system" });
+      expect((await getConnectionById(connectionId))?.database).toBe("analytics");
+      await switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", database: "" });
+      expect((await getConnectionById(connectionId))?.database).toBeNull();
+    });
+
+    it("writes nothing when the row changed while the checks ran, and says so (ADR 0034)", async () => {
+      server();
+      onVersion = async () => {
+        await rawRun(sql`UPDATE rbac_clickhouse_connections SET username = 'svc_direct', updated_at = ${Math.floor(Date.now() / 1000) + 7} WHERE id = ${connectionId}`);
+      };
+      await expect(switchIdentity(connectionId, { identityMode: "shared_ceiling", username: "svc_ceiling", password: "new-pw", systemRole: "chouse_system", database: "raced" })).rejects.toMatchObject({ code: "CONNECTION_CHANGED", statusCode: 409 });
+      const row = (await getConnectionById(connectionId))!;
+      expect(row.username).toBe("svc_direct");
+      expect(row.database).not.toBe("raced");
+      await rawRun(sql`UPDATE rbac_clickhouse_connections SET username = 'svc_ceiling' WHERE id = ${connectionId}`);
+    });
+
+    it("creates a role-ceiling connection in one write, with its kind, roles and a fresh verdict (ADR 0034)", async () => {
+      server();
+      const { result, connection } = await createConnectionWithIdentity({ name: "made-ceiling", host: "h3", port: 8123, identityMode: "shared_ceiling", username: "svc_ceiling", password: "c-pw", systemRole: "chouse_system", accessContact: "#data", database: "sales" }, "holder");
+      expect(result.ok).toBe(true);
+      expect(connection).toMatchObject({ name: "made-ceiling", identityMode: "shared_ceiling", systemRole: "chouse_system", accessContact: "#data", identityHealth: "ok", database: "sales", createdBy: "holder" });
+      expect((await getConnectionWithPassword(connection!.id))?.password).toBe("c-pw");
+      await expect(createConnectionWithIdentity({ name: "again", host: "h3", port: 8123, identityMode: "shared_ceiling", username: "svc_ceiling", password: "c-pw", systemRole: "chouse_system" }, "holder")).rejects.toMatchObject({ code: "CONNECTION_EXISTS", statusCode: 409 });
+    });
+
+    it("creates nothing when a check fails, without a password, or for a shared login (ADR 0034)", async () => {
+      server();
+      const { result, connection } = await createConnectionWithIdentity({ name: "made-direct", host: "h4", port: 8123, identityMode: "shared_ceiling", username: "svc_direct", password: "pw", systemRole: "chouse_system" }, "holder");
+      expect(result.ok).toBe(false);
+      expect(connection).toBeNull();
+      await expect(createConnectionWithIdentity({ name: "no-pw", host: "h4", port: 8123, identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system" }, "holder")).rejects.toMatchObject({ statusCode: 400 });
+      await expect(createConnectionWithIdentity({ name: "shared", host: "h4", port: 8123, identityMode: "shared", username: "svc_ceiling", password: "pw" }, "holder")).rejects.toMatchObject({ statusCode: 400 });
+      expect(await rawAll(sql`SELECT 1 FROM rbac_clickhouse_connections WHERE host = 'h4'`)).toEqual([]);
+    });
+
+    it("checks a login for a connection not created yet, reading no row (ADR 0034)", async () => {
+      server();
+      const { result, resolved } = await checkIdentityChange(null, { identityMode: "shared_ceiling", username: "svc_ceiling", password: "pw", systemRole: "chouse_system", host: "h5", port: 9000 });
+      expect(result.ok).toBe(true);
+      expect(resolved).toMatchObject({ host: "h5", port: 9000, sslEnabled: false, database: null });
+    });
+
+    it("says who can query: nobody before a mapping, then some, and refusing when the login fails (ADR 0034)", async () => {
+      const row = (await getConnectionById(connectionId))!;
+      await setRoleMap(connectionId, [], "admin-1");
+      expect((await connectionReadiness([row])).get(connectionId)).toMatchObject({ state: "none", roles: { mapped: 0 } });
+      await setRoleMap(connectionId, [{ roleId: "role-b", clickhouseRole: "finance_ro" }], "admin-1");
+      expect((await connectionReadiness([row])).get(connectionId)).toMatchObject({ state: "partial", roles: { mapped: 1, peopleRefused: 1 } });
+      expect((await connectionReadiness([{ ...row, identityHealth: "failing" }])).get(connectionId)?.state).toBe("refusing");
+      expect((await connectionReadiness([{ ...row, identityMode: "shared" }])).get(connectionId)).toEqual({ state: "none", policies: 0 });
     });
 
     it("sets the access contact on its own, and refuses one that is too long", async () => {
