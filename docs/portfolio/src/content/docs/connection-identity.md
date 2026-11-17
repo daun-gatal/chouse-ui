@@ -60,6 +60,8 @@ ALTER USER svc_chouse_ceiling DEFAULT ROLE NONE;
 
 2. **New connection:** choose **Role ceiling** as the kind, enter that user, its password and the system role, press **Test**, then **Create**. One ClickHouse user is enough; there is no need to create one with every privilege first.
 
+   ![A new role-ceiling connection on the ClickHouse login tab](/docs/img/app/admin-connection-create.jpg "New connection, Role ceiling chosen: the hint says the user needs no grants of its own, with the script for the administrator, Test and Create")
+
    **Existing shared-login connection:** choose **Role ceiling** on its ClickHouse login tab. The hint names the current user when it has grants of its own and offers two ways: enter a **new empty user** (recommended: the current user keeps working until you save), or have the administrator **empty the current user** (queries fail from that moment until you save). Press **Test**, then **Save**. The kind, the user and the role names are stored together.
 3. **Who can query** opens next. Map each CHouse role that should use the connection to a ClickHouse role, including your own: until its role is mapped, a person's statements are refused. The Connections list shows how many roles are mapped, and a connection nobody can query yet cannot be made the default.
 
