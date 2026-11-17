@@ -316,6 +316,15 @@ jobs:
             | tar -xz -C /usr/local/bin helm-docs
           helm-docs --chart-search-root charts/chouse-ui
 
+      # The docs site's Helm values page is generated from the chart README and names the chart version: rebuild it
+      # with the release, or the Build check's reference check fails on every branch until someone does by hand.
+      - name: Regenerate docs reference pages
+        continue-on-error: true
+        run: |
+          bun install --frozen-lockfile
+          (cd packages/server && bun install --frozen-lockfile)
+          cd docs/portfolio && bun scripts/gen-reference.ts
+
       - name: Warn if chart sync was skipped
         if: steps.setup_helm.outcome != 'success' || steps.chart_sync.outcome != 'success'
         run: |
@@ -374,6 +383,7 @@ jobs:
             docs/portfolio/package.json \
             charts/chouse-ui/Chart.yaml \
             charts/chouse-ui/README.md \
+            docs/portfolio/src/content/docs/helm-values.md \
             changelogs/unreleased/
           git commit -m "chore: release v$VERSION"
           git push origin HEAD:preview
