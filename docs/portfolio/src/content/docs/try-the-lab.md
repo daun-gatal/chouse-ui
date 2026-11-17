@@ -1,8 +1,8 @@
 # Try the lab
 
 The lab is a private copy of CHouse UI that runs in **your own GitHub
-Codespace**. It comes with a ClickHouse server, sample data and example
-content in every area, so you can try everything as admin before you install
+Codespace**. It comes with four ClickHouse servers on different versions,
+sample data and example content in every area, so you can try everything as admin before you install
 anything.
 
 [Open the lab in GitHub Codespaces](https://codespaces.new/daun-gatal/chouse-ui?devcontainer_path=.devcontainer%2Flab%2Fdevcontainer.json&quickstart=1)
@@ -27,8 +27,9 @@ and its admin password and secrets are generated for that one codespace.
 
 ## What's inside
 
-Each codespace runs the published CHouse UI image, one ClickHouse server, a
-light query load and a one-off loader. The loader fills:
+Each codespace runs the published CHouse UI image, four ClickHouse servers
+(26.5, 26.3, 25.8 and 23.8), a light query load on each and a one-off loader. Every
+server gets the same sample data and its own connection. The loader fills:
 
 | Area | What you'll find |
 |---|---|
@@ -39,6 +40,23 @@ light query load and a one-off loader. The loader fills:
 | **Alerts and schedules** | A fleet threshold rule and a daily report that has already run once. |
 | **Access control** | Teammates `maya` (analyst), `devon` (developer) and `vic` (viewer), and a data access policy that limits analysts to the sample databases. |
 | **Context** | Descriptions, owners and a `revenue` metric for the sample tables. |
+
+## Four ClickHouse versions
+
+The lab registers one connection per server, so you can see how CHouse UI
+adapts to the version it talks to. Each server shows a different result. Switch between them with the connection
+switcher. The 26.5 connection is the default and holds the example content.
+
+| Connection | ClickHouse | Role ceiling | Personal connection |
+|---|---|---|---|
+| **Lab ClickHouse 26.5** (default) | 26.5 | Available | Offered, but **fails** the server self-test when you press **Check**: 26.5.7 runs `CREATE` under `EXECUTE AS` without checking grants. |
+| **Lab ClickHouse 26.3** | 26.3.63 | Available | Offered, and **passes** the server self-test. |
+| **Lab ClickHouse 25.8** | 25.8 LTS | Available | **Blocked up front**: 25.8 has no `EXECUTE AS` statement. |
+| **Lab ClickHouse 23.8** | 23.8 LTS | **Blocked up front**: it needs 24.4 or newer. | **Blocked up front**: no `EXECUTE AS`. |
+
+Open **Admin › Connections › ClickHouse login** on each connection to see
+which kinds its server can run. Every server takes the account-tagged query ids
+3.18 sends; 25.8 and newer also take its quota key, which 23.8 refuses.
 
 The in-app **Getting Started** guide opens on first sign-in and walks through
 every area. The codespace also opens a short guide, `WELCOME.md`, with things
@@ -54,6 +72,8 @@ CHouse UI lab is ready.
   Open:     https://<your-codespace>-5521.app.github.dev
   Sign in:  admin / Lab-…-Ch1!
             teammates maya (analyst), devon (developer) and vic (viewer) use the same password
+  ClickHouse: four connections, one per version. Use the connection switcher:
+            Lab ClickHouse 26.5 (default), 26.3, 25.8 and 23.8
 ```
 
 The browser tab opens on its own. If a popup blocker stops it, open the

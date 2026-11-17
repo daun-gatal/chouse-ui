@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { ChouseApi, LabError, chooseAi, readConfig } from "./lib";
+import { ChouseApi, LAB_SERVERS, LabError, chooseAi, readConfig } from "./lib";
 import type { FetchLike } from "./lib";
 import { runSeed } from "./seed";
 import { SAVED_QUERIES, SHOWCASE_STEPS, TEAM, shopDashboard } from "./showcase";
-import { checkQueryThroughApi, checkSingleConnection, checkSlowQuery, runSmoke } from "./smoke";
+import { checkConnections, checkQueryThroughApi, checkServerVersions, checkSlowQuery, runSmoke } from "./smoke";
 
 const ENV = {
   LAB_ADMIN_PASSWORD: "Lab-0123abcd-Ch1!",
   CLICKHOUSE_PASSWORD: "chpw",
   LAB_CHOUSE_URL: "http://chouse:5521",
-  LAB_CLICKHOUSE_URL: "http://ch:8123",
+};
+
+/** The version each fake server reports, by compose host. */
+const SERVER_VERSIONS: Record<string, string> = {
+  "clickhouse-26-5": "26.5.7.64",
+  "clickhouse-26-3": "26.3.63.123",
+  "clickhouse-25-8": "25.8.33.6",
+  "clickhouse-23-8": "23.8.16.40",
 };
 
 interface Call {
@@ -21,7 +28,9 @@ interface Call {
 
 /** An in-memory stand-in for the CHouse API and ClickHouse's HTTP interface. */
 class FakeLab {
-  rows = new Map<string, number>([["shop.customers", 0], ["finance.payouts", 0], ["shop.orders_raw", 0]]);
+  /** Rows per ClickHouse host, so each server is loaded on its own. */
+  rowsByHost = new Map<string, Map<string, number>>();
+  versions = new Map<string, string>(Object.entries(SERVER_VERSIONS));
   connections: Array<Record<string, unknown>> = [];
   providers: Array<Record<string, unknown>> = [];
   models: Array<Record<string, unknown>> = [];
@@ -35,6 +44,8 @@ class FakeLab {
   networkFailures = 0;
   calls: Call[] = [];
   sql: string[] = [];
+  /** Hosts that have received a sample-data insert, in order. */
+  insertHosts: string[] = [];
   /** Showcase collections, keyed by API path. */
   store = new Map<string, Array<Record<string, unknown>>>();
   rolePolicies = new Map<string, string[]>([["role-analyst", ["policy-system"]]]);
@@ -42,6 +53,20 @@ class FakeLab {
   tableMetrics = new Map<string, string[]>();
   showcaseDown = false;
   catalogPending = false;
+
+  /** Row counts on the default server (the one the API and checks read). */
+  get rows(): Map<string, number> {
+    return this.rowsFor(LAB_SERVERS[0].host);
+  }
+
+  rowsFor(host: string): Map<string, number> {
+    let rows = this.rowsByHost.get(host);
+    if (!rows) {
+      rows = new Map<string, number>([["shop.customers", 0], ["finance.payouts", 0], ["shop.orders_raw", 0]]);
+      this.rowsByHost.set(host, rows);
+    }
+    return rows;
+  }
 
   list(path: string): Array<Record<string, unknown>> {
     const items = this.store.get(path) ?? [];
@@ -57,23 +82,28 @@ class FakeLab {
     const url = new URL(input);
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? init.body : undefined;
-    if (url.host === "ch:8123") return this.clickhouse(body ?? "");
+    if (url.port === "8123") return this.clickhouse(body ?? "", url.hostname);
     const parsed: unknown = body ? JSON.parse(body) : undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
     this.calls.push({ method, path: `${url.pathname}${url.search}`, body: parsed });
-    return this.api(method, url.pathname, parsed);
+    return this.api(method, url.pathname, parsed, headers["X-Connection-Id"]);
   };
 
-  private clickhouse(sql: string): Response {
+  private clickhouse(sql: string, host: string): Response {
     this.sql.push(sql);
+    const rows = this.rowsFor(host);
     const count = /^SELECT count\(\) FROM (\S+)$/.exec(sql);
-    if (count) return new Response(`${this.rows.get(count[1]) ?? 0}\n`);
+    if (count) return new Response(`${rows.get(count[1]) ?? 0}\n`);
     if (sql.includes("system.query_log")) return new Response(`${this.slowQueries}\n`);
     const insert = /^INSERT INTO (\S+) .* FROM numbers\((\d+)\)$/.exec(sql);
-    if (insert) this.rows.set(insert[1], Number(insert[2]));
+    if (insert) {
+      rows.set(insert[1], Number(insert[2]));
+      this.insertHosts.push(host);
+    }
     return new Response("");
   }
 
-  private api(method: string, path: string, body: unknown): Response {
+  private api(method: string, path: string, body: unknown, connectionId?: string): Response {
     const json = (data: unknown, status = 200): Response => new Response(JSON.stringify({ success: status < 400, data }), { status });
     const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null ? { ...value } : {});
     if (path === "/api/rbac/auth/login") {
@@ -119,6 +149,11 @@ class FakeLab {
       this.configs.push(created);
       this.aiEnabled = true;
       return json(created, 201);
+    }
+    if (path === "/api/query/execute" && String(record(body).query).includes("version()")) {
+      const host = String(this.connections.find((c) => c.id === connectionId)?.host ?? "");
+      const version = this.versions.get(host) ?? "";
+      return json({ meta: [], data: [{ version }], rows: 1 });
     }
     if (path === "/api/query/execute" && String(record(body).query).includes("finance.")) {
       return new Response(JSON.stringify({ success: false, error: { code: "FORBIDDEN", message: "Access denied" } }), { status: 403 });
@@ -179,11 +214,19 @@ describe("readConfig", () => {
     expect(() => readConfig({})).toThrow(/LAB_ADMIN_PASSWORD, CLICKHOUSE_PASSWORD/);
   });
 
-  it("defaults to the compose service names and trims trailing slashes", () => {
+  it("defaults to the compose service name and trims trailing slashes", () => {
     const cfg = readConfig({ LAB_ADMIN_PASSWORD: "p", CLICKHOUSE_PASSWORD: "c", LAB_CHOUSE_URL: "http://x:1/" });
     expect(cfg.chouseUrl).toBe("http://x:1");
-    expect(cfg.clickhouseUrl).toBe("http://clickhouse:8123");
-    expect(cfg.clickhouseHost).toBe("clickhouse");
+    expect(cfg.clickhouseUser).toBe("admin");
+  });
+
+  it("names four lab servers, one per version, with the 26.5 server as the default", () => {
+    expect(LAB_SERVERS.map((s) => [s.version, s.host, s.connectionName])).toEqual([
+      ["26.5", "clickhouse-26-5", "Lab ClickHouse 26.5"],
+      ["26.3", "clickhouse-26-3", "Lab ClickHouse 26.3"],
+      ["25.8", "clickhouse-25-8", "Lab ClickHouse 25.8"],
+      ["23.8", "clickhouse-23-8", "Lab ClickHouse 23.8"],
+    ]);
   });
 });
 
@@ -207,8 +250,14 @@ describe("runSeed", () => {
 
     expect(report).toMatchObject({ ok: true, ai: "off" });
     expect(lab.rows.get("shop.orders_raw")).toBeGreaterThan(0);
-    expect(lab.connections).toHaveLength(1);
-    expect(lab.connections[0]).toMatchObject({ name: "Lab ClickHouse", host: "clickhouse", port: 8123, username: "admin", password: "chpw", isDefault: true });
+    expect([...new Set(lab.insertHosts)].sort()).toEqual(["clickhouse-23-8", "clickhouse-25-8", "clickhouse-26-3", "clickhouse-26-5"]);
+    expect(lab.connections).toHaveLength(4);
+    expect(lab.connections).toEqual([
+      expect.objectContaining({ name: "Lab ClickHouse 26.5", host: "clickhouse-26-5", port: 8123, username: "admin", password: "chpw", isDefault: true }),
+      expect.objectContaining({ name: "Lab ClickHouse 26.3", host: "clickhouse-26-3", isDefault: false }),
+      expect.objectContaining({ name: "Lab ClickHouse 25.8", host: "clickhouse-25-8", isDefault: false }),
+      expect.objectContaining({ name: "Lab ClickHouse 23.8", host: "clickhouse-23-8", isDefault: false }),
+    ]);
     expect(lab.bootstrapPending).toBe(false);
     expect(lab.calls[0]?.path).toBe("/api/rbac/auth/login");
   });
@@ -222,11 +271,12 @@ describe("runSeed", () => {
     const again = await runSeed(ENV, lab.fetch, 0);
 
     expect(again.ok).toBe(true);
-    expect(again.steps.map((s) => s.detail)).toEqual(
-      expect.arrayContaining(["sample data already present", '"Lab ClickHouse" already registered', "setup already complete"]),
-    );
+    const details = again.steps.map((s) => s.detail);
+    expect(details.filter((d) => d === "sample data already present")).toHaveLength(4);
+    expect(details.filter((d) => /already registered$/.test(d))).toHaveLength(4);
+    expect(details).toContain("setup already complete");
     expect(lab.sql.filter((s) => s.startsWith("INSERT")).length).toBe(inserts);
-    expect(lab.connections).toHaveLength(1);
+    expect(lab.connections).toHaveLength(4);
     expect(lab.calls.filter((c) => c.method !== "GET" && c.path !== "/api/rbac/auth/login")).toEqual([]);
   });
 
@@ -306,10 +356,24 @@ describe("smoke checks", () => {
     expect(report.ok).toBe(true);
   });
 
-  it("fails when the connection was registered twice", async () => {
+  it("fails when a connection was registered twice", async () => {
     const { lab, api } = await seeded();
-    lab.connections.push({ ...lab.connections[0], id: "conn-2" });
-    await expect(checkSingleConnection(api)).rejects.toThrow(/expected 1 .* found 2/);
+    lab.connections.push({ ...lab.connections[0], id: "conn-5" });
+    await expect(checkConnections(api)).rejects.toThrow(/expected 1 .*Lab ClickHouse 26.5.* found 2/);
+  });
+
+  it("fails when a connection reaches a server on another version", async () => {
+    const { lab, api } = await seeded();
+    lab.versions.set("clickhouse-23-8", "26.5.7.64");
+    const ids = await checkConnections(api);
+    await expect(checkServerVersions(api, ids)).rejects.toThrow(/Lab ClickHouse 23.8" answered 26.5.7.64/);
+  });
+
+  it("reports the version each connection's server runs", async () => {
+    const { api, lab } = await seeded();
+    const ids = await checkConnections(api);
+    expect(await checkServerVersions(api, ids)).toBe("26.5.7.64, 26.3.63.123, 25.8.33.6, 23.8.16.40");
+    expect(lab.calls.filter((c) => c.path === "/api/query/execute").length).toBe(4);
   });
 
   it("fails when the API sees fewer rows than were loaded", async () => {

@@ -2,8 +2,31 @@
 // (smoke.ts). Runs on the Bun inside the CHouse image and under Vitest, so it
 // uses only web-standard APIs (fetch, URL, setTimeout) and no imports.
 
-/** Name of the ClickHouse connection the lab registers in CHouse UI. */
-export const LAB_CONNECTION_NAME = "Lab ClickHouse";
+/**
+ * The ClickHouse servers the lab runs, one per version under test. Each becomes
+ * a connection in CHouse UI named after its version. The first is the default
+ * connection, where the example content (dashboards, alerts, jobs) lives. The
+ * hosts are service names on the compose network (compose.yml).
+ */
+export interface LabServer {
+  /** Major.minor version the server runs, shown in its connection name. */
+  version: string;
+  /** Compose service name and host CHouse UI uses to reach it. */
+  host: string;
+  /** Connection name in CHouse UI. */
+  connectionName: string;
+}
+
+export const LAB_SERVERS: readonly LabServer[] = [
+  { version: "26.5", host: "clickhouse-26-5", connectionName: "Lab ClickHouse 26.5" },
+  { version: "26.3", host: "clickhouse-26-3", connectionName: "Lab ClickHouse 26.3" },
+  { version: "25.8", host: "clickhouse-25-8", connectionName: "Lab ClickHouse 25.8" },
+  { version: "23.8", host: "clickhouse-23-8", connectionName: "Lab ClickHouse 23.8" },
+];
+
+/** The default server's connection: where the example content is attached. */
+export const LAB_DEFAULT_SERVER: LabServer = LAB_SERVERS[0];
+export const LAB_CONNECTION_NAME = LAB_DEFAULT_SERVER.connectionName;
 
 /** Prefix of the AI provider the lab registers when the visitor brings a key. */
 export const LAB_AI_PREFIX = "Lab";
@@ -14,9 +37,6 @@ export const SAMPLE_ORDER_ROWS = 2_000_000;
 /** Settings the loader and smoke check run with, read from the environment. */
 export interface LabConfig {
   chouseUrl: string;
-  clickhouseUrl: string;
-  /** Host CHouse UI uses to reach ClickHouse (a name on the compose network). */
-  clickhouseHost: string;
   clickhouseUser: string;
   clickhousePassword: string;
   adminIdentifier: string;
@@ -33,8 +53,6 @@ export function readConfig(env: Env): LabConfig {
   }
   return {
     chouseUrl: trimSlash(env.LAB_CHOUSE_URL || "http://chouse-ui:5521"),
-    clickhouseUrl: trimSlash(env.LAB_CLICKHOUSE_URL || "http://clickhouse:8123"),
-    clickhouseHost: env.LAB_CLICKHOUSE_HOST || "clickhouse",
     clickhouseUser: "admin",
     clickhousePassword: env.CLICKHOUSE_PASSWORD ?? "",
     adminIdentifier: "admin",
@@ -123,11 +141,17 @@ async function fetchWithRetry(fetchImpl: FetchLike, url: string, init: RequestIn
   throw new LabError(`Could not reach ${new URL(url).host}: ${reason}`);
 }
 
-/** Runs one SQL statement on ClickHouse over HTTP and returns the response text. */
-export async function clickhouseQuery(cfg: LabConfig, sql: string, fetchImpl: FetchLike, retryMs = NETWORK_RETRY_MS): Promise<string> {
+/** Runs one SQL statement on one of the lab's ClickHouse servers over HTTP and returns the response text. */
+export async function clickhouseQuery(
+  cfg: LabConfig,
+  sql: string,
+  fetchImpl: FetchLike,
+  retryMs = NETWORK_RETRY_MS,
+  server: LabServer = LAB_DEFAULT_SERVER,
+): Promise<string> {
   const response = await fetchWithRetry(
     fetchImpl,
-    `${cfg.clickhouseUrl}/`,
+    `http://${server.host}:8123/`,
     {
       method: "POST",
       headers: {

@@ -5,7 +5,8 @@
 
 import {
   ChouseApi,
-  LAB_CONNECTION_NAME,
+  LAB_DEFAULT_SERVER,
+  LAB_SERVERS,
   LabError,
   SAMPLE_ORDER_ROWS,
   arrayField,
@@ -23,14 +24,38 @@ import { CURRENCY_PROMISE, FRESHNESS_PROMISE, SAVED_QUERIES, SHOP_DASHBOARD, TEA
 const SLOW_QUERY_WAIT_MS = 180_000;
 const POLL_MS = 5_000;
 
-/** Exactly one lab connection exists (the loader is idempotent). Returns its id. */
-export async function checkSingleConnection(api: ChouseApi): Promise<string> {
+/** Exactly one connection exists for each lab server (the loader is idempotent). Returns their ids by version. */
+export async function checkConnections(api: ChouseApi): Promise<Map<string, string>> {
   const data = await api.request("GET", "/api/rbac/connections");
-  const matches = arrayField(data, "connections").filter((c) => stringField(c, "name") === LAB_CONNECTION_NAME);
-  if (matches.length !== 1) throw new Error(`expected 1 "${LAB_CONNECTION_NAME}" connection, found ${matches.length}`);
-  const id = stringField(matches[0], "id");
-  if (!id) throw new Error("the lab connection has no id");
-  return id;
+  const connections = arrayField(data, "connections");
+  const ids = new Map<string, string>();
+  for (const server of LAB_SERVERS) {
+    const matches = connections.filter((c) => stringField(c, "name") === server.connectionName);
+    if (matches.length !== 1) throw new Error(`expected 1 "${server.connectionName}" connection, found ${matches.length}`);
+    const id = stringField(matches[0], "id");
+    if (!id) throw new Error(`the "${server.connectionName}" connection has no id`);
+    ids.set(server.version, id);
+  }
+  return ids;
+}
+
+/** Each connection reaches its own server, and that server runs the version the connection is named for. */
+export async function checkServerVersions(api: ChouseApi, ids: ReadonlyMap<string, string>): Promise<string> {
+  const found: string[] = [];
+  for (const server of LAB_SERVERS) {
+    const id = ids.get(server.version) ?? "";
+    const result = await api.request("POST", "/api/query/execute", { query: "SELECT version() AS version", format: "JSON" }, { "X-Connection-Id": id });
+    const version = stringField(firstRow(result), "version") ?? "";
+    if (!version.startsWith(`${server.version}.`)) throw new Error(`"${server.connectionName}" answered ${version || "no version"}`);
+    found.push(version);
+  }
+  return found.join(", ");
+}
+
+/** The first row of a CHouse API query result, or an empty object. */
+function firstRow(result: unknown): Record<string, unknown> {
+  const rows = arrayField(isRecord(result) && "data" in result && !Array.isArray(result.data) ? result.data : result, "data");
+  return isRecord(rows[0]) ? rows[0] : {};
 }
 
 /** The first-run flow is done: no password change and no pending setup. */
@@ -49,9 +74,7 @@ export async function checkQueryThroughApi(api: ChouseApi, connectionId: string)
     { query: "SELECT count() AS orders FROM shop.orders_raw", format: "JSON" },
     { "X-Connection-Id": connectionId },
   );
-  const rows = arrayField(isRecord(result) && "data" in result && !Array.isArray(result.data) ? result.data : result, "data");
-  const first = rows[0];
-  const orders = Number(isRecord(first) ? first.orders : Number.NaN);
+  const orders = Number(firstRow(result).orders);
   if (!(orders >= SAMPLE_ORDER_ROWS)) throw new Error(`expected at least ${SAMPLE_ORDER_ROWS} orders, got ${String(orders)}`);
   return `${orders} orders visible through the API`;
 }
@@ -134,15 +157,17 @@ export async function runSmoke(env: Record<string, string | undefined>, fetchImp
   checks.push(login);
   if (login.ok) {
     checks.push(await runStep("setup", () => checkSetup(api)));
-    let connectionId = "";
-    const single = await runStep("one connection", async () => {
-      connectionId = await checkSingleConnection(api);
-      return `exactly one "${LAB_CONNECTION_NAME}"`;
+    let ids = new Map<string, string>();
+    const connections = await runStep("one connection per version", async () => {
+      ids = await checkConnections(api);
+      return `exactly one connection for each of ${LAB_SERVERS.map((s) => s.version).join(", ")}`;
     });
-    checks.push(single);
-    if (single.ok) {
-      checks.push(await runStep("query via API", () => checkQueryThroughApi(api, connectionId)));
-      checks.push(await runStep("analyst boundary", () => checkAnalystBoundary(cfg, fetchImpl, connectionId)));
+    checks.push(connections);
+    if (connections.ok) {
+      const defaultId = ids.get(LAB_DEFAULT_SERVER.version) ?? "";
+      checks.push(await runStep("server versions", () => checkServerVersions(api, ids)));
+      checks.push(await runStep("query via API", () => checkQueryThroughApi(api, defaultId)));
+      checks.push(await runStep("analyst boundary", () => checkAnalystBoundary(cfg, fetchImpl, defaultId)));
     }
     const expectAi = Boolean(env.ANTHROPIC_API_KEY?.trim() || env.OPENAI_API_KEY?.trim());
     checks.push(await runStep("ai flag", () => checkAiFlag(api, expectAi)));

@@ -1,5 +1,6 @@
-# CHouse UI lab: one CHouse UI, one memory-capped ClickHouse, a light query
-# load and a sample-data loader. Started by up.sh, which writes the .env file
+# CHouse UI lab: one CHouse UI, four memory-capped ClickHouse servers (one per
+# version under test, see seed/lib.ts LAB_SERVERS), a light query load on each
+# and a sample-data loader. Started by up.sh, which writes the .env file
 # this stack reads (random secrets per lab; there are deliberately no
 # defaults here). The same file runs in GitHub Codespaces, in CI
 # (.github/workflows/lab.yml) and locally:
@@ -8,6 +9,50 @@
 #   docker compose -f .devcontainer/lab/compose.yml down -v   # remove everything
 
 name: chouse-lab
+
+# Shared settings for the four ClickHouse servers and their load services.
+# Anchors live at the top so every service below can merge them.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-clickhouse: &clickhouse
+  restart: unless-stopped
+  environment:
+    CLICKHOUSE_USER: admin
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
+    # Lets the lab admin manage ClickHouse users and roles from CHouse UI.
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+  # Sized for the 2-CPU / 8 GB codespace; the caps keep each server well inside this limit.
+  mem_limit: 1024m
+  ulimits:
+    nofile:
+      soft: 262144
+      hard: 262144
+  healthcheck:
+    test: ["CMD-SHELL", "clickhouse-client --user admin --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 10s
+  configs:
+    - source: clickhouse_low_memory
+      target: /etc/clickhouse-server/config.d/zz-lab.xml
+  logging: *logging
+
+x-load: &load
+  image: ${CLICKHOUSE_IMAGE_26_5:-clickhouse/clickhouse-server:26.5-alpine}
+  restart: unless-stopped
+  environment:
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
+  entrypoint: ["/bin/sh", "/lab/load.sh"]
+  configs:
+    - source: load_script
+      target: /lab/load.sh
+  mem_limit: 256m
+  logging: *logging
 
 services:
   chouse-ui:
@@ -32,58 +77,65 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
-    logging: &logging
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  clickhouse:
-    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.5-alpine}
-    restart: unless-stopped
-    environment:
-      CLICKHOUSE_USER: admin
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
-      # Lets the lab admin manage ClickHouse users and roles from CHouse UI.
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-    # Sized for the 2-core / 8 GB codespace; the caps below keep ClickHouse
-    # well inside this limit.
-    mem_limit: 2560m
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --user admin --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
-    configs:
-      - source: clickhouse_low_memory
-        target: /etc/clickhouse-server/config.d/zz-lab.xml
     logging: *logging
+
+  # The four ClickHouse servers, one per version under test, each showing a
+  # different 3.18 connection-kind result (see WELCOME.md). Each one is a
+  # connection in CHouse UI (seed/lib.ts LAB_SERVERS). Every server runs the
+  # same config and gets the same sample data. The 26.5 server is the default
+  # connection. Sized for the 2-CPU / 8 GB codespace: each is capped at 1 GB,
+  # and the low-memory config keeps them well inside that.
+  clickhouse-26-5:
+    image: ${CLICKHOUSE_IMAGE_26_5:-clickhouse/clickhouse-server:26.5-alpine}
+    <<: *clickhouse
+    volumes:
+      - clickhouse-26-5-data:/var/lib/clickhouse
+  clickhouse-26-3:
+    image: ${CLICKHOUSE_IMAGE_26_3:-clickhouse/clickhouse-server:26.3.63.123-alpine}
+    <<: *clickhouse
+    volumes:
+      - clickhouse-26-3-data:/var/lib/clickhouse
+  clickhouse-25-8:
+    image: ${CLICKHOUSE_IMAGE_25_8:-clickhouse/clickhouse-server:25.8-alpine}
+    <<: *clickhouse
+    volumes:
+      - clickhouse-25-8-data:/var/lib/clickhouse
+  clickhouse-23-8:
+    image: ${CLICKHOUSE_IMAGE_23_8:-clickhouse/clickhouse-server:23.8-alpine}
+    <<: *clickhouse
+    volumes:
+      - clickhouse-23-8-data:/var/lib/clickhouse
 
   # Light, steady activity so Monitoring, Fleet and query history have
-  # something to show. Talks to ClickHouse directly (never through the CHouse
-  # API, which is rate limited and audited). Started by up.sh after the
+  # something to show on every server. Talks to ClickHouse directly (never
+  # through the CHouse API, which is rate limited and audited). One load
+  # service per server, named by its command (not by `environment:`, which
+  # would replace the anchor's whole environment); started by up.sh after the
   # sample data exists.
-  load:
-    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.5-alpine}
-    restart: unless-stopped
+  load-26-5:
+    <<: *load
+    command: ["clickhouse-26-5"]
     depends_on:
-      clickhouse:
+      clickhouse-26-5:
         condition: service_healthy
-    environment:
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
-    entrypoint: ["/bin/sh", "/lab/load.sh"]
-    configs:
-      - source: load_script
-        target: /lab/load.sh
-    mem_limit: 256m
-    logging: *logging
+  load-26-3:
+    <<: *load
+    command: ["clickhouse-26-3"]
+    depends_on:
+      clickhouse-26-3:
+        condition: service_healthy
+  load-25-8:
+    <<: *load
+    command: ["clickhouse-25-8"]
+    depends_on:
+      clickhouse-25-8:
+        condition: service_healthy
+  load-23-8:
+    <<: *load
+    command: ["clickhouse-23-8"]
+    depends_on:
+      clickhouse-23-8:
+        condition: service_healthy
 
   # One-shot loader (sample data plus example content for every area) and smoke check. Runs on the Bun that ships in
   # the CHouse image, so the lab pulls no extra image. Not started by `up`;
@@ -94,15 +146,19 @@ services:
     depends_on:
       chouse-ui:
         condition: service_healthy
-      clickhouse:
+      clickhouse-26-5:
+        condition: service_healthy
+      clickhouse-26-3:
+        condition: service_healthy
+      clickhouse-25-8:
+        condition: service_healthy
+      clickhouse-23-8:
         condition: service_healthy
     entrypoint: ["bun", "run"]
     command: ["/lab/seed.ts"]
     working_dir: /lab
     environment:
       LAB_CHOUSE_URL: http://chouse-ui:5521
-      LAB_CLICKHOUSE_URL: http://clickhouse:8123
-      LAB_CLICKHOUSE_HOST: ${LAB_CLICKHOUSE_HOST:-clickhouse}
       LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:?run up.sh to generate the lab secrets}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run up.sh to generate the lab secrets}
       # Optional; empty means "AI off". Passed through from the codespace's
@@ -123,7 +179,10 @@ services:
 
 volumes:
   chouse-data:
-  clickhouse-data:
+  clickhouse-26-5-data:
+  clickhouse-26-3-data:
+  clickhouse-25-8-data:
+  clickhouse-23-8-data:
 
 configs:
   load_script:
