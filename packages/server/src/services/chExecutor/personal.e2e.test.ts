@@ -39,7 +39,7 @@ import {
   removeBinding,
   suspendBindingsOf,
 } from "../../rbac/services/clickhouseBindings";
-import { checkIdentityChange, switchIdentity } from "../../rbac/services/connectionIdentity";
+import { checkIdentityChange, connectionReadiness, createConnectionWithIdentity, switchIdentity } from "../../rbac/services/connectionIdentity";
 import { createConnection, getConnectionById, getUserConnections } from "../../rbac/services/connections";
 import { ClickHouseService } from "../clickhouse";
 import { checkSavedConnection } from "./health";
@@ -167,6 +167,20 @@ describe.skipIf(SERVERS.length === 0)("personal connections on a real server (AD
       });
 
       describe("the self-test and the switch", () => {
+        it("creates a personal connection directly with one empty user, only on a build that qualifies, writing nothing otherwise (ADR 0034)", async () => {
+          const { result, connection } = await createConnectionWithIdentity({ name: `personal-created-${server.label}`, host, port, sslEnabled: false, ...change() } as Parameters<typeof createConnectionWithIdentity>[0], ROOT);
+          expect(result.ok).toBe(qualifies);
+          if (qualifies) {
+            expect(connection).toMatchObject({ identityMode: "personal", username: "svc_personal", systemRole: SYSTEM, impersonationRole: IMPERSONATE, identityHealth: "ok" });
+            // No active link yet: created, but nobody can query it.
+            expect((await connectionReadiness([connection!])).get(connection!.id)?.state).toBe("none");
+            await rawRun(sql`DELETE FROM rbac_clickhouse_connections WHERE id = ${connection!.id}`);
+          } else {
+            expect(connection).toBeNull();
+          }
+          expect(await rawAll(sql`SELECT 1 FROM rbac_clickhouse_connections WHERE name = ${`personal-created-${server.label}`}`)).toEqual([]);
+        });
+
         it("a check saves nothing, and passes only on a build that qualifies", async () => {
           const { result } = await checkIdentityChange(connectionId, change());
           const failed = result.verdict.checks.filter((check) => !check.ok).map((check) => check.id);

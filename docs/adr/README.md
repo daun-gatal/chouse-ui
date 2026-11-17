@@ -51,13 +51,14 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0024](0024-ai-platform-v2.md) | AI Platform v2: Durable Streaming Runs, Approved Actions, Memory, Auto-triage, Analysis Sandbox and Agent Evals | Accepted |
 | [0025](0025-ai-write-tiers-assistant-v3-chobi.md) | AI Write Tiers, CHouse Assistant v3 and Chobi | Accepted |
 | [0026](0026-shared-notify-layer-chat-actions.md) | Shared Notify Layer, Chat Apps and Actions from Chat | Accepted |
-| [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted (amended by 0031, 0033) |
+| [0027](0027-connection-privilege-check.md) | Save a Connection Only When Its ClickHouse User Has Every Privilege | Accepted (amended by 0031, 0033, 0034) |
 | [0028](0028-mcp-oauth.md) | Sign In to MCP with OAuth | Accepted |
 | [0029](0029-upgrade-check.md) | Upgrade Check: What a ClickHouse Upgrade Changes for Your Workload | Accepted |
 | [0030](0030-clickhouse-parses-sql-access-checks.md) | ClickHouse Parses the SQL That Data Access Rules Check | Accepted (amended by 0033) |
 | [0031](0031-optional-clickhouse-access-admin.md) | ClickHouse Access Admin Is Optional When Saving a Connection | Accepted (amended by 0033) |
 | [0032](0032-codespaces-lab.md) | A Private Lab in the Visitor's Own GitHub Codespace | Accepted |
-| [0033](0033-every-statement-gets-a-clickhouse-identity.md) | Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections | Accepted |
+| [0033](0033-every-statement-gets-a-clickhouse-identity.md) | Every Statement Gets a ClickHouse Identity: One Executor, an Optional Role Ceiling, and Personal Connections | Accepted (amended by 0034) |
+| [0034](0034-one-home-for-the-clickhouse-login.md) | One Home for a Connection's ClickHouse Login, and Any Kind at Creation | Accepted |
 
 ## Conventions
 

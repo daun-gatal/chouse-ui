@@ -28,12 +28,14 @@ const SUPPORT = {
 };
 const MINE = [{ connectionId: "c1", connectionName: "prod", kind: "personal", runsAs: { type: "user", name: "alice" }, state: "ready", detail: null, limits: ["x"] }];
 const mockCallerIdentities = mock(async (_userId: string, _superAdmin: boolean) => MINE);
+const mockCreate = mock(async (): Promise<{ result: unknown; connection: unknown }> => ({ result: { ok: true, verdict: { ok: true, reason: null, checks: [], serverVersion: "26.5.7.64" }, reason: null }, connection: { id: "new-1", name: "created" } }));
 mock.module("../services/connectionIdentity", () => ({
   ceilingSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_system;"],
   personalSetupStatements: () => ["CREATE ROLE IF NOT EXISTS chouse_impersonate;"],
   connectionKindSupport: async () => SUPPORT,
   callerIdentities: mockCallerIdentities,
   checkIdentityChange: mockCheck,
+  createConnectionWithIdentity: mockCreate,
   getIdentity: async () => IDENTITY,
   getRoleMap: mockGetRoleMap,
   setAccessContact: mockSetContact,
@@ -42,6 +44,16 @@ mock.module("../services/connectionIdentity", () => ({
 }));
 mock.module("../../services/chExecutor/health", () => ({ checkSavedConnection: mockRecheck }));
 mock.module("../services/rbac", () => ({ createAuditLogWithContext: mockAudit }));
+
+/** The one audit entry written for a refused attempt: status failure, and never a password. */
+function expectRefusalAudit(action: string): Record<string, unknown> {
+  expect(mockAudit).toHaveBeenCalledTimes(1);
+  const [, written, , entry] = mockAudit.mock.calls[0] as unknown as [unknown, string, string, { details: Record<string, unknown>; status: string }];
+  expect(written).toBe(action);
+  expect(entry.status).toBe("failure");
+  expect(JSON.stringify(entry)).not.toContain("pw");
+  return entry.details;
+}
 
 let roles = ["super_admin"];
 /** True for a request made with a token that names a scope. */
@@ -67,11 +79,13 @@ app.onError((error, c) => (error instanceof AppError ? c.json({ success: false, 
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, headers: { "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 const CHANGE = { identityMode: "shared_ceiling", username: "svc_ceiling", password: "pw", systemRole: "chouse_system" };
+const CREATE = { ...CHANGE, name: "prod", host: "ch.internal", port: 8443, sslEnabled: true, database: "analytics" };
 
 describe("connection identity routes (ADR 0033 §5, §6)", () => {
   beforeEach(() => {
     roles = ["super_admin"];
-    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockGetRoleMap, mockSetContact, mockRecheck, mockAudit]) m.mockClear();
+    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockGetRoleMap, mockSetContact, mockRecheck, mockAudit, mockCreate]) m.mockClear();
+    mockCreate.mockImplementation(async () => ({ result: PASS, connection: { id: "new-1", name: "created" } }));
     mockGetConnectionById.mockImplementation(async () => CONNECTION);
     mockSwitch.mockImplementation(async () => PASS);
   });
@@ -87,6 +101,8 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
         ["GET", "/connections/c1/identity/role-map", undefined],
         ["PUT", "/connections/c1/identity/role-map", { entries: [] }],
         ["POST", "/connections/c1/identity/recheck", undefined],
+        ["POST", "/connections/identity", CREATE],
+        ["POST", "/connections/identity/check", CHANGE],
       ] as const) {
         const res = await app.request(path, json(method, body));
         expect({ method, path, status: res.status }).toEqual({ method, path, status: 403 });
@@ -94,7 +110,7 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     } finally {
       scopedToken = false;
     }
-    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit]) expect(m).not.toHaveBeenCalled();
+    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit, mockCreate]) expect(m).not.toHaveBeenCalled();
   });
 
   it("tells anyone signed in what their own statements run as, and passes whether they are a super admin", async () => {
@@ -130,14 +146,14 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     expect(body.data.support).toEqual(SUPPORT);
   });
 
-  it("answers 422 KIND_UNSUPPORTED_ON_SERVER when the server cannot run the kind, and audits nothing", async () => {
+  it("answers 422 KIND_UNSUPPORTED_ON_SERVER when the server cannot run the kind, and audits the refusal", async () => {
     const reason = "ClickHouse 24.3.18.7 does not take a ClickHouse role on a request. The role ceiling needs ClickHouse 24.4 or newer.";
     mockSwitch.mockImplementation(async () => ({ ok: false, unsupported: true, reason, verdict: { ok: false, reason, checks: [], serverVersion: "24.3.18.7" }, support: SUPPORT }));
     const res = await app.request("/connections/c1/identity", json("PUT", CHANGE));
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toMatchObject({ code: "KIND_UNSUPPORTED_ON_SERVER", message: reason });
-    expect(mockAudit).not.toHaveBeenCalled();
+    expectRefusalAudit("connection.identity_switched");
   });
 
   it("answers only a super admin, on every route, and does nothing for anyone else", async () => {
@@ -151,12 +167,14 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
         ["GET", "/connections/c1/identity/role-map", undefined],
         ["PUT", "/connections/c1/identity/role-map", { entries: [] }],
         ["POST", "/connections/c1/identity/recheck", undefined],
+        ["POST", "/connections/identity", CREATE],
+        ["POST", "/connections/identity/check", CHANGE],
       ] as const) {
         const res = await app.request(path, json(method, body));
         expect({ who, method, path, status: res.status }).toEqual({ who, method, path, status: 403 });
       }
     }
-    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit]) expect(m).not.toHaveBeenCalled();
+    for (const m of [mockSwitch, mockCheck, mockSetRoleMap, mockSetContact, mockRecheck, mockAudit, mockCreate]) expect(m).not.toHaveBeenCalled();
   });
 
   it("shows the kind, the role map and the statements for the ClickHouse administrator", async () => {
@@ -187,14 +205,15 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     expect(JSON.stringify(entry)).not.toContain("pw");
   });
 
-  it("answers 422 with the failed checks when the login does not pass, and audits nothing", async () => {
+  it("answers 422 with the failed checks when the login does not pass, and audits the refusal with the failed check", async () => {
     mockSwitch.mockImplementation(async () => FAIL);
     const res = await app.request("/connections/c1/identity", json("PUT", CHANGE));
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toMatchObject({ code: "IDENTITY_CHECK_FAILED", message: "svc holds a direct grant" });
     expect(body.error.details.verdict.checks[0].id).toBe("empty_login");
-    expect(mockAudit).not.toHaveBeenCalled();
+    const details = expectRefusalAudit("connection.identity_switched");
+    expect(details.failedCheck).toBe("empty_login");
   });
 
   it("replaces the role map and audits the before and after", async () => {
@@ -222,5 +241,53 @@ describe("connection identity routes (ADR 0033 §5, §6)", () => {
     expect(res.status).toBe(200);
     expect(mockRecheck).toHaveBeenCalledWith("c1");
     expect((await res.json()).data.verdict).toMatchObject({ ok: true });
+  });
+
+  describe("creating a connection with its kind (ADR 0034)", () => {
+    it("creates it, answers 201 with the connection and the checks, and audits the kind and login without the password", async () => {
+      const res = await app.request("/connections/identity", json("POST", CREATE));
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.data.connection.id).toBe("new-1");
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      const [, action, actor, entry] = mockAudit.mock.calls[0] as unknown as [unknown, string, string, { details: Record<string, unknown>; status: string; resourceId: string }];
+      expect(action).toBe("connection.create");
+      expect(actor).toBe("u1");
+      expect(entry.resourceId).toBe("new-1");
+      expect(entry.details).toMatchObject({ identityMode: "shared_ceiling", username: "svc_ceiling", systemRole: "chouse_system", serverVersion: "26.5.7.64" });
+      expect(JSON.stringify(entry)).not.toContain('"pw"');
+    });
+
+    it("creates nothing when a check fails: 422 with the checks, and a failure audit", async () => {
+      mockCreate.mockImplementation(async () => ({ result: FAIL, connection: null }));
+      const res = await app.request("/connections/identity", json("POST", CREATE));
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("IDENTITY_CHECK_FAILED");
+      expect(expectRefusalAudit("connection.create").failedCheck).toBe("empty_login");
+    });
+
+    it("refuses a field it does not know instead of ignoring it", async () => {
+      const res = await app.request("/connections/identity", json("POST", { ...CREATE, isDefault: true }));
+      expect(res.status).toBe(400);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it("refuses a personal access token or agent grant: a browser session only", async () => {
+      withToken = true;
+      try {
+        const res = await app.request("/connections/identity", json("POST", CREATE));
+        expect(res.status).toBe(403);
+        expect(mockCreate).not.toHaveBeenCalled();
+      } finally {
+        withToken = false;
+      }
+    });
+
+    it("checks a login for a connection not created yet, saving nothing", async () => {
+      const res = await app.request("/connections/identity/check", json("POST", CHANGE));
+      expect(res.status).toBe(200);
+      expect(mockCheck).toHaveBeenCalledWith(null, expect.objectContaining({ identityMode: "shared_ceiling", username: "svc_ceiling" }));
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
   });
 });

@@ -38,9 +38,9 @@ It needs ClickHouse **24.4 or newer**: older servers do not take a role on a req
 
 ## Set it up
 
-A switch **replaces** the ClickHouse user; it does not edit the one in use. The current user keeps working until you save.
+Everything about a connection's ClickHouse user is on one tab: **Admin › Connections**, **Edit** (or **New connection**), then **ClickHouse login**. It holds the kind, host, port, TLS, user, password, default database, the system role and the access contact. **Test** runs every check for the kind you picked and saves nothing; **Save** (or **Create**) runs the same checks first and stores nothing unless all pass.
 
-1. **In ClickHouse, as an administrator**, create the roles and a new, empty user. The Identity panel shows these statements with your role names filled in:
+1. **In ClickHouse, as an administrator**, create the roles and a user with no grants of its own. **Show the script for the admin** on the ClickHouse login tab gives these statements with your names filled in (never the password):
 
 ```sql
 CREATE ROLE IF NOT EXISTS chouse_system;
@@ -58,11 +58,14 @@ GRANT chouse_system, analyst_ro TO svc_chouse_ceiling;
 ALTER USER svc_chouse_ceiling DEFAULT ROLE NONE;
 ```
 
-2. **In Admin › Connections**, open **ClickHouse login** on the connection. Fill in the role map: one ClickHouse role per CHouse role that should use the connection.
-3. Choose **Role ceiling**, enter the new user, its password and the system role, and press **Check**. Nothing is saved yet.
-4. When every check passes, press **Save**. The kind, the user and the role names are stored together. Have the ClickHouse administrator drop the old user afterwards.
+2. **New connection:** choose **Role ceiling** as the kind, enter that user, its password and the system role, press **Test**, then **Create**. One ClickHouse user is enough; there is no need to create one with every privilege first.
 
-![The ClickHouse login panel of a role-ceiling connection](/docs/img/app/admin-connection-identity.jpg "A role-ceiling connection: its kind, user, system role and access contact, with the health line and Check now")
+   ![A new role-ceiling connection on the ClickHouse login tab](/docs/img/app/admin-connection-create.jpg "New connection, Role ceiling chosen: the hint says the user needs no grants of its own, with the script for the administrator, Test and Create")
+
+   **Existing shared-login connection:** choose **Role ceiling** on its ClickHouse login tab. The hint names the current user when it has grants of its own and offers two ways: enter a **new empty user** (recommended: the current user keeps working until you save), or have the administrator **empty the current user** (queries fail from that moment until you save). Press **Test**, then **Save**. The kind, the user and the role names are stored together.
+3. **Who can query** opens next. Map each CHouse role that should use the connection to a ClickHouse role, including your own: until its role is mapped, a person's statements are refused. The Connections list shows how many roles are mapped, and a connection nobody can query yet cannot be made the default.
+
+![The ClickHouse login tab of a role-ceiling connection](/docs/img/app/admin-connection-identity.jpg "A role-ceiling connection: its kind, server, user, default database, system role and access contact, with Test and Save")
 
 ![The role map](/docs/img/app/admin-connection-role-map.jpg "One ClickHouse role per CHouse role; a role that is not mapped is refused on the connection")
 
@@ -76,7 +79,7 @@ The Explorer lists the databases and tables the role can see in ClickHouse.
 
 ## Which kinds a server can run
 
-When you open **ClickHouse login**, CHouse UI asks the connection's server which kinds it can run, and blocks the ones it cannot before you prepare anything:
+When you open the **ClickHouse login** tab, CHouse UI asks the connection's server which kinds it can run, and blocks the ones it cannot before you prepare anything:
 
 | Kind | Needs | When the server lacks it |
 | --- | --- | --- |
@@ -92,7 +95,7 @@ The kind a connection already has is never disabled, so the login of a connectio
 
 ## What CHouse UI checks
 
-The checks run before a switch, when you press **Check now**, and every five minutes. A connection that fails them, or whose last check is more than 15 minutes old, **refuses every request** until it passes again, and says why.
+The checks run before a switch, when you press **Re-run checks** on the ClickHouse login tab, and every five minutes. A connection that fails them, or whose last check is more than 15 minutes old, **refuses every request** until it passes again, and says why.
 
 | Check | Fails when |
 | --- | --- |
@@ -116,7 +119,7 @@ Only these checks change a connection's health. An error from a statement someon
 
 A CHouse role that is mapped on any connection decides what ClickHouse lets its holder do there. Only a **super admin** can assign such a role to an account, change an account that holds one or reset its password, and edit a role map or change a connection's kind or login. Once any role is mapped, changing the default role SSO gives or a provider's role mapping also needs a super admin. Each change is in the [audit log](/docs/audit-log/) (`connection.identity_switched`, `connection.role_map_changed`).
 
-On a role-ceiling connection the host, port, TLS setting, user and password are changed only in the Identity panel, where the checks run again.
+On a role-ceiling connection the host, port, TLS setting, user, password and default database are changed only on the ClickHouse login tab, by a super admin, where the checks run again. Admins see the tab read-only. A save that races another change to the same connection is refused with "This connection was changed by someone else" instead of overwriting it.
 
 ## For the ClickHouse administrator
 
@@ -136,7 +139,7 @@ Observed on ClickHouse 24.4 and 26.5:
 
 ## Switch back
 
-Choose **Shared login** in the Identity panel and enter a ClickHouse user that holds the [privileges a shared login needs](/docs/connection-privileges/). It must be a different user from the empty one.
+Choose **Shared login** on the ClickHouse login tab and enter a ClickHouse user that holds the [privileges a shared login needs](/docs/connection-privileges/); **Test** lists any that are missing. It must be a different user from the empty one. The role map is kept, unused, in case you switch back, and the data access policies decide what each person sees again.
 
 ## Related
 

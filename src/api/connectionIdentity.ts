@@ -10,7 +10,7 @@
  */
 
 import { api, ApiError } from "./client";
-import type { ConnectionPrivilegeReport } from "./rbac";
+import type { ClickHouseConnection, ConnectionPrivilegeReport } from "./rbac";
 
 export const IDENTITY_MODE_SHARED = "shared";
 export const IDENTITY_MODE_CEILING = "shared_ceiling";
@@ -113,6 +113,49 @@ export interface IdentityChange {
   host?: string;
   port?: number;
   sslEnabled?: boolean;
+  /** The default database, part of the login on every kind: absent keeps the stored one, empty or null clears it. */
+  database?: string | null;
+}
+
+/** A role-ceiling or personal connection created with its login in one request (ADR 0034). */
+export interface CreateIdentityConnectionInput extends IdentityChange {
+  name: string;
+  host: string;
+  port: number;
+  sslEnabled: boolean;
+  /** Required: a login with no grants of its own must still not be open to anyone who reaches the server. */
+  password: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreatedIdentityConnection {
+  connection: ClickHouseConnection;
+  check: IdentityCheckResult;
+}
+
+/** Why an account's statements would be refused on a connection, or `ready`. */
+export type CallerAccessState =
+  | "ready"
+  | "no_usable_role"
+  | "no_link"
+  | "pending_grant"
+  | "suspended"
+  | "disabled"
+  | "connection_unavailable";
+
+/** Which ClickHouse identity the signed-in account's statements carry on one connection. */
+export interface CallerIdentity {
+  connectionId: string;
+  connectionName: string;
+  /** `shared`, `shared_ceiling`, `personal`, or a kind this build does not know. */
+  kind: string;
+  /** What ClickHouse sees: the login, the role named on each request, or the account's own user. Null when there is none. */
+  runsAs: { type: "login" | "role" | "user"; name: string } | null;
+  state: CallerAccessState;
+  /** What the person is told when a statement is refused; null when `ready`. */
+  detail: string | null;
+  /** Statement forms the connection refuses for everyone, in words. */
+  limits: string[];
 }
 
 export type IdentityCheckId =
@@ -168,6 +211,28 @@ export interface IdentityRecheckResult {
 
 function base(connectionId: string): string {
   return `/rbac/connections/${encodeURIComponent(connectionId)}/identity`;
+}
+
+/**
+ * Creates a role-ceiling or personal connection. The checks run first; when
+ * one fails the server answers 422 `IDENTITY_CHECK_FAILED` (or
+ * `KIND_UNSUPPORTED_ON_SERVER`) and creates nothing: read the result off the
+ * thrown error with `identityCheckFromError`. 409 `CONNECTION_EXISTS` when the
+ * same login and kind is already a connection.
+ */
+export function createIdentityConnection(input: CreateIdentityConnectionInput): Promise<CreatedIdentityConnection> {
+  return api.post<CreatedIdentityConnection>("/rbac/connections/identity", input);
+}
+
+/** Runs the checks of a create for a login not saved yet. Saves nothing. */
+export function checkNewConnectionIdentity(change: IdentityChange): Promise<IdentityCheckResult> {
+  return api.post<IdentityCheckResult>("/rbac/connections/identity/check", change);
+}
+
+/** The signed-in account's own identity on each connection it can use, with why it would be refused. */
+export async function getMyConnectionIdentities(): Promise<CallerIdentity[]> {
+  const result = await api.get<{ identities: CallerIdentity[] }>("/rbac/connections/identity/mine");
+  return result.identities;
 }
 
 export function getConnectionIdentity(connectionId: string): Promise<ConnectionIdentityDetail> {

@@ -4,13 +4,14 @@
  * Manages ClickHouse server connections with encrypted password storage.
  */
 
-import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, like, ne, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { all, str } from '../../services/observe/db';
 import { ephemeralExecutor, identityOfConnection, serviceActor, type ChExecutor } from '../../services/chExecutor';
 import { checkConnectionPrivileges, type PrivilegeReport } from '../../services/connectionPrivileges';
+import { AppError } from '../../types';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,7 +481,13 @@ export async function listConnections(options?: {
  */
 export async function updateConnection(
   id: string,
-  input: Partial<ConnectionInput> & { isDefault?: boolean; isActive?: boolean }
+  input: Partial<ConnectionInput> & { isDefault?: boolean; isActive?: boolean },
+  /**
+   * When set, the write applies only if the row still has this kind, user and
+   * update time: a login change checked against one row must not land on a
+   * row someone switched meanwhile (ADR 0034). Throws `CONNECTION_CHANGED`.
+   */
+  expect?: { identityMode: string; username: string; updatedAt: Date },
 ): Promise<ConnectionResponse | null> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
@@ -507,21 +514,30 @@ export async function updateConnection(
     updateData.passwordEncrypted = input.password ? encryptPassword(input.password) : null;
   }
 
-  // Handle default flag
-  if (input.isDefault === true) {
-    // Remove default from all other connections first
-    await db.update(schema.clickhouseConnections)
-      .set({ isDefault: false, updatedAt: now })
-      .where(eq(schema.clickhouseConnections.isDefault, true));
+  if (input.isDefault === true) updateData.isDefault = true;
+  else if (input.isDefault === false) updateData.isDefault = false;
 
-    updateData.isDefault = true;
-  } else if (input.isDefault === false) {
-    updateData.isDefault = false;
+  const table = schema.clickhouseConnections;
+  if (expect) {
+    const written = await db.update(table)
+      .set(updateData)
+      .where(and(eq(table.id, id), eq(table.identityMode, expect.identityMode), eq(table.username, expect.username), eq(table.updatedAt, expect.updatedAt)))
+      .returning({ id: table.id });
+    if (written.length === 0) {
+      throw new AppError('This connection was changed by someone else while the checks ran. Reload it and try again.', 'CONNECTION_CHANGED', 'validation', 409);
+    }
+  } else {
+    await db.update(table)
+      .set(updateData)
+      .where(eq(table.id, id));
   }
 
-  await db.update(schema.clickhouseConnections)
-    .set(updateData)
-    .where(eq(schema.clickhouseConnections.id, id));
+  // Only once this row is the default, and never on this row: a refused or conditional write leaves the old default in place.
+  if (input.isDefault === true) {
+    await db.update(table)
+      .set({ isDefault: false, updatedAt: now })
+      .where(and(eq(table.isDefault, true), ne(table.id, id)));
+  }
 
   return getConnectionById(id);
 }

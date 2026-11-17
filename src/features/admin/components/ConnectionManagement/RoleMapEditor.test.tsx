@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,7 +73,7 @@ describe("RoleMapEditor", () => {
     render(<RoleMapEditor connectionId="conn-1" />);
     await screen.findByText("Analyst");
 
-    const save = screen.getByRole("button", { name: "Save role map" });
+    const save = screen.getByRole("button", { name: "Save mappings" });
     expect(save).toHaveProperty("disabled", true);
     await user.type(input("Viewer"), "ch_viewer");
     expect(save).toHaveProperty("disabled", false);
@@ -89,7 +89,7 @@ describe("RoleMapEditor", () => {
     await user.type(input("Viewer"), "ch-viewer");
     expect(screen.getByText(/Use letters, digits and underscores/)).toBeTruthy();
     expect(input("Viewer").getAttribute("aria-invalid")).toBe("true");
-    expect(screen.getByRole("button", { name: "Save role map" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save mappings" })).toHaveProperty("disabled", true);
 
     await user.clear(input("Viewer"));
     await user.type(input("Viewer"), "2viewer");
@@ -98,7 +98,7 @@ describe("RoleMapEditor", () => {
     await user.clear(input("Viewer"));
     await user.type(input("Viewer"), "ch_viewer");
     expect(screen.queryByText(/Use letters, digits and underscores/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Save role map" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Save mappings" })).toHaveProperty("disabled", false);
     expect(setRoleMap).not.toHaveBeenCalled();
   });
 
@@ -109,7 +109,7 @@ describe("RoleMapEditor", () => {
     await screen.findByText("Analyst");
 
     await user.type(input("Viewer"), " ch_viewer ");
-    await user.click(screen.getByRole("button", { name: "Save role map" }));
+    await user.click(screen.getByRole("button", { name: "Save mappings" }));
 
     await waitFor(() => expect(setRoleMap).toHaveBeenCalledTimes(1));
     expect(setRoleMap).toHaveBeenCalledWith("conn-1", [
@@ -119,7 +119,7 @@ describe("RoleMapEditor", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(toastSuccess).toHaveBeenCalledWith("Role map saved");
     expect(input("Viewer").value).toBe("ch_viewer");
-    expect(screen.getByRole("button", { name: "Save role map" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save mappings" })).toHaveProperty("disabled", true);
   });
 
   it("unmaps a role when its name is cleared", async () => {
@@ -128,7 +128,7 @@ describe("RoleMapEditor", () => {
     await screen.findByText("Analyst");
 
     await user.clear(input("Analyst"));
-    await user.click(screen.getByRole("button", { name: "Save role map" }));
+    await user.click(screen.getByRole("button", { name: "Save mappings" }));
 
     await waitFor(() => expect(setRoleMap).toHaveBeenCalledWith("conn-1", []));
     expect(await screen.findByText("3 roles are not mapped; their accounts are refused on this connection.")).toBeTruthy();
@@ -142,13 +142,13 @@ describe("RoleMapEditor", () => {
     await screen.findByText("Analyst");
 
     await user.type(input("Viewer"), "ch_viewer");
-    await user.click(screen.getByRole("button", { name: "Save role map" }));
+    await user.click(screen.getByRole("button", { name: "Save mappings" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe("ch_viewer is not a role on this server.");
     expect(toastError).toHaveBeenCalledWith("Couldn't save the role map", { description: "ch_viewer is not a role on this server." });
     expect(onSaved).not.toHaveBeenCalled();
     expect(input("Viewer").value).toBe("ch_viewer");
-    expect(screen.getByRole("button", { name: "Save role map" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Save mappings" })).toHaveProperty("disabled", false);
   });
 
   it("offers to try again when loading fails", async () => {
@@ -157,7 +157,7 @@ describe("RoleMapEditor", () => {
     render(<RoleMapEditor connectionId="conn-1" />);
 
     expect((await screen.findByRole("alert")).textContent).toContain("Only a super admin can change how a connection reaches ClickHouse.");
-    expect(screen.queryByRole("button", { name: "Save role map" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save mappings" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Analyst")).toBeTruthy();
@@ -170,5 +170,68 @@ describe("RoleMapEditor", () => {
     render(<RoleMapEditor connectionId="conn-1" />);
 
     expect(await screen.findByText("There are no CHouse roles to map.")).toBeTruthy();
+  });
+
+  it("counts the people of each role, marks the viewer's own and warns how many are refused", async () => {
+    listRoles.mockResolvedValue([
+      { ...ROLES[0], userCount: 2 },
+      { ...ROLES[1], userCount: 14 },
+      { ...ROLES[2], userCount: 31 },
+    ]);
+    render(<RoleMapEditor connectionId="conn-1" viewerRoles={["super_admin"]} />);
+    await screen.findByText("Analyst");
+
+    expect(screen.getByText("People")).toBeTruthy();
+    expect(screen.getByText("31")).toBeTruthy();
+    expect(screen.getByText("You")).toBeTruthy();
+    expect(screen.getByText("33 people can't query yet")).toBeTruthy();
+    expect(screen.getByText(/Unmapped roles are refused, including your own\./)).toBeTruthy();
+  });
+
+  it("leaves the viewer out of the warning when their role is mapped", async () => {
+    listRoles.mockResolvedValue([{ ...ROLES[1], userCount: 1 }, { ...ROLES[2], userCount: 1 }]);
+    render(<RoleMapEditor connectionId="conn-1" viewerRoles={["analyst"]} />);
+    await screen.findByText("Analyst");
+
+    expect(screen.getByText("1 person can't query yet")).toBeTruthy();
+    expect(screen.getByText(/Unmapped roles are refused\.$/)).toBeTruthy();
+  });
+
+  it("reports unsaved names and saves through the panel's handle", async () => {
+    const user = userEvent.setup();
+    const onDirtyChange = vi.fn();
+    const saveRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    render(<RoleMapEditor connectionId="conn-1" onDirtyChange={onDirtyChange} saveRef={saveRef} />);
+    await screen.findByText("Analyst");
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    await user.type(input("Viewer"), "ch_viewer");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    let saved = false;
+    await act(async () => {
+      saved = (await saveRef.current?.()) ?? false;
+    });
+    expect(saved).toBe(true);
+    expect(setRoleMap).toHaveBeenCalledWith("conn-1", [
+      { roleId: "r-analyst", clickhouseRole: "ch_analyst" },
+      { roleId: "r-viewer", clickhouseRole: "ch_viewer" },
+    ]);
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("refuses to save an invalid name through the panel's handle", async () => {
+    const user = userEvent.setup();
+    const saveRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    render(<RoleMapEditor connectionId="conn-1" saveRef={saveRef} />);
+    await screen.findByText("Analyst");
+
+    await user.type(input("Viewer"), "1bad");
+    let saved = true;
+    await act(async () => {
+      saved = (await saveRef.current?.()) ?? true;
+    });
+    expect(saved).toBe(false);
+    expect(setRoleMap).not.toHaveBeenCalled();
   });
 });

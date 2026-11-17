@@ -1,6 +1,8 @@
 /**
  * Connection kinds and the role ceiling (ADR 0033 §5, §6), super admin only.
  *
+ *   POST /connections/identity                create a role-ceiling or personal connection (ADR 0034)
+ *   POST /connections/identity/check          the same checks for a connection not created yet; saves nothing
  *   GET  /connections/:id/identity            kind, role names, health, role map, setup statements
  *   POST /connections/:id/identity/check      run the checks against a login; saves nothing
  *   PUT  /connections/:id/identity            the switch: kind, login and role names in one write
@@ -21,7 +23,7 @@ import { zValidator } from '@hono/zod-validator';
 import { checkSavedConnection } from '../../services/chExecutor/health';
 import { AppError, requireParam } from '../../types';
 import { getClientIp, getRbacUser, rbacAuthMiddleware, refuseScopedToken, requireJwtSession } from '../middleware';
-import { AUDIT_ACTIONS } from '../schema/base';
+import { AUDIT_ACTIONS, type AuditAction } from '../schema/base';
 import {
   callerIdentities,
   ceilingSetupStatements,
@@ -29,6 +31,7 @@ import {
   checkIdentityChange,
   connectionKindSupport,
   getIdentity,
+  createConnectionWithIdentity,
   getRoleMap,
   setAccessContact,
   setRoleMap,
@@ -50,7 +53,17 @@ const changeSchema = z.object({
   host: z.string().min(1).max(255).optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
   sslEnabled: z.boolean().optional(),
+  database: z.string().max(255).nullish(),
 });
+
+/** A connection created with its kind: the login fields plus a name. Strict, so a typo is refused, not ignored. */
+const createSchema = changeSchema.extend({
+  name: z.string().min(1).max(255),
+  host: z.string().min(1).max(255),
+  port: z.coerce.number().int().min(1).max(65535),
+  sslEnabled: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+}).strict();
 
 const roleMapSchema = z.object({
   entries: z.array(z.object({ roleId: z.string().min(1).max(255), clickhouseRole: z.string().min(1).max(128) })).max(500),
@@ -80,6 +93,51 @@ function refused(c: Context, result: IdentityCheckResult): Response {
   const code = result.unsupported ? 'KIND_UNSUPPORTED_ON_SERVER' : 'IDENTITY_CHECK_FAILED';
   return c.json({ success: false, error: { code, message: result.reason ?? 'The login did not pass the checks.', details: result } }, 422);
 }
+
+/** A refused create or switch is recorded too: who tried which login for which kind, and the check that failed. Never the password. */
+async function auditRefusal(c: Context, actor: string, action: AuditAction, resourceId: string | undefined, details: Record<string, unknown>, result: IdentityCheckResult): Promise<void> {
+  const failed = result.verdict.checks.find((check) => !check.ok);
+  await createAuditLogWithContext(c, action, actor, {
+    resourceType: 'connection',
+    resourceId,
+    details: { ...details, failedCheck: failed?.id ?? (result.privileges && !result.privileges.ok ? 'privileges' : 'connect'), reason: result.reason?.slice(0, 300) ?? null },
+    ipAddress: getClientIp(c),
+    status: 'failure',
+  });
+}
+
+/**
+ * Create a connection that is role-ceiling or personal from the start. The
+ * same checks as a switch run first; on success one insert writes the row
+ * with its kind and verdict. Registered before `/:id/identity`.
+ */
+connectionIdentityRoutes.post('/identity', rbacAuthMiddleware, zValidator('json', createSchema), async (c) => {
+  // It stores a ClickHouse password and decides whose grants every statement runs with: a browser session only.
+  requireJwtSession(c);
+  const actor = requireSuperAdmin(c);
+  const input = c.req.valid('json');
+  const summary = { name: input.name, host: input.host, port: input.port, identityMode: input.identityMode, username: input.username, systemRole: input.systemRole ?? null, impersonationRole: input.impersonationRole ?? null };
+  const { result, connection } = await createConnectionWithIdentity(input, actor);
+  if (!connection) {
+    await auditRefusal(c, actor, AUDIT_ACTIONS.CONNECTION_CREATE, undefined, summary, result);
+    return refused(c, result);
+  }
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_CREATE, actor, {
+    resourceType: 'connection',
+    resourceId: connection.id,
+    details: { operation: 'create', connectionName: connection.name, ...summary, serverVersion: result.verdict.serverVersion },
+    ipAddress: getClientIp(c),
+    status: 'success',
+  });
+  return c.json({ success: true, data: { connection, check: result } }, 201);
+});
+
+/** The checks of POST /identity for a connection not created yet. Saves nothing. */
+connectionIdentityRoutes.post('/identity/check', rbacAuthMiddleware, zValidator('json', changeSchema), async (c) => {
+  requireSuperAdmin(c);
+  const { result } = await checkIdentityChange(null, c.req.valid('json'));
+  return c.json({ success: true, data: result });
+});
 
 /**
  * Which ClickHouse identity the caller's own statements carry on each
@@ -124,7 +182,10 @@ connectionIdentityRoutes.put('/:id/identity', rbacAuthMiddleware, zValidator('js
   const connection = await load(c);
   const change = c.req.valid('json');
   const result = await switchIdentity(connection.id, change);
-  if (!result.ok) return refused(c, result);
+  if (!result.ok) {
+    await auditRefusal(c, actor, AUDIT_ACTIONS.CONNECTION_IDENTITY_SWITCHED, connection.id, { name: connection.name, from: connection.identityMode, to: change.identityMode, username: change.username }, result);
+    return refused(c, result);
+  }
   await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_IDENTITY_SWITCHED, actor, {
     resourceType: 'connection',
     resourceId: connection.id,

@@ -4,11 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClickHouseConnection, UpdateConnectionInput } from "@/api/rbac";
+import type { ConnectionPanelProps } from "./ConnectionPanel";
 import ConnectionManagement from "./index";
 
 const listConnections = vi.fn<() => Promise<{ connections: ClickHouseConnection[]; total: number }>>();
 const updateConnection = vi.fn<(id: string, input: UpdateConnectionInput) => Promise<ClickHouseConnection>>();
-const access = { superAdmin: false };
+const access = { canEdit: true };
+/** The last props the panel got, so a test can play its callbacks. */
+let panelProps: ConnectionPanelProps | null = null;
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock("@/api/rbac", async (importOriginal) => ({
@@ -20,18 +23,15 @@ vi.mock("@/api/rbac", async (importOriginal) => ({
 }));
 vi.mock("@/stores", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/stores")>()),
-  useRbacStore: () => ({ hasPermission: () => true, isSuperAdmin: () => access.superAdmin }),
+  useRbacStore: () => ({ hasPermission: (permission: string) => permission !== "connections:edit" || access.canEdit, isSuperAdmin: () => false }),
 }));
-vi.mock("@/features/observe/ConnectionObservability", () => ({ ConnectionObservability: (): null => null }));
 vi.mock("@/features/observe/CollectorSchedule", () => ({ CollectorSchedule: (): null => null }));
-// The panel has its own tests; here only who can open it, and for which connection.
-vi.mock("./IdentityPanel", () => ({
-  IdentityPanel: ({ connection }: { connection: ClickHouseConnection | null }): ReactElement | null =>
-    connection ? <div data-testid="identity-panel">{connection.name}</div> : null,
-}));
-vi.mock("./BindingsPanel", () => ({
-  BindingsPanel: ({ connection }: { connection: ClickHouseConnection | null }): ReactElement | null =>
-    connection ? <div data-testid="bindings-panel">{connection.name}</div> : null,
+// The panel has its own tests; here only which connection and tab it opens on.
+vi.mock("./ConnectionPanel", () => ({
+  ConnectionPanel: (props: ConnectionPanelProps): ReactElement => {
+    panelProps = props;
+    return <div data-testid="panel">{`${props.connection?.name ?? "new"} · ${props.initialTab}`}</div>;
+  },
 }));
 
 function connection(overrides: Partial<ClickHouseConnection>): ClickHouseConnection {
@@ -57,6 +57,7 @@ function connection(overrides: Partial<ClickHouseConnection>): ClickHouseConnect
     identityHealthReason: null,
     identityCheckedAt: null,
     identityServerVersion: null,
+    readiness: { state: "ready", policies: 2 },
     ...overrides,
   };
 }
@@ -68,11 +69,28 @@ const CEILING = connection({
   username: "chouse_login",
   identityMode: "shared_ceiling",
   systemRole: "chouse_system",
+  identityHealth: "ok",
+  readiness: { state: "partial", policies: 1, roles: { total: 4, mapped: 2, peopleRefused: 3 } },
+});
+const FAILING = connection({
+  id: "conn-failing",
+  name: "Legacy",
+  identityMode: "shared_ceiling",
   identityHealth: "failing",
   identityHealthReason: "The role chouse_system no longer exists.",
+  readiness: { state: "refusing", policies: 0 },
 });
-const UNKNOWN = connection({ id: "conn-unknown", name: "Lab", identityMode: "per_statement" });
-const PERSONAL = connection({ id: "conn-personal", name: "Warehouse", username: "chouse_personal", identityMode: "personal", systemRole: "chouse_system" });
+const UNKNOWN = connection({ id: "conn-unknown", name: "Lab", identityMode: "per_statement", readiness: { state: "refusing", policies: 0 } });
+const PERSONAL = connection({
+  id: "conn-personal",
+  name: "Warehouse",
+  username: "chouse_personal",
+  identityMode: "personal",
+  systemRole: "chouse_system",
+  identityHealth: "ok",
+  readiness: { state: "partial", policies: 0, links: { active: 2, pending: 1, other: 0 } },
+});
+const SANDBOX = connection({ id: "conn-sandbox", name: "Sandbox", readiness: { state: "none", policies: 0 } });
 
 function row(name: string): HTMLElement {
   const found = screen.getByText(name).closest("tr");
@@ -80,24 +98,11 @@ function row(name: string): HTMLElement {
   return found;
 }
 
-/** The row's Edit action: an icon button whose only name is its tooltip. */
-function editButton(name: string): HTMLElement {
-  const button = row(name).querySelector(".lucide-pencil")?.closest("button");
-  if (!button) throw new Error(`no edit button for ${name}`);
-  return button;
-}
-
-/** A form field by name: the password's label points at a wrapper, not at the input. */
-function input(dialog: HTMLElement, name: string): HTMLInputElement {
-  const found = dialog.querySelector(`input[name="${name}"]`);
-  if (!(found instanceof HTMLInputElement)) throw new Error(`no input named ${name}`);
-  return found;
-}
-
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe(): void {} unobserve(): void {} disconnect(): void {} });
-  access.superAdmin = false;
-  listConnections.mockResolvedValue({ connections: [SHARED, CEILING, UNKNOWN, PERSONAL], total: 4 });
+  access.canEdit = true;
+  panelProps = null;
+  listConnections.mockResolvedValue({ connections: [SHARED, CEILING, FAILING, UNKNOWN, PERSONAL, SANDBOX], total: 6 });
 });
 
 afterEach(() => {
@@ -106,7 +111,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ConnectionManagement: connection kinds", () => {
+describe("ConnectionManagement: the list", () => {
   it("badges a connection whose kind is not a shared login, and only those", async () => {
     render(<ConnectionManagement />);
     await screen.findByText("Production");
@@ -115,114 +120,133 @@ describe("ConnectionManagement: connection kinds", () => {
     expect(within(row("Lab")).getByText("Unknown kind")).toBeTruthy();
     expect(within(row("Warehouse")).getByText("Personal")).toBeTruthy();
     expect(within(row("Staging")).queryByText("Shared login")).toBeNull();
-    expect(within(row("Staging")).queryByText("Role ceiling")).toBeNull();
   });
 
-  it("marks a login that is failing its checks, with the reason on hover", async () => {
-    const user = userEvent.setup();
+  it("shows who can query each connection", async () => {
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    const marker = within(row("Production")).getByLabelText("ClickHouse login is failing its checks");
-    expect(within(row("Staging")).queryByLabelText("ClickHouse login is failing its checks")).toBeNull();
-    await user.hover(marker);
-    expect((await screen.findAllByText("The role chouse_system no longer exists.")).length).toBeGreaterThan(0);
+    expect(within(row("Staging")).getByRole("button", { name: "Who can query Staging: Ready" })).toBeTruthy();
+    expect(within(row("Sandbox")).getByText("No access policy")).toBeTruthy();
+    expect(within(row("Production")).getByText("2 of 4 roles mapped")).toBeTruthy();
+    expect(within(row("Warehouse")).getByText("3 links · 1 waiting for GRANT")).toBeTruthy();
+    // A refusing connection says so once, on its login pill.
+    expect(within(row("Legacy")).queryByRole("button", { name: /^Who can query/ })).toBeNull();
   });
 
-  it("hides the ClickHouse login action from someone who is not a super admin", async () => {
+  it("shows the login's health on every kind but a shared login, with the reason of a failing one", async () => {
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    expect(screen.queryByRole("button", { name: /^ClickHouse login of/ })).toBeNull();
-    expect(screen.queryByTestId("identity-panel")).toBeNull();
+    expect(within(row("Production")).getByText("Passes")).toBeTruthy();
+    const failing = within(row("Legacy")).getByRole("button", { name: "ClickHouse login of Legacy: Refusing" });
+    expect(failing.getAttribute("title")).toBe("The role chouse_system no longer exists.");
+    expect(within(row("Lab")).getByText("Refusing")).toBeTruthy();
+    expect(within(row("Staging")).queryByText("Passes")).toBeNull();
+  });
+
+  it("keeps the same four actions on every row, and no separate login or links actions", async () => {
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+
+    for (const name of ["Staging", "Production", "Warehouse"]) {
+      const actions = within(row(name));
+      expect(actions.getByRole("button", { name: `Test ${name}` })).toBeTruthy();
+      expect(actions.getByRole("button", { name: `Deactivate ${name}` })).toBeTruthy();
+      expect(actions.getByRole("button", { name: `Edit ${name}` })).toBeTruthy();
+      expect(actions.getByRole("button", { name: `Delete ${name}` })).toBeTruthy();
+    }
+    expect(screen.queryByRole("button", { name: /^ClickHouse login of Production/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Linked ClickHouse users of/ })).toBeNull();
-    expect(screen.queryByTestId("bindings-panel")).toBeNull();
   });
+});
 
-  it("lets a super admin open the linked ClickHouse users of a connection of any kind", async () => {
+describe("ConnectionManagement: opening the panel", () => {
+  it("opens Edit on General", async () => {
     const user = userEvent.setup();
-    access.superAdmin = true;
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    // Links can be prepared before the connection becomes personal.
-    expect(screen.getAllByRole("button", { name: /^Linked ClickHouse users of/ })).toHaveLength(4);
-    expect(screen.queryByTestId("bindings-panel")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Linked ClickHouse users of Staging" }));
-    expect(screen.getByTestId("bindings-panel").textContent).toBe("Staging");
+    await user.click(screen.getByRole("button", { name: "Edit Production" }));
+    expect(screen.getByTestId("panel").textContent).toBe("Production · general");
   });
 
-  it("locks the login and server fields of a personal connection in the edit dialog", async () => {
+  it("opens the readiness pill on Who can query, and a failing login pill on ClickHouse login", async () => {
     const user = userEvent.setup();
-    render(<ConnectionManagement />);
-    await screen.findByText("Warehouse");
-
-    await user.click(editButton("Warehouse"));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/This is a personal connection: host, port, TLS, user and password are changed in its ClickHouse login panel, by a super admin\./)).toBeTruthy();
-    for (const name of ["host", "port", "username", "password"]) {
-      expect(input(dialog, name).disabled).toBe(true);
-    }
-  });
-
-  it("lets a super admin open the ClickHouse login panel of a connection", async () => {
-    const user = userEvent.setup();
-    access.superAdmin = true;
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    expect(screen.getAllByRole("button", { name: /^ClickHouse login of/ })).toHaveLength(4);
-    expect(screen.queryByTestId("identity-panel")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "ClickHouse login of Production" }));
-    expect(screen.getByTestId("identity-panel").textContent).toBe("Production");
+    await user.click(within(row("Warehouse")).getByRole("button", { name: /^Who can query Warehouse/ }));
+    expect(screen.getByTestId("panel").textContent).toBe("Warehouse · who");
+    await user.click(within(row("Legacy")).getByRole("button", { name: /^ClickHouse login of Legacy/ }));
+    expect(screen.getByTestId("panel").textContent).toBe("Legacy · login");
   });
 
-  it("locks the login and server fields of a role-ceiling connection in the edit dialog and leaves them out of the save", async () => {
-    const user = userEvent.setup();
-    updateConnection.mockResolvedValue(CEILING);
+  it("does not make a passing login pill a button", async () => {
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+    expect(within(row("Production")).queryByRole("button", { name: /^ClickHouse login of/ })).toBeNull();
+  });
+
+  it("opens nothing from the pills for someone who cannot edit connections", async () => {
+    access.canEdit = false;
     render(<ConnectionManagement />);
     await screen.findByText("Production");
 
-    await user.click(editButton("Production"));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/This is a role ceiling connection: host, port, TLS, user and password are changed in its ClickHouse login panel, by a super admin\./)).toBeTruthy();
-    for (const name of ["host", "port", "username", "password"]) {
-      expect(input(dialog, name).disabled).toBe(true);
-    }
-    expect(within(dialog).getByRole("switch")).toHaveProperty("disabled", true);
-    expect(within(dialog).getByLabelText("Connection name")).toHaveProperty("disabled", false);
-
-    await user.clear(within(dialog).getByLabelText("Connection name"));
-    await user.type(within(dialog).getByLabelText("Connection name"), "Production EU");
-    await user.click(within(dialog).getByRole("button", { name: "Update" }));
-
-    await waitFor(() => expect(updateConnection).toHaveBeenCalledTimes(1));
-    expect(updateConnection).toHaveBeenCalledWith("conn-ceiling", { name: "Production EU", database: undefined, metadata: {} });
+    expect(within(row("Staging")).queryByRole("button", { name: /^Who can query/ })).toBeNull();
+    expect(within(row("Staging")).getByText("Ready")).toBeTruthy();
+    expect(within(row("Legacy")).queryByRole("button", { name: /^ClickHouse login of/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
   });
 
-  it("keeps the edit dialog of a shared login as it was", async () => {
+  it("opens Add connection on a new connection, then on Who can query of the one Create made", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+
+    await user.click(screen.getByRole("button", { name: "Add connection" }));
+    expect(screen.getByTestId("panel").textContent).toBe("new · general");
+
+    const made = connection({ id: "conn-new", name: "finance-ch", identityMode: "personal" });
+    listConnections.mockResolvedValue({ connections: [SHARED, made], total: 2 });
+    panelProps?.onCreated(made);
+
+    await waitFor(() => expect(screen.getByTestId("panel").textContent).toBe("finance-ch · who"));
+    await waitFor(() => expect(listConnections).toHaveBeenCalledTimes(2));
+  });
+
+  it("closes the panel", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+
+    await user.click(screen.getByRole("button", { name: "Edit Staging" }));
+    panelProps?.onClose();
+    await waitFor(() => expect(screen.queryByTestId("panel")).toBeNull());
+  });
+
+  it("reloads the list for the panel without blanking the table", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionManagement />);
+    await screen.findByText("Production");
+
+    await user.click(screen.getByRole("button", { name: "Edit Staging" }));
+    const renamed = { ...SHARED, name: "Staging EU" };
+    listConnections.mockResolvedValue({ connections: [renamed], total: 1 });
+    const reloaded = await panelProps?.onReload();
+
+    expect(reloaded).toEqual([renamed]);
+    expect(await screen.findByText("Staging EU")).toBeTruthy();
+    expect(screen.getByTestId("panel").textContent).toBe("Staging EU · general");
+  });
+
+  it("toggles a connection on and off from its row", async () => {
     const user = userEvent.setup();
     updateConnection.mockResolvedValue(SHARED);
     render(<ConnectionManagement />);
-    await screen.findByText("Staging");
+    await screen.findByText("Production");
 
-    await user.click(editButton("Staging"));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByText(/changed in its ClickHouse login panel/)).toBeNull();
-    for (const name of ["host", "port", "username", "password"]) {
-      expect(input(dialog, name).disabled).toBe(false);
-    }
-
-    await user.click(within(dialog).getByRole("button", { name: "Update" }));
-    await waitFor(() => expect(updateConnection).toHaveBeenCalledTimes(1));
-    expect(updateConnection).toHaveBeenCalledWith("conn-shared", {
-      name: "Staging",
-      database: undefined,
-      metadata: {},
-      host: "ch.internal",
-      port: 8443,
-      username: "chouse",
-      sslEnabled: true,
-    });
+    await user.click(screen.getByRole("button", { name: "Deactivate Staging" }));
+    await waitFor(() => expect(updateConnection).toHaveBeenCalledWith("conn-shared", { isActive: false }));
   });
 });

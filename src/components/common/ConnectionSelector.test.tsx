@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { BindingState, OwnBinding } from "@/api/clickhouseBindings";
+import type { CallerIdentity } from "@/api/connectionIdentity";
 import { useRbacStore } from "@/stores";
 import { server } from "@/test/mocks/server";
 import { SharedLogin } from "./ConnectionSelector";
@@ -118,5 +119,60 @@ describe("SharedLogin on a personal connection", () => {
 
     await waitFor(() => expect(container.querySelector("span")?.getAttribute("title")).toContain("your own ClickHouse user"));
     expect(container.textContent).toBe("Your own ClickHouse user");
+  });
+});
+
+describe("SharedLogin on a role-ceiling connection", () => {
+  beforeEach(() => {
+    useRbacStore.setState({ isAuthenticated: true });
+  });
+
+  function serveIdentities(identities: CallerIdentity[]): void {
+    server.use(http.get("/api/rbac/connections/identity/mine", () => HttpResponse.json({ success: true, data: { identities } })));
+  }
+
+  function ceiling(state: CallerIdentity["state"], patch: Partial<CallerIdentity> = {}): CallerIdentity {
+    return { connectionId: "conn-1", connectionName: "Production", kind: "shared_ceiling", runsAs: null, state, detail: "Refused.", limits: [], ...patch };
+  }
+
+  function renderCeiling(accessContact: string | null = "#finance-data"): HTMLElement {
+    return render(<SharedLogin username="chouse_login" identityMode="shared_ceiling" connectionId="conn-1" accessContact={accessContact} />, { wrapper }).container;
+  }
+
+  it("names the ClickHouse role the person is limited to", async () => {
+    serveIdentities([ceiling("ready", { runsAs: { type: "role", name: "Analyst_RO" }, detail: null })]);
+    const container = renderCeiling();
+
+    await waitFor(() => expect(container.textContent).toBe("Limited to Analyst_RO"));
+  });
+
+  it("says the person's role is not mapped, and whom to ask", async () => {
+    serveIdentities([ceiling("no_usable_role")]);
+    const container = renderCeiling();
+
+    await waitFor(() => expect(container.textContent).toBe("Your role isn't mapped here yet — ask #finance-data"));
+    expect(container.querySelector("span")?.className).toContain("text-amber");
+  });
+
+  it("asks a super admin when the connection names no contact", async () => {
+    serveIdentities([ceiling("no_usable_role")]);
+    const container = renderCeiling(null);
+
+    await waitFor(() => expect(container.textContent).toBe("Your role isn't mapped here yet — ask a super admin"));
+  });
+
+  it("says the connection is unavailable while its login fails the checks", async () => {
+    serveIdentities([ceiling("connection_unavailable")]);
+    const container = renderCeiling();
+
+    await waitFor(() => expect(container.textContent).toBe("Unavailable: the login is failing its checks"));
+  });
+
+  it("keeps the general line until the answer is in, and when it has nothing for the connection", async () => {
+    serveIdentities([ceiling("no_usable_role", { connectionId: "conn-2" })]);
+    const container = renderCeiling();
+
+    expect(container.textContent).toBe("Shared login chouse_login, limited to your ClickHouse role");
+    await waitFor(() => expect(container.textContent).toBe("Shared login chouse_login, limited to your ClickHouse role"));
   });
 });

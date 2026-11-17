@@ -23,7 +23,7 @@ import { resetDefaultDatabaseCache } from "../../middleware/sqlAccess";
 import { closeDatabase } from "../../rbac/db";
 import { runMigrations } from "../../rbac/db/migrations";
 import { freshDatabase, rawAll, rawRun } from "../../rbac/db/migrationTestHarness";
-import { checkIdentityChange, setRoleMap, switchIdentity } from "../../rbac/services/connectionIdentity";
+import { checkIdentityChange, connectionReadiness, createConnectionWithIdentity, setRoleMap, switchIdentity } from "../../rbac/services/connectionIdentity";
 import { createConnection, getConnectionById, testSavedConnection } from "../../rbac/services/connections";
 import { ClickHouseService } from "../clickhouse";
 import { checkSavedConnection, runIdentityChecks } from "./health";
@@ -249,6 +249,51 @@ describe.skipIf(SERVERS.length === 0)("connection kinds and the role ceiling on 
       });
 
       // Everything below needs the switch to have happened.
+      describe("creating a connection with its kind (ADR 0034)", () => {
+        const fresh = "svc_ceiling_created";
+        beforeAll(async () => {
+          await raw.command({ query: `CREATE USER IF NOT EXISTS ${fresh} IDENTIFIED BY '${PASSWORD}'` });
+          await raw.command({ query: `GRANT chouse_system, analyst_ro TO ${fresh}` });
+          await raw.command({ query: `ALTER USER ${fresh} DEFAULT ROLE NONE` });
+        });
+        afterAll(async () => {
+          await raw?.command({ query: `DROP USER IF EXISTS ${fresh}` }).catch(() => undefined);
+        });
+        const input = (extra: Record<string, unknown> = {}) => ({
+          name: `created-${server.label}`, host, port, sslEnabled: false, identityMode: "shared_ceiling", username: fresh, password: PASSWORD, systemRole: "chouse_system", ...extra,
+        });
+
+        it("checks an unsaved login exactly as create will, saving nothing", async () => {
+          const { result } = await checkIdentityChange(null, input());
+          expect(result.ok).toBe(takesRole);
+          if (!takesRole) expect(result.unsupported).toBe(true);
+        });
+
+        it("creates the connection in its final kind with one empty user where the server takes a role, and nothing where it does not", async () => {
+          const { result, connection } = await createConnectionWithIdentity(input({ database: "public" }), ADMIN);
+          expect(result.ok).toBe(takesRole);
+          if (!takesRole) {
+            expect(connection).toBeNull();
+            return;
+          }
+          expect(connection).toMatchObject({ identityMode: "shared_ceiling", username: fresh, systemRole: "chouse_system", identityHealth: "ok", database: "public" });
+          expect(connection?.identityServerVersion).toBe(version);
+          // Nobody is mapped on it yet: it is created, but nobody can query it.
+          expect((await connectionReadiness([connection!])).get(connection!.id)?.state).toBe("none");
+          await expect(createConnectionWithIdentity(input({ name: "again" }), ADMIN)).rejects.toMatchObject({ code: "CONNECTION_EXISTS" });
+          // The default database is part of the login: changed and cleared through the switch, checked again.
+          expect((await switchIdentity(connection!.id, { identityMode: "shared_ceiling", username: fresh, systemRole: "chouse_system", database: "" })).ok).toBe(true);
+          expect((await getConnectionById(connection!.id))?.database).toBeNull();
+        });
+
+        it("creates nothing for a login with a direct grant, naming the check that failed", async () => {
+          const { result, connection } = await createConnectionWithIdentity(input({ name: `direct-${server.label}`, username: "svc_direct" }), ADMIN);
+          expect(result.ok).toBe(false);
+          expect(connection).toBeNull();
+          if (takesRole) expect(result.verdict.checks.some((check) => !check.ok)).toBe(true);
+        });
+      });
+
       describe("on the role-ceiling connection", () => {
         const onCeiling = (name: string, fn: () => Promise<void>, timeout?: number): void => {
           it(name, async () => {

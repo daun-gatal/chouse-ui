@@ -4,7 +4,7 @@
  * replaces the whole map. Super admin only: the server refuses everyone else.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject, type ReactElement } from "react";
 import { AlertCircle, Check, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,11 +21,18 @@ import { rbacRolesApi, type RbacRole } from "@/api/rbac";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
 import { ERROR_CLASS, HELP_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "./formStyles";
+import { Note } from "./panelParts";
 
 interface RoleMapEditorProps {
   connectionId: string;
   /** The map was saved; the caller's copy of it (and anything built from it) is stale. */
   onSaved?: (entries: RoleMapEntry[]) => void;
+  /** The CHouse role names of the person looking: their rows say "You", and the warning names their own role. */
+  viewerRoles?: readonly string[];
+  /** The typed names differ from the saved map. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Set to this editor's save, so the panel can save it before leaving the tab. Resolves to whether it saved. */
+  saveRef?: MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
 type RoleNames = Record<string, string>;
@@ -47,7 +54,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): ReactElement {
+export function RoleMapEditor({ connectionId, onSaved, viewerRoles, onDirtyChange, saveRef }: RoleMapEditorProps): ReactElement {
   const [roles, setRoles] = useState<RbacRole[] | null>(null);
   const [saved, setSaved] = useState<RoleNames>({});
   const [names, setNames] = useState<RoleNames>({});
@@ -95,13 +102,36 @@ export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): Re
 
   const unmapped = useMemo((): number => (roles ?? []).filter((role) => nameOf(names, role.id) === "").length, [roles, names]);
 
+  /** Who the saved map refuses: the people of unmapped roles, and whether the viewer's own role is one of them. */
+  const refused = useMemo((): { people: number; own: boolean } => {
+    let people = 0;
+    let own = false;
+    for (const role of roles ?? []) {
+      if (nameOf(saved, role.id) !== "") continue;
+      people += role.userCount ?? 0;
+      if (viewerRoles?.includes(role.name)) own = true;
+    }
+    return { people, own };
+  }, [roles, saved, viewerRoles]);
+
+  const showPeople = (roles ?? []).some((role) => role.userCount !== undefined);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
   const setName = useCallback((roleId: string, value: string): void => {
     setSaveError(null);
     setNames((current) => ({ ...current, [roleId]: value }));
   }, []);
 
-  const save = async (): Promise<void> => {
-    if (!roles || invalid.size > 0) return;
+  const save = async (): Promise<boolean> => {
+    if (!roles) return false;
+    if (invalid.size > 0) {
+      setSaveError(NAME_RULE);
+      return false;
+    }
+    if (!dirty) return true;
     const entries: RoleMapInput[] = roles
       .map((role) => ({ roleId: role.id, clickhouseRole: nameOf(names, role.id) }))
       .filter((entry) => entry.clickhouseRole !== "");
@@ -114,18 +144,36 @@ export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): Re
       setNames(next);
       toast.success("Role map saved");
       onSaved?.(stored);
+      return true;
     } catch (error) {
       const message = errorMessage(error, "Couldn't save the role map");
       log.error("[RoleMapEditor] Failed to save the role map", { errorMessage: message });
       setSaveError(message);
       toast.error("Couldn't save the role map", { description: message });
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
+  // The panel calls the save of the tab being left; the latest one, with the latest names.
+  useEffect(() => {
+    if (!saveRef) return undefined;
+    saveRef.current = save;
+    return () => {
+      if (saveRef.current === save) saveRef.current = null;
+    };
+  });
+
   return (
     <section className="flex flex-col gap-2" aria-label="Role map">
+      {roles !== null && refused.people > 0 && (
+        <Note tone="warn" title={`${refused.people} ${refused.people === 1 ? "person can't" : "people can't"} query yet`}>
+          <p>
+            A CHouse role reaches data only once it's mapped to a ClickHouse role. Unmapped roles are refused{refused.own ? ", including your own" : ""}.
+          </p>
+        </Note>
+      )}
       <p className={cn(HELP_CLASS, "leading-[1.5]")}>
         Each CHouse role uses one ClickHouse role on this connection. An account whose role is not mapped is refused on this connection. Once a role is mapped, only a super admin can assign it to an account.
       </p>
@@ -151,17 +199,23 @@ export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): Re
       ) : (
         <>
           <div className="divide-y divide-ink-500 rounded-xs border border-ink-500 bg-ink-100">
-            <div className="grid grid-cols-2 gap-3 bg-ink-200 px-3 py-1.5">
+            <div className={cn("grid gap-3 bg-ink-200 px-3 py-1.5", showPeople ? "grid-cols-[1fr_1fr_3.5rem]" : "grid-cols-2")}>
               <span className={LABEL_CLASS}>CHouse role</span>
               <span className={LABEL_CLASS}>ClickHouse role</span>
+              {showPeople && <span className={cn(LABEL_CLASS, "text-right")}>People</span>}
             </div>
             {roles.map((role) => {
               const bad = invalid.has(role.id);
               const errorId = `role-map-error-${role.id}`;
               return (
-                <div key={role.id} className="grid grid-cols-2 items-start gap-3 px-3 py-2">
+                <div key={role.id} className={cn("grid items-start gap-3 px-3 py-2", showPeople ? "grid-cols-[1fr_1fr_3.5rem]" : "grid-cols-2")}>
                   <span className="flex min-w-0 flex-col pt-1">
-                    <span className="truncate text-[13px] font-medium text-paper">{role.displayName || role.name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[13px] font-medium text-paper">{role.displayName || role.name}</span>
+                      {viewerRoles?.includes(role.name) && (
+                        <span className="shrink-0 rounded-full border border-brand/50 px-1.5 py-px text-[10px] text-brand">You</span>
+                      )}
+                    </span>
                     <span className="truncate font-mono text-[11px] text-paper-faint">{role.name}</span>
                   </span>
                   <span className="flex min-w-0 flex-col gap-1">
@@ -178,6 +232,7 @@ export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): Re
                     />
                     {bad && <span id={errorId} className={ERROR_CLASS}>{NAME_RULE}</span>}
                   </span>
+                  {showPeople && <span className="pt-1.5 text-right font-mono text-[12px] text-paper-muted">{role.userCount ?? 0}</span>}
                 </div>
               );
             })}
@@ -193,7 +248,7 @@ export function RoleMapEditor({ connectionId, onSaved }: RoleMapEditorProps): Re
             </p>
             <Button type="button" onClick={() => void save()} disabled={isSaving || !dirty || invalid.size > 0} className={cn(PRIMARY_BUTTON_CLASS, "shrink-0")}>
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Check className="h-3.5 w-3.5" aria-hidden />}
-              Save role map
+              Save mappings
             </Button>
           </div>
         </>

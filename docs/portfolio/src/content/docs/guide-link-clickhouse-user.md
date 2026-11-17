@@ -4,13 +4,13 @@ Example: Ann has the ClickHouse user `alice`. On the [personal connection](/docs
 
 ## 1. Create the link
 
-**Admin › Connections**, then **Linked ClickHouse users** on *Production*:
+**Admin › Connections**, **Edit** on *Production*, then the **Who can query** tab:
 
 1. Search for Ann's account and select it.
 2. Type `alice` as the ClickHouse user.
 3. Press **Add link**.
 
-![Adding a link in the Linked ClickHouse users panel](/docs/img/app/admin-connection-links.jpg "The links of a connection, and the Add link form below them")
+![Adding a link on the Who can query tab](/docs/img/app/admin-connection-links.jpg "The links of a connection, and the Add link form below them")
 
 CHouse UI looks the user up in ClickHouse and stores its id, so a different user created later under the same name is not taken for this one. The link starts as **Waiting for the grant**.
 

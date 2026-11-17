@@ -11,7 +11,10 @@ import { ApiError } from "./client";
 import {
   CLICKHOUSE_ROLE_NAME,
   checkConnectionIdentity,
+  checkNewConnectionIdentity,
+  createIdentityConnection,
   getConnectionIdentity,
+  getMyConnectionIdentities,
   getConnectionRoleMap,
   identityCheckFromError,
   kindSupport,
@@ -268,6 +271,82 @@ describe("identityKind", () => {
     expect(identityKindLabel("shared_ceiling")).toBe("Role ceiling");
     expect(identityKindLabel("personal")).toBe("Personal");
     expect(identityKindLabel("per_statement")).toBe("Unknown kind");
+  });
+});
+
+describe("Creating a connection with its kind", () => {
+  const INPUT = {
+    name: "finance-ch",
+    identityMode: "personal",
+    host: "ch-fin.internal",
+    port: 8443,
+    sslEnabled: true,
+    username: "chouse_personal",
+    password: "secret",
+    database: "finance",
+    systemRole: "chouse_system",
+    impersonationRole: "chouse_impersonate",
+    metadata: { environment: "production" },
+  };
+
+  it("creates the connection and returns it with its check", async () => {
+    let body: unknown;
+    server.use(
+      http.post("/api/rbac/connections/identity", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: { connection: { id: "conn-9", name: "finance-ch" }, check: PASSING } }, { status: 201 });
+      }),
+    );
+
+    const created = await createIdentityConnection(INPUT);
+    expect(body).toEqual(INPUT);
+    expect(created.connection).toMatchObject({ id: "conn-9" });
+    expect(created.check).toEqual(PASSING);
+  });
+
+  it("keeps the checks of a refused create on the error", async () => {
+    server.use(
+      http.post("/api/rbac/connections/identity", () =>
+        HttpResponse.json({ success: false, error: { code: "IDENTITY_CHECK_FAILED", message: FAILING.reason, details: FAILING } }, { status: 422 }),
+      ),
+    );
+
+    const error = await createIdentityConnection(INPUT).catch((e: unknown) => e);
+    expect(error).toMatchObject({ statusCode: 422, code: "IDENTITY_CHECK_FAILED" });
+    expect(identityCheckFromError(error)).toEqual(FAILING);
+  });
+
+  it("says when the same login and kind is already a connection", async () => {
+    server.use(
+      http.post("/api/rbac/connections/identity", () =>
+        HttpResponse.json({ success: false, error: { code: "CONNECTION_EXISTS", message: "Connection \"fin\" already uses this host, port, user and kind." } }, { status: 409 }),
+      ),
+    );
+
+    const error = await createIdentityConnection(INPUT).catch((e: unknown) => e);
+    expect(error).toMatchObject({ statusCode: 409, code: "CONNECTION_EXISTS" });
+    expect(identityCheckFromError(error)).toBeNull();
+  });
+
+  it("checks a login for a connection not created yet, saving nothing", async () => {
+    let body: unknown;
+    server.use(
+      http.post("/api/rbac/connections/identity/check", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: FAILING });
+      }),
+    );
+
+    const change = { ...CHANGE, host: "h", port: 8123, sslEnabled: false, database: "" };
+    expect(await checkNewConnectionIdentity(change)).toEqual(FAILING);
+    expect(body).toEqual(change);
+  });
+
+  it("reads the signed-in person's identity on each connection", async () => {
+    const identities = [{ connectionId: "conn-1", connectionName: "Production", kind: "shared_ceiling", runsAs: null, state: "no_usable_role", detail: "Not mapped.", limits: [] }];
+    server.use(http.get("/api/rbac/connections/identity/mine", () => HttpResponse.json({ success: true, data: { identities } })));
+
+    expect(await getMyConnectionIdentities()).toEqual(identities);
   });
 });
 

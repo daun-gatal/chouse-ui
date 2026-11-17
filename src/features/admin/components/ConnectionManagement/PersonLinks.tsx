@@ -2,13 +2,14 @@
  * Which CHouse account runs as which ClickHouse user on one connection
  * (ADR 0033): the links, the form that adds one, the grants to hand to the
  * ClickHouse administrator and what is still in the way of a personal
- * connection. Super admin only; the server refuses everyone else.
+ * connection. Shown on the Who can query tab of the connection panel. Super
+ * admin only; the server refuses everyone else.
  *
  * A link gives an account the grants of a ClickHouse user, so CHouse never
  * runs the grant that makes one usable: the ClickHouse administrator does.
  */
 
-import { useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactElement } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, Check, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +17,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import {
   CLICKHOUSE_USER_NAME,
@@ -36,13 +36,15 @@ import { rbacUsersApi, type ClickHouseConnection, type RbacUser } from "@/api/rb
 import { useDebounce } from "@/hooks/useDebounce";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
+import { useRbacStore } from "@/stores";
 import { CopyButton } from "./PrivilegeReport";
-import { ERROR_CLASS, HELP_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, SECTION_TITLE_CLASS } from "./formStyles";
+import { ERROR_CLASS, HELP_CLASS, INPUT_CLASS, LABEL_CLASS, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "./formStyles";
+import { errorMessage, Section } from "./panelParts";
 
-interface BindingsPanelProps {
-  /** The connection whose links to show; null closes the panel. */
-  connection: ClickHouseConnection | null;
-  onClose: () => void;
+interface PersonLinksProps {
+  connection: ClickHouseConnection;
+  /** A link was added, confirmed, checked or removed: the connection's readiness is stale. */
+  onChanged?: () => void;
 }
 
 /** Every reader of a person's own links (the selector, Preferences) is stale after a change here. */
@@ -61,10 +63,6 @@ const ROW_BUTTON_CLASS = cn(SECONDARY_BUTTON_CLASS, "h-7 gap-1.5 px-2 text-[10px
 
 export function connectionBindingsKey(connectionId: string): readonly [string, string] {
   return ["clickhouse-bindings", connectionId];
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }
 
 function accountLabel(binding: AdminBinding): string {
@@ -86,15 +84,6 @@ export function clickhouseUserProblem(name: string): string | null {
   return null;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }): ReactElement {
-  return (
-    <section className="flex min-w-0 flex-col gap-2.5" aria-label={title}>
-      <h3 className={SECTION_TITLE_CLASS}>{title}</h3>
-      {children}
-    </section>
-  );
-}
-
 function StateBadge({ state }: { state: BindingState }): ReactElement {
   return (
     <span className={cn("inline-flex whitespace-nowrap rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em]", STATE_CLASS[state])}>
@@ -105,6 +94,8 @@ function StateBadge({ state }: { state: BindingState }): ReactElement {
 
 interface LinkRowProps {
   binding: AdminBinding;
+  /** The link belongs to the person looking at it. */
+  isYou: boolean;
   /** The action running on this row, if any. */
   busy: "recheck" | "confirm" | null;
   disabled: boolean;
@@ -113,13 +104,16 @@ interface LinkRowProps {
   onRemove: () => void;
 }
 
-function LinkRow({ binding, busy, disabled, onRecheck, onConfirm, onRemove }: LinkRowProps): ReactElement {
+function LinkRow({ binding, isYou, busy, disabled, onRecheck, onConfirm, onRemove }: LinkRowProps): ReactElement {
   const account = accountLabel(binding);
   return (
     <tr className="align-top">
       <td className="px-3 py-2.5">
         <span className="flex min-w-0 flex-col">
-          <span className="break-words text-[13px] font-medium text-paper">{account}</span>
+          <span className="flex flex-wrap items-center gap-1.5 break-words text-[13px] font-medium text-paper">
+            {account}
+            {isYou && <span className="rounded-full border border-brand/50 px-1.5 py-px text-[10px] font-normal text-brand">You</span>}
+          </span>
           {binding.accountName !== null && binding.accountEmail !== null && (
             <span className="break-all text-[11px] text-paper-faint">{binding.accountEmail}</span>
           )}
@@ -194,7 +188,7 @@ function AddLinkForm({ connectionId, linkedUserIds, onAdded }: AddLinkFormProps)
     },
     onError: (error) => {
       const message = errorMessage(error, "Couldn't add the link");
-      log.error("[BindingsPanel] Failed to add a link", { errorMessage: message });
+      log.error("[PersonLinks] Failed to add a link", { errorMessage: message });
       setFormError(message);
       toast.error("Couldn't add the link", { description: message });
     },
@@ -299,9 +293,10 @@ function AddLinkForm({ connectionId, linkedUserIds, onAdded }: AddLinkFormProps)
   );
 }
 
-function BindingsPanelBody({ connection }: { connection: ClickHouseConnection }): ReactElement {
+export function PersonLinks({ connection, onChanged }: PersonLinksProps): ReactElement {
   const connectionId = connection.id;
   const queryClient = useQueryClient();
+  const viewerId = useRbacStore((state) => state.user?.id ?? null);
   const [removing, setRemoving] = useState<AdminBinding | null>(null);
 
   const listing = useQuery({
@@ -313,11 +308,12 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: connectionBindingsKey(connectionId) });
     void queryClient.invalidateQueries({ queryKey: OWN_LINKS_KEY });
+    onChanged?.();
   };
 
   const failed = (what: string) => (error: unknown): void => {
     const message = errorMessage(error, what);
-    log.error(`[BindingsPanel] ${what}`, { errorMessage: message });
+    log.error(`[PersonLinks] ${what}`, { errorMessage: message });
     toast.error(what, { description: message });
   };
 
@@ -398,7 +394,7 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
         </p>
       )}
 
-      <Section title="Links">
+      <Section title="Person links">
         <p className={cn(HELP_CLASS, "leading-[1.5]")}>{readinessLine(readiness)}</p>
         {rows.length === 0 ? (
           <p className="rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5 text-[12px] text-paper-muted">
@@ -421,6 +417,7 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
                   <LinkRow
                     key={binding.id}
                     binding={binding}
+                    isYou={viewerId !== null && binding.userId === viewerId}
                     busy={recheck.isPending && recheck.variables === binding.id ? "recheck" : confirm.isPending && confirm.variables === binding.id ? "confirm" : null}
                     disabled={working}
                     onRecheck={() => recheck.mutate(binding.id)}
@@ -434,12 +431,12 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
         )}
       </Section>
 
-      <Section title="Add link">
+      <Section title="Link a person">
         <AddLinkForm connectionId={connectionId} linkedUserIds={linkedUserIds} onAdded={refresh} />
       </Section>
 
       {grants.length > 0 && (
-        <Section title="For the ClickHouse administrator">
+        <Section title="Send this to your ClickHouse admin">
           <p className={cn(HELP_CLASS, "leading-[1.5]")}>
             Hand this to your ClickHouse administrator. CHouse cannot run it. Once it has run, use Check again on each waiting link.
           </p>
@@ -486,23 +483,5 @@ function BindingsPanelBody({ connection }: { connection: ClickHouseConnection })
         isLoading={remove.isPending}
       />
     </div>
-  );
-}
-
-export function BindingsPanel({ connection, onClose }: BindingsPanelProps): ReactElement {
-  return (
-    <Sheet open={connection !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent className="w-full overflow-y-auto border-ink-500 bg-ink-100 sm:max-w-2xl">
-        <SheetHeader>
-          <SheetTitle>Linked ClickHouse users{connection ? ` · ${connection.name}` : ""}</SheetTitle>
-          <SheetDescription>
-            Which account runs as which ClickHouse user on this connection. Only a super admin can add, confirm or remove a link.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="mt-4">
-          {connection && <BindingsPanelBody key={connection.id} connection={connection} />}
-        </div>
-      </SheetContent>
-    </Sheet>
   );
 }

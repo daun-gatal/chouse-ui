@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/client";
 import type { AdminBinding, BindingState, ConnectionBindings, CreateBindingInput } from "@/api/clickhouseBindings";
 import type { ClickHouseConnection, RbacUser } from "@/api/rbac";
-import { BindingsPanel, clickhouseUserProblem, readinessLine } from "./BindingsPanel";
+import { useRbacStore } from "@/stores";
+import { clickhouseUserProblem, PersonLinks, readinessLine } from "./PersonLinks";
 
 const getBindings = vi.fn<(connectionId: string) => Promise<ConnectionBindings>>();
 const create = vi.fn<(connectionId: string, input: CreateBindingInput) => Promise<AdminBinding>>();
@@ -116,11 +117,11 @@ const EMPTY: ConnectionBindings = {
   readiness: { counts: { pending_grant: 0, active: 0, suspended: 0, disabled: 0 }, jobsWithoutLink: 0 },
 };
 
-function open(connection: ClickHouseConnection | null = CONNECTION): void {
+function open(connection: ClickHouseConnection = CONNECTION, onChanged = vi.fn()): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <BindingsPanel connection={connection} onClose={vi.fn()} />
+      <PersonLinks connection={connection} onChanged={onChanged} />
     </QueryClientProvider>,
   );
 }
@@ -167,17 +168,11 @@ describe("clickhouseUserProblem", () => {
   });
 });
 
-describe("BindingsPanel", () => {
-  it("renders nothing without a connection", () => {
-    open(null);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(getBindings).not.toHaveBeenCalled();
-  });
-
+describe("PersonLinks", () => {
   it("lists every link with its account, ClickHouse user, state, reason and last check", async () => {
     open();
 
-    const links = await screen.findByRole("region", { name: "Links" });
+    const links = await screen.findByRole("region", { name: "Person links" });
     expect(getBindings).toHaveBeenCalledWith("conn-1");
     expect(within(links).getByText("1 active, 1 waiting, 1 suspended, 1 disabled · 2 scheduled queries whose owner has no active link")).toBeTruthy();
     expect(within(row("alice")).getByText("alice@example.com")).toBeTruthy();
@@ -196,7 +191,7 @@ describe("BindingsPanel", () => {
 
   it("offers each row only the actions its state allows", async () => {
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     const names = (accountName: string): string[] => within(row(accountName)).getAllByRole("button").map((button) => button.textContent ?? "");
     expect(names("alice")).toEqual(["Check again", "Remove"]);
@@ -211,7 +206,7 @@ describe("BindingsPanel", () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     open();
 
-    const admin = await screen.findByRole("region", { name: "For the ClickHouse administrator" });
+    const admin = await screen.findByRole("region", { name: "Send this to your ClickHouse admin" });
     expect(admin.textContent).toContain("Hand this to your ClickHouse administrator. CHouse cannot run it.");
     expect(within(admin).getByText("GRANT IMPERSONATE ON bob_ch TO chouse_impersonate;")).toBeTruthy();
     await user.click(within(admin).getByRole("button", { name: "Copy" }));
@@ -257,7 +252,7 @@ describe("BindingsPanel", () => {
     expect(await screen.findByText("No account is linked to a ClickHouse user on this connection yet.")).toBeTruthy();
     expect(screen.getByText("0 active, 0 waiting, 0 suspended, 0 disabled · 0 scheduled queries whose owner has no active link")).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.queryByRole("region", { name: "For the ClickHouse administrator" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Send this to your ClickHouse admin" })).toBeNull();
     expect(screen.queryByRole("region", { name: "ClickHouse users without a link" })).toBeNull();
     expect(screen.getByRole("button", { name: "Add link" })).toBeTruthy();
   });
@@ -276,7 +271,7 @@ describe("BindingsPanel", () => {
     create.mockResolvedValue(erin);
     getBindings.mockResolvedValueOnce(LISTING).mockResolvedValue({ ...LISTING, bindings: [...LISTING.bindings, erin] });
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await fillLink(user, "erin", " erin_ch ");
     await user.click(screen.getByRole("button", { name: "Add link" }));
@@ -289,9 +284,24 @@ describe("BindingsPanel", () => {
     expect(screen.getByLabelText("Account")).toHaveProperty("value", "");
   });
 
+  it("says which link is the viewer's own, and tells the panel the readiness is stale after a change", async () => {
+    const user = userEvent.setup();
+    useRbacStore.setState({ user: account(ALICE.userId, "alice") });
+    const onChanged = vi.fn();
+    confirm.mockResolvedValue({ ...CAROL, state: "active" });
+    open(CONNECTION, onChanged);
+    await screen.findByRole("region", { name: "Person links" });
+
+    expect(within(row("alice")).getByText("You")).toBeTruthy();
+    expect(within(row("bob")).queryByText("You")).toBeNull();
+    await user.click(within(row("carol")).getByRole("button", { name: "Confirm: carol" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    useRbacStore.setState({ user: null });
+  });
+
   it("does not offer an account that already has a link on this connection", async () => {
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     const accounts = await screen.findByRole("list", { name: "Accounts" });
     const alice = within(accounts).getByText("alice").closest("button");
@@ -303,7 +313,7 @@ describe("BindingsPanel", () => {
   it("searches the accounts by what is typed", async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.type(screen.getByLabelText("Account"), "eri");
 
@@ -314,12 +324,12 @@ describe("BindingsPanel", () => {
     const user = userEvent.setup();
     create.mockRejectedValue(new ApiError("ClickHouse has no user named ghost.", 422, "BINDING_USER_NOT_FOUND"));
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await fillLink(user, "erin", "ghost");
     await user.click(screen.getByRole("button", { name: "Add link" }));
 
-    const add = screen.getByRole("region", { name: "Add link" });
+    const add = screen.getByRole("region", { name: "Link a person" });
     expect((await within(add).findByRole("alert")).textContent).toBe("ClickHouse has no user named ghost.");
     expect(toast.error).toHaveBeenCalledWith("Couldn't add the link", { description: "ClickHouse has no user named ghost." });
     expect(screen.getByLabelText("ClickHouse user")).toHaveProperty("value", "ghost");
@@ -333,26 +343,26 @@ describe("BindingsPanel", () => {
   ])("refuses the ClickHouse user %j before anything is sent", async (name, message) => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     const accounts = await screen.findByRole("list", { name: "Accounts" });
     await user.click(within(accounts).getByText("erin"));
     if (name !== "") await user.type(screen.getByLabelText("ClickHouse user"), name);
     await user.click(screen.getByRole("button", { name: "Add link" }));
 
-    expect(within(screen.getByRole("region", { name: "Add link" })).getByRole("alert").textContent).toMatch(message);
+    expect(within(screen.getByRole("region", { name: "Link a person" })).getByRole("alert").textContent).toMatch(message);
     expect(create).not.toHaveBeenCalled();
   });
 
   it("asks for the account before anything is sent", async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.type(screen.getByLabelText("ClickHouse user"), "erin_ch");
     await user.click(screen.getByRole("button", { name: "Add link" }));
 
-    expect(within(screen.getByRole("region", { name: "Add link" })).getByRole("alert").textContent).toBe("Choose the account.");
+    expect(within(screen.getByRole("region", { name: "Link a person" })).getByRole("alert").textContent).toBe("Choose the account.");
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -360,7 +370,7 @@ describe("BindingsPanel", () => {
     const user = userEvent.setup();
     confirm.mockResolvedValue({ ...CAROL, state: "active", reason: null });
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.click(screen.getByRole("button", { name: "Confirm: carol" }));
 
@@ -373,7 +383,7 @@ describe("BindingsPanel", () => {
     const user = userEvent.setup();
     recheck.mockResolvedValue(BOB);
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.click(screen.getByRole("button", { name: "Check again: bob" }));
 
@@ -386,7 +396,7 @@ describe("BindingsPanel", () => {
     const user = userEvent.setup();
     remove.mockResolvedValue(undefined);
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.click(screen.getByRole("button", { name: "Remove: dave" }));
     const dialog = await screen.findByRole("dialog", { name: "Remove this link?" });
@@ -404,7 +414,7 @@ describe("BindingsPanel", () => {
   it("keeps the link when the removal is cancelled", async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.click(screen.getByRole("button", { name: "Remove: dave" }));
     const dialog = await screen.findByRole("dialog", { name: "Remove this link?" });
@@ -418,7 +428,7 @@ describe("BindingsPanel", () => {
     const user = userEvent.setup();
     confirm.mockRejectedValue(new ApiError("Only a super admin can link an account to a ClickHouse user.", 403, "FORBIDDEN"));
     open();
-    await screen.findByRole("region", { name: "Links" });
+    await screen.findByRole("region", { name: "Person links" });
 
     await user.click(screen.getByRole("button", { name: "Confirm: carol" }));
 
@@ -434,9 +444,9 @@ describe("BindingsPanel", () => {
     open();
 
     expect((await screen.findByRole("alert")).textContent).toContain("Only a super admin can link an account to a ClickHouse user.");
-    expect(screen.queryByRole("region", { name: "Add link" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Link a person" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("region", { name: "Links" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Person links" })).toBeTruthy();
   });
 });
