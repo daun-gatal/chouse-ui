@@ -1,6 +1,6 @@
 # 0032 — A Private Lab in the Visitor's Own GitHub Codespace
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-11-17: four ClickHouse versions, see [Amendment](#amendment-2026-11-17-four-clickhouse-versions))
 - **Date:** 2026-11-13
 - **Scope:** `.devcontainer/lab/` (new), `.github/workflows/lab.yml` (new), one job in `.github/workflows/auto-release.yml`, the README, the landing hero (`docs/portfolio/src/components/Hero.tsx`, `docs/portfolio/src/content/lab.ts`), the docs page *Try the lab*. No app code, env vars, config keys, Helm values or migrations. One PR, no release.
 
@@ -155,6 +155,30 @@ must ship without a release.
   - The SPA requests `GET /api/rbac/connections?limit=1000` and gets a 400
     (the route allows at most 100).
   - The CSP blocks the Google Fonts stylesheet.
+
+## Amendment (2026-11-17): four ClickHouse versions
+
+To let visitors try the 3.18 connection-identity features
+([ADR 0033](0033-every-statement-gets-a-clickhouse-identity.md)) against
+servers that differ, the lab now runs four ClickHouse servers instead of one,
+which reverses the "several ClickHouse nodes" non-goal for this one purpose.
+They are independent single nodes, not a cluster, and each shows a different
+result in 3.18:
+
+- `26.5-alpine`: the default connection, holding the showcase. Its personal
+  connection is offered but fails the server self-test (26.5.7).
+- `26.3.63.123-alpine`: passes the personal-connection self-test.
+- `25.8-alpine` (LTS): has no `EXECUTE AS`, so a personal connection is
+  blocked up front; the role ceiling works.
+- `23.8-alpine` (LTS): older than 24.4, so the role ceiling is blocked up
+  front too, and it refuses the quota key CHouse UI otherwise sets.
+
+Each gets the same sample data, its own load loop and its own connection
+(`Lab ClickHouse <version>`). Each is capped at 1 GB (was one server at 2.5 GB),
+which keeps the stack inside the 8 GB codespace (about 1.3 GB in use when
+measured). The smoke check also asserts that
+each connection reaches a server on the version in its name. Still no app
+code and no release.
 
 ## Alternatives considered
 

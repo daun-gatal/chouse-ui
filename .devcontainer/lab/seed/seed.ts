@@ -8,7 +8,8 @@
 
 import {
   ChouseApi,
-  LAB_CONNECTION_NAME,
+  LAB_DEFAULT_SERVER,
+  LAB_SERVERS,
   SAMPLE_ORDER_ROWS,
   arrayField,
   booleanField,
@@ -19,7 +20,7 @@ import {
   runStep,
   stringField,
 } from "./lib.ts";
-import type { AiChoice, FetchLike, LabConfig, StepResult } from "./lib.ts";
+import type { AiChoice, FetchLike, LabConfig, LabServer, StepResult } from "./lib.ts";
 import { SHOWCASE_STEPS, runShowcase } from "./showcase.ts";
 
 /** Schema for the sample shop (raw orders, customers, a daily rollup fed by a materialized view) and a small finance table. */
@@ -52,37 +53,42 @@ export const SAMPLE_DATA: ReadonlyArray<{ table: string; insert: string }> = [
   },
 ];
 
-/** Creates the sample databases and fills empty tables. */
-export async function loadSampleData(cfg: LabConfig, fetchImpl: FetchLike, retryMs?: number): Promise<string> {
-  for (const statement of SAMPLE_SCHEMA) await clickhouseQuery(cfg, statement, fetchImpl, retryMs);
+/** Creates the sample databases and fills empty tables on one lab server. */
+export async function loadSampleData(cfg: LabConfig, server: LabServer, fetchImpl: FetchLike, retryMs?: number): Promise<string> {
+  const run = (sql: string): Promise<string> => clickhouseQuery(cfg, sql, fetchImpl, retryMs, server);
+  for (const statement of SAMPLE_SCHEMA) await run(statement);
   const filled: string[] = [];
   for (const { table, insert } of SAMPLE_DATA) {
-    const count = Number((await clickhouseQuery(cfg, `SELECT count() FROM ${table}`, fetchImpl, retryMs)).trim());
+    const count = Number((await run(`SELECT count() FROM ${table}`)).trim());
     if (Number.isNaN(count)) throw new Error(`Could not count rows in ${table}`);
     if (count > 0) continue;
-    await clickhouseQuery(cfg, insert, fetchImpl, retryMs);
+    await run(insert);
     filled.push(table);
   }
   return filled.length > 0 ? `loaded ${filled.join(", ")}` : "sample data already present";
 }
 
-/** Finds the lab connection by exact name, or returns null. */
-export async function findLabConnection(api: ChouseApi): Promise<Record<string, unknown> | null> {
-  const data = await api.request("GET", `/api/rbac/connections?search=${encodeURIComponent(LAB_CONNECTION_NAME)}`);
+/** Finds a connection by exact name, or returns null. */
+export async function findConnection(api: ChouseApi, name: string): Promise<Record<string, unknown> | null> {
+  const data = await api.request("GET", `/api/rbac/connections?search=${encodeURIComponent(name)}`);
   for (const item of arrayField(data, "connections")) {
-    if (isRecord(item) && stringField(item, "name") === LAB_CONNECTION_NAME) return item;
+    if (isRecord(item) && stringField(item, "name") === name) return item;
   }
   return null;
 }
 
-/** Registers the lab's ClickHouse once and makes it the default connection. */
-export async function ensureConnection(api: ChouseApi, cfg: LabConfig): Promise<{ id: string; detail: string }> {
-  let connection = await findLabConnection(api);
+/**
+ * Registers one lab server as a connection, once. The default server's
+ * connection is made the default. Other connections are left alone.
+ */
+export async function ensureConnection(api: ChouseApi, cfg: LabConfig, server: LabServer): Promise<{ id: string; detail: string }> {
+  const isDefault = server === LAB_DEFAULT_SERVER;
+  let connection = await findConnection(api, server.connectionName);
   let created = false;
   if (!connection) {
     const data = await api.request("POST", "/api/rbac/connections", {
-      name: LAB_CONNECTION_NAME,
-      host: cfg.clickhouseHost,
+      name: server.connectionName,
+      host: server.host,
       port: 8123,
       username: cfg.clickhouseUser,
       password: cfg.clickhousePassword,
@@ -93,10 +99,11 @@ export async function ensureConnection(api: ChouseApi, cfg: LabConfig): Promise<
   }
   const id = stringField(connection, "id");
   if (!id) throw new Error("The connection response had no id");
-  if (booleanField(connection, "isDefault") !== true) {
+  if (isDefault && booleanField(connection, "isDefault") !== true) {
     await api.request("PATCH", `/api/rbac/connections/${encodeURIComponent(id)}`, { isDefault: true });
   }
-  return { id, detail: created ? `registered "${LAB_CONNECTION_NAME}"` : `"${LAB_CONNECTION_NAME}" already registered` };
+  const label = `"${server.connectionName}" (ClickHouse ${server.version})`;
+  return { id, detail: created ? `registered ${label}` : `${label} already registered` };
 }
 
 /**
@@ -175,7 +182,10 @@ export async function runSeed(env: Record<string, string | undefined>, fetchImpl
     return { ok: false, ai: "off", steps };
   }
 
-  steps.push(await runStep("sample data", () => loadSampleData(cfg, fetchImpl, retryMs)));
+  // Every server gets the same sample data, so each version can be tried on the same rows.
+  for (const server of LAB_SERVERS) {
+    steps.push(await runStep(`sample data ${server.version}`, () => loadSampleData(cfg, server, fetchImpl, retryMs)));
+  }
 
   const api = new ChouseApi(cfg.chouseUrl, fetchImpl, retryMs);
   const login = await runStep("admin login", async () => {
@@ -185,15 +195,21 @@ export async function runSeed(env: Record<string, string | undefined>, fetchImpl
   steps.push(login);
   if (!login.ok) return { ok: false, ai: "off", steps };
 
-  let connectionId = "";
-  const connection = await runStep("connection", async () => {
-    const result = await ensureConnection(api, cfg);
-    connectionId = result.id;
-    return result.detail;
-  });
-  steps.push(connection);
+  // Every server gets a connection. The default server's connection is the one
+  // the example content is attached to.
+  let defaultConnectionId = "";
+  let defaultConnectionOk = false;
+  for (const server of LAB_SERVERS) {
+    const connection = await runStep(`connection ${server.version}`, async () => {
+      const result = await ensureConnection(api, cfg, server);
+      if (server === LAB_DEFAULT_SERVER) defaultConnectionId = result.id;
+      return result.detail;
+    });
+    steps.push(connection);
+    if (server === LAB_DEFAULT_SERVER) defaultConnectionOk = connection.ok;
+  }
   // Setup can only be completed once a connection exists.
-  if (connection.ok) steps.push(await runStep("setup", () => completeSetup(api)));
+  if (defaultConnectionOk) steps.push(await runStep("setup", () => completeSetup(api)));
 
   const choice = chooseAi(env);
   let ai: SeedReport["ai"] = "off";
@@ -206,7 +222,7 @@ export async function runSeed(env: Record<string, string | undefined>, fetchImpl
   }
 
   // Example content for every area; optional, like AI.
-  const showcase = connection.ok ? await runShowcase(api, connectionId, cfg.adminPassword) : [];
+  const showcase = defaultConnectionOk ? await runShowcase(api, defaultConnectionId, cfg.adminPassword) : [];
   steps.push(...showcase);
 
   const ok = steps.filter((s) => !OPTIONAL_STEPS.has(s.step)).every((s) => s.ok);

@@ -10,6 +10,8 @@
 #
 # Environment:
 #   CHOUSE_IMAGE       CHouse UI image to run (default ghcr.io/daun-gatal/chouse-ui:latest)
+#   CLICKHOUSE_IMAGE_26_5 / _26_3 / _25_8 / _23_8   the four ClickHouse images under test
+#                      (defaults in compose.yml, one per version in seed/lib.ts LAB_SERVERS)
 #   OPENAI_API_KEY / ANTHROPIC_API_KEY   optional; turns on AI with the visitor's own key
 #   LAB_AI_MODEL       optional model override for that provider
 #   LAB_URL            the address your browser uses, when it is not localhost or
@@ -79,13 +81,13 @@ else
 fi
 
 echo "Starting CHouse UI and ClickHouse (the first start pulls the images)..."
-compose up -d --wait --wait-timeout 300 chouse-ui clickhouse
+compose up -d --wait --wait-timeout 300 chouse-ui clickhouse-26-5 clickhouse-26-3 clickhouse-25-8 clickhouse-23-8
 
 echo "Loading sample data..."
 seed_status=0
 compose run --rm -T seed >"$STATE_DIR/seed.json" || seed_status=$?
 
-compose up -d load
+compose up -d load-26-5 load-26-3 load-25-8 load-23-8
 
 PASSWORD="$(grep '^LAB_ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
 URL="$(lab_url)"
@@ -120,6 +122,8 @@ umask 077
   echo "            (or the Ports tab > CHouse UI > globe icon)"
   echo "  Sign in:  admin / $PASSWORD"
   echo "            teammates maya (analyst), devon (developer) and vic (viewer) use the same password"
+  echo "  ClickHouse: four connections, one per version. Use the connection switcher:"
+  echo "            Lab ClickHouse 26.5 (default), 26.3, 25.8 and 23.8"
   echo "  AI:       $AI_LINE"
   echo "  Guide:    .devcontainer/lab/WELCOME.md"
   echo "  Done?     Delete the codespace at https://github.com/codespaces"

@@ -1,7 +1,7 @@
 # Welcome to your CHouse UI lab
 
-This codespace runs a private copy of CHouse UI with a ClickHouse server and
-sample data. It's yours alone: you are the admin, and nobody else can open it.
+This codespace runs a private copy of CHouse UI with four ClickHouse servers,
+one per version, and sample data. It's yours alone: you are the admin, and nobody else can open it.
 
 **You don't need this editor.** It only hosts the lab. Everything happens in
 the CHouse UI tab.
@@ -32,9 +32,9 @@ through every area. Here is what the lab has ready for each one:
 
 | Area | What's there |
 |---|---|
-| **Fleet** | The lab's ClickHouse, polled every 30 seconds. |
-| **SQL workspace** | `shop` and `analytics` databases with 2 million orders, a small `finance` database, and four shared saved queries. |
-| **Monitoring** | A steady query load, new orders every 30 seconds, one slow query every 2 minutes and one failing query every 10 minutes. |
+| **Fleet** | The lab's four ClickHouse servers (26.5, 26.3, 25.8 and 23.8), polled every 30 seconds. |
+| **SQL workspace** | `shop` and `analytics` databases with 2 million orders, a small `finance` database, and four shared saved queries. Every server has the same data. |
+| **Monitoring** | On every server: a steady query load, new orders every 30 seconds, one slow query every 2 minutes and one failing query every 10 minutes. |
 | **Dashboards** | *Shop sales*, plus the *ClickHouse overview*, *Query latency* and *Disk and tables* templates. |
 | **Data** | Two data-health promises. *Orders keep arriving* holds. *Shop orders are in EUR* breaks on purpose (about one order in ten is in USD), so there's an incident to investigate. Lineage shows the materialized view. |
 | **Alerts** | A fleet threshold rule, *Lab fleet thresholds*. |
@@ -50,7 +50,44 @@ Things to try:
 3. Sign in as `maya` and run `SELECT * FROM finance.payouts`. Her data
    access policy covers only `shop` and `analytics`, so CHouse UI refuses it.
 
-## 4. Turn on AI (optional)
+## 4. Try 3.18 on four ClickHouse versions
+
+CHouse UI 3.18 asks each ClickHouse server what it can do instead of assuming.
+The lab has one connection per version, and each one shows a different
+result, so you can compare them. Switch
+between them with the connection switcher at the top of the page.
+
+| Connection | ClickHouse | Role ceiling | Personal connection |
+|---|---|---|---|
+| **Lab ClickHouse 26.5** (default) | 26.5 | Available | Offered, but **fails** the server self-test when you press **Check**: 26.5.7 runs `CREATE` under `EXECUTE AS` without checking grants. |
+| **Lab ClickHouse 26.3** | 26.3.63 | Available | Offered, and **passes** the server self-test. |
+| **Lab ClickHouse 25.8** | 25.8 LTS | Available | **Blocked up front**: 25.8 has no `EXECUTE AS` statement. |
+| **Lab ClickHouse 23.8** | 23.8 LTS | **Blocked up front**: it needs 24.4 or newer. | **Blocked up front**: no `EXECUTE AS`. |
+
+Things to try:
+
+1. Open **Admin › Connections**, pick a connection and open
+   **ClickHouse login**. The kinds the server can't run are disabled before
+   you type anything, with the server's version and what is missing. Compare
+   *Lab ClickHouse 23.8*, *25.8* and *26.3*.
+2. Run `SELECT version()` on each connection, or open **Fleet** to see all
+   four side by side.
+3. In **Monitoring › Query logs**, look at the query ids. Each statement
+   CHouse UI sends is `chouse:p:<account>:…` or `chouse:s:<purpose>:…`, so a
+   ClickHouse administrator can tell whose it was. On 25.8 and newer,
+   CHouse UI also sets a quota key with the same account; 23.8 refuses one,
+   so it is left out there.
+4. To set up a role ceiling or a personal connection, open the connection's
+   **Identity** panel. It shows the statements to run as the ClickHouse
+   administrator. In the lab, you are that administrator: run them in the SQL
+   workspace on the same connection, then press **Check**.
+
+Try the kinds on *Lab ClickHouse 26.3*, *25.8* and *23.8*. The default
+connection, *Lab ClickHouse 26.5*, holds the dashboards, alerts, scheduled
+report and data-health promises, and the teammates' data access policy covers
+only that connection.
+
+## 5. Turn on AI (optional)
 
 The AI features (the AI SRE, *Optimize with AI*, Chobi, chat) need a model.
 The lab uses **your own key**, billed to you:

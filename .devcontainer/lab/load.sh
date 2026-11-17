@@ -1,7 +1,8 @@
 #!/bin/sh
 # Light, steady query load for the lab, so Monitoring, Fleet, query history and
-# data freshness have something real to show. Runs in the `load` service of
-# compose.yml and talks to ClickHouse directly with clickhouse-client.
+# data freshness have something real to show. Runs in one `load-*` service of
+# compose.yml per ClickHouse server, whose host is the first argument, and
+# talks to it directly with clickhouse-client.
 #
 # One tick every 5 seconds:
 #   - every tick: one cheap dashboard-style query
@@ -14,10 +15,13 @@
 # in system.query_log and in CHouse UI.
 set -u
 
+# The server this loop feeds: a compose service name, set per load service.
+CH_HOST="${1:-clickhouse-26-5}"
+
 ch() {
   comment="$1"
   shift
-  clickhouse-client --host clickhouse --user admin --password "$CLICKHOUSE_PASSWORD" \
+  clickhouse-client --host "$CH_HOST" --user admin --password "$CLICKHOUSE_PASSWORD" \
     --log_comment="$comment" --max_execution_time=60 --query "$1" >/dev/null 2>&1
 }
 
