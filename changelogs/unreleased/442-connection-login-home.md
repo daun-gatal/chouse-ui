@@ -11,3 +11,4 @@ type: patch
 - The stored password and TLS rule, port and password limits, and the "one ClickHouse user per kind" check are the same everywhere the login is saved.
 - A role-ceiling or personal connection nobody can query yet can no longer be made the default, and one turned back on is checked at once instead of being refused for up to five minutes.
 - Refused attempts to create or switch a role-ceiling or personal connection are recorded in the audit log.
+- **Security:** server dependencies `hono` (4.13.13 → 4.13.19) and `@hono/node-server` (2.1.3 → 2.1.8) are updated, clearing the 6 medium and 1 low findings Artifact Hub's Trivy scan reports for image 3.18.0 (CVE-2026-126210, CVE-2026-126343, CVE-2026-126355 to CVE-2026-126359).
