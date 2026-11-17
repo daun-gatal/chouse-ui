@@ -45,6 +45,7 @@ import { setSessionId, setConnectionId, clearSession, getSessionId } from "@/api
 import { IDENTITY_MODE_CEILING, IDENTITY_MODE_PERSONAL, identityKind } from "@/api/connectionIdentity";
 import type { BindingState } from "@/api/clickhouseBindings";
 import { linkOnConnection, useMyClickHouseLinks } from "@/hooks/useMyClickHouseLinks";
+import { identityOnConnection, useMyConnectionIdentities } from "@/hooks/useMyConnectionIdentities";
 import { rbacUserPreferencesApi } from "@/api";
 import { useRbacStore, useAuthStore } from "@/stores";
 
@@ -92,11 +93,51 @@ function PersonalLogin({ connectionId }: { connectionId: string }): ReactElement
   );
 }
 
+const UNAVAILABLE_TEXT = "Unavailable: the login is failing its checks";
+
+/**
+ * Who the signed-in person is on a role-ceiling connection: the ClickHouse
+ * role their statements are limited to, or why there is none.
+ */
+function CeilingLogin({ username, connectionId, accessContact }: { username: string; connectionId: string; accessContact?: string | null }): ReactElement {
+  const { data, isPending, isError } = useMyConnectionIdentities();
+  const general = (
+    <span title={ROLE_CEILING_TITLE}>
+      Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>, limited to your ClickHouse role
+    </span>
+  );
+  // Whether the person's role is mapped is not known yet (or at all, when the read failed).
+  if (isPending || isError) return general;
+  const identity = identityOnConnection(data, connectionId);
+  if (!identity) return general;
+  if (identity.state === "no_usable_role") {
+    const contact = accessContact?.trim() || "a super admin";
+    return (
+      <span title={identity.detail ?? undefined} className="text-amber-700 dark:text-amber-300">
+        Your role isn't mapped here yet — ask <span className="normal-case tracking-normal">{contact}</span>
+      </span>
+    );
+  }
+  if (identity.state === "connection_unavailable") {
+    return <span title={identity.detail ?? undefined} className="text-red-700 dark:text-red-300">{UNAVAILABLE_TEXT}</span>;
+  }
+  if (identity.state === "ready" && identity.runsAs?.type === "role") {
+    return (
+      <span title={ROLE_CEILING_TITLE}>
+        Limited to <span className="normal-case tracking-normal text-paper-muted">{identity.runsAs.name}</span>
+      </span>
+    );
+  }
+  return general;
+}
+
 interface SharedLoginProps {
   username: string;
   identityMode?: string | null;
-  /** Needed on a personal connection, to find the person's own link on it. */
+  /** Needed on a personal or role-ceiling connection, to find the person's own link or role on it. */
   connectionId?: string;
+  /** Whom to ask when the person's role is not mapped. */
+  accessContact?: string | null;
 }
 
 /**
@@ -105,13 +146,14 @@ interface SharedLoginProps {
  * case-sensitive. On a personal connection that user is the person's own, not
  * the connection's login.
  */
-export function SharedLogin({ username, identityMode, connectionId }: SharedLoginProps): ReactElement {
+export function SharedLogin({ username, identityMode, connectionId, accessContact }: SharedLoginProps): ReactElement {
   const kind = identityKind(identityMode);
   if (kind === IDENTITY_MODE_PERSONAL) {
     if (connectionId === undefined) return <span title={PERSONAL_TITLE}>Your own ClickHouse user</span>;
     return <PersonalLogin connectionId={connectionId} />;
   }
   if (kind === IDENTITY_MODE_CEILING) {
+    if (connectionId !== undefined) return <CeilingLogin username={username} connectionId={connectionId} accessContact={accessContact} />;
     return (
       <span title={ROLE_CEILING_TITLE}>
         Shared login <span className="normal-case tracking-normal text-paper-muted">{username}</span>, limited to your ClickHouse role
@@ -431,7 +473,7 @@ export default function ConnectionSelector({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-[12px] font-medium text-paper">{conn.name}</span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
+                  {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} accessContact={conn.accessContact} />
                 </span>
               </div>
             )}
@@ -439,7 +481,7 @@ export default function ConnectionSelector({
         </TooltipTrigger>
         {isCollapsed && (
           <TooltipContent side="right" className={TOOLTIP_CLASS}>
-            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
+            {conn.name} · {isConnected ? "Connected" : "Connect"} · <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} accessContact={conn.accessContact} />
           </TooltipContent>
         )}
       </Tooltip>
@@ -476,7 +518,7 @@ export default function ConnectionSelector({
                   {activeConnection.name}
                 </span>
                 <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} identityMode={activeConnection.identityMode} connectionId={activeConnection.id} />
+                  {isConnected ? "Connected" : "Not connected"} · <SharedLogin username={activeConnection.username} identityMode={activeConnection.identityMode} connectionId={activeConnection.id} accessContact={activeConnection.accessContact} />
                 </span>
               </div>
             )}
@@ -525,7 +567,7 @@ export default function ConnectionSelector({
                     )}
                   </div>
                   <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                    <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} />
+                    <SharedLogin username={conn.username} identityMode={conn.identityMode} connectionId={conn.id} accessContact={conn.accessContact} />
                   </span>
                 </div>
                 {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />}

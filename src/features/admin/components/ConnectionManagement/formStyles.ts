@@ -1,6 +1,6 @@
 /**
- * Class names the connection dialogs and the identity panel share, so their
- * labels, inputs and buttons stay identical.
+ * Class names the connection panel's tabs and dialogs share, so their labels,
+ * inputs and buttons stay identical.
  */
 
 export const LABEL_CLASS = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";

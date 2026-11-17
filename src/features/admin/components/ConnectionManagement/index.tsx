@@ -1,50 +1,27 @@
 /**
- * Connection Management Component
- * 
- * Manages ClickHouse server connections with CRUD operations.
+ * Connection Management: the list of ClickHouse connections, with who can
+ * query each one, and the connection panel for creating and editing them.
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useState } from "react";
 import {
   Server,
   Plus,
   Pencil,
   Trash2,
   RefreshCw,
-  Check,
   X,
   Star,
   Play,
   Loader2,
-  Eye,
-  EyeOff,
-  Database,
   Lock,
   Unlock,
-  AlertCircle,
   CheckCircle2,
-  Clock,
   Timer,
-  KeyRound,
-  Link2,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -52,613 +29,58 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+} from "@/components/ui/table";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
   TooltipProvider,
-} from '@/components/ui/tooltip';
-import ConfirmationDialog from '@/components/common/ConfirmationDialog';
-import { toast } from 'sonner';
-import {
-  privilegeReportFromError,
-  rbacConnectionsApi,
-  type ClickHouseConnection,
-  type ConnectionPrivilegeReport,
-  type CreateConnectionInput,
-  type TestConnectionResult,
-} from '@/api/rbac';
-import { ApiError } from '@/api/client';
-import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
-import { SkeletonRows } from '@/components/common/Skeletons';
-import { ConnectionObservability } from '@/features/observe/ConnectionObservability';
-import { CollectorSchedule } from '@/features/observe/CollectorSchedule';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { IDENTITY_MODE_SHARED, identityKind, identityKindLabel } from '@/api/connectionIdentity';
-import { PrivilegeReport, optionalSummary, privilegeSummary } from './PrivilegeReport';
-import { IdentityPanel } from './IdentityPanel';
-import { BindingsPanel } from './BindingsPanel';
-import { HELP_CLASS, INPUT_CLASS, LABEL_CLASS } from './formStyles';
+} from "@/components/ui/tooltip";
+import ConfirmationDialog from "@/components/common/ConfirmationDialog";
+import { rbacConnectionsApi, type ClickHouseConnection } from "@/api/rbac";
+import { IDENTITY_MODE_SHARED, identityKind, identityKindLabel } from "@/api/connectionIdentity";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { SkeletonRows } from "@/components/common/Skeletons";
+import { CollectorSchedule } from "@/features/observe/CollectorSchedule";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { log } from "@/lib/log";
+import { cn } from "@/lib/utils";
+import { ConnectionPanel } from "./ConnectionPanel";
+import { connectionEnvironment, loginPill, readinessPill, type PanelTab } from "./loginForm";
+import { KindBadge, StatusPill } from "./panelParts";
+import { optionalSummary, privilegeSummary } from "./PrivilegeReport";
 
-// ============================================
-// Validation Schema
-// ============================================
-
-const ENVIRONMENT_OPTIONS = [
-  { value: 'unset', label: 'Not set' },
-  { value: 'production', label: 'Production' },
-  { value: 'staging', label: 'Staging' },
-  { value: 'development', label: 'Development' },
-] as const;
-
-type EnvironmentChoice = (typeof ENVIRONMENT_OPTIONS)[number]['value'];
-
-const connectionSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(255),
-  host: z.string().min(1, 'Host is required').max(255),
-  port: z.coerce.number().int().default(8123),
-  username: z.string().min(1, 'Username is required').max(255),
-  password: z.string().optional(),
-  database: z.string().max(255).optional(),
-  sslEnabled: z.boolean(),
-  environment: z.enum(['unset', 'production', 'staging', 'development']),
-});
-
-type ConnectionFormData = z.output<typeof connectionSchema>;
-
-/** The environment stored in a connection's metadata (ADR 0025: production raises AI write tiers). */
-export function connectionEnvironment(connection?: Pick<ClickHouseConnection, 'metadata'>): EnvironmentChoice {
-  const value = connection?.metadata?.environment;
-  return value === 'production' || value === 'staging' || value === 'development' ? value : 'unset';
+/** Which connection the panel shows, on which tab; a new `seq` remounts it. */
+interface PanelRequest {
+  /** Null creates a connection. */
+  connectionId: string | null;
+  tab: PanelTab;
+  seq: number;
 }
 
-/** The connection's metadata with the chosen environment, keeping every other key. */
-function metadataWithEnvironment(metadata: Record<string, unknown> | null | undefined, environment: EnvironmentChoice): Record<string, unknown> {
-  const next = { ...(metadata ?? {}) };
-  if (environment === 'unset') delete next.environment;
-  else next.environment = environment;
-  return next;
-}
-
-// ============================================
-// Connection Form Dialog
-// ============================================
-
-/** Fields the ClickHouse login and the privilege check depend on; editing one makes a shown report stale. */
-const CREDENTIAL_FIELDS: ReadonlySet<string> = new Set(['host', 'port', 'username', 'password', 'database', 'sslEnabled']);
-
-interface PrivilegeView {
-  report: ConnectionPrivilegeReport;
-  /** The server refused the save because of this report. */
-  blocked: boolean;
-  version?: string;
-  latencyMs?: number;
-  /** Remounts the report (and its open rows) on every new check. */
-  run: number;
-}
-
-interface ConnectionFormDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  connection?: ClickHouseConnection;
-  onSuccess: () => void;
-}
-
-function ConnectionFormDialog({
-  isOpen,
-  onClose,
-  connection,
-  onSuccess,
-}: ConnectionFormDialogProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
-  /** The server asked for the password again rather than failing to connect. */
-  const [passwordNeeded, setPasswordNeeded] = useState(false);
-  const [privilegeView, setPrivilegeView] = useState<PrivilegeView | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const reportRef = useRef<HTMLDivElement | null>(null);
-
-  const isEditing = !!connection;
-  /** On any kind but a shared login the server refuses login and server changes here (409 IDENTITY_MANAGED_LOGIN). */
-  const loginManaged = isEditing && identityKind(connection.identityMode) !== IDENTITY_MODE_SHARED;
-
-  const form = useForm<ConnectionFormData>({
-    resolver: zodResolver(connectionSchema) as any,
-    defaultValues: {
-      name: connection?.name || '',
-      host: connection?.host || '',
-      port: connection?.port || 8123,
-      username: connection?.username || '',
-      password: '',
-      database: connection?.database || '',
-      sslEnabled: connection?.sslEnabled || false,
-      environment: connectionEnvironment(connection),
-    },
-  });
-
-  // Reset form when dialog opens/closes or connection changes
-  useEffect(() => {
-    if (isOpen) {
-      form.reset({
-        name: connection?.name || '',
-        host: connection?.host || '',
-        port: connection?.port || 8123,
-        username: connection?.username || '',
-        password: '',
-        database: connection?.database || '',
-        sslEnabled: connection?.sslEnabled || false,
-        environment: connectionEnvironment(connection),
-      });
-      setTestResult(null);
-      setPrivilegeView(null);
-    }
-  }, [isOpen, connection, form]);
-
-  // A report for other credentials than the ones in the form would mislead.
-  useEffect(() => {
-    const subscription = form.watch((_values, { name }) => {
-      if (name && CREDENTIAL_FIELDS.has(name)) {
-        setTestResult(null);
-        setPrivilegeView(null);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [form]);
-
-  // Bring a refused save's report into view; the dialog body scrolls.
-  useEffect(() => {
-    if (privilegeView?.blocked) reportRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [privilegeView]);
-
-  const showPrivileges = (report: ConnectionPrivilegeReport, blocked: boolean, result?: TestConnectionResult): void => {
-    setPrivilegeView((previous) => ({
-      report,
-      blocked,
-      version: result?.version,
-      latencyMs: result?.latencyMs,
-      run: (previous?.run ?? 0) + 1,
-    }));
-  };
-
-  const handleTest = async () => {
-    const values = form.getValues();
-    setIsTesting(true);
-    setTestResult(null);
-    // Checking again after a refused save keeps the "can't save yet" banner until everything passes.
-    const wasBlocked = privilegeView?.blocked ?? false;
-    setPasswordNeeded(false);
-
-    try {
-      const result = await rbacConnectionsApi.test({
-        host: values.host,
-        port: values.port,
-        username: values.username,
-        password: values.password,
-        database: values.database,
-        sslEnabled: values.sslEnabled,
-        ...(isEditing ? { connectionId: connection.id } : {}),
-      });
-
-      if (result.success && result.privileges) {
-        setTestResult(null);
-        showPrivileges(result.privileges, wasBlocked && !result.privileges.ok, result);
-        const optional = optionalSummary(result.privileges);
-        if (result.privileges.ok && !optional) {
-          toast.success('Connection successful', { description: 'Every feature is available.' });
-        } else if (result.privileges.ok) {
-          toast.warning('Connected; some optional features are missing', { description: `${optional} You can still save it.` });
-        } else {
-          toast.warning('Connected, but privileges are missing', { description: privilegeSummary(result.privileges) });
-        }
-      } else {
-        setPrivilegeView(null);
-        setTestResult(result);
-        if (result.success) {
-          toast.success('Connection successful', { description: `Version: ${result.version}` });
-        } else {
-          toast.error('Connection failed', { description: result.error });
-        }
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Test failed';
-      setPrivilegeView(null);
-      setPasswordNeeded(error instanceof ApiError && error.code === 'PASSWORD_REQUIRED');
-      setTestResult({ success: false, error: errorMsg });
-      toast.error('Connection test failed', { description: errorMsg });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  /** Saved; still say so when an optional feature (ClickHouse access admin) isn't granted. */
-  const notifySaved = (title: string, report: ConnectionPrivilegeReport | undefined): void => {
-    const optional = report ? optionalSummary(report) : null;
-    if (optional) toast.warning(title, { description: `${optional} Test the connection to see the grants.` });
-    else toast.success(title);
-  };
-
-  const onSubmit = async (values: ConnectionFormData) => {
-    setIsSubmitting(true);
-
-    try {
-      if (isEditing) {
-        const updateData: Partial<CreateConnectionInput> = {
-          name: values.name,
-          database: values.database || undefined,
-          metadata: metadataWithEnvironment(connection.metadata, values.environment),
-        };
-        if (!loginManaged) {
-          updateData.host = values.host;
-          updateData.port = values.port;
-          updateData.username = values.username;
-          updateData.sslEnabled = values.sslEnabled;
-          // Only include password if it was changed
-          if (values.password) {
-            updateData.password = values.password;
-          }
-        }
-        const saved = await rbacConnectionsApi.update(connection.id, updateData);
-        notifySaved('Connection updated successfully', saved.privileges);
-      } else {
-        const { environment, ...rest } = values;
-        const saved = await rbacConnectionsApi.create({ ...rest, metadata: metadataWithEnvironment(null, environment) });
-        notifySaved('Connection created successfully', saved.privileges);
-      }
-      onSuccess();
-      onClose();
-    } catch (error) {
-      const report = privilegeReportFromError(error);
-      if (report) {
-        setTestResult(null);
-        showPrivileges(report, true);
-        toast.error(isEditing ? "Can't save these changes yet" : "Can't create this connection yet", {
-          description: privilegeSummary(report),
-        });
-        return;
-      }
-      const errorMsg = error instanceof Error ? error.message : 'Operation failed';
-      if (error instanceof ApiError && (error.code === 'CONNECTION_TEST_FAILED' || error.code === 'PASSWORD_REQUIRED')) {
-        setPrivilegeView(null);
-        setPasswordNeeded(error.code === 'PASSWORD_REQUIRED');
-        setTestResult({ success: false, error: errorMsg });
-      }
-      toast.error(isEditing ? 'Failed to update connection' : 'Failed to create connection', {
-        description: errorMsg,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const privilegesFailing = privilegeView !== null && !privilegeView.report.ok;
-
+/** The health of a role-ceiling or personal login; one that does not pass opens the ClickHouse login tab. */
+function LoginCell({ connection, onOpen }: { connection: ClickHouseConnection; onOpen?: () => void }) {
+  const pill = loginPill(connection);
+  if (!pill) return <span className="text-paper-faint">—</span>;
+  // Nobody can query until the login passes, so a failing or unchecked one leads to where it is fixed.
+  const opens = pill.tone !== "ok" && onOpen !== undefined;
+  const reason = connection.identityHealthReason ?? (pill.tone === "bad" ? "The ClickHouse login is failing its checks." : undefined);
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px] rounded-xs border-ink-500 bg-ink-100 p-0">
-        <DialogHeader className="border-b border-ink-500 px-5 py-4">
-          <DialogTitle className="flex items-center gap-3 text-paper">
-            <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
-              <Server className="h-4 w-4" aria-hidden />
-            </span>
-            <span className="flex flex-col gap-0.5 text-left">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                {isEditing ? "Edit server" : "New server"}
-              </span>
-              <span className="text-[15px] font-semibold tracking-tight">
-                {isEditing ? "Edit connection" : "Add connection"}
-              </span>
-            </span>
-          </DialogTitle>
-          <DialogDescription className="text-[12px] text-paper-muted">
-            {isEditing
-              ? "Update the ClickHouse server credentials."
-              : "Wire up a ClickHouse server — host, port, credentials."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-w-0 flex-col gap-4 px-5 py-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem className="space-y-1.5">
-                  <FormLabel className={LABEL_CLASS}>Connection name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Production cluster" className={INPUT_CLASS} {...field} />
-                  </FormControl>
-                  <FormMessage className="text-[11px] text-red-300" />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-3 gap-3">
-              <FormField
-                control={form.control}
-                name="host"
-                render={({ field }) => (
-                  <FormItem className="col-span-2 space-y-1.5">
-                    <FormLabel className={LABEL_CLASS}>Host</FormLabel>
-                    <FormControl>
-                      <Input placeholder="localhost" className={INPUT_CLASS} {...field} disabled={loginManaged} />
-                    </FormControl>
-                    <FormMessage className="text-[11px] text-red-300" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="port"
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel className={LABEL_CLASS}>Port</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="8123"
-                        className={INPUT_CLASS}
-                        {...field}
-                        disabled={loginManaged}
-                        value={field.value ?? 8123}
-                        onChange={(e) =>
-                          field.onChange(e.target.value === "" ? 8123 : Number(e.target.value))
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage className="text-[11px] text-red-300" />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel className={LABEL_CLASS}>Username</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="default"
-                        className={cn(INPUT_CLASS, privilegesFailing && "border-red-500 dark:border-red-400")}
-                        aria-invalid={privilegesFailing || undefined}
-                        {...field}
-                        disabled={loginManaged}
-                      />
-                    </FormControl>
-                    <FormMessage className="text-[11px] text-red-300" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel className={cn(LABEL_CLASS, "flex items-center gap-1.5")}>
-                      Password
-                      {isEditing && (
-                        <span className="text-paper-faint normal-case tracking-normal">
-                          (leave empty to keep)
-                        </span>
-                      )}
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showPassword ? "text" : "password"}
-                          placeholder="••••••••"
-                          className={cn(INPUT_CLASS, "pr-9")}
-                          {...field}
-                          disabled={loginManaged}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim hover:text-paper"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-3.5 w-3.5" />
-                          ) : (
-                            <Eye className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </FormControl>
-                    <FormMessage className="text-[11px] text-red-300" />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="database"
-              render={({ field }) => (
-                <FormItem className="space-y-1.5">
-                  <FormLabel className={LABEL_CLASS}>Default database (optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="default" className={INPUT_CLASS} {...field} />
-                  </FormControl>
-                  <FormDescription className={HELP_CLASS}>
-                    Leave empty to use the server's default database.
-                  </FormDescription>
-                  <FormMessage className="text-[11px] text-red-300" />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="sslEnabled"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
-                      {field.value ? (
-                        <Lock className="h-3.5 w-3.5 text-brand" aria-hidden />
-                      ) : (
-                        <Unlock className="h-3.5 w-3.5" aria-hidden />
-                      )}
-                    </span>
-                    <div className="flex flex-col gap-0.5">
-                      <FormLabel className="text-[13px] font-medium text-paper">
-                        SSL / TLS
-                      </FormLabel>
-                      <FormDescription className={HELP_CLASS}>
-                        Use HTTPS for secure connections.
-                      </FormDescription>
-                    </div>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={loginManaged} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            {loginManaged && (
-              <p className={cn(HELP_CLASS, "leading-[1.5]")}>
-                This is a {identityKindLabel(connection.identityMode).toLowerCase()} connection: host, port, TLS, user and password are changed in its ClickHouse login panel, by a super admin.
-              </p>
-            )}
-
-            <FormField
-              control={form.control}
-              name="environment"
-              render={({ field }) => (
-                <FormItem className="space-y-1.5">
-                  <FormLabel className={LABEL_CLASS}>Environment</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger className={INPUT_CLASS} aria-label="Environment">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {ENVIRONMENT_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className={HELP_CLASS}>
-                    On a production connection, AI changes are checked one step harder: undoable changes ask first, and changes that ask once need a second approver.
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
-
-            {privilegeView && (
-              <div ref={reportRef}>
-                <PrivilegeReport
-                  key={privilegeView.run}
-                  report={privilegeView.report}
-                  blocked={privilegeView.blocked}
-                  isEditing={isEditing}
-                  version={privilegeView.version}
-                  latencyMs={privilegeView.latencyMs}
-                />
-              </div>
-            )}
-
-            {testResult && (
-              <div
-                className={cn(
-                  "flex flex-col gap-1.5 rounded-xs border px-3 py-2.5",
-                  testResult.success
-                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/30"
-                    : "border-red-200 bg-red-50 dark:border-red-500/40 dark:bg-red-950/30"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {testResult.success ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-300" />
-                  )}
-                  <span
-                    className={cn(
-                      "text-[13px] font-medium",
-                      testResult.success
-                        ? "text-emerald-800 dark:text-emerald-200"
-                        : "text-red-800 dark:text-red-200"
-                    )}
-                  >
-                    {testResult.success ? "Connection successful" : passwordNeeded ? "Password needed" : "Connection failed"}
-                  </span>
-                </div>
-                {testResult.success && testResult.version && (
-                  <div className="flex items-center gap-3 pl-6 font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
-                    <span>v{testResult.version}</span>
-                    {testResult.latencyMs && (
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {testResult.latencyMs}ms
-                      </span>
-                    )}
-                  </div>
-                )}
-                {!testResult.success && testResult.error && (
-                  <p className="pl-6 font-mono text-[11px] leading-[1.5] text-red-700 dark:text-red-300">{testResult.error}</p>
-                )}
-              </div>
-            )}
-
-            {isEditing && <ConnectionObservability connectionId={connection.id} />}
-
-            <DialogFooter className="sticky bottom-0 -mx-5 -mb-4 gap-2 border-t border-ink-500 bg-ink-100 px-5 py-4 sm:gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleTest}
-                disabled={isTesting || !form.watch("host") || !form.watch("username")}
-                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-300 disabled:opacity-50"
-              >
-                {isTesting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : privilegesFailing ? (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-                {privilegesFailing ? "Check again" : "Test connection"}
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : isEditing ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : (
-                  <Plus className="h-3.5 w-3.5" />
-                )}
-                {isEditing ? "Update" : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <StatusPill
+      pill={pill}
+      dot
+      title={reason}
+      onClick={opens ? onOpen : undefined}
+      ariaLabel={opens ? `ClickHouse login of ${connection.name}: ${pill.label}` : undefined}
+    />
   );
+}
+
+/** Who can query, in a few words; opens the Who can query tab. */
+function ReadinessCell({ connection, onOpen }: { connection: ClickHouseConnection; onOpen?: () => void }) {
+  const pill = readinessPill(connection);
+  if (!pill) return <span className="text-paper-faint">—</span>;
+  return <StatusPill pill={pill} onClick={onOpen} ariaLabel={onOpen ? `Who can query ${connection.name}: ${pill.label}` : undefined} />;
 }
 
 // ============================================
@@ -668,39 +90,41 @@ function ConnectionFormDialog({
 export default function ConnectionManagement() {
   const [connections, setConnections] = useState<ClickHouseConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingConnection, setEditingConnection] = useState<ClickHouseConnection | undefined>();
   const [deleteConnection, setDeleteConnection] = useState<ClickHouseConnection | null>(null);
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   /** By id, so the panel follows the list when a save refreshes it. */
-  const [identityConnectionId, setIdentityConnectionId] = useState<string | null>(null);
-  const [bindingsConnectionId, setBindingsConnectionId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<PanelRequest | null>(null);
+  /** The connection Create just made, shown until the reloaded list carries it. */
+  const [created, setCreated] = useState<ClickHouseConnection | null>(null);
 
-  const { hasPermission, isSuperAdmin } = useRbacStore();
-  // Kinds and role maps decide what ClickHouse lets every account do: super admin only.
-  const canManageIdentity = isSuperAdmin();
+  const { hasPermission } = useRbacStore();
   const canView = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canEdit = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_EDIT);
   const canDelete = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_DELETE);
 
-  const fetchConnections = async () => {
-    setIsLoading(true);
+  /** Reloads the list without blanking the table, and resolves to it (empty when the read failed). */
+  const reloadConnections = useCallback(async (): Promise<ClickHouseConnection[]> => {
     try {
       const result = await rbacConnectionsApi.list();
       setConnections(result.connections);
+      return result.connections;
     } catch (error) {
-      toast.error('Failed to load connections');
-    } finally {
-      setIsLoading(false);
+      log.error("[ConnectionManagement] Failed to load connections", { errorMessage: error instanceof Error ? error.message : String(error) });
+      toast.error("Failed to load connections");
+      return [];
     }
-  };
-
-  useEffect(() => {
-    fetchConnections();
   }, []);
 
+  const fetchConnections = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    await reloadConnections();
+    setIsLoading(false);
+  }, [reloadConnections]);
 
+  useEffect(() => {
+    void fetchConnections();
+  }, [fetchConnections]);
 
   const handleToggleActive = async (connection: ClickHouseConnection) => {
     try {
@@ -712,9 +136,9 @@ export default function ConnectionManagement() {
           ? `"${connection.name}" has been deactivated`
           : `"${connection.name}" has been activated`
       );
-      fetchConnections();
+      void reloadConnections();
     } catch (error) {
-      toast.error('Failed to update connection');
+      toast.error("Failed to update connection", { description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -725,9 +149,9 @@ export default function ConnectionManagement() {
       await rbacConnectionsApi.delete(deleteConnection.id);
       toast.success(`"${deleteConnection.name}" has been deleted`);
       setDeleteConnection(null);
-      fetchConnections();
+      void reloadConnections();
     } catch (error) {
-      toast.error('Failed to delete connection');
+      toast.error("Failed to delete connection");
     }
   };
 
@@ -753,22 +177,27 @@ export default function ConnectionManagement() {
         });
       }
     } catch (error) {
-      toast.error('Connection test failed');
+      toast.error("Connection test failed");
     } finally {
       setTestingConnectionId(null);
     }
   };
 
-  const openCreateDialog = () => {
-    setEditingConnection(undefined);
-    setIsFormOpen(true);
+  const openPanel = (connectionId: string | null, tab: PanelTab): void => {
+    setCreated(null);
+    setPanel((previous) => ({ connectionId, tab, seq: (previous?.seq ?? 0) + 1 }));
   };
 
-  const openEditDialog = (connection: ClickHouseConnection) => {
-    setEditingConnection(connection);
-    setIsFormOpen(true);
+  /** After Create the panel edits the new connection, on Who can query. It is not selected in the app. */
+  const handleCreated = (connection: ClickHouseConnection): void => {
+    setCreated(connection);
+    setPanel((previous) => ({ connectionId: connection.id, tab: "who", seq: (previous?.seq ?? 0) + 1 }));
+    void reloadConnections();
   };
 
+  const panelConnection = panel?.connectionId
+    ? connections.find((conn) => conn.id === panel.connectionId) ?? (created?.id === panel.connectionId ? created : null)
+    : null;
 
   return (
     <div className="p-6">
@@ -810,7 +239,7 @@ export default function ConnectionManagement() {
           {canEdit && (
             <Button
               size="sm"
-              onClick={openCreateDialog}
+              onClick={() => openPanel(null, "general")}
               className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -825,7 +254,7 @@ export default function ConnectionManagement() {
         <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
           <table className="w-full">
             <tbody>
-              <SkeletonRows count={5} cols={5} />
+              <SkeletonRows count={5} cols={8} />
             </tbody>
           </table>
         </div>
@@ -839,7 +268,7 @@ export default function ConnectionManagement() {
           {canEdit && (
             <Button
               size="sm"
-              onClick={openCreateDialog}
+              onClick={() => openPanel(null, "general")}
               className="mt-4 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -849,7 +278,7 @@ export default function ConnectionManagement() {
         </div>
       ) : (
         <TooltipProvider>
-          <div className="overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+          <div className="overflow-x-auto rounded-md border border-ink-500 bg-ink-100">
             <Table>
               <TableHeader>
                 <TableRow className="border-b-ink-500 bg-ink-200 hover:bg-ink-200">
@@ -857,6 +286,8 @@ export default function ConnectionManagement() {
                   <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Host</TableHead>
                   <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">User</TableHead>
                   <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Database</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Login</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Who can query</TableHead>
                   <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Status</TableHead>
                   <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Actions</TableHead>
                 </TableRow>
@@ -878,19 +309,7 @@ export default function ConnectionManagement() {
                             Default
                           </span>
                         )}
-                        {identityKind(conn.identityMode) !== IDENTITY_MODE_SHARED && (
-                          <span className="inline-flex items-center rounded-xs border border-ink-700 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
-                            {identityKindLabel(conn.identityMode)}
-                          </span>
-                        )}
-                        {conn.identityHealth === 'failing' && (
-                          <Tooltip>
-                            <TooltipTrigger aria-label="ClickHouse login is failing its checks">
-                              <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" aria-hidden />
-                            </TooltipTrigger>
-                            <TooltipContent>{conn.identityHealthReason ?? 'The ClickHouse login is failing its checks.'}</TooltipContent>
-                          </Tooltip>
-                        )}
+                        {identityKind(conn.identityMode) !== IDENTITY_MODE_SHARED && <KindBadge label={identityKindLabel(conn.identityMode)} />}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -913,6 +332,12 @@ export default function ConnectionManagement() {
                       {conn.database || <span className="text-paper-faint">default</span>}
                     </TableCell>
                     <TableCell>
+                      <LoginCell connection={conn} onOpen={canEdit ? () => openPanel(conn.id, "login") : undefined} />
+                    </TableCell>
+                    <TableCell>
+                      <ReadinessCell connection={conn} onOpen={canEdit ? () => openPanel(conn.id, "who") : undefined} />
+                    </TableCell>
+                    <TableCell>
                       {conn.isActive ? (
                         <span className="status-pill status-success">
                           <CheckCircle2 className="h-3 w-3" />
@@ -933,6 +358,7 @@ export default function ConnectionManagement() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleTest(conn)}
+                              aria-label={`Test ${conn.name}`}
                               disabled={testingConnectionId === conn.id}
                               className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
                             >
@@ -946,40 +372,6 @@ export default function ConnectionManagement() {
                           <TooltipContent>Test Connection</TooltipContent>
                         </Tooltip>
 
-                        {canManageIdentity && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setIdentityConnectionId(conn.id)}
-                                aria-label={`ClickHouse login of ${conn.name}`}
-                                className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
-                              >
-                                <KeyRound className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>ClickHouse login</TooltipContent>
-                          </Tooltip>
-                        )}
-
-                        {canManageIdentity && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setBindingsConnectionId(conn.id)}
-                                aria-label={`Linked ClickHouse users of ${conn.name}`}
-                                className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
-                              >
-                                <Link2 className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Linked ClickHouse users</TooltipContent>
-                          </Tooltip>
-                        )}
-
                         {canEdit && (
                           <>
                             <Tooltip>
@@ -988,6 +380,7 @@ export default function ConnectionManagement() {
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => handleToggleActive(conn)}
+                                  aria-label={conn.isActive ? `Deactivate ${conn.name}` : `Activate ${conn.name}`}
                                   className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
                                 >
                                   {conn.isActive ? (
@@ -1007,7 +400,8 @@ export default function ConnectionManagement() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => openEditDialog(conn)}
+                                  onClick={() => openPanel(conn.id, "general")}
+                                  aria-label={`Edit ${conn.name}`}
                                   className="h-8 w-8 text-paper-muted hover:bg-ink-200 hover:text-paper"
                                 >
                                   <Pencil className="w-4 h-4" />
@@ -1025,6 +419,7 @@ export default function ConnectionManagement() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setDeleteConnection(conn)}
+                                aria-label={`Delete ${conn.name}`}
                                 className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1043,28 +438,16 @@ export default function ConnectionManagement() {
         </TooltipProvider>
       )}
 
-      {/* Create/Edit Dialog */}
-      <ConnectionFormDialog
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        connection={editingConnection}
-        onSuccess={fetchConnections}
-      />
-
-      {/* Kind, login and role map (ADR 0033), super admin only */}
-      {canManageIdentity && (
-        <IdentityPanel
-          connection={connections.find((conn) => conn.id === identityConnectionId) ?? null}
-          onClose={() => setIdentityConnectionId(null)}
-          onChanged={fetchConnections}
-        />
-      )}
-
-      {/* Links between accounts and ClickHouse users (personal connections), super admin only */}
-      {canManageIdentity && (
-        <BindingsPanel
-          connection={connections.find((conn) => conn.id === bindingsConnectionId) ?? null}
-          onClose={() => setBindingsConnectionId(null)}
+      {/* Create and edit: General, ClickHouse login, Who can query */}
+      {/* A connection removed meanwhile closes its panel rather than turning it into a new one. */}
+      {panel && (panel.connectionId === null || panelConnection) && (
+        <ConnectionPanel
+          key={panel.seq}
+          connection={panelConnection}
+          initialTab={panel.tab}
+          onClose={() => setPanel(null)}
+          onReload={reloadConnections}
+          onCreated={handleCreated}
         />
       )}
 
@@ -1085,7 +468,7 @@ export default function ConnectionManagement() {
           <SheetHeader>
             <SheetTitle>Collection schedule</SheetTitle>
             <SheetDescription>
-              How often the observability collectors read every connection, and what they read per day. A connection can set its own schedule in its edit dialog.
+              How often the observability collectors read every connection, and what they read per day. A connection can set its own schedule on the General tab of its panel.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">

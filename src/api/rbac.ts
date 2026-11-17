@@ -970,6 +970,27 @@ export interface ClickHouseConnection {
   /** Unix milliseconds. */
   identityCheckedAt: number | null;
   identityServerVersion: string | null;
+  /** Who can query it, worked out on each list (ADR 0034); only `GET /connections` carries it. */
+  readiness?: ConnectionReadiness | null;
+}
+
+/**
+ * Who can query a connection, from its role map, links and data access
+ * policies. Mirrors `ConnectionReadiness` in packages/server/src/rbac/services/connectionIdentity.ts.
+ *
+ * - `refusing`: the login fails its checks or has none yet, so nobody can.
+ * - `none`: nobody yet (no mapping, no active link, no policy).
+ * - `partial`: some people can, some cannot.
+ * - `ready`: everyone it is meant for can.
+ */
+export interface ConnectionReadiness {
+  state: 'ready' | 'partial' | 'none' | 'refusing';
+  /** Data access policies with an allow rule on this connection. */
+  policies: number;
+  /** Role ceiling: CHouse roles that have at least one account, how many are mapped, and the people of the others. */
+  roles?: { total: number; mapped: number; peopleRefused: number };
+  /** Personal: links by state. */
+  links?: { active: number; pending: number; other: number };
 }
 
 export interface CreateConnectionInput {
