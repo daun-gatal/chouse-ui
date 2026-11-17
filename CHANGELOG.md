@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.18.1] - 2026-11-17
+
+### Changed
+- **One place for a connection's ClickHouse login** — a connection opens in one panel with **General**, **ClickHouse login** and **Who can query** tabs, and the separate *ClickHouse login* and *Linked ClickHouse users* buttons are gone. The login tab is one form (kind, host, port, TLS, user, password, default database, roles, access contact) with **Test**, which checks without saving, and **Save**. Changing the kind shows one hint that says what the kind needs, and the script for the ClickHouse administrator never contains the password.
+- **Create a role-ceiling or personal connection directly** — choose the kind when creating; one ClickHouse user with no grants of its own is enough, and the same checks as a switch run first. **Who can query** opens next to map roles or link people.
+- **Who can query** column in Admin › Connections and in the connection switcher: whether everyone a connection is meant for can use it, and for a person whose role isn't mapped, why and whom to ask.
+
+### Fixed
+- The default database can be changed on role-ceiling and personal connections, and cleared on any connection.
+- A shared-login save that ran while a super admin switched the connection's kind could store a full-privilege login on the switched connection; login saves now apply only if the connection did not change meanwhile.
+- The stored password and TLS rule, port and password limits, and the "one ClickHouse user per kind" check are the same everywhere the login is saved.
+- A role-ceiling or personal connection nobody can query yet can no longer be made the default, and one turned back on is checked at once instead of being refused for up to five minutes.
+- Refused attempts to create or switch a role-ceiling or personal connection are recorded in the audit log.
+- **Security:** server dependencies `hono` (4.13.13 → 4.13.19) and `@hono/node-server` (2.1.3 → 2.1.8) are updated, clearing the 6 medium and 1 low findings Artifact Hub's Trivy scan reports for image 3.18.0 (CVE-2026-126210, CVE-2026-126343, CVE-2026-126355 to CVE-2026-126359).
+
 ## [v3.18.0] - 2026-11-15
 
 ### Added
@@ -331,21 +346,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - **Dedicated MCP port and `MCP_*` settings** — port 8752, `MCP_ENABLED`, `MCP_HOST`, `MCP_PORT`, `MCP_ALLOW_WRITES`, `MCP_ALLOW_DESTRUCTIVE`, `MCP_TOOLSETS`, `MCP_ALLOWED_ORIGINS`, `MCP_TIMEOUT_SECONDS` (and the matching `mcp.*` YAML keys), plus the chart's `mcp.*` values, `<release>-mcp` Service and MCP Ingress. The server logs a warning naming any that are still set. After upgrading from 3.13, point agents at `/mcp` on the UI address and turn MCP on in Agents › MCP.
-
-## [v3.13.0] - 2026-09-13
-
-### Added
-- **Personal access tokens** — self-service machine credentials (`ch_pat_…`) in Preferences for connecting external apps. Tokens inherit your live permissions with optional scope narrowing and expiry presets, work on all API routes via `Authorization: Bearer`, support one-click rotate, and are individually revocable. Creation, rotation, and revocation are recorded in the audit log.
-- **MCP server status toggle** — the dock now shows whether the MCP server (ADR 0013) is enabled or disabled, with a hover tooltip explaining the state; the same status appears in the Personal access tokens settings card.
-- **MCP server for AI agents (ADR 0013)** — a Model Context Protocol endpoint on a dedicated port (8752) that lets agents (Cursor, VS Code Copilot, OpenCode, Claude Desktop, CI pipelines) query ClickHouse, explore schema, monitor the fleet, and manage scheduled work without the browser. PAT-only auth (`Authorization: Bearer ch_pat_…`) verified live against RBAC on every call, so scopes, data-access policies, rate limits, and `patId`-attributed audit apply exactly as for the UI and CLI.
-  - **Safe by default** — the read-only toolset registers by default (`whoami`, connections, schema explorer, SELECT-only `query` with AST classification and result caps, metrics, live queries, scheduled jobs, data health, alerting, audit). Write and destructive toolsets exist only when the operator enables `MCP_ALLOW_WRITES` / `MCP_ALLOW_DESTRUCTIVE` (chart `mcp.allowWrites` / `mcp.allowDestructive`); destructive calls are approved by a human through the client's permission prompt, configured per client in [docs/mcp.md](../../docs/mcp.md) (ADR 0014).
-  - **Operator-controlled surface** — `mcp.enabled` (off by default: no port, no Service, unreachable), toolset selection, per-request timeout, and an Origin allowlist (DNS-rebinding protection; headerless clients always pass). The dedicated `<release>-mcp` Service mirrors the UI Service (ClusterIP/NodePort/LoadBalancer, annotations) and a NetworkPolicy rule scopes agent traffic separately from the public UI origin; `mcp.ingress.enabled` additionally exposes the endpoint at `https://<host>/mcp` through an Ingress that mirrors the UI ingress verbatim (className/annotations/tls — no inheritance), so agents need no non-standard port.
-  - **Bounded context** — results are capped (100 rows / 200 KB / 2 KB per cell) with secret redaction before they reach the model; resources (`chouse://table/…`, …) and prompts (investigate-slow-query, diagnose-incident, review-schema, plan-schema-migration) give agents context without tool proliferation. Break-glass admin (PAT CRUD, user/role grants, SSO/AI secrets, connection writes, audit prune) stays UI-only.
-
-### Changed
-- **Dock regroup** — the sidebar and floating docks use consistent session/controls grouping with a Home-first nav order, a slimmer sidebar rail (collapsible session stack disclosing MCP, getting started, and the mode switch), and evenly sized status tiles in the floating bar.
-
-### Fixed
-- **Query row cap honored everywhere** — `POST /query/table/select` dropped the validated `maxResultRows` field, so `--limit` had no effect on the default read path. The cap is now passed through and additionally enforced server-side (truncation), since recent ClickHouse builds ignore small `max_result_rows` values.
-- **Personal access tokens on PostgreSQL** — token creation failed with a 500 because `rbac_api_keys.scopes` was created as `TEXT[]` while the server maps it as JSONB. Migration `1.52.0` converts the column to JSONB (existing installs) and the snapshot now creates it correctly (fresh installs).
 
