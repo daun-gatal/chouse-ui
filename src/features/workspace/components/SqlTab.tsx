@@ -9,6 +9,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
+import { resultColumnAccessors } from "@/lib/resultColumns";
 // Component imports
 import SQLEditor, { type SqlEditorHandle } from "@/features/workspace/editor/SqlEditor";
 import {
@@ -342,7 +343,9 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const columns = useMemo<ColumnDef<IRow>[]>(() => {
     if (!tab?.result?.meta || !tab.result.meta.length) return [];
 
-    return tab.result.meta.map((col: { name: string; type: string }) => {
+    const meta: { name: string; type: string }[] = tab.result.meta;
+    const accessors = resultColumnAccessors(meta.map((col) => col.name));
+    return meta.map((col, index) => {
       const type = col.type?.toLowerCase() || "";
       const typeClass = type.includes("string") ? "type-string" :
         (type.includes("int") || type.includes("float") || type.includes("decimal")) ? "type-number" :
@@ -351,7 +354,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               (type.includes("array") || type.includes("map") || type.includes("tuple") || type.includes("json")) ? "type-object" : "";
 
       return {
-        accessorKey: col.name,
+        ...accessors[index],
         header: () => (
           <div className="group flex h-full w-full cursor-default items-center justify-between px-1">
             <span className="truncate font-mono text-[12px] lowercase text-paper-muted transition-colors group-hover:text-paper">

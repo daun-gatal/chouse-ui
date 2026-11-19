@@ -5,6 +5,7 @@ import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef, CellContext } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
+import { resultColumnAccessors } from "@/lib/resultColumns";
 import { useTableSample } from "@/hooks";
 import { SkeletonRows } from "@/components/common/Skeletons";
 
@@ -74,7 +75,9 @@ const DataSampleSection = ({
   const columns = useMemo<ColumnDef<Record<string, any>>[]>(() => {
     if (!sample?.meta) return [];
 
-    return sample.meta.map((col: { name: string; type: string }) => {
+    const meta: { name: string; type: string }[] = sample.meta;
+    const accessors = resultColumnAccessors(meta.map((col) => col.name));
+    return meta.map((col, index) => {
       // Determine type class for the header badge
       const type = col.type?.toLowerCase() || "";
       const typeClass = type.includes("string") ? "type-string" :
@@ -84,7 +87,7 @@ const DataSampleSection = ({
               (type.includes("array") || type.includes("map") || type.includes("tuple") || type.includes("json")) ? "type-object" : "";
 
       return {
-        accessorKey: col.name,
+        ...accessors[index],
         header: () => (
           <div className="group flex h-full w-full cursor-default items-center justify-between gap-2">
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim transition-colors group-hover:text-paper">
