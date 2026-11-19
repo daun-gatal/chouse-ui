@@ -1,63 +1,12 @@
 import React, { useCallback, useMemo } from "react";
 import { Loader2 } from "lucide-react";
-import DOMPurify from "dompurify";
-import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef, CellContext } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { resultColumnAccessors } from "@/lib/resultColumns";
+import { formatResultCell } from "@/lib/resultCells";
 import { useTableSample } from "@/hooks";
 import { SkeletonRows } from "@/components/common/Skeletons";
-
-// Formatting utility for TanStack Table values
-const formatCellValue = (value: unknown): { html: string; className?: string; type?: string } => {
-  if (value === null || value === undefined) {
-    return { html: "NULL", className: "cell-null" };
-  }
-
-  const type = typeof value;
-
-  if (type === 'number') {
-    return {
-      html: (value as number).toLocaleString(),
-      className: "cell-number",
-      type: "number"
-    };
-  }
-
-  if (type === 'boolean') {
-    return {
-      html: value ? "TRUE" : "FALSE",
-      className: "cell-boolean",
-      type: "boolean"
-    };
-  }
-
-  if (value instanceof Date || (type === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value as string))) {
-    try {
-      const date = type === 'string' ? new Date(value as string) : (value as Date);
-      return {
-        html: formatDate(date, "yyyy-MM-dd HH:mm:ss"),
-        className: "cell-date",
-        type: "date"
-      };
-    } catch {
-      return { html: String(value), className: "cell-string", type: "string" };
-    }
-  }
-
-  if (type === 'object') {
-    const json = JSON.stringify(value);
-    const truncated = json.length > 50 ? json.substring(0, 50) + "..." : json;
-    return {
-      html: truncated,
-      className: "cell-object-preview",
-      type: "object"
-    };
-  }
-
-  return { html: String(value), className: "cell-string", type: "string" };
-};
 
 const DataSampleSection = ({
   database,
@@ -99,14 +48,11 @@ const DataSampleSection = ({
           </div>
         ),
         cell: ({ getValue }: CellContext<Record<string, any>, any>) => {
-          const value = getValue();
-          const { html, className } = formatCellValue(value);
-          const sanitizedHtml = DOMPurify.sanitize(html);
+          const { text, className, title } = formatResultCell(getValue());
           return (
-            <span
-              className={cn("font-mono text-[12px] tabular-nums", className)}
-              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-            />
+            <span className={cn("font-mono text-[12px] tabular-nums", className)} title={title}>
+              {text}
+            </span>
           );
         },
       };

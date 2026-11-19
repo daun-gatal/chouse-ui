@@ -3,6 +3,7 @@ import { createClient } from "@clickhouse/client-web";
 import { log } from "@/lib/log";
 import * as monaco from "monaco-editor";
 import { formatClickHouseSQL } from "@/lib/formatSql";
+import { installMonacoEnvironment } from "./monacoWorker";
 import type { IntellisenseData, IntellisenseFunctionInfo } from "@/api/query";
 import {
   buildDatabaseStructureFromColumns,
@@ -24,14 +25,6 @@ import {
   CLICKHOUSE_SETTINGS,
   SQL_SNIPPETS,
 } from "./clickhouseLanguage";
-
-declare global {
-  interface Window {
-    MonacoEnvironment?: {
-      getWorkerUrl: () => string;
-    };
-  }
-}
 
 let isInitialized = false;
 
@@ -139,23 +132,7 @@ async function getIntellisenseDataCached(): Promise<IntellisenseData | null> {
   }
 }
 
-window.MonacoEnvironment = {
-  getWorkerUrl() {
-    return new URL("../../worker/monaco-editor-worker.js", import.meta.url)
-      .href;
-  },
-};
-
-function ensureMonacoEnvironment(): void {
-  if (typeof window.MonacoEnvironment === "undefined") {
-    window.MonacoEnvironment = {
-      getWorkerUrl() {
-        return new URL("../../worker/monaco-editor-worker.js", import.meta.url)
-          .href;
-      },
-    };
-  }
-}
+installMonacoEnvironment();
 
 // ============================================
 // Build function lookup for hover/signature
@@ -920,7 +897,7 @@ function createSignatureHelpProvider(
 // ============================================
 
 export const initializeMonacoGlobally = async (): Promise<void> => {
-  ensureMonacoEnvironment();
+  installMonacoEnvironment();
 
   monaco.editor.defineTheme('chouse-dark', {
     base: 'vs-dark',

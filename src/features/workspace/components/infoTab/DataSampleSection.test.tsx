@@ -10,10 +10,11 @@ const sample = vi.hoisted(() => ({
     { name: "a_b", type: "String" },
     { name: "a.b", type: "String" },
     { name: "events", type: "UInt8" },
+    { name: "note", type: "String" },
   ],
   data: [
-    { "device.name": "firewall-01", "n.a": [1, 2], a_b: "underscore", "a.b": "dotted", events: 100 },
-    { "device.name": "switch-01", "n.a": [], a_b: "underscore-2", "a.b": "dotted-2", events: 50 },
+    { "device.name": "firewall-01", "n.a": [1, 2], a_b: "underscore", "a.b": "dotted", events: 100, note: 'é "q" <b>bold</b> a<b' },
+    { "device.name": "switch-01", "n.a": [], a_b: "underscore-2", "a.b": "dotted-2", events: 50, note: "<img src=x onerror=alert(1)>" },
   ],
   statistics: {},
   rows: 2,
@@ -33,6 +34,14 @@ describe("DataSampleSection", () => {
     expect(screen.getByText("dotted")).toBeTruthy();
     expect(screen.getByText("underscore")).toBeTruthy();
     expect(screen.queryAllByText("NULL")).toHaveLength(0);
+  });
+
+  it("shows HTML-looking values as text instead of markup", () => {
+    const { container } = render(<DataSampleSection database="logs" tableName="events" />);
+
+    expect(screen.getByText('é "q" <b>bold</b> a<b')).toBeTruthy();
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeTruthy();
+    expect(container.querySelector("tbody b, tbody img")).toBeNull();
   });
 
   it("renders one header per column even when `a.b` and `a_b` both exist", () => {

@@ -24,6 +24,7 @@ Shared client-side utilities with no UI of their own: logging, class-name and nu
 - Chobi assistant helpers: `chobiUi.ts` (`safeAppPath`, `uiActionFor`, `UI_TOOL_NAMES`, `UiAction`), `chobiNudges.ts` (`nextNudge`, `NUDGE_MIN_GAP_MS`, `NUDGE_MAX_PER_HOUR`, `INITIAL_NUDGE_STATE`), `chobiHandoff.ts` (`handoffMarkdown`, `handoffMessage`, `HANDOFF_NOTE_MAX`, `HANDOFF_MESSAGE_MAX`) [chobiUi.ts:safeAppPath], [chobiNudges.ts:nextNudge]
 - `upgrades.ts` - upgrade-check display helpers: `checkSteps`, `stepState`, `checkVerdict`, `checkMarkdown`, `mainFindings`, `notesToJudge`, `findingCounts`, `versionTone`, `versionStatusText`, `SEVERITY_LABEL`; date/label helpers `formatDay`, `formatMonth`, `daysSince`, `agoText`, `supportWindowText`, `targetKindLabel`, `targetTag`, `prUrl` [upgrades.ts:checkVerdict], [upgrades.ts:targetTag]
 - `alertEvents.ts` - `eventSummary` [alertEvents.ts:eventSummary]
+- `resultCells.ts` - `formatResultCell(value)` returns the plain `text`, `cell-*` `className` and hover `title` for a ClickHouse result value; `OBJECT_PREVIEW_LENGTH` [resultCells.ts:formatResultCell]
 - `resultColumns.ts` - `resultColumnAccessors(names)` returns a unique `id` + `accessorFn` per ClickHouse result column, `ResultRow`, `ResultColumnAccessor` [resultColumns.ts:resultColumnAccessors]
 
 ## Invariants
@@ -34,6 +35,7 @@ Shared client-side utilities with no UI of their own: logging, class-name and nu
 - Chobi UI tools may only navigate to allow-listed CHouse paths or put SQL (max 20,000 chars) in a new editor tab; never run, save, or leave the app [chobiUi.ts:safeAppPath], [chobiUi.ts:uiActionFor].
 - Chobi nudges are data-driven and rate limited (`NUDGE_MIN_GAP_MS` = 2 min, `NUDGE_MAX_PER_HOUR` = 6) [chobiNudges.ts:nextNudge].
 - `createLimiter` requires an integer size of at least 1 and a task whose signal aborts while queued never starts [limiter.ts:createLimiter].
+- `formatResultCell` output is rendered as text, never HTML; numbers keep up to 20 fraction digits (no 3-digit rounding) and smaller magnitudes keep exponent form [resultCells.ts:formatResultCell].
 - Grids of raw ClickHouse rows build columns with `resultColumnAccessors`: it reads the exact column name as an own key (dots, brackets and prototype names are literal) and suffixes repeated names (`1`, `1#2`) so ids stay unique [resultColumns.ts:resultColumnAccessors].
 - `redactSecrets` masks `IDENTIFIED ... BY '...'` and `PASSWORD '...'` literals [utils.ts:redactSecrets].
 - `LAYERS` is the one z-index scale for floating UI (dialog 50, dock 70, dock flyout 80, review 90, Chobi 95-97, onboarding top) [layers.ts:LAYERS].

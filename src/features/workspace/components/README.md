@@ -20,7 +20,7 @@ Query workspace UI: a drag-sortable tab bar rendering Home, SQL, Info and Schema
 ## Invariants
 
 - AI Debug/Optimize need `aiOptimizer` feature and AI_OPTIMIZE; Stop needs LIVE_QUERIES_KILL; Save needs SAVED_QUERIES_CREATE/UPDATE `[SqlTab.tsx:SqlTab]`
-- Result cells sanitized with DOMPurify before `dangerouslySetInnerHTML` `[SqlTab.tsx:SqlTab]`
+- Result cells are plain text from `formatResultCell`, never HTML: a value such as `<b>x</b>` or `a<b` shows exactly as returned `[SqlTab.tsx:SqlTab]` `[../../../lib/resultCells.ts:formatResultCell]`
 - Result columns read each row by the exact column name through `resultColumnAccessors`, never a TanStack `accessorKey` (which splits on `.`), so dotted names show their values (#444) `[SqlTab.tsx:SqlTab]` `[../../../lib/resultColumns.ts:resultColumnAccessors]`
 - Truncation banner when rows >= `maxResultRows` `[SqlTab.tsx:renderResultsTab]`
 - Pin to dashboard gated by `PermissionGuard(DASHBOARDS_EDIT)` `[ResultChart.tsx:ResultChart]`

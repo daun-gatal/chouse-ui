@@ -3,13 +3,12 @@ import { toast } from "sonner";
 import { Loader2, FileX2, Download, ExternalLink, Lightbulb,
          CirclePlay, CircleStop, Wand2, Code2, Search, Network, Sparkles, Keyboard, Save, Copy,
          TriangleAlert } from "lucide-react";
-import DOMPurify from "dompurify";
-import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
 import { resultColumnAccessors } from "@/lib/resultColumns";
+import { formatResultCell } from "@/lib/resultCells";
 // Component imports
 import SQLEditor, { type SqlEditorHandle } from "@/features/workspace/editor/SqlEditor";
 import {
@@ -71,56 +70,6 @@ interface SqlTabProps {
 interface IRow {
   [key: string]: unknown;
 }
-
-// Format values for TanStack table (same as DataSampleSection)
-const formatCellValue = (value: unknown): { html: string; className?: string; type?: string } => {
-  if (value === null || value === undefined) {
-    return { html: "NULL", className: "cell-null" };
-  }
-
-  const type = typeof value;
-
-  if (type === 'number') {
-    return {
-      html: (value as number).toLocaleString(),
-      className: "cell-number",
-      type: "number"
-    };
-  }
-
-  if (type === 'boolean') {
-    return {
-      html: value ? "TRUE" : "FALSE",
-      className: "cell-boolean",
-      type: "boolean"
-    };
-  }
-
-  if (value instanceof Date || (type === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value as string))) {
-    try {
-      const date = type === 'string' ? new Date(value as string) : (value as Date);
-      return {
-        html: formatDate(date, "yyyy-MM-dd HH:mm:ss"),
-        className: "cell-date",
-        type: "date"
-      };
-    } catch {
-      return { html: String(value), className: "cell-string", type: "string" };
-    }
-  }
-
-  if (type === 'object') {
-    const json = JSON.stringify(value);
-    const truncated = json.length > 50 ? json.substring(0, 50) + "..." : json;
-    return {
-      html: truncated,
-      className: "cell-object-preview",
-      type: "object"
-    };
-  }
-
-  return { html: String(value), className: "cell-string", type: "string" };
-};
 
 /**
  * SqlTab component that provides a SQL editor and result viewer
@@ -366,19 +315,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           </div>
         ),
         cell: ({ getValue }) => {
-          const value = getValue();
-          const { html, className } = formatCellValue(value);
-          const sanitizedHtml = DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['em', 'strong', 'b', 'i', 'u', 'code', 'pre'],
-            ALLOWED_ATTR: ['class'],
-          });
-
+          const { text, className, title } = formatResultCell(getValue());
           return (
-            <div
-              className={cn("w-full h-full truncate font-mono text-xs", className)}
-              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-              title={typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-            />
+            <div className={cn("w-full h-full truncate font-mono text-xs", className)} title={title}>
+              {text}
+            </div>
           );
         },
         meta: {
