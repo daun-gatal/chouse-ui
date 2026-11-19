@@ -7,8 +7,5 @@ declare global {
     env?: {
       VITE_CLICKHOUSE_URLS: string[];
     };
-    MonacoEnvironment?: {
-      getWorkerUrl?: (moduleId: string, label: string) => string;
-    };
   }
 }
