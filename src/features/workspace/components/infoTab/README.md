@@ -14,6 +14,7 @@ Information tab for a database or table: overview metadata with CREATE query, pl
 
 - Schema/Data Sample only when `tableName` is set `[InfoTab.tsx:InfoTab]`
 - Sample cells sanitized with DOMPurify `[DataSampleSection.tsx:DataSampleSection]`
+- Sample columns read each row by the exact column name through `resultColumnAccessors`, never a TanStack `accessorKey`, so dotted names (`device.name`, Nested `n.a`) show their values (#444) `[DataSampleSection.tsx:DataSampleSection]` `[../../../../lib/resultColumns.ts:resultColumnAccessors]`
 
 ## Side Effects
 
@@ -22,4 +23,4 @@ Information tab for a database or table: overview metadata with CREATE query, pl
 
 ## Verification
 
-- No co-located tests; covered by `bun run typecheck` and the `src/features/workspace` suite: `bunx vitest run src/features/workspace`
+- `bunx vitest run src/features/workspace/components/infoTab` (`DataSampleSection.test.tsx`: dotted column names render their values)
